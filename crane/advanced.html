@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Progressive Worker Advanced Tests</title>
+<meta name="help" href="https://html.spec.whatwg.org/multipage/workers.html">
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<script>
+// ============================================================================
+// PHASE 20: IMPORTSCRIPTS
+// Workers can load additional scripts
+// ============================================================================
+
+// Note: importScripts tests require actual files, so we test the function exists
+async_test(function(t) {
+  var blob = new Blob([
+    'self.postMessage(typeof importScripts);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'function', 'importScripts exists in worker');
+  });
+}, 'Phase 20.1: importScripts function exists in Worker');
+
+// ============================================================================
+// PHASE 21: WORKER APIS
+// Verify various APIs are available in workers
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var apis = {',
+    '  fetch: typeof fetch,',
+    '  Request: typeof Request,',
+    '  Response: typeof Response,',
+    '  Headers: typeof Headers',
+    '};',
+    'self.postMessage(apis);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.fetch, 'function', 'fetch exists');
+    assert_equals(e.data.Request, 'function', 'Request exists');
+    assert_equals(e.data.Response, 'function', 'Response exists');
+    assert_equals(e.data.Headers, 'function', 'Headers exists');
+  });
+}, 'Phase 21.1: Fetch API available in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var apis = {',
+    '  TextEncoder: typeof TextEncoder,',
+    '  TextDecoder: typeof TextDecoder',
+    '};',
+    'self.postMessage(apis);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.TextEncoder, 'function', 'TextEncoder exists');
+    assert_equals(e.data.TextDecoder, 'function', 'TextDecoder exists');
+  });
+}, 'Phase 21.2: Encoding API available in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var apis = {',
+    '  URL: typeof URL,',
+    '  URLSearchParams: typeof URLSearchParams',
+    '};',
+    'self.postMessage(apis);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.URL, 'function', 'URL exists');
+    assert_equals(e.data.URLSearchParams, 'function', 'URLSearchParams exists');
+  });
+}, 'Phase 21.3: URL API available in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var apis = {',
+    '  Blob: typeof Blob,',
+    '  File: typeof File,',
+    '  FileReader: typeof FileReader,',
+    '  FileReaderSync: typeof FileReaderSync',
+    '};',
+    'self.postMessage(apis);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.Blob, 'function', 'Blob exists');
+    assert_equals(e.data.FileReaderSync, 'function', 'FileReaderSync exists in worker');
+  });
+}, 'Phase 21.4: File API available in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var apis = {',
+    '  atob: typeof atob,',
+    '  btoa: typeof btoa',
+    '};',
+    'self.postMessage(apis);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.atob, 'function', 'atob exists');
+    assert_equals(e.data.btoa, 'function', 'btoa exists');
+  });
+}, 'Phase 21.5: Base64 functions available in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var apis = {',
+    '  crypto: typeof crypto,',
+    '  hasCrypto: crypto !== undefined,',
+    '  hasGetRandomValues: crypto && typeof crypto.getRandomValues === "function",',
+    '  hasSubtle: crypto && typeof crypto.subtle === "object"',
+    '};',
+    'self.postMessage(apis);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_true(e.data.hasCrypto, 'crypto exists');
+    assert_true(e.data.hasGetRandomValues, 'crypto.getRandomValues exists');
+    assert_true(e.data.hasSubtle, 'crypto.subtle exists');
+  });
+}, 'Phase 21.6: Crypto API available in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var result = {',
+    '  hasPerformance: typeof performance === "object",',
+    '  hasNow: typeof performance.now === "function"',
+    '};',
+    'self.postMessage(result);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_true(e.data.hasPerformance, 'performance exists');
+    assert_true(e.data.hasNow, 'performance.now exists');
+  });
+}, 'Phase 21.7: Performance API available in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var apis = {',
+    '  console: typeof console,',
+    '  hasLog: typeof console.log === "function",',
+    '  hasError: typeof console.error === "function",',
+    '  hasWarn: typeof console.warn === "function"',
+    '};',
+    'self.postMessage(apis);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.console, 'object', 'console exists');
+    assert_true(e.data.hasLog, 'console.log exists');
+    assert_true(e.data.hasError, 'console.error exists');
+    assert_true(e.data.hasWarn, 'console.warn exists');
+  });
+}, 'Phase 21.8: Console API available in Worker');
+
+// ============================================================================
+// PHASE 22: INDEXEDDB IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var result = {',
+    '  hasIndexedDB: typeof indexedDB === "object",',
+    '  hasIDBFactory: typeof IDBFactory === "function"',
+    '};',
+    'self.postMessage(result);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_true(e.data.hasIndexedDB, 'indexedDB exists');
+  });
+}, 'Phase 22.1: IndexedDB available in Worker');
+
+// ============================================================================
+// PHASE 23: ENCODING FUNCTIONALITY IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var encoder = new TextEncoder();',
+    'var encoded = encoder.encode("hello");',
+    'self.postMessage({',
+    '  isUint8Array: encoded instanceof Uint8Array,',
+    '  length: encoded.length,',
+    '  firstByte: encoded[0]',
+    '});'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_true(e.data.isUint8Array, 'Result is Uint8Array');
+    assert_equals(e.data.length, 5, 'Correct length');
+    assert_equals(e.data.firstByte, 104, 'First byte is "h"');
+  });
+}, 'Phase 23.1: TextEncoder works in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var decoder = new TextDecoder();',
+    'var decoded = decoder.decode(new Uint8Array([104, 101, 108, 108, 111]));',
+    'self.postMessage(decoded);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'hello', 'TextDecoder works');
+  });
+}, 'Phase 23.2: TextDecoder works in Worker');
+
+// ============================================================================
+// PHASE 24: BASE64 FUNCTIONALITY IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var encoded = btoa("Hello, World!");',
+    'self.postMessage(encoded);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'SGVsbG8sIFdvcmxkIQ==', 'btoa works');
+  });
+}, 'Phase 24.1: btoa works in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var decoded = atob("SGVsbG8sIFdvcmxkIQ==");',
+    'self.postMessage(decoded);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'Hello, World!', 'atob works');
+  });
+}, 'Phase 24.2: atob works in Worker');
+
+// ============================================================================
+// PHASE 25: STRUCTURED CLONE IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'self.postMessage(typeof structuredClone);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'function', 'structuredClone exists in worker');
+  });
+}, 'Phase 25.1: structuredClone exists in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var obj = { a: 1, b: [1, 2, 3] };',
+    'var cloned = structuredClone(obj);',
+    'self.postMessage({',
+    '  notSame: cloned !== obj,',
+    '  aEquals: cloned.a === 1,',
+    '  bEquals: cloned.b.length === 3',
+    '});'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_true(e.data.notSame, 'Clone is different object');
+    assert_true(e.data.aEquals, 'Property a cloned');
+    assert_true(e.data.bEquals, 'Array b cloned');
+  });
+}, 'Phase 25.2: structuredClone works in Worker');
+
+// ============================================================================
+// PHASE 26: CRYPTO FUNCTIONALITY IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var array = new Uint8Array(16);',
+    'crypto.getRandomValues(array);',
+    'var hasNonZero = array.some(function(v) { return v !== 0; });',
+    'self.postMessage(hasNonZero);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_true(e.data, 'getRandomValues produced non-zero values');
+  });
+}, 'Phase 26.1: crypto.getRandomValues works in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'self.postMessage(typeof crypto.randomUUID);'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'function', 'crypto.randomUUID exists');
+  });
+}, 'Phase 26.2: crypto.randomUUID exists in Worker');
+
+// ============================================================================
+// PHASE 27: URL FUNCTIONALITY IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var url = new URL("https://example.com/path?query=1#hash");',
+    'self.postMessage({',
+    '  href: url.href,',
+    '  protocol: url.protocol,',
+    '  hostname: url.hostname,',
+    '  pathname: url.pathname',
+    '});'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.protocol, 'https:', 'protocol correct');
+    assert_equals(e.data.hostname, 'example.com', 'hostname correct');
+    assert_equals(e.data.pathname, '/path', 'pathname correct');
+  });
+}, 'Phase 27.1: URL parsing works in Worker');
+
+// ============================================================================
+// PHASE 28: BLOB IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var blob = new Blob(["hello"], { type: "text/plain" });',
+    'self.postMessage({',
+    '  size: blob.size,',
+    '  type: blob.type',
+    '});'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data.size, 5, 'Blob size correct');
+    assert_equals(e.data.type, 'text/plain', 'Blob type correct');
+  });
+}, 'Phase 28.1: Blob creation works in Worker');
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var blob = new Blob(["hello"], { type: "text/plain" });',
+    'blob.text().then(function(text) {',
+    '  self.postMessage(text);',
+    '});'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'hello', 'Blob.text() works');
+  });
+}, 'Phase 28.2: Blob.text() works in Worker');
+
+// ============================================================================
+// PHASE 29: MESSAGECHANNEL IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var channel = new MessageChannel();',
+    'channel.port2.onmessage = function(e) {',
+    '  self.postMessage("received:" + e.data);',
+    '};',
+    'channel.port1.postMessage("test");'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'received:test', 'MessageChannel works in worker');
+  });
+}, 'Phase 29.1: MessageChannel works in Worker');
+
+// ============================================================================
+// PHASE 30: NESTED WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var innerWorkerCode = 'self.postMessage("from inner");';
+  var outerWorkerCode = [
+    'var blob = new Blob([' + JSON.stringify(innerWorkerCode) + '], { type: "application/javascript" });',
+    'var url = URL.createObjectURL(blob);',
+    'var inner = new Worker(url);',
+    'inner.onmessage = function(e) {',
+    '  URL.revokeObjectURL(url);',
+    '  self.postMessage("outer received: " + e.data);',
+    '};'
+  ].join('\n');
+  
+  var blob = new Blob([outerWorkerCode], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 'outer received: from inner', 'Nested worker works');
+  });
+}, 'Phase 30.1: Nested Worker (Worker created from Worker) works');
+
+// ============================================================================
+// PHASE 31: SHAREDWORKER EXISTS
+// ============================================================================
+
+test(function() {
+  assert_equals(typeof SharedWorker, 'function', 'SharedWorker constructor exists');
+}, 'Phase 31.1: SharedWorker constructor exists');
+
+// ============================================================================
+// PHASE 32: MODULE WORKER
+// ============================================================================
+
+test(function() {
+  // Test that the type option is accepted
+  var blob = new Blob(['export default 42;'], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  
+  try {
+    // Just test that the constructor accepts the type option
+    // The actual module loading may fail depending on blob URL support for modules
+    var worker = new Worker(url, { type: 'module' });
+    worker.terminate();
+    URL.revokeObjectURL(url);
+    assert_true(true, 'Worker accepts type: module option');
+  } catch (e) {
+    URL.revokeObjectURL(url);
+    // If it throws because modules aren't supported yet, that's informative
+    assert_unreached('Worker with type: module threw: ' + e.message);
+  }
+}, 'Phase 32.1: Worker accepts type: module option');
+
+// ============================================================================
+// PHASE 33: PERFORMANCE TIMING IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'var start = performance.now();',
+    'var sum = 0;',
+    'for (var i = 0; i < 100000; i++) sum += i;',
+    'var end = performance.now();',
+    'self.postMessage({',
+    '  elapsed: end - start,',
+    '  isNumber: typeof (end - start) === "number"',
+    '});'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_true(e.data.isNumber, 'Elapsed time is a number');
+    assert_true(e.data.elapsed >= 0, 'Elapsed time is non-negative');
+  });
+}, 'Phase 33.1: performance.now() works in Worker');
+
+// ============================================================================
+// PHASE 34: ASYNC/AWAIT IN WORKER
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    'async function run() {',
+    '  var result = await Promise.resolve(42);',
+    '  self.postMessage(result);',
+    '}',
+    'run();'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onmessage = t.step_func_done(function(e) {
+    assert_equals(e.data, 42, 'async/await works in worker');
+  });
+}, 'Phase 34.1: async/await works in Worker');
+
+// ============================================================================
+// PHASE 35: WORKER EXCEPTION DETAILS
+// ============================================================================
+
+async_test(function(t) {
+  var blob = new Blob([
+    '(function namedFunction() {',
+    '  throw new Error("detailed error");',
+    '})();'
+  ], { type: 'application/javascript' });
+  var url = URL.createObjectURL(blob);
+  var worker;
+  
+  t.add_cleanup(function() {
+    URL.revokeObjectURL(url);
+    if (worker) worker.terminate();
+  });
+  
+  worker = new Worker(url);
+  worker.onerror = t.step_func_done(function(e) {
+    assert_true(e.message.includes('detailed error'), 'Error message propagated');
+    assert_true(typeof e.lineno === 'number', 'Line number provided');
+    assert_true(typeof e.colno === 'number', 'Column number provided');
+    e.preventDefault();
+  });
+}, 'Phase 35.1: Worker error events include details');
+
+// ============================================================================
+// SUMMARY TEST - Runs last to indicate completion
+// ============================================================================
+
+test(function() {
+  assert_true(true, 'All progressive worker tests completed');
+}, 'Phase 99: Test suite completed');
+
+</script>

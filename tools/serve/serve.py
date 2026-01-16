@@ -10,6 +10,13 @@ import os
 import platform
 import subprocess
 import sys
+
+# Use 'spawn' on macOS to avoid semaphore leaks with 'fork'
+if sys.platform == 'darwin':
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass  # Already set
 import threading
 import time
 import traceback
