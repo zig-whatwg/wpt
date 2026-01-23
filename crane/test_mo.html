@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<script>
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+
+  var observer = new MutationObserver(t.step_func(function(mutations) {
+    var m = mutations[0];
+
+    // Direct access without Array.from
+    var addedNodes = m.addedNodes;
+    console.log('addedNodes.length:', addedNodes.length);
+    console.log('addedNodes[0]:', addedNodes[0]);
+    console.log('iframe:', iframe);
+    console.log('addedNodes[0] === iframe:', addedNodes[0] === iframe);
+    console.log('Object.is(addedNodes[0], iframe):', Object.is(addedNodes[0], iframe));
+
+    // Also test item() method
+    console.log('addedNodes.item(0) === iframe:', addedNodes.item(0) === iframe);
+
+    // Use direct comparison
+    var found = m.type === 'childList' && addedNodes[0] === iframe;
+    console.log('found:', found);
+
+    if (found) {
+      observer.disconnect();
+      iframe.remove();
+      t.done();
+    }
+  }));
+
+  observer.observe(document.body, { childList: true });
+  document.body.appendChild(iframe);
+}, 'Test object identity');
+</script>
+</body>
+</html>
