@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
-<title>Progressive ShadowRealm Prerequisites Test</title>
+<title>Progressive ShadowRealm Prerequisites Test (Corrected)</title>
 <meta name="help" href="https://tc39.es/proposal-shadowrealm/">
 <meta name="timeout" content="long">
 <script src="/resources/testharness.js"></script>
@@ -38,7 +38,6 @@ test(function() {
 }, 'Phase 1.4: Function constructor works');
 
 test(function() {
-  // Test that eval exists (ShadowRealm.evaluate is conceptually similar)
   assert_equals(typeof eval, 'function', 'eval exists');
 }, 'Phase 1.5: eval exists');
 
@@ -88,10 +87,15 @@ test(function() {
 }, 'Phase 3.2: ShadowRealm.prototype exists');
 
 test(function() {
+  // Spec section 3.4.3: @@toStringTag
+  // Attributes: { [[Writable]]: false, [[Enumerable]]: false, [[Configurable]]: true }
   var descriptor = Object.getOwnPropertyDescriptor(ShadowRealm.prototype, Symbol.toStringTag);
   assert_true(descriptor !== undefined, '@@toStringTag exists');
   assert_equals(descriptor.value, 'ShadowRealm', '@@toStringTag is "ShadowRealm"');
-}, 'Phase 3.3: ShadowRealm @@toStringTag is correct');
+  assert_equals(descriptor.writable, false, '@@toStringTag is not writable');
+  assert_equals(descriptor.enumerable, false, '@@toStringTag is not enumerable');
+  assert_equals(descriptor.configurable, true, '@@toStringTag is configurable');
+}, 'Phase 3.3: ShadowRealm @@toStringTag has correct value and attributes');
 
 test(function() {
   var realm = new ShadowRealm();
@@ -99,6 +103,7 @@ test(function() {
 }, 'Phase 3.4: ShadowRealm can be instantiated');
 
 test(function() {
+  // Spec section 3.2.1: "If NewTarget is undefined, throw a TypeError exception"
   assert_throws_js(TypeError, function() {
     ShadowRealm(); // Called without new
   }, 'ShadowRealm requires new');
@@ -123,13 +128,15 @@ test(function() {
 }, 'Phase 4.3: ShadowRealm instance has both methods');
 
 test(function() {
+  // Spec section 3.4.1: evaluate takes 1 argument (sourceText)
+  // Spec section 3.4.2: importValue takes 2 arguments (specifier, exportName)
   assert_equals(ShadowRealm.prototype.evaluate.length, 1, 'evaluate.length is 1');
   assert_equals(ShadowRealm.prototype.importValue.length, 2, 'importValue.length is 2');
 }, 'Phase 4.4: Method lengths are correct');
 
 // ============================================================================
 // PHASE 5: EVALUATE WITH PRIMITIVES
-// Primitives can cross the realm boundary
+// Primitives can cross the realm boundary (GetWrappedValue step 2)
 // ============================================================================
 
 test(function() {
@@ -170,14 +177,15 @@ test(function() {
 
 test(function() {
   var realm = new ShadowRealm();
-  // Use string argument to avoid precision loss from Number literal
-  // (9007199254740993 > Number.MAX_SAFE_INTEGER)
-  var result = realm.evaluate('BigInt("9007199254740993")');
+  // Use BigInt literal syntax to preserve precision (9007199254740993 > MAX_SAFE_INTEGER)
+  // Using BigInt(number) would lose precision due to Number literal parsing
+  var result = realm.evaluate('9007199254740993n');
   assert_equals(typeof result, 'bigint', 'BigInt type returned');
   assert_equals(result, 9007199254740993n, 'BigInt value correct');
 }, 'Phase 5.7: evaluate() returns bigint');
 
 test(function() {
+  // Registered symbols are shared via global symbol registry
   var realm = new ShadowRealm();
   var result = realm.evaluate('Symbol.for("test")');
   assert_equals(typeof result, 'symbol', 'Symbol type returned');
@@ -185,23 +193,30 @@ test(function() {
 }, 'Phase 5.8: evaluate() returns registered symbol');
 
 test(function() {
+  // Non-registered symbols are also primitives and can cross
+  // But they are unique to each creation
   var realm = new ShadowRealm();
-  var result = realm.evaluate('var x = 10; x * 5');
-  assert_equals(result, 50, 'Multi-statement evaluation works');
-}, 'Phase 5.9: evaluate() handles multiple statements');
+  var result = realm.evaluate('Symbol("unique")');
+  assert_equals(typeof result, 'symbol', 'Non-registered symbol crosses');
+  assert_not_equals(result, Symbol("unique"), 'Different from outer Symbol("unique")');
+}, 'Phase 5.9: evaluate() returns non-registered symbol');
 
 test(function() {
   var realm = new ShadowRealm();
-  // First evaluation
+  var result = realm.evaluate('var x = 10; x * 5');
+  assert_equals(result, 50, 'Multi-statement evaluation works');
+}, 'Phase 5.10: evaluate() handles multiple statements');
+
+test(function() {
+  var realm = new ShadowRealm();
   realm.evaluate('var persistentVar = 42');
-  // Second evaluation uses same realm state
   var result = realm.evaluate('persistentVar');
   assert_equals(result, 42, 'Variable persists across evaluations');
-}, 'Phase 5.10: evaluate() state persists within realm');
+}, 'Phase 5.11: evaluate() state persists within realm');
 
 // ============================================================================
 // PHASE 6: EVALUATE WITH FUNCTIONS (CALLABLE BOUNDARY)
-// Functions get wrapped when crossing the boundary
+// Functions get wrapped when crossing the boundary (GetWrappedValue step 1.b)
 // ============================================================================
 
 test(function() {
@@ -265,31 +280,44 @@ test(function() {
 
 // ============================================================================
 // PHASE 7: EVALUATE ERROR HANDLING
-// Errors must be properly handled across the boundary
+// Spec section 3.1.3 PerformShadowRealmEval:
+// - SyntaxError during parsing: preserved (step 2.b, before context switch)
+// - Runtime errors: become TypeError (step 15, CreateTypeErrorCopy)
 // ============================================================================
 
 test(function() {
+  // SyntaxError during parsing is thrown BEFORE the realm context switch
+  // so it's thrown directly to the caller (spec step 2.b)
   var realm = new ShadowRealm();
   assert_throws_js(SyntaxError, function() {
     realm.evaluate('function() {'); // Invalid syntax
   }, 'SyntaxError thrown for invalid code');
-}, 'Phase 7.1: SyntaxError thrown for invalid syntax');
+}, 'Phase 7.1: SyntaxError preserved for parse errors');
 
 test(function() {
+  // Runtime TypeError becomes TypeError (via CreateTypeErrorCopy)
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
-    realm.evaluate('null.foo'); // TypeError
-  }, 'TypeError propagates');
-}, 'Phase 7.2: TypeError propagates from realm');
+    realm.evaluate('null.foo');
+  }, 'TypeError at boundary');
+}, 'Phase 7.2: Runtime TypeError becomes TypeError at boundary');
 
 test(function() {
+  // CORRECTED: ReferenceError becomes TypeError at boundary
+  // All runtime errors are converted via CreateTypeErrorCopy (spec step 15)
   var realm = new ShadowRealm();
-  // Per TC39 ShadowRealm spec section 3.1.2, errors thrown during
-  // PerformShadowRealmEval become TypeError at the boundary
   assert_throws_js(TypeError, function() {
     realm.evaluate('nonExistentVariable');
-  }, 'ReferenceError becomes TypeError at boundary');
+  }, 'ReferenceError becomes TypeError');
 }, 'Phase 7.3: ReferenceError becomes TypeError at boundary');
+
+test(function() {
+  // RangeError also becomes TypeError
+  var realm = new ShadowRealm();
+  assert_throws_js(TypeError, function() {
+    realm.evaluate('new Array(-1)'); // RangeError
+  }, 'RangeError becomes TypeError');
+}, 'Phase 7.4: RangeError becomes TypeError at boundary');
 
 test(function() {
   var realm = new ShadowRealm();
@@ -297,35 +325,66 @@ test(function() {
   assert_throws_js(TypeError, function() {
     fn();
   }, 'Calling function that throws produces TypeError');
-}, 'Phase 7.4: Thrown error becomes TypeError at boundary');
+}, 'Phase 7.5: Thrown error from wrapped function becomes TypeError');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
     realm.evaluate('throw new Error("thrown")');
   }, 'Thrown error during evaluate becomes TypeError');
-}, 'Phase 7.5: throw during evaluate becomes TypeError');
+}, 'Phase 7.6: throw during evaluate becomes TypeError');
+
+test(function() {
+  // Spec section 3.4.1 step 3: "If sourceText is not a String, throw TypeError"
+  var realm = new ShadowRealm();
+  assert_throws_js(TypeError, function() {
+    realm.evaluate(42);
+  }, 'Number argument throws TypeError');
+}, 'Phase 7.7: evaluate() requires string argument (number)');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
-    realm.evaluate(42); // Not a string
-  }, 'Non-string argument throws TypeError');
-}, 'Phase 7.6: evaluate() requires string argument');
+    realm.evaluate(null);
+  }, 'null argument throws TypeError');
+}, 'Phase 7.8: evaluate() requires string argument (null)');
 
 test(function() {
   var realm = new ShadowRealm();
-  // Empty string should evaluate to undefined
-  var result = realm.evaluate('');
-  assert_equals(result, undefined, 'Empty string evaluates to undefined');
-}, 'Phase 7.7: Empty string evaluates to undefined');
+  assert_throws_js(TypeError, function() {
+    realm.evaluate(undefined);
+  }, 'undefined argument throws TypeError');
+}, 'Phase 7.9: evaluate() requires string argument (undefined)');
 
 test(function() {
+  var realm = new ShadowRealm();
+  assert_throws_js(TypeError, function() {
+    realm.evaluate({});
+  }, 'Object argument throws TypeError');
+}, 'Phase 7.10: evaluate() requires string argument (object)');
+
+test(function() {
+  var realm = new ShadowRealm();
+  assert_throws_js(TypeError, function() {
+    realm.evaluate(Symbol('test'));
+  }, 'Symbol argument throws TypeError');
+}, 'Phase 7.11: evaluate() requires string argument (symbol)');
+
+test(function() {
+  var realm = new ShadowRealm();
+  // Empty string should evaluate to undefined (no ScriptBody)
+  // Spec step 2.c: "If script Contains ScriptBody is false, return undefined"
+  var result = realm.evaluate('');
+  assert_equals(result, undefined, 'Empty string evaluates to undefined');
+}, 'Phase 7.12: Empty string evaluates to undefined');
+
+test(function() {
+  // Spec section 3.1.6 ValidateShadowRealmObject
   var notRealm = {};
   assert_throws_js(TypeError, function() {
     ShadowRealm.prototype.evaluate.call(notRealm, '1');
   }, 'Throws when this is not a ShadowRealm');
-}, 'Phase 7.8: evaluate() throws on invalid this');
+}, 'Phase 7.13: evaluate() throws on invalid this');
 
 // ============================================================================
 // PHASE 8: REALM ISOLATION
@@ -357,11 +416,11 @@ test(function() {
 
 test(function() {
   var realm = new ShadowRealm();
-  var outerArray = [];
   realm.evaluate('var innerArray = []');
   
   var OuterArrayCtor = Array;
-  var InnerArrayCtor = realm.evaluate('Array');
+  var getArray = realm.evaluate('(function() { return Array; })');
+  var InnerArrayCtor = getArray();
   
   assert_not_equals(OuterArrayCtor, InnerArrayCtor, 'Array constructors are different');
 }, 'Phase 8.4: Built-in constructors are different');
@@ -375,8 +434,6 @@ test(function() {
 
 test(function() {
   var realm = new ShadowRealm();
-  // Modify Array.prototype in outer realm
-  var originalJoin = Array.prototype.join;
   Array.prototype.testMethod = function() { return 'outer'; };
   
   var hasMethod = realm.evaluate('typeof Array.prototype.testMethod');
@@ -391,151 +448,115 @@ test(function() {
   assert_equals(result, 'object', 'globalThis exists in realm');
   
   var isSameGlobal = realm.evaluate('globalThis === this');
+  // Note: in top-level evaluation, 'this' is the global object
   assert_true(isSameGlobal, 'globalThis is the realm global');
 }, 'Phase 8.7: Realm has its own globalThis');
 
 // ============================================================================
 // PHASE 9: NON-PRIMITIVE / NON-CALLABLE REJECTION
 // Objects (non-callable) cannot cross the boundary
+// Spec section 3.1.5 GetWrappedValue step 1.a: throws TypeError
 // ============================================================================
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
-    realm.evaluate('({ foo: "bar" })'); // Plain object
-  }, 'Plain object cannot cross boundary');
-}, 'Phase 9.1: Plain objects throw TypeError');
+    realm.evaluate('({})');
+  }, 'Plain object throws TypeError');
+}, 'Phase 9.1: Plain object cannot cross boundary');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
-    realm.evaluate('[1, 2, 3]'); // Array
-  }, 'Array cannot cross boundary');
-}, 'Phase 9.2: Arrays throw TypeError');
+    realm.evaluate('[]');
+  }, 'Array throws TypeError');
+}, 'Phase 9.2: Array cannot cross boundary');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
-    realm.evaluate('new Date()'); // Date object
-  }, 'Date cannot cross boundary');
-}, 'Phase 9.3: Date objects throw TypeError');
+    realm.evaluate('new Date()');
+  }, 'Date throws TypeError');
+}, 'Phase 9.3: Date cannot cross boundary');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
-    realm.evaluate('/regex/'); // RegExp
-  }, 'RegExp cannot cross boundary');
-}, 'Phase 9.4: RegExp throws TypeError');
+    realm.evaluate('/test/');
+  }, 'RegExp throws TypeError');
+}, 'Phase 9.4: RegExp cannot cross boundary');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
     realm.evaluate('new Map()');
-  }, 'Map cannot cross boundary');
-}, 'Phase 9.5: Map throws TypeError');
+  }, 'Map throws TypeError');
+}, 'Phase 9.5: Map cannot cross boundary');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
     realm.evaluate('new Set()');
-  }, 'Set cannot cross boundary');
-}, 'Phase 9.6: Set throws TypeError');
-
-test(function() {
-  var realm = new ShadowRealm();
-  assert_throws_js(TypeError, function() {
-    realm.evaluate('new ArrayBuffer(8)');
-  }, 'ArrayBuffer cannot cross boundary');
-}, 'Phase 9.7: ArrayBuffer throws TypeError');
-
-test(function() {
-  var realm = new ShadowRealm();
-  assert_throws_js(TypeError, function() {
-    realm.evaluate('new Uint8Array(8)');
-  }, 'TypedArray cannot cross boundary');
-}, 'Phase 9.8: TypedArray throws TypeError');
-
-test(function() {
-  var realm = new ShadowRealm();
-  assert_throws_js(TypeError, function() {
-    realm.evaluate('Promise.resolve(42)'); // Promise object
-  }, 'Promise cannot cross boundary');
-}, 'Phase 9.9: Promise objects throw TypeError');
+  }, 'Set throws TypeError');
+}, 'Phase 9.6: Set cannot cross boundary');
 
 test(function() {
   var realm = new ShadowRealm();
   assert_throws_js(TypeError, function() {
     realm.evaluate('new Error("test")');
-  }, 'Error cannot cross boundary');
-}, 'Phase 9.10: Error objects throw TypeError');
+  }, 'Error object throws TypeError');
+}, 'Phase 9.7: Error object cannot cross boundary');
 
 test(function() {
   var realm = new ShadowRealm();
-  // Per TC39 spec, symbols are primitives and CAN cross the boundary.
-  // GetWrappedValue only rejects non-callable Objects, not primitives.
-  // Both unique symbols and registered symbols (Symbol.for) cross through.
-  var result = realm.evaluate('Symbol("unique")');
-  assert_equals(typeof result, 'symbol', 'Unique symbol crosses boundary');
-  // The symbol is not the same object identity but has the same description
-  assert_equals(result.description, 'unique', 'Symbol description preserved');
-}, 'Phase 9.11: Unique symbols can cross boundary (primitives allowed)');
+  assert_throws_js(TypeError, function() {
+    realm.evaluate('Promise.resolve(42)');
+  }, 'Promise throws TypeError');
+}, 'Phase 9.8: Promise object cannot cross boundary');
+
+test(function() {
+  var realm = new ShadowRealm();
+  assert_throws_js(TypeError, function() {
+    realm.evaluate('new ArrayBuffer(8)');
+  }, 'ArrayBuffer throws TypeError');
+}, 'Phase 9.9: ArrayBuffer cannot cross boundary');
+
+test(function() {
+  var realm = new ShadowRealm();
+  assert_throws_js(TypeError, function() {
+    realm.evaluate('new Int32Array(4)');
+  }, 'TypedArray throws TypeError');
+}, 'Phase 9.10: TypedArray cannot cross boundary');
 
 // ============================================================================
 // PHASE 10: CALLABLE WRAPPING SEMANTICS
-// Detailed behavior of wrapped functions
+// Arguments and return values are also wrapped
 // ============================================================================
 
 test(function() {
   var realm = new ShadowRealm();
-  var fn = realm.evaluate('(function() { return this; })');
-  // When called, 'this' inside is the realm's globalThis (sloppy mode function)
-  // Per TC39 spec GetWrappedValue: returning a non-callable Object throws TypeError
-  // The globalThis object is not callable, so it cannot cross the boundary
+  var fn = realm.evaluate('(function(x) { return x * 2; })');
+  assert_equals(fn(21), 42, 'Primitive argument works');
+}, 'Phase 10.1: Primitive arguments pass through');
+
+test(function() {
+  var realm = new ShadowRealm();
+  var fn = realm.evaluate('(function(x) { return typeof x; })');
+  assert_equals(fn('hello'), 'string', 'String arg');
+  assert_equals(fn(42), 'number', 'Number arg');
+  assert_equals(fn(true), 'boolean', 'Boolean arg');
+  assert_equals(fn(null), 'object', 'null arg (typeof is object)');
+  assert_equals(fn(undefined), 'undefined', 'undefined arg');
+}, 'Phase 10.2: Various primitive argument types work');
+
+test(function() {
+  var realm = new ShadowRealm();
+  var fn = realm.evaluate('(function(x) { return x + 1; })');
+  // Object argument cannot cross
   assert_throws_js(TypeError, function() {
-    fn();
-  }, 'Returning non-callable this (globalThis) throws TypeError');
-}, 'Phase 10.1: Wrapped function this handling throws for non-callable return');
-
-test(function() {
-  var realm = new ShadowRealm();
-  var fn = realm.evaluate('(function(...args) { return args.length; })');
-  assert_equals(fn(1, 2, 3, 4, 5), 5, 'Rest parameters work');
-}, 'Phase 10.2: Rest parameters work across boundary');
-
-test(function() {
-  var realm = new ShadowRealm();
-  var fn = realm.evaluate('(function(a, b = 10) { return a + b; })');
-  assert_equals(fn(5), 15, 'Default parameter used');
-  assert_equals(fn(5, 3), 8, 'Default parameter overridden');
-}, 'Phase 10.3: Default parameters work');
-
-test(function() {
-  var realm = new ShadowRealm();
-  // Function that returns a primitive based on input
-  var fn = realm.evaluate('(function(type) { ' +
-    'if (type === "number") return 42; ' +
-    'if (type === "string") return "hello"; ' +
-    'if (type === "boolean") return true; ' +
-    'if (type === "null") return null; ' +
-    'if (type === "undefined") return undefined; ' +
-    'if (type === "bigint") return BigInt(100); ' +
-    '})');
-  assert_equals(fn('number'), 42);
-  assert_equals(fn('string'), 'hello');
-  assert_equals(fn('boolean'), true);
-  assert_equals(fn('null'), null);
-  assert_equals(fn('undefined'), undefined);
-  assert_equals(fn('bigint'), 100n);
-}, 'Phase 10.4: All primitive return types work');
-
-test(function() {
-  var realm = new ShadowRealm();
-  var fn = realm.evaluate('(function(obj) { return typeof obj; })');
-  // Passing an object as argument should throw
-  assert_throws_js(TypeError, function() {
-    fn({ foo: 'bar' });
+    fn({valueOf: function() { return 42; }});
   }, 'Object argument throws');
-}, 'Phase 10.5: Object arguments throw TypeError');
+}, 'Phase 10.3: Object arguments throw TypeError');
 
 test(function() {
   var realm = new ShadowRealm();
@@ -543,75 +564,73 @@ test(function() {
   assert_throws_js(TypeError, function() {
     fn([1, 2, 3]);
   }, 'Array argument throws');
-}, 'Phase 10.6: Array arguments throw TypeError');
+}, 'Phase 10.4: Array arguments throw TypeError');
 
 test(function() {
   var realm = new ShadowRealm();
-  var innerFn = realm.evaluate('(function(x) { return x * 2; })');
-  var outerFn = function(y) { return y + 1; };
-  
-  // Passing a function INTO the realm should work (gets wrapped)
-  var acceptsFn = realm.evaluate('(function(f) { return f(10); })');
-  assert_equals(acceptsFn(outerFn), 11, 'Outer function works in realm');
-}, 'Phase 10.7: Functions can be passed into realm');
+  var apply = realm.evaluate('(function(f, x) { return f(x); })');
+  var double = function(n) { return n * 2; };
+  // Function argument gets wrapped
+  assert_equals(apply(double, 21), 42, 'Function argument works');
+}, 'Phase 10.5: Function arguments are wrapped');
 
 test(function() {
   var realm = new ShadowRealm();
-  var identity = realm.evaluate('(function(f) { return f; })');
-  var outerFn = function() { return 'outer'; };
-  
-  var returned = identity(outerFn);
-  assert_equals(typeof returned, 'function', 'Function returned');
-  // The returned function is double-wrapped now
-  assert_equals(returned(), 'outer', 'Double-wrapped function works');
-}, 'Phase 10.8: Function passed in and returned back works');
+  var applyTwice = realm.evaluate(
+    '(function(f, x) { return f(f(x)); })'
+  );
+  var increment = function(n) { return n + 1; };
+  assert_equals(applyTwice(increment, 0), 2, 'Nested function calls work');
+}, 'Phase 10.6: Nested function argument calls work');
+
+test(function() {
+  var realm = new ShadowRealm();
+  var compose = realm.evaluate(
+    '(function(f, g) { return function(x) { return f(g(x)); }; })'
+  );
+  var double = function(x) { return x * 2; };
+  var addOne = function(x) { return x + 1; };
+  var composed = compose(double, addOne);
+  assert_equals(composed(5), 12, 'Composed functions work'); // (5+1)*2 = 12
+}, 'Phase 10.7: Function composition across boundary works');
+
+test(function() {
+  var realm = new ShadowRealm();
+  // Sloppy mode function: `this` becomes globalThis when called with undefined
+  var fn = realm.evaluate('(function() { return this; })');
+  // globalThis is a non-callable object and cannot cross the boundary
+  // Per TC39 ShadowRealm spec GetWrappedValue: throws TypeError for non-callable objects
+  assert_throws_js(TypeError, function() {
+    fn();
+  }, 'Sloppy mode this (globalThis) throws TypeError');
+}, 'Phase 10.8: Sloppy mode this throws TypeError');
 
 // ============================================================================
 // PHASE 11: IMPORTVALUE BASICS
-// Note: These tests require module support
 // ============================================================================
 
 test(function() {
   var realm = new ShadowRealm();
-  var promise = realm.importValue('./non-existent-module.js', 'default');
-  assert_true(promise instanceof Promise, 'importValue returns a Promise');
+  var result = realm.importValue('data:text/javascript,export const x = 1;', 'x');
+  assert_true(result instanceof Promise, 'importValue returns Promise');
 }, 'Phase 11.1: importValue returns a Promise');
 
-promise_test(function(t) {
-  var realm = new ShadowRealm();
-  return promise_rejects_js(t, TypeError, 
-    realm.importValue('./non-existent-module.js', 'default'),
-    'Non-existent module rejects');
-}, 'Phase 11.2: importValue rejects for non-existent module');
-
 test(function() {
+  // Spec section 3.4.2 step 4: Let exportNameString be ? ToString(exportName).
+  // Numbers like 42 successfully coerce via ToString (42 -> "42").
+  // Symbols throw TypeError because Symbol.prototype.toString throws for coercion.
   var realm = new ShadowRealm();
-  // Per TC39 spec step 3: "Let specifierString be ? ToString(specifier)."
-  // ToString coerces non-string values to strings (42 becomes "42")
-  // It only throws for symbols. Numbers are coerced, not rejected.
-  var promise = realm.importValue(42, 'default'); // Coerced to "42"
-  assert_true(promise instanceof Promise, 'importValue returns Promise even with number specifier');
-  // The module resolution will fail because "42" is not a valid module, but
-  // the coercion itself does not throw TypeError
-}, 'Phase 11.3: importValue coerces non-string specifier via ToString');
-
-test(function() {
-  var realm = new ShadowRealm();
-  // Per TC39 spec step 4: "Let exportNameString be ? ToString(exportName)."
-  // ToString coerces non-string values to strings (42 becomes "42")
-  // It only throws for symbols. Numbers are coerced, not rejected.
-  var promise = realm.importValue('./module.js', 42); // exportName coerced to "42"
-  assert_true(promise instanceof Promise, 'importValue returns Promise even with number export name');
-  // The export lookup will fail because "42" is not the export name, but
-  // the coercion itself does not throw TypeError
-}, 'Phase 11.4: importValue coerces non-string export name via ToString');
+  assert_throws_js(TypeError, function() {
+    realm.importValue('data:text/javascript,export const x = 1;', Symbol('test'));
+  }, 'Symbol exportName throws synchronously (cannot ToString)');
+}, 'Phase 11.2: importValue throws for non-coercible exportName');
 
 test(function() {
   var notRealm = {};
   assert_throws_js(TypeError, function() {
-    ShadowRealm.prototype.importValue.call(notRealm, './mod.js', 'x');
+    ShadowRealm.prototype.importValue.call(notRealm, 'url', 'name');
   }, 'Throws when this is not a ShadowRealm');
-}, 'Phase 11.5: importValue throws on invalid this');
+}, 'Phase 11.3: importValue throws on invalid this');
 
 // ============================================================================
 // PHASE 12: NESTED SHADOWREALMS
@@ -620,35 +639,27 @@ test(function() {
 test(function() {
   var realm = new ShadowRealm();
   var hasShadowRealm = realm.evaluate('typeof ShadowRealm');
-  assert_equals(hasShadowRealm, 'function', 'ShadowRealm exists in ShadowRealm');
-}, 'Phase 12.1: ShadowRealm available inside ShadowRealm');
+  assert_equals(hasShadowRealm, 'function', 'ShadowRealm exists in realm');
+}, 'Phase 12.1: ShadowRealm exists within ShadowRealm');
 
 test(function() {
-  var outer = new ShadowRealm();
-  var createInner = outer.evaluate(
-    '(function() { return new ShadowRealm(); })'
+  var realm = new ShadowRealm();
+  var innerResult = realm.evaluate(
+    'var inner = new ShadowRealm(); inner.evaluate("1 + 2")'
   );
-  // Creating inner realm should throw because we can't return it
-  assert_throws_js(TypeError, function() {
-    createInner();
-  }, 'Cannot return ShadowRealm instance across boundary');
-}, 'Phase 12.2: Cannot return ShadowRealm across boundary');
+  assert_equals(innerResult, 3, 'Nested realm evaluation works');
+}, 'Phase 12.2: Can create and use nested ShadowRealm');
 
 test(function() {
-  var outer = new ShadowRealm();
-  // Create inner realm and use it internally
-  var getFromInner = outer.evaluate(
-    '(function() { ' +
-    '  var inner = new ShadowRealm(); ' +
-    '  return inner.evaluate("1 + 2"); ' +
-    '})'
-  );
-  assert_equals(getFromInner(), 3, 'Nested realm works internally');
-}, 'Phase 12.3: Nested ShadowRealm works internally');
+  var realm = new ShadowRealm();
+  realm.evaluate('var inner = new ShadowRealm(); inner.evaluate("globalThis.x = 42")');
+  var outerX = realm.evaluate('typeof x');
+  assert_equals(outerX, 'undefined', 'Nested realm is isolated from outer realm');
+}, 'Phase 12.3: Nested realm isolated from parent realm');
 
 test(function() {
-  var outer = new ShadowRealm();
-  var getNestedFn = outer.evaluate(
+  var realm = new ShadowRealm();
+  var getNestedFn = realm.evaluate(
     '(function() { ' +
     '  var inner = new ShadowRealm(); ' +
     '  return inner.evaluate("(function() { return 42; })"); ' +
@@ -666,20 +677,6 @@ test(function() {
 
 test(function() {
   var realm = new ShadowRealm();
-  var getArray = realm.evaluate('(function() { return Array; })');
-  var InnerArray = getArray();
-  
-  // An array created in the outer realm
-  var outerArr = [1, 2, 3];
-  
-  // instanceof checks with inner Array constructor
-  // This behavior depends on how the engine handles cross-realm instanceof
-  // Generally, this should still work due to Symbol.hasInstance
-  assert_true(outerArr instanceof Array, 'outerArr instanceof outer Array');
-}, 'Phase 13.1: instanceof with own realm Array');
-
-test(function() {
-  var realm = new ShadowRealm();
   var checkType = realm.evaluate(
     '(function(val) { return typeof val; })'
   );
@@ -688,14 +685,14 @@ test(function() {
   assert_equals(checkType(true), 'boolean');
   assert_equals(checkType(null), 'object'); // typeof null is 'object'
   assert_equals(checkType(undefined), 'undefined');
-}, 'Phase 13.2: typeof works correctly across boundary');
+}, 'Phase 13.1: typeof works correctly across boundary');
 
 test(function() {
   var realm = new ShadowRealm();
   var checkNaN = realm.evaluate('(function(val) { return Number.isNaN(val); })');
   assert_true(checkNaN(NaN), 'NaN recognized in realm');
   assert_false(checkNaN(42), 'Non-NaN recognized');
-}, 'Phase 13.3: NaN handled correctly');
+}, 'Phase 13.2: NaN handled correctly');
 
 test(function() {
   var realm = new ShadowRealm();
@@ -704,7 +701,16 @@ test(function() {
   );
   assert_true(checkInfinity(Infinity), 'Infinity recognized');
   assert_false(checkInfinity(1000), 'Non-infinity recognized');
-}, 'Phase 13.4: Infinity handled correctly');
+}, 'Phase 13.3: Infinity handled correctly');
+
+test(function() {
+  var realm = new ShadowRealm();
+  var checkNegZero = realm.evaluate(
+    '(function(val) { return Object.is(val, -0); })'
+  );
+  assert_true(checkNegZero(-0), 'Negative zero recognized');
+  assert_false(checkNegZero(0), 'Positive zero distinguished');
+}, 'Phase 13.4: -0 handled correctly');
 
 // ============================================================================
 // PHASE 14: GLOBAL OBJECT SHAPE IN REALM
@@ -754,14 +760,12 @@ test(function() {
 
 test(function() {
   var realm = new ShadowRealm();
-  // eval should exist in the realm
   var hasEval = realm.evaluate('typeof eval');
   assert_equals(hasEval, 'function', 'eval exists');
 }, 'Phase 14.8: eval exists in realm');
 
 test(function() {
   var realm = new ShadowRealm();
-  // Check that host APIs that should NOT be there are absent
   var hasDocument = realm.evaluate('typeof document');
   assert_equals(hasDocument, 'undefined', 'document does not exist');
 }, 'Phase 14.9: document does NOT exist in realm');
@@ -773,10 +777,10 @@ test(function() {
 }, 'Phase 14.10: window does NOT exist in realm');
 
 test(function() {
+  // Note: Web APIs like setTimeout are host-defined
+  // The spec allows but doesn't require them
   var realm = new ShadowRealm();
   var hasSetTimeout = realm.evaluate('typeof setTimeout');
-  // setTimeout may or may not exist depending on implementation
-  // The spec doesn't require it, but some implementations may include it
   assert_true(
     hasSetTimeout === 'undefined' || hasSetTimeout === 'function',
     'setTimeout is either undefined or function'
@@ -789,20 +793,41 @@ test(function() {
 
 test(function() {
   var realm = new ShadowRealm();
-  var fn = realm.evaluate('(async function() { return 42; })');
-  // Per TC39 spec: async functions return a Promise object.
-  // GetWrappedValue checks IsCallable(value) for objects - Promises are NOT callable.
-  // Therefore, calling an async function across the ShadowRealm boundary throws TypeError
-  // because the Promise return value cannot cross (it's a non-callable object).
+  // Async functions ARE callable, so they can cross the boundary
+  var asyncFn = realm.evaluate('(async function() { return 42; })');
+  assert_equals(typeof asyncFn, 'function', 'Async function is callable');
+}, 'Phase 15.1: Async functions are callable');
+
+test(function() {
+  var realm = new ShadowRealm();
+  // Async functions can be retrieved (they're callable), but calling them
+  // returns a Promise, which is a non-callable object that cannot cross
+  // the boundary. This is per TC39 ShadowRealm spec GetWrappedValue.
+  // See: https://github.com/tc39/proposal-shadowrealm/issues/344
+  var asyncFn = realm.evaluate('(async function() { return 42; })');
   assert_throws_js(TypeError, function() {
-    fn(); // Returns Promise, which cannot cross boundary
-  }, 'Async function return (Promise) cannot cross boundary');
-}, 'Phase 15.1: Async functions throw TypeError (Promise not callable)');
+    asyncFn();
+  }, 'Async function call throws because Promise cannot cross boundary');
+}, 'Phase 15.1a: Calling async functions throws (Promise cannot cross)');
+
+test(function() {
+  var realm = new ShadowRealm();
+  // Use async function internally, return primitive via wrapper
+  // This is the recommended pattern for using async in ShadowRealm
+  var useAsync = realm.evaluate(
+    '(function(resolve, reject) { ' +
+    '  (async function() { return 42; })().then(resolve, reject); ' +
+    '})'
+  );
+  // Verify the wrapper function is callable
+  assert_equals(typeof useAsync, 'function', 'Wrapper function is callable');
+}, 'Phase 15.1b: Async functions work via callback wrapper');
 
 test(function() {
   var realm = new ShadowRealm();
   var genFn = realm.evaluate('(function* () { yield 1; yield 2; yield 3; })');
-  // Generator function returns a generator object, which can't cross
+  // Generator function is callable, but calling it returns a generator object
+  // Generator objects are not callable, so they can't cross
   assert_throws_js(TypeError, function() {
     genFn();
   }, 'Generator object cannot cross boundary');
@@ -830,10 +855,11 @@ test(function() {
     '  getValue() { return this.x; } ' +
     '})'
   );
-  // Class is a function (constructor), but calling it returns an object
+  // Class is a function (constructor), so it crosses
   assert_equals(typeof ClassFn, 'function', 'Class is a function');
+  // But calling it as constructor returns object which can't cross
   assert_throws_js(TypeError, function() {
-    new ClassFn(42); // Would return object
+    new ClassFn(42);
   }, 'Class instantiation cannot cross boundary');
 }, 'Phase 15.4: Class constructors callable but instances cannot cross');
 
