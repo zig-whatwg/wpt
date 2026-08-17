@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cost of one encoding subtest, broken down by operation</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<div id="log"></div>
+<script>
+// A full run of encoding/ spends 6,284 shard-seconds over 774,980 subtests:
+// 8.11ms each. The body of one of those subtests (encode-href-common.js) is
+// three DOM operations and an assert. Three DOM operations are not 8ms of work,
+// so this splits the cost per operation to find which one it actually is.
+//
+// Each timing is reported as a subtest name so it shows up in the runner's
+// normal output; the assertions only guard against an operation being
+// optimized away or silently failing.
+
+const N = 200;
+
+function bench(label, fn) {
+  const t0 = Date.now();
+  let sink = 0;
+  for (let i = 0; i < N; i++) sink += fn(i) | 0;
+  const us = ((Date.now() - t0) * 1000) / N;
+  test(function () {
+    assert_true(sink === sink, "sink is well-defined");
+  }, label + " => " + us.toFixed(2) + " us/op");
+  return us;
+}
+
+// 1. Element creation alone.
+bench("createElement('a')", function () {
+  const a = document.createElement("a");
+  return a ? 1 : 0;
+});
+
+// 2. Setting href, which runs the URL parser. Element created outside the loop.
+const shared = document.createElement("a");
+bench("set a.href (URL parse)", function (i) {
+  shared.href = "https://example.com/?x" + i;
+  return 1;
+});
+
+// 3. Reading .search back off the parsed URL.
+shared.href = "https://example.com/?abc";
+bench("get a.search", function () {
+  return shared.search.length;
+});
+
+// 4. The three together: exactly what encode-href-common.js does per subtest.
+bench("full subtest body", function (i) {
+  const a = document.createElement("a");
+  a.href = "https://example.com/?" + i;
+  return a.search.length;
+});
+
+// 5. The harness call itself, with an empty body. If subtests are expensive
+//    because of testharness bookkeeping rather than DOM work, it shows here.
+const t0 = Date.now();
+for (let i = 0; i < N; i++) {
+  test(function () {}, "empty subtest " + i);
+}
+const perTest = ((Date.now() - t0) * 1000) / N;
+test(function () {
+  assert_true(perTest >= 0);
+}, "test() harness overhead => " + perTest.toFixed(2) + " us/subtest");
+
+// 6. A pure-JS loop, as a floor. Anything above this is engine boundary cost.
+bench("pure JS baseline", function (i) {
+  return (i * 2654435761) >>> 16;
+});
+</script>
+</body>
+</html>

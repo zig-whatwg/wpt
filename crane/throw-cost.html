@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cost of a NotImplemented throw across the V8 boundary</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<div id="log"></div>
+<script>
+// A full encoding/ run averages 8.11ms per subtest, and every one of those
+// subtests sets a.href, which is an unimplemented stub that throws. Crane has
+// thousands of such stubs, so if the throw itself is what costs milliseconds
+// then it is a tax on the whole corpus and not a property of one missing
+// feature. This times the throw path directly against a working accessor.
+
+const N = 200;
+const a = document.createElement("a");
+
+function timeUs(fn) {
+  const t0 = Date.now();
+  for (let i = 0; i < N; i++) fn(i);
+  return ((Date.now() - t0) * 1000) / N;
+}
+
+// Control: an accessor that is implemented, so no exception is raised.
+const okUs = timeUs(function (i) {
+  a.id = "x" + i;
+  return a.id;
+});
+
+// The throw path: setting href raises NotImplemented, caught in JS.
+let threw = 0;
+const throwUs = timeUs(function (i) {
+  try {
+    a.href = "https://example.com/?" + i;
+  } catch (e) {
+    threw++;
+  }
+});
+
+// A pure-JS throw, as a floor. The gap between this and throwUs is what
+// crossing the engine boundary to raise the exception costs.
+const jsThrowUs = timeUs(function (i) {
+  try {
+    throw new Error("x" + i);
+  } catch (e) {
+    /* ignore */
+  }
+});
+
+test(function () {
+  assert_equals(threw, N, "every href set threw");
+}, "href set throws NotImplemented (" + threw + "/" + N + ")");
+
+test(function () {
+  assert_true(okUs >= 0);
+}, "implemented accessor (a.id) => " + okUs.toFixed(2) + " us/op");
+
+test(function () {
+  assert_true(throwUs >= 0);
+}, "throwing stub (a.href) => " + throwUs.toFixed(2) + " us/op");
+
+test(function () {
+  assert_true(jsThrowUs >= 0);
+}, "pure JS throw => " + jsThrowUs.toFixed(2) + " us/op");
+
+test(function () {
+  assert_true(true);
+}, "ratio throw/implemented => " + (throwUs / Math.max(okUs, 0.001)).toFixed(1) + "x");
+</script>
+</body>
+</html>

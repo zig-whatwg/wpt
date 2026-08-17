@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Runner cost at 10,000 subtests</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<div id="log"></div>
+<script>
+// Half of a two-point measurement of what a subtest costs the *runner*, as
+// opposed to what it costs inside the page.
+//
+// In-page cost is already known to be ~400us/subtest and the harness itself
+// scales flat. What is not known is the cost outside the page: marshalling
+// 21,269 results back through JSON.stringify, parsing them, and formatting one
+// output line each. That only shows up in the runner's wall clock.
+//
+// This page and scale-1k.html are identical except for N, and both complete
+// normally - no async_test left hanging, or the wall time would just be the
+// timeout. Subtract the two wall times, divide by 9,000, and the slope is the
+// true per-subtest cost of a test file.
+//
+// Bodies are empty on purpose: any assertion would measure the assertion.
+
+const N = 10000;
+const t0 = Date.now();
+for (let i = 0; i < N; i++) {
+  test(function () {}, "trivial subtest " + i);
+}
+const inPageMs = Date.now() - t0;
+
+test(function () {
+  assert_equals(N, 10000);
+}, "N=" + N + ", in-page registration+run " + inPageMs + "ms (" +
+   ((inPageMs * 1000) / N).toFixed(1) + " us/subtest)");
+</script>
+</body>
+</html>

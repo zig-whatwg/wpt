@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cost of setting a.href</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<div id="log"></div>
+<script>
+// encode-href-common.js sets a.href once per subtest. subtest-cost.html stops
+// executing at exactly that operation, so this narrows it to a single set.
+const a = document.createElement("a");
+
+test(function () {
+  a.href = "https://example.com/?abc";
+  assert_equals(typeof a.href, "string");
+}, "one href set completes");
+
+test(function () {
+  assert_equals(a.search, "?abc");
+}, "search reads back");
+
+const N = 100;
+const t0 = Date.now();
+for (let i = 0; i < N; i++) {
+  a.href = "https://example.com/?x" + i;
+}
+const us = ((Date.now() - t0) * 1000) / N;
+test(function () {
+  assert_true(us >= 0);
+}, N + " href sets => " + us.toFixed(2) + " us/op");
+</script>
+</body>
+</html>

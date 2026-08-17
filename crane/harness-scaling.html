@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Does per-subtest cost grow with subtest count?</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<div id="log"></div>
+<script>
+// harness-cost.html measured ~400us per subtest in a file with ~900 subtests.
+// A real encoding file averages 8.11ms per subtest with 21,269 of them. The
+// subtest counts differ by ~23x and the per-subtest costs by ~20x, which is
+// what a cost linear in the number of already-registered subtests looks like -
+// i.e. quadratic total.
+//
+// This measures the cost of a block of subtests as a function of how many came
+// before it, inside a single page. Flat timings mean linear total cost and the
+// hypothesis is wrong. Rising timings mean the harness path is O(n^2), and
+// every large WPT file pays it.
+
+const BLOCK = 500;
+const BLOCKS = 12;
+const timings = [];
+
+for (let b = 0; b < BLOCKS; b++) {
+  const t0 = Date.now();
+  for (let i = 0; i < BLOCK; i++) {
+    test(function () {}, "filler b" + b + " i" + i);
+  }
+  timings.push(((Date.now() - t0) * 1000) / BLOCK);
+}
+
+// Reported after the fact so the reporting itself is not inside any block.
+for (let b = 0; b < BLOCKS; b++) {
+  const before = b * BLOCK;
+  test(function () {
+    assert_true(timings[b] >= 0);
+  }, "RESULT after " + before + " subtests => " + timings[b].toFixed(0) + " us/subtest");
+}
+
+const growth = timings[BLOCKS - 1] / Math.max(timings[0], 0.001);
+test(function () {
+  assert_true(growth >= 0);
+}, "RESULT last block / first block => " + growth.toFixed(1) + "x");
+</script>
+</body>
+</html>

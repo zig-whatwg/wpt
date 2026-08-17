@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cost of registering one testharness subtest</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<div id="log"></div>
+<script>
+// encoding/ averages 8.11ms per subtest. The DOM work inside one of those
+// subtests measures at ~125us (throw-cost.html), which is 1.5% of it. So the
+// remaining 98% is the harness path: registering a test, running it, and
+// reporting the result back across the engine boundary.
+//
+// This times test() itself with an empty body, so the only thing being
+// measured is that path.
+
+const N = 300;
+
+// Warm up, so the first-call cost of the harness is not attributed to the loop.
+for (let i = 0; i < 10; i++) test(function () {}, "warmup " + i);
+
+const t0 = Date.now();
+for (let i = 0; i < N; i++) {
+  test(function () {}, "empty subtest " + i);
+}
+const emptyUs = ((Date.now() - t0) * 1000) / N;
+
+// A subtest that makes one assertion, which is the realistic shape.
+const t1 = Date.now();
+for (let i = 0; i < N; i++) {
+  test(function () {
+    assert_equals(1, 1);
+  }, "asserting subtest " + i);
+}
+const assertUs = ((Date.now() - t1) * 1000) / N;
+
+// A subtest that fails, which is what 173,985 of the encoding subtests do.
+// Failure reporting carries a message and may build a stack trace.
+const t2 = Date.now();
+for (let i = 0; i < N; i++) {
+  test(function () {
+    assert_equals(1, 2);
+  }, "failing subtest " + i);
+}
+const failUs = ((Date.now() - t2) * 1000) / N;
+
+test(function () {
+  assert_true(emptyUs >= 0);
+}, "RESULT empty test() => " + emptyUs.toFixed(0) + " us/subtest");
+
+test(function () {
+  assert_true(assertUs >= 0);
+}, "RESULT passing test() => " + assertUs.toFixed(0) + " us/subtest");
+
+test(function () {
+  assert_true(failUs >= 0);
+}, "RESULT failing test() => " + failUs.toFixed(0) + " us/subtest");
+</script>
+</body>
+</html>

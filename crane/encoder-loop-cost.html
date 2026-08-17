@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Where the 183 seconds in an encoding test actually go</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/encoding/legacy-mb-japanese/iso-2022-jp/jis0208_index.js"></script>
+<script src="/encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encoder.js"></script>
+<script src="/encoding/resources/ranges.js"></script>
+</head>
+<body>
+<div id="log"></div>
+<script>
+// Two files in encoding/ cost ~183s each and are the most expensive things in
+// the corpus:
+//
+//   iso2022jp-encode-form-errors-han.html  183.5s, 21,269 subtests NOTRUN
+//   iso2022jp-encode-href-errors-han.html  182.9s, 21,269 subtests ran
+//
+// They cost the same despite one of them running no subtests at all, so the
+// cost is not in the subtests. The hypothesis this page was written to test was
+// that the cost is instead the setup loop the two files share, in
+// encode-{form,href}-common.js, which walks every codepoint in rangesHan
+// (27,985 of them) and calls the encoder on each:
+//
+//   for (var i = range[0]; i < range[1]; i++) {
+//       result = encoder(String.fromCodePoint(i));
+//
+// At 183s that would be 6.5ms per iteration of pure JS - ~1000x too slow -
+// implying something in the body crosses into Zig at the ~75us/op boundary tax.
+//
+// THE HYPOTHESIS WAS WRONG, and this page is what refuted it. Measured:
+// `iso2022jpEncoder` is 4.0us/op, projecting to 0.1s over the full 27,985
+// iterations, and `String.fromCodePoint` is a real V8 builtin at 0.5us with no
+// crossing at all. The loop is a rounding error.
+//
+// The 183s is completion-time work proportional to subtest *count*, which both
+// files have 21,269 of: testharness.js rendering an HTML results table nobody
+// reads. See scale-1k.html / scale-10k.html, which measure that directly, and
+// the `setup({output: false})` the runner now injects in `loadTestHarness`.
+//
+// Kept because the per-op numbers are still the reference for what JS in this
+// engine costs, and because the shape of the mistake is worth remembering:
+// wall-time parity between two files bounds the *difference* between them, not
+// any component they share.
+//
+// Sampled rather than exhaustive: SAMPLE iterations of each part, scaled up, so
+// this page finishes in seconds instead of minutes.
+
+const SAMPLE = 2000;
+const base = 0x4e00; // start of rangesHan's first and largest range
+
+function totalCodepoints(rs) {
+  let n = 0;
+  for (const r of rs) n += r[1] - r[0];
+  return n;
+}
+
+const TOTAL = totalCodepoints(rangesHan);
+
+// Per-op microseconds, and what the full 27,985-iteration loop would cost at
+// that rate. The projection is the number to compare against 183s.
+function bench(label, fn) {
+  const t0 = Date.now();
+  let sink = 0;
+  for (let i = 0; i < SAMPLE; i++) sink += fn(base + i) | 0;
+  const elapsed = Date.now() - t0;
+  const us = (elapsed * 1000) / SAMPLE;
+  const projected = (us * TOTAL) / 1e6;
+  test(function () {
+    assert_true(sink === sink, "sink is well-defined");
+  }, label + " => " + us.toFixed(1) + " us/op, " + projected.toFixed(1) + "s over " + TOTAL);
+  return us;
+}
+
+test(function () {
+  assert_equals(TOTAL, 27985, "rangesHan is the range the expensive files use");
+}, "rangesHan spans " + TOTAL + " codepoints");
+
+// 1. Loop and arithmetic only. The floor.
+bench("bare loop", function (cp) {
+  return cp & 0xff;
+});
+
+// 2. String.fromCodePoint alone. If this is a Zig-backed binding rather than a
+//    V8 builtin it costs a boundary crossing, and the loop calls it every time.
+bench("String.fromCodePoint", function (cp) {
+  return String.fromCodePoint(cp).length;
+});
+
+// 3. chars2cps alone - the encoder's first step, which re-decodes that string
+//    back into codepoints via charCodeAt.
+bench("chars2cps", function (cp) {
+  return chars2cps(String.fromCodePoint(cp)).length;
+});
+
+// 4. A lookup in the sparse jis0208CPs array. Built with indices up to ~0xFA6E
+//    and mostly holes, so V8 holds it in dictionary mode.
+bench("jis0208CPs lookup", function (cp) {
+  const p = jis0208CPs[cp];
+  return p === undefined ? 0 : p;
+});
+
+// 5. The whole encoder call, exactly as the setup loop makes it. This is the
+//    one whose projection should land near 183s if the loop is the answer.
+bench("iso2022jpEncoder (full)", function (cp) {
+  const r = iso2022jpEncoder(String.fromCodePoint(cp));
+  return r ? r.length : 0;
+});
+
+// 6. Creating an async_test object, which is all the -form file's 21,269
+//    subtests ever get to do before the harness gives up on them. If this is
+//    expensive it is the other half of that file's bill.
+//
+//    Each one is resolved immediately. Left pending they would hold the page
+//    open until the harness timed out, and the wall clock would then be the
+//    timeout rather than any measurement - which is exactly the trap that
+//    produced one discarded "6.9ms per subtest" figure here. That makes this
+//    create+done rather than create alone; the -form file pays only the create.
+const t0 = Date.now();
+for (let i = 0; i < SAMPLE; i++) {
+  const t = async_test("throwaway async_test " + i);
+  t.done();
+}
+const asyncUs = ((Date.now() - t0) * 1000) / SAMPLE;
+test(function () {
+  assert_true(asyncUs >= 0);
+}, "async_test create+done => " + asyncUs.toFixed(1) + " us, " +
+   ((asyncUs * 21269) / 1e6).toFixed(1) + "s over 21,269");
+</script>
+</body>
+</html>
