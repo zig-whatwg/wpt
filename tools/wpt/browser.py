@@ -2424,6 +2424,47 @@ class Ladybird(Browser):
                 return match.group(1)
         return None
 
+
+class Crane(Browser):
+    """Crane browser - Zig-based browser with built-in WebDriver server."""
+    product = "crane"
+    requirements = None
+
+    def download(self, dest=None, channel=None, rename=None):
+        raise NotImplementedError
+
+    def install(self, dest=None, channel=None):
+        raise NotImplementedError
+
+    def find_binary(self, venv_path=None, channel=None):
+        # Check for crane in PATH or default build location
+        binary = which("crane")
+        if binary:
+            return binary
+        # Try default zig build output location
+        import os
+        default_path = os.path.join(os.getcwd(), "zig-out", "bin", "crane")
+        if os.path.exists(default_path):
+            return default_path
+        return None
+
+    def find_webdriver(self, venv_path=None, channel=None):
+        # Crane's binary IS the WebDriver server
+        return self.find_binary(venv_path, channel)
+
+    def install_webdriver(self, dest=None, channel=None, browser_binary=None):
+        raise NotImplementedError
+
+    def version(self, binary=None, webdriver_binary=None):
+        if not binary:
+            self.logger.warning("No browser binary provided.")
+            return None
+        output = call(binary, "--version")
+        if output:
+            return output.strip()
+        return None
+
+
 class WebKitTestRunner(Browser):
     """Interface for WebKitTestRunner.
     """

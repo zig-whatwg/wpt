@@ -110,7 +110,7 @@ otherwise install OpenSSL and ensure that it's on your $PATH.""")
 
 def check_environ(product):
     if product not in ("android_webview", "chrome", "chrome_android", "chrome_ios",
-                       "edge", "firefox", "firefox_android", "headless_shell",
+                       "crane", "edge", "firefox", "firefox_android", "headless_shell",
                        "ladybird", "servo", "wktr"):
         config_builder = serve.build_config(os.path.join(wpt_root, "config.json"))
         # Override the ports to avoid looking for free ports
@@ -800,6 +800,18 @@ class Ladybird(BrowserSetup):
     def setup_kwargs(self, kwargs):
         pass
 
+
+class Crane(BrowserSetup):
+    name = "crane"
+    browser_cls = browser.Crane
+
+    def install(self, channel=None):
+        raise NotImplementedError
+
+    def setup_kwargs(self, kwargs):
+        pass
+
+
 class WebKitTestRunner(BrowserSetup):
     name = "wktr"
     browser_cls = browser.WebKitTestRunner
@@ -888,6 +900,7 @@ product_setup = {
     "chrome_android": ChromeAndroid,
     "chrome_ios": ChromeiOS,
     "chromium": Chromium,
+    "crane": Crane,
     "edge": Edge,
     "headless_shell": HeadlessShell,
     "safari": Safari,
