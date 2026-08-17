@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Shadow DOM iframe test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(function() {
+  var host = document.createElement('div');
+  document.body.appendChild(host);
+  
+  var shadow = host.attachShadow({ mode: 'open' });
+  var iframe = document.createElement('iframe');
+  shadow.appendChild(iframe);
+  
+  assert_not_equals(iframe.contentWindow, null, 'iframe works in shadow DOM');
+  
+  host.remove();
+}, 'iframe in shadow DOM');
+</script>
+</body>

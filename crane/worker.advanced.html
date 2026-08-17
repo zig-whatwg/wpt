@@ -48,12 +48,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.fetch, 'function', 'fetch exists');
@@ -73,12 +73,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.TextEncoder, 'function', 'TextEncoder exists');
@@ -96,12 +96,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.URL, 'function', 'URL exists');
@@ -121,12 +121,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.Blob, 'function', 'Blob exists');
@@ -144,12 +144,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.atob, 'function', 'atob exists');
@@ -169,12 +169,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_true(e.data.hasCrypto, 'crypto exists');
@@ -193,12 +193,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_true(e.data.hasPerformance, 'performance exists');
@@ -218,12 +218,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.console, 'object', 'console exists');
@@ -247,12 +247,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_true(e.data.hasIndexedDB, 'indexedDB exists');
@@ -275,12 +275,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_true(e.data.isUint8Array, 'Result is Uint8Array');
@@ -297,12 +297,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'hello', 'TextDecoder works');
@@ -320,12 +320,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'SGVsbG8sIFdvcmxkIQ==', 'btoa works');
@@ -339,12 +339,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'Hello, World!', 'atob works');
@@ -361,12 +361,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'function', 'structuredClone exists in worker');
@@ -385,12 +385,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_true(e.data.notSame, 'Clone is different object');
@@ -412,12 +412,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_true(e.data, 'getRandomValues produced non-zero values');
@@ -430,12 +430,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'function', 'crypto.randomUUID exists');
@@ -458,12 +458,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.protocol, 'https:', 'protocol correct');
@@ -486,12 +486,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data.size, 5, 'Blob size correct');
@@ -508,12 +508,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'hello', 'Blob.text() works');
@@ -534,12 +534,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'received:test', 'MessageChannel works in worker');
@@ -561,16 +561,16 @@ async_test(function(t) {
     '  self.postMessage("outer received: " + e.data);',
     '};'
   ].join('\n');
-  
+
   var blob = new Blob([outerWorkerCode], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 'outer received: from inner', 'Nested worker works');
@@ -593,7 +593,7 @@ test(function() {
   // Test that the type option is accepted
   var blob = new Blob(['export default 42;'], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
-  
+
   try {
     // Just test that the constructor accepts the type option
     // The actual module loading may fail depending on blob URL support for modules
@@ -625,12 +625,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_true(e.data.isNumber, 'Elapsed time is a number');
@@ -652,12 +652,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onmessage = t.step_func_done(function(e) {
     assert_equals(e.data, 42, 'async/await works in worker');
@@ -676,12 +676,12 @@ async_test(function(t) {
   ], { type: 'application/javascript' });
   var url = URL.createObjectURL(blob);
   var worker;
-  
+
   t.add_cleanup(function() {
     URL.revokeObjectURL(url);
     if (worker) worker.terminate();
   });
-  
+
   worker = new Worker(url);
   worker.onerror = t.step_func_done(function(e) {
     assert_true(e.message.includes('detailed error'), 'Error message propagated');

@@ -123,13 +123,9 @@ promise_test(function(t) {
 // PHASE 17: MODULE CACHING AND IDENTITY
 // ============================================================================
 
-// KNOWN LIMITATION: Module caching within realm doesn't work
-// V8's HostImportModuleDynamically callback passes the calling context
-// (main window) instead of the target ShadowRealm context. This means:
-// 1. Modules are instantiated in the wrong context
-// 2. Module caching can't be done per-realm
-// 3. Each importValue() creates a fresh module instance
-// This is a V8 architectural limitation that requires V8 changes to fix.
+// Per TC39 ShadowRealm spec: Modules should be cached within a realm.
+// Multiple importValue() calls for the same module URL should return
+// exports from the same module instance.
 promise_test(function(t) {
   var realm = new ShadowRealm();
   var moduleURL = createModuleDataURL(
@@ -141,9 +137,8 @@ promise_test(function(t) {
   return realm.importValue(moduleURL, 'set').then(function(set) {
     return realm.importValue(moduleURL, 'get').then(function(get) {
       set(42);
-      // KNOWN LIMITATION: Each importValue creates a new module instance,
-      // so get() returns 0 (its initial value) instead of 42
-      assert_equals(get(), 0, 'Module instances are independent (V8 limitation)');
+      // Per spec: Module is cached, so set() and get() share the same module instance
+      assert_equals(get(), 42, 'Module is cached within realm - state is shared');
     });
   });
 }, 'Phase 17.1: Module is cached within realm');
@@ -173,10 +168,8 @@ promise_test(function(t) {
 // PHASE 18: EVALUATE AND IMPORTVALUE INTERACTION
 // ============================================================================
 
-// KNOWN LIMITATION: Modules don't share globalThis with evaluate()
-// V8's HostImportModuleDynamically callback passes the calling context
-// (main window) instead of the target ShadowRealm context. This means
-// modules execute in a different global scope than evaluate().
+// Per TC39 ShadowRealm spec: Modules and evaluate() share the same globalThis
+// within a ShadowRealm. State set by evaluate() should be visible to modules.
 promise_test(function(t) {
   var realm = new ShadowRealm();
 
@@ -189,15 +182,13 @@ promise_test(function(t) {
   );
 
   return realm.importValue(moduleURL, 'getSetupValue').then(function(fn) {
-    // KNOWN LIMITATION: Module runs in different context, doesn't see setupValue
-    assert_equals(fn(), undefined, 'Module does not see evaluate state (V8 limitation)');
+    // Per spec: Module shares globalThis with evaluate, so it can see setupValue
+    assert_equals(fn(), 100, 'Module can access state set by evaluate');
   });
 }, 'Phase 18.1: Module can access state set by evaluate');
 
-// KNOWN LIMITATION: evaluate() doesn't see state set by modules
-// V8's HostImportModuleDynamically callback passes the calling context
-// (main window) instead of the target ShadowRealm context. This means
-// modules execute in a different global scope than evaluate().
+// Per TC39 ShadowRealm spec: Modules and evaluate() share the same globalThis
+// within a ShadowRealm. State set by modules should be visible to evaluate().
 promise_test(function(t) {
   var realm = new ShadowRealm();
 
@@ -206,11 +197,9 @@ promise_test(function(t) {
   );
 
   return realm.importValue(moduleURL, 'x').then(function() {
-    // KNOWN LIMITATION: Module ran in different context, so evaluate()
-    // throws ReferenceError because moduleValue doesn't exist in its global
-    assert_throws_js(TypeError, function() {
-      realm.evaluate('moduleValue');
-    }, 'Evaluate throws because moduleValue is not defined (V8 limitation)');
+    // Per spec: Module shares globalThis with evaluate, so moduleValue is accessible
+    var result = realm.evaluate('moduleValue');
+    assert_equals(result, 200, 'evaluate can access state set by module');
   });
 }, 'Phase 18.2: evaluate can access state set by module');
 

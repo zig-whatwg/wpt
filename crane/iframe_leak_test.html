@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Minimal iframe leak test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<body>
+<script>
+test(function() {
+    var iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>window.scriptRan = true;<\/script>';
+    document.body.appendChild(iframe);
+
+    // Access contentDocument to ensure the child context is created
+    var doc = iframe.contentDocument;
+    assert_true(doc !== null, "contentDocument should be accessible");
+
+    // Remove iframe
+    iframe.remove();
+}, "Simple iframe with script - single test");
+</script>
+</body>

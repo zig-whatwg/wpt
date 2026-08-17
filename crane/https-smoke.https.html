@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>https smoke test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script>
+// The point of this file is the `.https.` in its name: it is only reachable
+// over TLS, so it never loads unless the runner builds an https URL and trusts
+// wpt's own certificate authority. What it asserts is deliberately trivial - a
+// failure here is about transport, not about the DOM. `https-smoke-control.html`
+// is the same file without the `.https.`, as a plain-HTTP baseline.
+test(function () {
+  assert_true(true, "the document loaded and testharness ran");
+}, "the document was fetched over https");
+</script>

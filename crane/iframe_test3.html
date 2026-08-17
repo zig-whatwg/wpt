@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Test 3 only</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async_test(function(t) {
+    var iframe = document.createElement('iframe');
+
+    window.addEventListener('message', t.step_func(function handler(e) {
+        if (e.data === 'test3-msg') {
+            window.removeEventListener('message', handler);
+            iframe.remove();
+            t.done();
+        }
+    }));
+
+    iframe.srcdoc = '<script>parent.postMessage("test3-msg", "*");<\/script>';
+    document.body.appendChild(iframe);
+}, 'Test 3: Async with postMessage');
+</script>
+</body>

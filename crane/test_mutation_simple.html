@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Simple MutationObserver Test</title>
+</head>
+<body>
+<script>
+console.log("Test starting...");
+
+var iframe = document.createElement('iframe');
+console.log("Created iframe:", iframe);
+
+var found = false;
+var observer = new MutationObserver(function(mutations) {
+    console.log("MutationObserver callback called");
+    mutations.forEach(function(m) {
+        console.log("Mutation type:", m.type);
+        console.log("addedNodes length:", m.addedNodes.length);
+        if (m.addedNodes.length > 0) {
+            var first = m.addedNodes[0];
+            console.log("addedNodes[0]:", first);
+            console.log("iframe === addedNodes[0]:", iframe === first);
+            if (iframe === first) {
+                found = true;
+                console.log("SUCCESS: iframe identity preserved!");
+            } else {
+                console.log("FAIL: iframe !== addedNodes[0]");
+            }
+        }
+    });
+});
+
+observer.observe(document.body, { childList: true });
+console.log("Observer set up on body");
+
+document.body.appendChild(iframe);
+console.log("Appended iframe to body");
+
+setTimeout(function() {
+    if (found) {
+        console.log("TEST PASSED");
+    } else {
+        console.log("TEST FAILED: iframe identity NOT preserved");
+    }
+}, 100);
+</script>
+</body>
+</html>

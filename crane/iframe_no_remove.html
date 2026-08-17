@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>No remove test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// This test does NOT remove the iframe
+async_test(function(t) {
+    var iframe = document.createElement('iframe');
+
+    iframe.srcdoc = '<script>parent.postMessage("hello-no-remove", "*");<\/script>';
+
+    function handler(e) {
+        if (e.data === 'hello-no-remove') {
+            window.removeEventListener('message', handler);
+            // Intentionally NOT removing iframe
+            t.done();
+        }
+    }
+
+    window.addEventListener('message', handler);
+    document.body.appendChild(iframe);
+}, 'PostMessage without remove');
+</script>
+</body>

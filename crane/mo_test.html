@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head><title>MO Test</title></head>
+<body>
+<script>
+console.log("=== MutationObserver Identity Test ===");
+try {
+  var callbackInvoked = false;
+  var iframe = document.createElement('iframe');
+  console.log("Created iframe:", iframe);
+
+  var mo = new MutationObserver(function(mutations) {
+    callbackInvoked = true;
+    console.log("Callback invoked, mutations.length:", mutations.length);
+    var m = mutations[0];
+    console.log("mutation type:", m.type);
+    console.log("addedNodes length:", m.addedNodes.length);
+    console.log("addedNodes[0]:", m.addedNodes[0]);
+    console.log("addedNodes[0] === iframe:", m.addedNodes[0] === iframe);
+
+    var arr = Array.from(m.addedNodes);
+    console.log("Array.from result length:", arr.length);
+    console.log("arr[0]:", arr[0]);
+    console.log("arr[0] === iframe:", arr[0] === iframe);
+    console.log("arr.includes(iframe):", arr.includes(iframe));
+
+    // This is the test that was failing
+    if (arr.includes(iframe)) {
+      console.log("TEST PASSED: Array.from(m.addedNodes).includes(iframe) is TRUE");
+    } else {
+      console.log("TEST FAILED: Array.from(m.addedNodes).includes(iframe) is FALSE");
+    }
+  });
+
+  mo.observe(document.body, { childList: true });
+  console.log("Observer registered on document.body");
+
+  console.log("Appending iframe to body...");
+  document.body.appendChild(iframe);
+  console.log("appendChild returned");
+
+  // Wait for microtask
+  setTimeout(function() {
+    if (!callbackInvoked) {
+      console.log("TEST FAILED: Callback was not invoked!");
+    }
+  }, 0);
+} catch(e) {
+  console.log("Error:", e);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>https smoke test (plain-HTTP control)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script>
+// The plain-HTTP baseline for `https-smoke.https.html`: byte-for-byte the same
+// test, differing only in the filename. If this passes and the `.https.` one
+// times out, the difference is the transport and nothing else.
+test(function () {
+  assert_true(true, "the document loaded and testharness ran");
+}, "the document was fetched over http");
+</script>

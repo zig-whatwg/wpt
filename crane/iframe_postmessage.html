@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>PostMessage test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// This test removes iframe after receiving postMessage
+async_test(function(t) {
+    var iframe = document.createElement('iframe');
+
+    // Set srcdoc BEFORE appending
+    iframe.srcdoc = '<script>parent.postMessage("hello", "*");<\/script>';
+
+    var messageReceived = false;
+
+    function handler(e) {
+        if (e.data === 'hello') {
+            messageReceived = true;
+            window.removeEventListener('message', handler);
+            // Remove iframe after message is received
+            iframe.remove();
+            t.done();
+        }
+    }
+
+    window.addEventListener('message', handler);
+    document.body.appendChild(iframe);
+
+    // Timeout in case postMessage doesn't work
+    setTimeout(function() {
+        if (!messageReceived) {
+            t.step(function() {
+                assert_true(false, 'postMessage was not received');
+            });
+            t.done();
+        }
+    }, 1000);
+}, 'PostMessage from iframe');
+</script>
+</body>

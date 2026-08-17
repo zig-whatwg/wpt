@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Async iframe leak test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<body>
+<script>
+// Test 1: Simple synchronous test
+test(function() {
+    var iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>window.test1 = true;<\/script>';
+    document.body.appendChild(iframe);
+    iframe.remove();
+}, 'Test 1: Sync iframe with script');
+
+// Test 2: Async test with onload
+async_test(function(t) {
+    var iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>window.test2 = true;<\/script>';
+
+    iframe.onload = t.step_func_done(function() {
+        assert_true(iframe.contentWindow.test2 === true);
+        iframe.remove();
+    });
+
+    document.body.appendChild(iframe);
+}, 'Test 2: Async with onload');
+
+// Test 3: Async test with message listener
+async_test(function(t) {
+    var iframe = document.createElement('iframe');
+
+    window.addEventListener('message', t.step_func(function handler(e) {
+        if (e.data === 'test3-msg') {
+            window.removeEventListener('message', handler);
+            iframe.remove();
+            t.done();
+        }
+    }));
+
+    iframe.srcdoc = '<script>parent.postMessage("test3-msg", "*");<\/script>';
+    document.body.appendChild(iframe);
+}, 'Test 3: Async with postMessage');
+</script>
+</body>

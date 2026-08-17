@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>iframe Phases 1-7 Test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Phase 1: DOM basics
+test(function() {
+  assert_equals(typeof document, 'object', 'document exists');
+}, 'Phase 1.1: document exists');
+
+test(function() {
+  var div = document.createElement('div');
+  assert_true(div instanceof HTMLElement, 'createElement returns HTMLElement');
+}, 'Phase 1.3: document.createElement works');
+
+// Phase 2: Events
+test(function() {
+  assert_equals(typeof Event, 'function', 'Event constructor exists');
+}, 'Phase 2.1: Event constructors exist');
+
+// Phase 3: Window
+test(function() {
+  assert_equals(typeof window, 'object', 'window exists');
+  assert_true(window instanceof Window, 'window is Window');
+}, 'Phase 3.1: window exists');
+
+// Phase 4: HTMLIFrameElement
+test(function() {
+  assert_equals(typeof HTMLIFrameElement, 'function', 'HTMLIFrameElement exists');
+}, 'Phase 4.1: HTMLIFrameElement constructor exists');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true(iframe instanceof HTMLIFrameElement, 'iframe is HTMLIFrameElement');
+}, 'Phase 4.2: createElement("iframe") returns HTMLIFrameElement');
+
+// Phase 5: iframe properties
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('contentWindow' in iframe, 'contentWindow property exists');
+}, 'Phase 5.7: iframe.contentWindow property exists');
+
+// Phase 6: Disconnected iframe
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_equals(iframe.contentWindow, null, 'contentWindow is null before insertion');
+}, 'Phase 6.1: Disconnected iframe has null contentWindow');
+
+// Phase 7: Connected iframe
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  assert_true(iframe.isConnected, 'iframe is connected');
+  iframe.remove();
+}, 'Phase 7.1: iframe can be inserted into document');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  assert_not_equals(iframe.contentWindow, null, 'contentWindow exists after insertion');
+  assert_true(iframe.contentWindow instanceof Window, 'contentWindow is Window');
+  iframe.remove();
+}, 'Phase 7.2: Connected iframe has contentWindow');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  assert_not_equals(iframe.contentDocument, null, 'contentDocument exists');
+  assert_true(iframe.contentDocument instanceof Document, 'contentDocument is Document');
+  iframe.remove();
+}, 'Phase 7.3: Connected iframe has contentDocument');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  assert_equals(
+    iframe.contentWindow.document, 
+    iframe.contentDocument, 
+    'contentWindow.document === contentDocument'
+  );
+  iframe.remove();
+}, 'Phase 7.4: contentWindow.document equals contentDocument');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  var win = iframe.contentWindow;
+  iframe.remove();
+  assert_equals(iframe.contentWindow, null, 'contentWindow null after removal');
+}, 'Phase 7.5: Removed iframe has null contentWindow');
+</script>
+</body>

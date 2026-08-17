@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Test 1 only</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(function() {
+    var iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>window.test1 = true;<\/script>';
+    document.body.appendChild(iframe);
+    iframe.remove();
+}, 'Test 1: Sync iframe with script');
+</script>
+</body>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Handler remove test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Remove iframe directly in message handler (no setTimeout)
+async_test(function(t) {
+    var iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>parent.postMessage("direct-remove", "*");<\/script>';
+
+    function handler(e) {
+        if (e.data === 'direct-remove') {
+            window.removeEventListener('message', handler);
+            iframe.remove();  // Direct remove in handler
+            t.done();
+        }
+    }
+
+    window.addEventListener('message', handler);
+    document.body.appendChild(iframe);
+}, 'Direct remove in message handler');
+</script>
+</body>

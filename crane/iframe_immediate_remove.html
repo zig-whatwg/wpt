@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Immediate remove test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Remove iframe immediately after append
+test(function() {
+    var iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>parent.postMessage("never-received", "*");<\/script>';
+    document.body.appendChild(iframe);
+    // Remove immediately
+    iframe.remove();
+    // Script in iframe probably didn't run
+}, 'Immediate remove after append');
+</script>
+</body>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Timeout remove test</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// This test removes iframe via setTimeout, not in message handler
+async_test(function(t) {
+    var iframe = document.createElement('iframe');
+    iframe.srcdoc = '<script>parent.postMessage("hello-timeout", "*");<\/script>';
+
+    var messageReceived = false;
+
+    function handler(e) {
+        if (e.data === 'hello-timeout') {
+            messageReceived = true;
+            window.removeEventListener('message', handler);
+            // Remove via setTimeout to separate from message handling
+            setTimeout(function() {
+                iframe.remove();
+                t.done();
+            }, 10);
+        }
+    }
+
+    window.addEventListener('message', handler);
+    document.body.appendChild(iframe);
+}, 'PostMessage with timeout remove');
+</script>
+</body>

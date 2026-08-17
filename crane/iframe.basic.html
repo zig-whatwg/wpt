@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Progressive iframe Prerequisites Test</title>
+<meta name="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-iframe-element">
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<body>
+<script>
+// ============================================================================
+// CROSS-REALM HELPER
+// General solution for cross-realm instanceof checks with iframes.
+// JavaScript realms (windows/iframes) each have their own constructors.
+// When checking instanceof for objects from a different realm, you must
+// use that realm's constructor, not the current realm's.
+// ============================================================================
+
+/**
+ * Cross-realm instanceof check - works for ANY constructor type.
+ * @param {Object} obj - The object to check
+ * @param {string} constructorName - Name of the constructor (e.g., 'HTMLBodyElement')
+ * @param {Window} realm - The window/realm the object belongs to
+ * @returns {boolean} - True if obj is an instance of realm's constructor
+ */
+function isInstanceOf(obj, constructorName, realm) {
+  var Constructor = (realm || window)[constructorName];
+  return obj instanceof Constructor;
+}
+
+// ============================================================================
+// PHASE 1: DOM FUNDAMENTALS
+// Must be able to create and manipulate DOM elements
+// ============================================================================
+
+test(function() {
+  assert_equals(typeof document, 'object', 'document exists');
+  assert_true(document instanceof Document, 'document is Document');
+}, 'Phase 1.1: document exists');
+
+test(function() {
+  assert_equals(typeof document.createElement, 'function', 'createElement exists');
+}, 'Phase 1.2: document.createElement exists');
+
+test(function() {
+  var div = document.createElement('div');
+  assert_true(div instanceof HTMLElement, 'createElement returns HTMLElement');
+  assert_equals(div.tagName, 'DIV', 'Correct tag name');
+}, 'Phase 1.3: document.createElement works');
+
+test(function() {
+  assert_true(document.body instanceof HTMLElement, 'document.body exists');
+}, 'Phase 1.4: document.body exists');
+
+test(function() {
+  var div = document.createElement('div');
+  assert_equals(typeof div.appendChild, 'function', 'appendChild exists');
+}, 'Phase 1.5: appendChild method exists');
+
+test(function() {
+  var parent = document.createElement('div');
+  var child = document.createElement('span');
+  parent.appendChild(child);
+  assert_equals(child.parentNode, parent, 'appendChild works');
+}, 'Phase 1.6: appendChild works');
+
+ test(function() {
+   var div = document.createElement('div');
+   div.setAttribute('id', 'test-id');
+   assert_equals(div.getAttribute('id'), 'test-id', 'setAttribute/getAttribute work');
+ }, 'Phase 1.7: setAttribute and getAttribute work');
+
+test(function() {
+  var div = document.createElement('div');
+  document.body.appendChild(div);
+  assert_true(div.isConnected, 'Element is connected');
+  div.remove();
+}, 'Phase 1.8: Elements can be added to document');
+
+// ============================================================================
+// PHASE 2: EVENT SYSTEM BASICS
+// iframes fire load events
+// ============================================================================
+//
+test(function() {
+  assert_equals(typeof Event, 'function', 'Event constructor exists');
+  assert_equals(typeof EventTarget, 'function', 'EventTarget constructor exists');
+}, 'Phase 2.1: Event constructors exist');
+//
+test(function() {
+  var div = document.createElement('div');
+  assert_equals(typeof div.addEventListener, 'function', 'addEventListener exists');
+  assert_equals(typeof div.removeEventListener, 'function', 'removeEventListener exists');
+  assert_equals(typeof div.dispatchEvent, 'function', 'dispatchEvent exists');
+}, 'Phase 2.2: EventTarget methods exist on elements');
+//
+test(function() {
+  var div = document.createElement('div');
+  var called = false;
+  div.addEventListener('test', function() { called = true; });
+  div.dispatchEvent(new Event('test'));
+  assert_true(called, 'Event listener was called');
+}, 'Phase 2.3: addEventListener and dispatchEvent work');
+//
+test(function() {
+  var div = document.createElement('div');
+  var called = false;
+  div.onload = function() { called = true; };
+  assert_equals(typeof div.onload, 'function', 'onload handler set');
+}, 'Phase 2.4: onload property exists on elements');
+//
+// ============================================================================
+// PHASE 3: WINDOW BASICS
+// iframes create windows
+// ============================================================================
+//
+test(function() {
+  assert_equals(typeof window, 'object', 'window exists');
+  assert_true(window instanceof Window, 'window is Window');
+}, 'Phase 3.1: window exists');
+//
+test(function() {
+  assert_equals(window.document, document, 'window.document is document');
+}, 'Phase 3.2: window.document exists');
+//
+test(function() {
+  assert_equals(typeof window.location, 'object', 'window.location exists');
+  assert_true('href' in window.location, 'location.href exists');
+}, 'Phase 3.3: window.location exists');
+//
+test(function() {
+  assert_equals(typeof window.postMessage, 'function', 'postMessage exists');
+}, 'Phase 3.4: window.postMessage exists');
+//
+test(function() {
+  assert_equals(window.self, window, 'window.self is window');
+}, 'Phase 3.5: window.self exists');
+//
+test(function() {
+  assert_true('parent' in window, 'window.parent exists');
+  assert_true('top' in window, 'window.top exists');
+}, 'Phase 3.6: window.parent and window.top exist');
+//
+test(function() {
+  // For the main window, parent and top should be self
+  assert_equals(window.parent, window, 'Top-level window.parent is self');
+  assert_equals(window.top, window, 'Top-level window.top is self');
+}, 'Phase 3.7: Top-level window parent/top are self');
+//
+// ============================================================================
+// PHASE 4: HTMLIFRAMEELEMENT EXISTS
+// ============================================================================
+//
+test(function() {
+  assert_equals(typeof HTMLIFrameElement, 'function', 'HTMLIFrameElement exists');
+}, 'Phase 4.1: HTMLIFrameElement constructor exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true(iframe instanceof HTMLIFrameElement, 'iframe is HTMLIFrameElement');
+}, 'Phase 4.2: createElement("iframe") returns HTMLIFrameElement');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true(iframe instanceof HTMLElement, 'iframe is HTMLElement');
+  assert_true(iframe instanceof Element, 'iframe is Element');
+  assert_true(iframe instanceof Node, 'iframe is Node');
+}, 'Phase 4.3: iframe inheritance chain correct');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_equals(iframe.tagName, 'IFRAME', 'tagName is IFRAME');
+  assert_equals(iframe.localName, 'iframe', 'localName is iframe');
+}, 'Phase 4.4: iframe tag name correct');
+//
+// ============================================================================
+// PHASE 5: HTMLIFRAMEELEMENT PROPERTIES EXIST
+// ============================================================================
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('src' in iframe, 'src property exists');
+  assert_equals(typeof iframe.src, 'string', 'src is string');
+}, 'Phase 5.1: iframe.src property exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('srcdoc' in iframe, 'srcdoc property exists');
+  assert_equals(typeof iframe.srcdoc, 'string', 'srcdoc is string');
+}, 'Phase 5.2: iframe.srcdoc property exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('name' in iframe, 'name property exists');
+  assert_equals(typeof iframe.name, 'string', 'name is string');
+}, 'Phase 5.3: iframe.name property exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('sandbox' in iframe, 'sandbox property exists');
+  assert_true(iframe.sandbox instanceof DOMTokenList, 'sandbox is DOMTokenList');
+}, 'Phase 5.4: iframe.sandbox property exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('allow' in iframe, 'allow property exists');
+  assert_equals(typeof iframe.allow, 'string', 'allow is string');
+}, 'Phase 5.5: iframe.allow property exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('width' in iframe, 'width property exists');
+  assert_true('height' in iframe, 'height property exists');
+}, 'Phase 5.6: iframe.width and iframe.height exist');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('contentWindow' in iframe, 'contentWindow property exists');
+}, 'Phase 5.7: iframe.contentWindow property exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('contentDocument' in iframe, 'contentDocument property exists');
+}, 'Phase 5.8: iframe.contentDocument property exists');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('loading' in iframe, 'loading property exists');
+}, 'Phase 5.9: iframe.loading property exists (lazy loading)');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true('referrerPolicy' in iframe, 'referrerPolicy property exists');
+}, 'Phase 5.10: iframe.referrerPolicy property exists');
+//
+// ============================================================================
+// PHASE 6: IFRAME NOT YET CONNECTED (DISCONNECTED STATE)
+// ============================================================================
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  // Before insertion, contentWindow should be null
+  assert_equals(iframe.contentWindow, null, 'contentWindow is null before insertion');
+}, 'Phase 6.1: Disconnected iframe has null contentWindow');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_equals(iframe.contentDocument, null, 'contentDocument is null before insertion');
+}, 'Phase 6.2: Disconnected iframe has null contentDocument');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_false(iframe.isConnected, 'iframe not connected');
+}, 'Phase 6.3: Disconnected iframe is not connected');
+//
+// ============================================================================
+// PHASE 7: IFRAME BROWSING CONTEXT CREATION
+// When iframe is inserted, it gets a browsing context
+// ============================================================================
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  assert_true(iframe.isConnected, 'iframe is connected');
+//
+  iframe.remove();
+}, 'Phase 7.1: iframe can be inserted into document');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  assert_not_equals(iframe.contentWindow, null, 'contentWindow exists after insertion');
+  // Use cross-realm instanceof check (contentWindow is from iframe's realm)
+  assert_true(iframe.contentWindow instanceof iframe.contentWindow.Window, 'contentWindow is Window');
+//
+  iframe.remove();
+}, 'Phase 7.2: Connected iframe has contentWindow');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  assert_not_equals(iframe.contentDocument, null, 'contentDocument exists');
+  // Use cross-realm instanceof check (contentDocument is from iframe's realm)
+  assert_true(iframe.contentDocument instanceof iframe.contentWindow.Document, 'contentDocument is Document');
+//
+  iframe.remove();
+}, 'Phase 7.3: Connected iframe has contentDocument');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  assert_equals(
+    iframe.contentWindow.document, 
+    iframe.contentDocument, 
+    'contentWindow.document === contentDocument'
+  );
+//
+  iframe.remove();
+}, 'Phase 7.4: contentWindow.document equals contentDocument');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  // Store reference before removal
+  var win = iframe.contentWindow;
+//
+  iframe.remove();
+//
+  // After removal, contentWindow should be null
+  assert_equals(iframe.contentWindow, null, 'contentWindow null after removal');
+}, 'Phase 7.5: Removed iframe has null contentWindow');
+//
+// ============================================================================
+// PHASE 8: ABOUT:BLANK INITIAL DOCUMENT
+// Newly inserted iframe starts with about:blank
+// ============================================================================
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  assert_equals(iframe.contentWindow.location.href, 'about:blank', 'Initial URL is about:blank');
+//
+  iframe.remove();
+}, 'Phase 8.1: Initial iframe URL is about:blank');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var doc = iframe.contentDocument;
+  // Use cross-realm helper for consistent instanceof checks
+  assert_true(isInstanceOf(doc.documentElement, 'HTMLHtmlElement', iframe.contentWindow), 'Has html element');
+//
+  iframe.remove();
+}, 'Phase 8.2: about:blank has HTML element');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var doc = iframe.contentDocument;
+  // Use cross-realm helper for consistent instanceof checks
+  assert_true(isInstanceOf(doc.body, 'HTMLBodyElement', iframe.contentWindow), 'Has body element');
+//
+  iframe.remove();
+}, 'Phase 8.3: about:blank has body element');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var doc = iframe.contentDocument;
+  // Use cross-realm helper for consistent instanceof checks
+  assert_true(isInstanceOf(doc.head, 'HTMLHeadElement', iframe.contentWindow), 'Has head element');
+//
+  iframe.remove();
+}, 'Phase 8.4: about:blank has head element');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  // about:blank is same-origin with parent
+  var doc = iframe.contentDocument;
+  assert_equals(doc.body.childNodes.length, 0, 'Body is empty');
+//
+  iframe.remove();
+}, 'Phase 8.5: about:blank body is empty');
+//
+// ============================================================================
+// PHASE 9: SAME-ORIGIN CONTENTDOCUMENT ACCESS
+// Can manipulate same-origin iframe document
+// ============================================================================
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var doc = iframe.contentDocument;
+  var div = doc.createElement('div');
+  div.textContent = 'Hello';
+  doc.body.appendChild(div);
+//
+  assert_equals(doc.body.firstChild, div, 'Element added to iframe document');
+//
+  iframe.remove();
+}, 'Phase 9.1: Can add elements to iframe contentDocument');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var doc = iframe.contentDocument;
+  doc.body.innerHTML = '<p>Test</p>';
+//
+  assert_equals(doc.body.innerHTML, '<p>Test</p>', 'innerHTML works');
+//
+  iframe.remove();
+}, 'Phase 9.2: Can set innerHTML on iframe document');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var doc = iframe.contentDocument;
+  doc.body.innerHTML = '<div id="findme">Found</div>';
+//
+  var el = doc.getElementById('findme');
+  assert_not_equals(el, null, 'getElementById works');
+  assert_equals(el.textContent, 'Found', 'Correct element found');
+//
+  iframe.remove();
+}, 'Phase 9.3: Can query iframe document');
+//
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var win = iframe.contentWindow;
+  win.testVariable = 'hello';
+//
+  assert_equals(win.testVariable, 'hello', 'Can set properties on contentWindow');
+//
+  iframe.remove();
+}, 'Phase 9.4: Can set properties on contentWindow');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+//
+  var doc = iframe.contentDocument;
+  var style = doc.createElement('style');
+  style.textContent = 'body { background: red; }';
+  doc.head.appendChild(style);
+//
+  assert_equals(doc.head.querySelector('style'), style, 'Style element added');
+//
+  iframe.remove();
+}, 'Phase 9.5: Can add style elements to iframe');
+
+// ============================================================================
+// PHASE 10: IFRAME LOAD EVENT (ABOUT:BLANK)
+// ============================================================================
+//
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+//
+  iframe.onload = t.step_func_done(function() {
+    assert_equals(iframe.contentWindow.location.href, 'about:blank', 'Loaded about:blank');
+    iframe.remove();
+  });
+//
+  document.body.appendChild(iframe);
+}, 'Phase 10.1: iframe fires load event for about:blank');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  var loadCount = 0;
+
+  iframe.addEventListener('load', t.step_func(function() {
+    loadCount++;
+  }));
+
+  document.body.appendChild(iframe);
+
+  // Give time for any duplicate events
+  setTimeout(t.step_func_done(function() {
+    assert_equals(loadCount, 1, 'Load event fired exactly once');
+    iframe.remove();
+  }), 100);
+}, 'Phase 10.2: iframe load event fires once');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  var eventObj = null;
+
+  iframe.addEventListener('load', t.step_func_done(function(e) {
+    eventObj = e;
+    assert_true(e instanceof Event, 'Event object received');
+    assert_equals(e.type, 'load', 'Event type is load');
+    assert_equals(e.target, iframe, 'Event target is iframe');
+    iframe.remove();
+  }));
+
+  document.body.appendChild(iframe);
+}, 'Phase 10.3: Load event has correct properties');
+
+// ============================================================================
+// PHASE 11: SRCDOC ATTRIBUTE
+// Inline HTML content without network request
+// ============================================================================
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<p>Hello</p>';
+  assert_equals(iframe.srcdoc, '<p>Hello</p>', 'srcdoc can be set');
+}, 'Phase 11.1: srcdoc attribute can be set');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<p id="test">Hello srcdoc</p>';
+
+  iframe.onload = t.step_func_done(function() {
+    var doc = iframe.contentDocument;
+    var p = doc.getElementById('test');
+    assert_not_equals(p, null, 'Element found');
+    assert_equals(p.textContent, 'Hello srcdoc', 'Content correct');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 11.2: srcdoc content is rendered');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<!DOCTYPE html><html><head><title>Test</title></head><body>Content</body></html>';
+
+  iframe.onload = t.step_func_done(function() {
+    var doc = iframe.contentDocument;
+    assert_equals(doc.title, 'Test', 'Title parsed');
+    assert_true(doc.body.textContent.includes('Content'), 'Body content correct');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 11.3: Full HTML document in srcdoc works');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<script>window.scriptRan = true;<\/script>';
+
+  iframe.onload = t.step_func_done(function() {
+    assert_true(iframe.contentWindow.scriptRan, 'Script executed');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 11.4: Scripts in srcdoc execute');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<p>&amp; &lt; &gt; &quot;</p>';
+
+  iframe.onload = t.step_func_done(function() {
+    var p = iframe.contentDocument.querySelector('p');
+    assert_equals(p.textContent, '& < > "', 'HTML entities decoded');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 11.5: HTML entities work in srcdoc');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  // Note: srcdoc uses special URL per WHATWG HTML spec
+  iframe.srcdoc = '<p>Test</p>';
+
+  iframe.onload = t.step_func_done(function() {
+    var loc = iframe.contentWindow.location.href;
+    // Per WHATWG HTML spec, srcdoc documents have exactly 'about:srcdoc' as their URL
+    assert_equals(loc, 'about:srcdoc', 'Location is exactly about:srcdoc');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 11.6: srcdoc document has about:srcdoc URL');
+
+// ============================================================================
+// PHASE 12: SRCDOC VS SRC PRIORITY
+// srcdoc takes precedence over src
+// ============================================================================
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.src = '/common/blank.html'; // Would load if srcdoc wasn't set
+  iframe.srcdoc = '<p id="srcdoc-content">From srcdoc</p>';
+
+  iframe.onload = t.step_func_done(function() {
+    var el = iframe.contentDocument.getElementById('srcdoc-content');
+    assert_not_equals(el, null, 'srcdoc content loaded, not src');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 12.1: srcdoc takes precedence over src');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<p id="initial">Initial</p>';
+
+  iframe.onload = t.step_func(function() {
+    // Clear srcdoc
+    iframe.removeAttribute('srcdoc');
+    iframe.srcdoc = '';
+
+    // Now src should take effect on next navigation
+    // For now, just verify we can clear it
+    assert_equals(iframe.srcdoc, '', 'srcdoc cleared');
+    iframe.remove();
+    t.done();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 12.2: srcdoc can be cleared');
+
+// ============================================================================
+// PHASE 13: WINDOW RELATIONSHIPS
+// parent, top, self, frames
+// ============================================================================
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  assert_equals(iframe.contentWindow.parent, window, 'iframe parent is outer window');
+
+  iframe.remove();
+}, 'Phase 13.1: iframe contentWindow.parent is parent window');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  assert_equals(iframe.contentWindow.top, window, 'iframe top is outer window');
+
+  iframe.remove();
+}, 'Phase 13.2: iframe contentWindow.top is top window');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  assert_equals(iframe.contentWindow.self, iframe.contentWindow, 'self is contentWindow');
+
+  iframe.remove();
+}, 'Phase 13.3: iframe contentWindow.self is itself');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  assert_not_equals(iframe.contentWindow.parent, iframe.contentWindow, 'parent !== self');
+
+  iframe.remove();
+}, 'Phase 13.4: iframe parent is not self');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<script>window.parentCheck = (parent === window.parent);<\/script>';
+
+  iframe.onload = t.step_func_done(function() {
+    assert_true(iframe.contentWindow.parentCheck, 'parent accessible from script');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 13.5: parent accessible from iframe script');
+
+// ============================================================================
+// PHASE 14: WINDOW.FRAMES COLLECTION
+// ============================================================================
+
+test(function() {
+  assert_true('frames' in window, 'window.frames exists');
+  assert_equals(typeof window.frames.length, 'number', 'frames.length exists');
+}, 'Phase 14.1: window.frames exists');
+
+test(function() {
+  var initialLength = window.frames.length;
+
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  assert_equals(window.frames.length, initialLength + 1, 'frames.length increased');
+
+  iframe.remove();
+
+  assert_equals(window.frames.length, initialLength, 'frames.length decreased');
+}, 'Phase 14.2: window.frames.length reflects iframe count');
+
+test(function() {
+  var initialLength = window.frames.length;
+
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  assert_equals(window.frames[initialLength], iframe.contentWindow, 'frames[n] is contentWindow');
+
+  iframe.remove();
+}, 'Phase 14.3: window.frames[n] returns contentWindow');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  iframe.name = 'testFrameName';
+  document.body.appendChild(iframe);
+
+  assert_equals(window.frames['testFrameName'], iframe.contentWindow, 'frames[name] works');
+
+  iframe.remove();
+}, 'Phase 14.4: window.frames[name] works');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  iframe.name = 'namedFrame';
+  document.body.appendChild(iframe);
+
+  // Named frames also accessible as window properties
+  assert_equals(window['namedFrame'], iframe.contentWindow, 'window[name] works');
+
+  iframe.remove();
+}, 'Phase 14.5: Named iframe accessible as window property');
+
+// ============================================================================
+// PHASE 15: IFRAME NAME ATTRIBUTE
+// ============================================================================
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  iframe.name = 'myframe';
+  assert_equals(iframe.name, 'myframe', 'name attribute set');
+}, 'Phase 15.1: iframe.name can be set');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.name = 'testName';
+  iframe.srcdoc = '<script>window.nameValue = window.name;<\/script>';
+
+  iframe.onload = t.step_func_done(function() {
+    assert_equals(iframe.contentWindow.nameValue, 'testName', 'window.name matches iframe name');
+    iframe.remove();
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 15.2: contentWindow.name matches iframe name');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  iframe.contentWindow.name = 'dynamicName';
+  assert_equals(iframe.contentWindow.name, 'dynamicName', 'window.name can be set');
+
+  iframe.remove();
+}, 'Phase 15.3: contentWindow.name can be set dynamically');
+
+// ============================================================================
+// PHASE 16: NESTED IFRAMES
+// ============================================================================
+
+async_test(function(t) {
+  var outer = document.createElement('iframe');
+  outer.srcdoc = '<iframe id="inner" srcdoc="<p>Nested</p>"></iframe>';
+
+  outer.onload = t.step_func(function() {
+    var inner = outer.contentDocument.getElementById('inner');
+
+    // Inner might need its own load event
+    if (inner.contentDocument && inner.contentDocument.body) {
+      checkInner();
+    } else {
+      inner.onload = t.step_func(checkInner);
+    }
+
+    function checkInner() {
+      assert_not_equals(inner.contentWindow, null, 'Nested iframe has contentWindow');
+      outer.remove();
+      t.done();
+    }
+  });
+
+  document.body.appendChild(outer);
+}, 'Phase 16.1: Nested iframes work');
+
+async_test(function(t) {
+  var outer = document.createElement('iframe');
+  outer.srcdoc = '<iframe id="inner" srcdoc="<p>Nested</p>"></iframe>';
+
+  outer.onload = t.step_func(function() {
+    var inner = outer.contentDocument.getElementById('inner');
+
+    inner.onload = t.step_func_done(function() {
+      // Inner iframe's parent should be outer iframe's window
+      assert_equals(inner.contentWindow.parent, outer.contentWindow, 'inner.parent is outer');
+      // Inner iframe's top should be main window
+      assert_equals(inner.contentWindow.top, window, 'inner.top is main window');
+      outer.remove();
+    });
+
+    // If already loaded
+    if (inner.contentDocument && inner.contentDocument.body) {
+      assert_equals(inner.contentWindow.parent, outer.contentWindow, 'inner.parent is outer');
+      assert_equals(inner.contentWindow.top, window, 'inner.top is main window');
+      outer.remove();
+      t.done();
+    }
+  });
+
+  document.body.appendChild(outer);
+}, 'Phase 16.2: Nested iframe parent/top chain correct');
+
+async_test(function(t) {
+  var outer = document.createElement('iframe');
+  outer.srcdoc = '<iframe id="inner"></iframe>';
+
+  outer.onload = t.step_func_done(function() {
+    // Outer's frames collection should include inner
+    assert_equals(outer.contentWindow.frames.length, 1, 'Outer has 1 frame');
+    outer.remove();
+  });
+
+  document.body.appendChild(outer);
+}, 'Phase 16.3: Nested iframe in parent frames collection');
+
+// ============================================================================
+// PHASE 17: POSTMESSAGE BASICS
+// ============================================================================
+
+ test(function() {
+   var iframe = document.createElement('iframe');
+   document.body.appendChild(iframe);
+
+   assert_equals(typeof iframe.contentWindow.postMessage, 'function', 'postMessage exists');
+
+   iframe.remove();
+ }, 'Phase 17.1: iframe contentWindow has postMessage');
+
+ async_test(function(t) {
+   var iframe = document.createElement('iframe');
+
+   window.addEventListener('message', t.step_func(function handler(e) {
+     if (e.data === 'hello from iframe') {
+       window.removeEventListener('message', handler);
+       iframe.remove();
+       t.done();
+     }
+   }));
+
+   iframe.srcdoc = '<script>parent.postMessage("hello from iframe", "*");<\/script>';
+   document.body.appendChild(iframe);
+ }, 'Phase 17.2: iframe can postMessage to parent');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.srcdoc = '<script>window.onmessage = function(e) { window.received = e.data; };<\/script>';
+
+  iframe.onload = t.step_func(function() {
+    iframe.contentWindow.postMessage('hello from parent', '*');
+
+    setTimeout(t.step_func_done(function() {
+      assert_equals(iframe.contentWindow.received, 'hello from parent', 'Message received');
+      iframe.remove();
+    }), 50);
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 17.3: Parent can postMessage to iframe');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+
+  window.addEventListener('message', t.step_func(function handler(e) {
+    if (e.data === 'test-source') {
+      window.removeEventListener('message', handler);
+      assert_equals(e.source, iframe.contentWindow, 'e.source is iframe window');
+      iframe.remove();
+      t.done();
+    }
+  }));
+
+  iframe.srcdoc = '<script>parent.postMessage("test-source", "*");<\/script>';
+  document.body.appendChild(iframe);
+}, 'Phase 17.4: MessageEvent.source is correct');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+
+  window.addEventListener('message', t.step_func(function handler(e) {
+    if (e.data && e.data.type === 'structured') {
+      window.removeEventListener('message', handler);
+      assert_equals(e.data.value, 42, 'Structured data received');
+      assert_array_equals(e.data.arr, [1, 2, 3], 'Array received');
+      iframe.remove();
+      t.done();
+    }
+  }));
+
+  iframe.srcdoc = '<script>parent.postMessage({ type: "structured", value: 42, arr: [1,2,3] }, "*");<\/script>';
+  document.body.appendChild(iframe);
+}, 'Phase 17.5: Structured data can be posted');
+
+// ============================================================================
+// PHASE 18: SANDBOX ATTRIBUTE BASICS
+// ============================================================================
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  assert_true(iframe.sandbox instanceof DOMTokenList, 'sandbox is DOMTokenList');
+}, 'Phase 18.1: sandbox is DOMTokenList');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', '');
+  assert_true(iframe.hasAttribute('sandbox'), 'sandbox attribute set');
+}, 'Phase 18.2: sandbox attribute can be set');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  iframe.sandbox.add('allow-scripts');
+  assert_true(iframe.sandbox.contains('allow-scripts'), 'allow-scripts added');
+}, 'Phase 18.3: sandbox.add() works');
+
+test(function() {
+  var iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  assert_true(iframe.sandbox.contains('allow-scripts'), 'Has allow-scripts');
+  assert_true(iframe.sandbox.contains('allow-same-origin'), 'Has allow-same-origin');
+}, 'Phase 18.4: Multiple sandbox values work');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.srcdoc = '<script>parent.postMessage("scripts-work", "*");<\/script>';
+
+  window.addEventListener('message', t.step_func(function handler(e) {
+    if (e.data === 'scripts-work') {
+      window.removeEventListener('message', handler);
+      iframe.remove();
+      t.done();
+    }
+  }));
+
+  document.body.appendChild(iframe);
+}, 'Phase 18.5: allow-scripts permits script execution');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', ''); // No permissions
+  iframe.srcdoc = '<script>parent.postMessage("should-not-run", "*");<\/script>';
+
+  var received = false;
+  window.addEventListener('message', function handler(e) {
+    if (e.data === 'should-not-run') {
+      received = true;
+    }
+  });
+
+  iframe.onload = t.step_func(function() {
+    setTimeout(t.step_func_done(function() {
+      assert_false(received, 'Script should not have run in sandboxed iframe');
+      iframe.remove();
+    }), 100);
+  });
+
+  document.body.appendChild(iframe);
+}, 'Phase 18.6: Empty sandbox blocks scripts');
+
+</script>
+</body>
