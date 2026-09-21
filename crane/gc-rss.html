@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>DOM churn workload: 10,000 createElement + discard cycles</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Not a conformance test, and NOT an RSS assertion despite the filename - see
+// PERF-FIXTURES.md. testharness has no memory API, so the assertion below only
+// says the loop completed. What this page provides is a WORKLOAD: the DOM's
+// hottest path, driven hard enough and from real JS, so an external tool has
+// something to measure.
+//
+// It exists because Phase 6's exit criterion was "RSS flat across 10,000
+// document.createElement + discard cycles", and that criterion needs a
+// reproducible workload that is not the benchmark's own synthetic loop.
+//
+// To get the number this page is named after, point a tool at it:
+//
+//   leaks --atExit -- ./zig-out/bin/wpt_runner crane/gc-rss.html
+//
+// or measure the same shape directly, with per-cycle slope and per-allocator
+// breakdown, via the dedicated instrument:
+//
+//   zig build gc-bench -- 300000 25000 --gc --c-alloc
+//
+// Under the plain runner it is still useful as a crash and leak canary: the
+// three per-element handle leaks fixed in Phase 6 (GetCurrentContext twice per
+// element, GetArgument once, the [Global] getter path) all lived on exactly
+// this path.
+test(() => {
+  for (let i = 0; i < 10000; i++) {
+    const el = document.createElement("div");
+    // Touched, so neither the engine nor a future optimizer can elide the
+    // allocation and quietly turn this into an empty loop.
+    el.setAttribute("data-i", String(i));
+    if (el.getAttribute("data-i") === "nope") throw new Error("unreachable");
+  }
+  assert_true(true, "10,000 create/discard cycles completed without crashing");
+}, "10,000 createElement + discard cycles complete");
+</script>

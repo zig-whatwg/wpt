@@ -55,3 +55,21 @@ deliberately, which is what makes the two-point subtraction valid.
 `scale-1k` and `scale-10k` double as a regression guard. If the wait phase
 starts scaling with subtest count again, something has re-enabled per-subtest
 completion work. The recorded baselines are in `scale-1k.html`'s header.
+
+## A different investigation: memory, not time
+
+`gc-rss.html` is in this directory but is not part of the chain above. It is a
+workload rather than a measurement — 10,000 `createElement` + discard cycles on
+the DOM's hottest path — and it asserts only that the loop completed, because
+testharness has no memory API. Point a tool at it to get a number:
+
+```
+leaks --atExit -- ./zig-out/bin/wpt_runner crane/gc-rss.html
+zig build gc-bench -- 300000 25000 --gc --c-alloc
+```
+
+It came out of Phase 6, whose exit criterion was "RSS flat across 10,000
+createElement + discard cycles". The three per-element handle leaks fixed there
+— `GetCurrentContext` twice per element, `GetArgument` once, and the `[Global]`
+getter path — all lived on this exact path, so it also serves as a crash and
+leak canary under the plain runner.
