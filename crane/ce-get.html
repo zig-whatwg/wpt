@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>customElements.get returns undefined for an unknown name</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  // Per spec step 2: if no definition matches, return undefined. Not throw.
+  assert_equals(customElements.get('no-such-element'), undefined);
+}, 'get() returns undefined for an undefined name');
+
+// KNOWN FAILING - documents the next defect precisely, do not delete.
+//
+// `define()` receives its constructor as `callbacks.CustomElementConstructor`,
+// declared as `*const fn () *runtime.Instance`. But conversions.zig does not
+// hand a function pointer to a callback parameter: it TAGS the pointer to a
+// Global<Value> ("Tagged pointers are intentionally misaligned - low bits used
+// for tag"). CustomElementRegistry stores that tagged pointer verbatim and
+// call_get passes it to JSValue.fromHandleNonOwning without untagging, so the
+// constructor comes back as undefined even for a name that IS defined.
+//
+// Fixing it needs pointer_tag.untagPointer, which lives under
+// src/runtime/engines/v8/ and is not re-exported from `runtime` - so the fix
+// belongs at the conversion boundary or behind a runtime-level re-export,
+// not as a new V8 import inside an impl.
+test(() => {
+  class Defined extends HTMLElement {}
+  customElements.define('ce-get-defined', Defined);
+  assert_equals(customElements.get('ce-get-defined'), Defined);
+}, 'get() returns the constructor for a defined name');
+</script>
