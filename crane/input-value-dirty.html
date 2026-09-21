@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>input.value and .checked detach from their attributes once assigned</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The dirty-value flag, which is the part React depends on: it assigns
+// .value directly on every commit, and a later attribute write must not
+// clobber what it set.
+test(() => {
+  const el = document.createElement('input');
+  el.setAttribute('value', 'a');
+  assert_equals(el.value, 'a', 'clean: tracks the attribute');
+
+  el.setAttribute('value', 'b');
+  assert_equals(el.value, 'b', 'clean: still tracks the attribute');
+
+  el.value = 'c';
+  assert_equals(el.value, 'c', 'dirty: reads back what was assigned');
+
+  el.setAttribute('value', 'd');
+  assert_equals(el.value, 'c', 'dirty: the attribute no longer wins');
+  assert_equals(el.defaultValue, 'd', 'defaultValue still reflects the attribute');
+}, 'value detaches from the value attribute once assigned');
+
+test(() => {
+  const el = document.createElement('input');
+  el.type = 'checkbox';
+  assert_equals(el.checked, false, 'clean: absent attribute means unchecked');
+
+  el.setAttribute('checked', '');
+  assert_equals(el.checked, true, 'clean: tracks the attribute');
+
+  el.checked = false;
+  assert_equals(el.checked, false, 'dirty: reads back what was assigned');
+  assert_equals(el.defaultChecked, true, 'defaultChecked still reflects the attribute');
+}, 'checked detaches from the checked attribute once assigned');
+
+test(() => {
+  const el = document.createElement('input');
+  assert_equals(el.type, 'text', 'missing type is text');
+  el.setAttribute('type', 'CHECKBOX');
+  assert_equals(el.type, 'checkbox', 'type is canonicalised to lowercase');
+  el.setAttribute('type', 'nonsense');
+  assert_equals(el.type, 'text', 'an unrecognised type falls back to text');
+}, 'type is enumerated with text as both defaults');
+</script>
