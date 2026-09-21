@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>CookieStore returns real Promises</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script>
+// Isolated regression test for the defect behind every cookiestore/ WPT
+// failure: the four CookieStore operations are declared `Promise<T>` in
+// cookiestore.idl but the impl returned `undefined`, so every `await` in the
+// suite threw "Cannot read properties of undefined (reading 'then')".
+//
+// These four assertions are the red half of the red-green loop; they are
+// deliberately about the *shape* of the return value, not about cookie
+// semantics, so they stay meaningful even if the jar behaviour changes.
+
+test(function () {
+  assert_true(cookieStore.get('crane-shape') instanceof Promise,
+              'cookieStore.get() must return a Promise');
+}, 'cookieStore.get returns a Promise');
+
+test(function () {
+  assert_true(cookieStore.getAll('crane-shape') instanceof Promise,
+              'cookieStore.getAll() must return a Promise');
+}, 'cookieStore.getAll returns a Promise');
+
+test(function () {
+  assert_true(cookieStore.set('crane-shape', 'v') instanceof Promise,
+              'cookieStore.set() must return a Promise');
+}, 'cookieStore.set returns a Promise');
+
+test(function () {
+  assert_true(cookieStore.delete('crane-shape') instanceof Promise,
+              'cookieStore.delete() must return a Promise');
+}, 'cookieStore.delete returns a Promise');
+
+// The resolution values the rest of the suite depends on.
+promise_test(async function () {
+  await cookieStore.set('crane-value', 'crane-cookie-value');
+  const cookie = await cookieStore.get('crane-value');
+  assert_not_equals(cookie, null, 'get() must resolve with the cookie it just set');
+  assert_equals(cookie.name, 'crane-value');
+  assert_equals(cookie.value, 'crane-cookie-value');
+}, 'cookieStore.get resolves with a {name, value} CookieListItem');
+
+promise_test(async function () {
+  const cookie = await cookieStore.get('crane-absent-cookie');
+  assert_equals(cookie, null, 'get() of a missing cookie must resolve with null');
+}, 'cookieStore.get resolves with null when no cookie matches');
+
+promise_test(async function () {
+  await cookieStore.set('crane-all', 'crane-all-value');
+  const cookies = await cookieStore.getAll('crane-all');
+  assert_true(Array.isArray(cookies), 'getAll() must resolve with an array');
+  assert_equals(cookies.length, 1);
+  assert_equals(cookies[0].name, 'crane-all');
+  assert_equals(cookies[0].value, 'crane-all-value');
+}, 'cookieStore.getAll resolves with an array of CookieListItem');
+
+promise_test(async function () {
+  const undef = await cookieStore.set('crane-undef', 'v');
+  assert_equals(undef, undefined, 'set() resolves with undefined');
+  const undef2 = await cookieStore.delete('crane-undef');
+  assert_equals(undef2, undefined, 'delete() resolves with undefined');
+}, 'cookieStore.set and delete resolve with undefined');
+
+// CookieChangeEvent.changed / .deleted used to hand a raw Zig
+// ArrayListUnmanaged pointer to the V8 binding, which reinterpret_casts it to
+// Global<Value>* and dereferences it - a dead process, not a failed subtest.
+// They now build a real V8 array, the same way cookieStore.getAll() above does.
+//
+// The interface is not reachable from script yet: it sits in
+// `interface_skip_list` in src/runtime/engines/v8/interface_bindings.zig,
+// commented "CookieListItem array issues" - which is exactly the defect that
+// has now been fixed. These run once that entry is removed, and are guarded
+// rather than expected-to-fail so this file stays green in the meantime.
+if (typeof CookieChangeEvent === 'function') {
+  test(function () {
+    const event = new CookieChangeEvent('change');
+    assert_true(Array.isArray(event.changed), 'changed must be an array');
+    assert_equals(event.changed.length, 0);
+    assert_true(Array.isArray(event.deleted), 'deleted must be an array');
+    assert_equals(event.deleted.length, 0);
+  }, 'CookieChangeEvent.changed/.deleted are arrays, and reading them does not crash');
+
+  test(function () {
+    const event = new CookieChangeEvent('change', {
+      changed: [{name: 'a', value: '1'}],
+      deleted: [{name: 'b', value: ''}],
+    });
+    assert_equals(event.changed.length, 1);
+    assert_equals(event.changed[0].name, 'a');
+    assert_equals(event.changed[0].value, '1');
+    assert_equals(event.deleted.length, 1);
+    assert_equals(event.deleted[0].name, 'b');
+  }, 'CookieChangeEvent surfaces its init dictionary through changed/deleted');
+}
+</script>
