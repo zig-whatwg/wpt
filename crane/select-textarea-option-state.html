@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>select, textarea and option expose state, not reflection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The three controlled-component surfaces React commits against. Each of these
+// properties looks like a reflected attribute and is not one, and the difference
+// is exactly what a controlled component depends on.
+
+// ---------------------------------------------------------------------------
+// textarea.value - the dirty value flag, the same shape as input.value
+// ---------------------------------------------------------------------------
+
+test(() => {
+  const el = document.createElement('textarea');
+  assert_equals(el.value, '', 'no children means empty, not a thrown exception');
+  assert_equals(el.defaultValue, '', 'defaultValue likewise');
+
+  el.textContent = 'a';
+  assert_equals(el.value, 'a', 'clean: tracks the child text content');
+
+  el.textContent = 'b';
+  assert_equals(el.value, 'b', 'clean: still tracks it');
+
+  el.value = 'c';
+  assert_equals(el.value, 'c', 'dirty: reads back what was assigned');
+
+  el.textContent = 'd';
+  assert_equals(el.value, 'c', 'dirty: the children no longer win');
+  assert_equals(el.defaultValue, 'd', 'defaultValue still tracks the children');
+}, 'textarea.value detaches from the child text content once assigned');
+
+test(() => {
+  const el = document.createElement('textarea');
+  el.appendChild(document.createTextNode('keep'));
+  const child = document.createElement('span');
+  child.textContent = 'drop';
+  el.appendChild(child);
+
+  assert_equals(el.textContent, 'keepdrop', 'textContent descends');
+  assert_equals(el.defaultValue, 'keep', 'defaultValue is the CHILD text content');
+  assert_equals(el.value, 'keep', 'and so is the raw value behind value');
+}, 'textarea.defaultValue is child text content, not textContent');
+
+test(() => {
+  const el = document.createElement('textarea');
+  el.textContent = 'a\r\nb\rc\nd';
+  assert_equals(el.defaultValue, 'a\r\nb\rc\nd', 'defaultValue keeps the raw newlines');
+  assert_equals(el.value, 'a\nb\nc\nd', 'the API value normalises CRLF and lone CR to LF');
+
+  el.value = 'x\r\ny\rz';
+  assert_equals(el.value, 'x\ny\nz', 'and normalises what the setter stored too');
+}, 'textarea.value is the API value, with newlines normalised');
+
+test(() => {
+  const el = document.createElement('textarea');
+  el.value = 'Hello, World!';
+  assert_equals(el.textLength, 13, 'ASCII: one code unit per character');
+
+  el.value = '\u4f60\u597d\uff0c\u4e16\u754c\uff01';
+  assert_equals(el.textLength, 6, 'textLength counts UTF-16 code units, not bytes');
+}, 'textarea.textLength measures the API value in UTF-16 code units');
+
+test(() => {
+  const el = document.createElement('textarea');
+  assert_equals(el.type, 'textarea', 'type is a constant');
+  assert_equals(el.cols, 20, 'cols defaults to 20');
+  assert_equals(el.rows, 2, 'rows defaults to 2');
+  el.setAttribute('cols', '0');
+  assert_equals(el.cols, 20, 'cols is limited to positive numbers, so 0 is invalid');
+  el.setAttribute('rows', 'nonsense');
+  assert_equals(el.rows, 2, 'an unparseable rows falls back to the default');
+  assert_equals(el.maxLength, -1, 'maxLength defaults to -1');
+}, 'textarea reflects its integer attributes with the right defaults');
+
+// ---------------------------------------------------------------------------
+// option.value / .label / .text - fallback to the option's text
+// ---------------------------------------------------------------------------
+
+test(() => {
+  const el = document.createElement('option');
+  assert_equals(el.value, '', 'no attribute and no text');
+
+  el.appendChild(document.createTextNode(' the text '));
+  assert_equals(el.text, 'the text', 'text is stripped and collapsed');
+  assert_equals(el.value, 'the text', 'value falls back to the text');
+  assert_equals(el.label, 'the text', 'label falls back to the text as well');
+
+  el.setAttribute('value', '');
+  assert_equals(el.value, '', 'an EMPTY value attribute is a value, not an absent one');
+
+  el.setAttribute('value', 'v');
+  assert_equals(el.value, 'v', 'a present value attribute wins over the text');
+  assert_equals(el.text, 'the text', 'text is unaffected by the value attribute');
+}, 'option.value falls back to the option text when the attribute is absent');
+
+test(() => {
+  const el = document.createElement('option');
+  el.textContent = 'a \t\n b';
+  assert_equals(el.text, 'a b', 'internal whitespace runs collapse to one space');
+  el.textContent = '\u00a0keep\u00a0\u00a0it\u00a0';
+  assert_equals(el.text, '\u00a0keep\u00a0\u00a0it\u00a0', 'NBSP is not ASCII whitespace');
+}, 'option.text strips and collapses ASCII whitespace only');
+
+test(() => {
+  const el = document.createElement('option');
+  el.appendChild(document.createTextNode('before '));
+  el.appendChild(document.createElement('script'))
+    .appendChild(document.createTextNode('script'));
+  el.appendChild(document.createTextNode(' after'));
+  assert_equals(el.text, 'before after', 'script subtrees contribute nothing');
+}, 'option.text is HTML-aware and skips script elements');
+
+// ---------------------------------------------------------------------------
+// option.selected - selectedness with a dirtiness flag
+// ---------------------------------------------------------------------------
+
+test(() => {
+  const el = document.createElement('option');
+  assert_equals(el.selected, false, 'detached and clean');
+  assert_equals(el.defaultSelected, false);
+
+  el.setAttribute('selected', '');
+  assert_equals(el.selected, true, 'clean: tracks the selected attribute');
+  assert_equals(el.defaultSelected, true);
+
+  el.selected = false;
+  assert_equals(el.selected, false, 'dirty: reads back what was assigned');
+  assert_equals(el.defaultSelected, true, 'defaultSelected still reflects the attribute');
+}, 'option.selected detaches from the selected attribute once assigned');
+
+// ---------------------------------------------------------------------------
+// select.value / .selectedIndex - the reset algorithm, and its absence
+// ---------------------------------------------------------------------------
+
+// Built node by node rather than from markup on purpose: this file is pinning
+// select/option/textarea behaviour, and routing through innerHTML would make
+// every assertion here depend on the fragment parser too.
+function makeOption(value, text, attrs) {
+  const option = document.createElement('option');
+  if (value !== null) option.setAttribute('value', value);
+  if (text) option.appendChild(document.createTextNode(text));
+  for (const name in (attrs || {})) option.setAttribute(name, attrs[name]);
+  return option;
+}
+
+function makeSelect(options, attrs) {
+  const select = document.createElement('select');
+  for (const name in (attrs || {})) select.setAttribute(name, attrs[name]);
+  for (const option of options) select.appendChild(option);
+  return select;
+}
+
+function abSelect(attrs) {
+  return makeSelect([makeOption('a', 'a'), makeOption('b', 'b')], attrs);
+}
+
+test(() => {
+  const select = document.createElement('select');
+  assert_equals(select.value, '', 'an empty select has no value');
+  assert_equals(select.selectedIndex, -1, 'and no selected index');
+  assert_equals(select.length, 0);
+  assert_equals(select.type, 'select-one', 'type derives from the multiple attribute');
+}, 'an empty select reports no selection rather than throwing');
+
+test(() => {
+  const select = abSelect();
+  assert_equals(select.length, 2);
+  // Nobody marked an option selected, but a single select of display size 1
+  // cannot have nothing selected - the reset algorithm picks the first enabled
+  // option. This is the case React hits on the very first read.
+  assert_equals(select.selectedIndex, 0, 'the first enabled option is selected');
+  assert_equals(select.value, 'a');
+}, 'a single select auto-selects its first enabled option');
+
+test(() => {
+  const select = makeSelect([makeOption('a', 'a', {disabled: ''}), makeOption('b', 'b')]);
+  assert_equals(select.selectedIndex, 1, 'a disabled option is skipped');
+  assert_equals(select.value, 'b');
+}, 'the auto-selected option is the first ENABLED one');
+
+test(() => {
+  const select = abSelect({multiple: ''});
+  assert_equals(select.type, 'select-multiple');
+  assert_equals(select.selectedIndex, -1, 'a multiple select gets no reset algorithm');
+  assert_equals(select.value, '');
+}, 'a multiple select selects nothing by default');
+
+test(() => {
+  const select = document.createElement('select');
+  const group = document.createElement('optgroup');
+  group.appendChild(makeOption('a', 'a'));
+  select.appendChild(group);
+  const div = document.createElement('div');
+  div.appendChild(makeOption('b', 'b'));
+  select.appendChild(div);
+  // The list of options is a descendant walk, not a child scan: both the option
+  // inside the optgroup and the one inside the div are in it.
+  assert_equals(select.length, 2, 'options nested in an optgroup and a div both count');
+  assert_equals(select.item(1).value, 'b');
+  assert_equals(select.options.length, 2);
+}, 'the list of options walks descendants');
+
+test(() => {
+  const select = abSelect();
+  select.value = 'b';
+  assert_equals(select.value, 'b', 'setting value selects the matching option');
+  assert_equals(select.selectedIndex, 1);
+  assert_equals(select.options[1].selected, true);
+  assert_equals(select.options[0].selected, false, 'and deselects the others');
+
+  // The dirtiness half: a later `selected` attribute write must not clobber what
+  // the value setter chose.
+  select.options[0].setAttribute('selected', '');
+  assert_equals(select.value, 'b', 'the attribute no longer wins');
+  assert_equals(select.options[0].defaultSelected, true, 'but defaultSelected sees it');
+}, 'select.value selects by option value and detaches from the attributes');
+
+test(() => {
+  const select = abSelect();
+  select.value = 'nonexistent';
+  // The value setter does NOT ask for a reset, so it is allowed to leave nothing
+  // selected - the first enabled option must not quietly take over.
+  assert_equals(select.value, '', 'no match leaves nothing selected');
+  assert_equals(select.selectedIndex, -1);
+}, 'select.value with no matching option leaves nothing selected');
+
+test(() => {
+  const select = abSelect();
+  select.selectedIndex = 1;
+  assert_equals(select.value, 'b');
+  select.selectedIndex = -1;
+  assert_equals(select.selectedIndex, -1, 'selectedIndex = -1 clears the selection');
+  assert_equals(select.value, '');
+}, 'select.selectedIndex = -1 leaves nothing selected');
+
+test(() => {
+  const select = abSelect();
+  select.options[1].selected = true;
+  assert_equals(select.selectedIndex, 1);
+  // Unlike the value setter, `option.selected = false` DOES ask for a reset, so
+  // the first enabled option comes back.
+  select.options[1].selected = false;
+  assert_equals(select.selectedIndex, 0, 'deselecting an option asks for a reset');
+  assert_equals(select.value, 'a');
+}, 'option.selected = false asks for a reset, unlike select.value');
+
+test(() => {
+  const select = makeSelect([
+    makeOption('a', 'a', {selected: ''}),
+    makeOption('b', 'b', {selected: ''}),
+  ]);
+  // Two selected options in a single select: all but the LAST are cleared.
+  assert_equals(select.selectedIndex, 1, 'the last selected option wins');
+  assert_equals(select.value, 'b');
+  assert_equals(select.options[0].selected, false);
+}, 'a single select keeps only the last selected option');
+
+test(() => {
+  const select = document.createElement('select');
+  const a = document.createElement('option');
+  a.value = 'a';
+  const b = document.createElement('option');
+  b.value = 'b';
+  select.add(a);
+  select.add(b, a);
+  assert_equals(select.length, 2);
+  assert_equals(select.item(0), b, 'add(element, before) inserts before the reference');
+  assert_equals(select.item(1), a);
+
+  const c = document.createElement('option');
+  c.value = 'c';
+  select.add(c, 0);
+  assert_equals(select.item(0), c, 'a numeric before is an index into the list');
+  assert_equals(select.length, 3);
+}, 'select.add inserts before an element or an index');
+
+test(() => {
+  const select = makeSelect([makeOption('a', 'a')]);
+  const index = select.options[0].index;
+  assert_equals(index, 0, 'index is the position in the list of options');
+  assert_equals(document.createElement('option').index, 0,
+    'an option outside a select has index 0');
+}, 'option.index reports its position in the select');
+</script>
