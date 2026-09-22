@@ -1,0 +1,114 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>window.postMessage runs the "window post message steps"</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/web-messaging.html#window-post-message-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Resolves with the next message event whose data carries `tag`. Rejects after
+// two seconds rather than waiting out the harness timeout, so an engine that
+// drops the message fails this subtest instead of hanging the file.
+function nextMessage(t, tag) {
+  return new Promise((resolve, reject) => {
+    window.addEventListener("message", function listener(e) {
+      if (e.data && e.data.tag === tag) {
+        window.removeEventListener("message", listener);
+        resolve(e);
+      }
+    });
+    t.step_timeout(() => reject(new Error(`no "${tag}" message within 2s`)), 2000);
+  });
+}
+
+// Step 8 queues a task. A listener added after postMessage returns, in the same
+// task, must still hear the message - which is exactly what a child document
+// posting to its parent during a synchronous iframe load relies on.
+promise_test(async t => {
+  window.postMessage({tag: "late-listener"}, "*");
+  const e = await nextMessage(t, "late-listener");
+  assert_equals(e.data.tag, "late-listener");
+}, "the message is delivered in a later task, not during postMessage");
+
+promise_test(async t => {
+  const order = [];
+  const got = nextMessage(t, "order").then(() => order.push("message"));
+  window.postMessage({tag: "order"}, "*");
+  Promise.resolve().then(() => order.push("microtask"));
+  await got;
+  assert_array_equals(order, ["microtask", "message"]);
+}, "microtasks queued after postMessage run before the message event");
+
+// Step 7 serializes synchronously; step 8.4 deserializes in the target realm.
+promise_test(async t => {
+  const payload = {tag: "clone", n: 1, nested: {x: 1}};
+  const got = nextMessage(t, "clone");
+  window.postMessage(payload, "*");
+  payload.n = 2;
+  payload.nested.x = 2;
+  const e = await got;
+  assert_not_equals(e.data, payload, "data is a copy, not the posted object");
+  assert_equals(e.data.n, 1, "a mutation after postMessage is not observed");
+  assert_equals(e.data.nested.x, 1, "the copy is deep");
+}, "the message is a structured clone taken when postMessage is called");
+
+test(() => {
+  assert_throws_dom("DataCloneError", () => window.postMessage(function() {}, "*"));
+}, "an uncloneable message throws DataCloneError synchronously");
+
+test(() => {
+  assert_throws_dom("SyntaxError", () => window.postMessage("x", "not a url"));
+}, "a targetOrigin that is not a URL throws SyntaxError");
+
+// Step 5.3: targetOrigin is parsed and reduced to its origin, so a full URL
+// with a path matches the window's origin.
+promise_test(async t => {
+  const got = nextMessage(t, "url-target");
+  window.postMessage({tag: "url-target"}, location.href);
+  const e = await got;
+  assert_equals(e.data.tag, "url-target");
+}, "a targetOrigin given as a URL with a path is reduced to its origin");
+
+promise_test(async t => {
+  const got = nextMessage(t, "slash-target");
+  window.postMessage({tag: "slash-target"}, "/");
+  await got;
+}, "targetOrigin '/' means the poster's own origin");
+
+promise_test(async t => {
+  let delivered = false;
+  const listener = e => { if (e.data && e.data.tag === "wrong-origin") delivered = true; };
+  window.addEventListener("message", listener);
+  t.add_cleanup(() => window.removeEventListener("message", listener));
+  window.postMessage({tag: "wrong-origin"}, "http://example.invalid");
+  // A message that is going to be delivered is delivered by the next task; one
+  // posted after it is a marker that the first had its chance.
+  window.postMessage({tag: "marker"}, "*");
+  await nextMessage(t, "marker");
+  assert_false(delivered, "a message for another origin is dropped");
+}, "a message whose targetOrigin does not match is dropped");
+
+promise_test(async t => {
+  const got = nextMessage(t, "attributes");
+  window.postMessage({tag: "attributes"}, "*");
+  const e = await got;
+  assert_true(e instanceof MessageEvent, "a MessageEvent");
+  assert_equals(e.type, "message");
+  assert_equals(e.origin, location.origin, "origin");
+  assert_equals(e.origin, location.origin, "origin read a second time");
+  assert_equals(e.source, window, "source is the posting WindowProxy");
+  assert_equals(e.lastEventId, "");
+  assert_false(e.bubbles, "bubbles");
+  assert_false(e.cancelable, "cancelable");
+}, "the message event's attributes");
+
+// The event outlives its dispatch: script may keep it and read it later.
+promise_test(async t => {
+  const got = nextMessage(t, "kept");
+  window.postMessage({tag: "kept", value: 42}, "*");
+  const e = await got;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(e.data.value, 42, "data");
+  assert_equals(e.origin, location.origin, "origin");
+}, "an event kept past its dispatch still reads correctly");
+</script>
