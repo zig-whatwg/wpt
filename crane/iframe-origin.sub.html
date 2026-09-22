@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>An iframe's Window has its document's origin, not its container's</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const CROSS = "http://{{domains[www]}}:{{ports[http][0]}}";
+const SAME = "http://{{host}}:{{ports[http][0]}}";
+
+function nextMessage(t, kind) {
+  return new Promise((resolve, reject) => {
+    window.addEventListener("message", function listener(e) {
+      if (e.data && e.data.kind === kind) {
+        window.removeEventListener("message", listener);
+        resolve(e);
+      }
+    });
+    t.step_timeout(() => reject(new Error(`no "${kind}" message within 3s`)), 3000);
+  });
+}
+
+function frameAt(t, origin) {
+  const iframe = document.createElement("iframe");
+  const loaded = nextMessage(t, "loaded");
+  iframe.src = origin + "/crane/resources/origin-echo.html";
+  document.body.appendChild(iframe);
+  t.add_cleanup(() => iframe.remove());
+  return loaded.then(e => ({iframe, win: iframe.contentWindow, e}));
+}
+
+test(() => {
+  assert_equals(self.origin, SAME);
+}, "self.origin is the page's origin");
+
+promise_test(async t => {
+  const {e} = await frameAt(t, SAME);
+  assert_equals(e.data.origin, SAME, "the frame's self.origin");
+  assert_equals(e.origin, SAME, "the origin its message came from");
+}, "a same-origin frame reports the page's origin");
+
+promise_test(async t => {
+  const {e} = await frameAt(t, CROSS);
+  assert_equals(e.data.origin, CROSS, "the frame's self.origin");
+  assert_equals(e.origin, CROSS, "the origin its message came from");
+}, "a cross-origin frame has its own document's origin");
+
+promise_test(async t => {
+  const {win} = await frameAt(t, CROSS);
+  const echo = nextMessage(t, "echo");
+  win.postMessage("to the frame's origin", CROSS);
+  const e = await echo;
+  assert_equals(e.data.data, "to the frame's origin");
+  assert_equals(e.data.from, SAME, "the frame saw the page's origin");
+}, "a message aimed at the frame's real origin is delivered");
+
+promise_test(async t => {
+  const {win} = await frameAt(t, CROSS);
+  let delivered = false;
+  const listener = e => { if (e.data && e.data.kind === "echo" && e.data.data === "wrong") delivered = true; };
+  window.addEventListener("message", listener);
+  t.add_cleanup(() => window.removeEventListener("message", listener));
+  win.postMessage("wrong", SAME);
+  win.postMessage("marker", CROSS);
+  const marker = await nextMessage(t, "echo");
+  assert_equals(marker.data.data, "marker");
+  assert_false(delivered, "a message for the container's origin is not delivered to the frame");
+}, "a message aimed at the container's origin is dropped by a cross-origin frame");
+
+promise_test(async t => {
+  const {win} = await frameAt(t, CROSS);
+  assert_throws_dom("SecurityError", () => win.document);
+}, "a cross-origin frame's document is not readable from the page");
+</script>

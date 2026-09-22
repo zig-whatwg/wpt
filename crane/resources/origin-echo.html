@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset=utf-8>
+<script>
+// Reports this frame's origin to its parent, then answers every message with
+// what it saw: the data, the sender's origin, and its own origin.
+parent.postMessage({kind: "loaded", origin: self.origin}, "*");
+onmessage = e => {
+  e.source.postMessage({kind: "echo", data: e.data, from: e.origin, origin: self.origin}, "*");
+};
+</script>
