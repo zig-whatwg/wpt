@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Directly-constructed Event subclasses can be dispatched</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// https://dom.spec.whatwg.org/#concept-event-constructor
+//
+// Every Event subclass constructor runs the Event constructor's steps, which
+// set the "initialized flag". dispatchEvent step 1 throws InvalidStateError if
+// that flag is unset, so a subclass whose constructor skips it produces an
+// event that can be created but NEVER dispatched.
+//
+// Nine impls did exactly that: they filled in the inherited attributes but
+// never created Event's own InternalState, so Event.getInternal() returned
+// null, initializeEvent silently no-opped, and the flag stayed unset.
+//
+// This matters well beyond the constructors themselves: addEventListener is
+// the only way to observe most of these, so a test using
+// `new CustomEvent(...)` + dispatchEvent saw a throw, while the same event
+// delivered through an onX IDL attribute worked - which makes the bug look
+// like an addEventListener problem.
+
+function roundTrip(name, makeEvent, type) {
+  test(() => {
+    const target = new EventTarget();
+    let seen = null;
+    target.addEventListener(type, (e) => { seen = e; });
+    const ev = makeEvent();
+    // The actual regression: this threw InvalidStateError.
+    const notCancelled = target.dispatchEvent(ev);
+    assert_true(notCancelled, 'dispatchEvent returns true for a non-cancelled event');
+    assert_equals(seen, ev, 'the listener received the very event dispatched');
+    assert_equals(seen.type, type, 'type survives the round trip');
+  }, name + ' can be constructed and dispatched');
+}
+
+roundTrip('CustomEvent',  () => new CustomEvent('custom-ev'),        'custom-ev');
+roundTrip('MessageEvent', () => new MessageEvent('message-ev'),      'message-ev');
+roundTrip('ProgressEvent',() => new ProgressEvent('progress-ev'),    'progress-ev');
+roundTrip('ErrorEvent',   () => new ErrorEvent('error-ev'),          'error-ev');
+roundTrip('CloseEvent',   () => new CloseEvent('close-ev'),          'close-ev');
+roundTrip('MouseEvent',   () => new MouseEvent('mouse-ev'),          'mouse-ev');
+
+test(() => {
+  // The subclass's own fields must survive, not just the inherited ones - the
+  // fix must not clobber the subclass InternalState it already created.
+  const ev = new ProgressEvent('p', {lengthComputable: true, loaded: 3, total: 7});
+  assert_true(ev.lengthComputable, 'lengthComputable');
+  assert_equals(ev.loaded, 3, 'loaded');
+  assert_equals(ev.total, 7, 'total');
+}, 'ProgressEvent keeps its own init members');
+
+test(() => {
+  // CustomEvent.detail likewise.
+  const ev = new CustomEvent('c', {detail: {a: 1}});
+  assert_equals(typeof ev.detail, 'object', 'detail is preserved');
+  assert_equals(ev.detail.a, 1, 'detail contents preserved');
+}, 'CustomEvent keeps its detail');
+
+test(() => {
+  // bubbles/cancelable come from the dictionary and must reach dispatch.
+  const target = new EventTarget();
+  let phase = null;
+  target.addEventListener('cancel-ev', (e) => { phase = e.cancelable; e.preventDefault(); });
+  const ev = new CustomEvent('cancel-ev', {cancelable: true});
+  const notCancelled = target.dispatchEvent(ev);
+  assert_true(phase, 'listener saw cancelable=true');
+  assert_false(notCancelled, 'preventDefault makes dispatchEvent return false');
+  assert_true(ev.defaultPrevented, 'defaultPrevented is set');
+}, 'a cancelable subclass event can be cancelled');
+</script>
