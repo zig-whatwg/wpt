@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>createHTMLDocument produces a usable document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// https://dom.spec.whatwg.org/#dom-domimplementation-createhtmldocument
+//
+// documentElement is DEFINED as the document's first element child, not as a
+// field somebody remembered to set. Crane cached it and only the PARSER paths
+// ever assigned it - HTMLParser, dom_tree_adapter, scripted_parser,
+// context_manager - so a document built through the DOM API had
+// documentElement === null, and therefore body === null, even though
+// createHTMLDocument had correctly created and appended html/head/body.
+//
+// This is not a niche API. dom/common.js builds its fixtures inside setup()
+// with `foreignDoc.body.appendChild(...)`, and testharness rethrows out of
+// setup(), so this one null turned entire FILES into a harness ERROR with zero
+// subtests - about 20 of them in dom/ranges alone, plus the dom/nodes files
+// that use common.js.
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("t");
+  assert_not_equals(doc.documentElement, null, 'documentElement exists');
+  assert_equals(doc.documentElement.localName, 'html', 'it is <html>');
+}, 'createHTMLDocument gives a documentElement');
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("t");
+  assert_not_equals(doc.body, null, 'body exists');
+  assert_equals(doc.body.localName, 'body', 'it is <body>');
+  assert_equals(doc.body.parentNode, doc.documentElement, 'body is a child of html');
+}, 'createHTMLDocument gives a body');
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("t");
+  assert_not_equals(doc.head, null, 'head exists');
+  assert_equals(doc.head.localName, 'head', 'it is <head>');
+}, 'createHTMLDocument gives a head');
+
+test(() => {
+  // The exact shape dom/common.js depends on.
+  const doc = document.implementation.createHTMLDocument("");
+  const div = doc.createElement('div');
+  doc.body.appendChild(div);
+  assert_equals(div.parentNode, doc.body, 'appendChild into the new body works');
+}, 'a createHTMLDocument body accepts children (the common.js pattern)');
+
+test(() => {
+  // documentElement must be computed from the tree, not read from a field the
+  // parser happened to set. createDocument builds its root through the DOM API,
+  // so nothing on the parser path ever assigns the cache.
+  const doc = document.implementation.createDocument(null, 'root', null);
+  assert_not_equals(doc.documentElement, null, 'documentElement exists');
+  assert_equals(doc.documentElement.localName, 'root', 'it is the created root');
+  assert_equals(doc.documentElement, doc.firstElementChild,
+                'documentElement IS the first element child');
+}, 'documentElement is computed for a DOM-built document too');
+</script>
