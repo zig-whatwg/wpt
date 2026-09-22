@@ -5,6 +5,7 @@
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <body>
+<iframe src="about:blank"></iframe>
 <script>
 // Resolves with the next message event whose data carries `tag`. Rejects after
 // two seconds rather than waiting out the harness timeout, so an engine that
@@ -29,6 +30,20 @@ promise_test(async t => {
   const e = await nextMessage(t, "late-listener");
   assert_equals(e.data.tag, "late-listener");
 }, "the message is delivered in a later task, not during postMessage");
+
+// The same, posting to a child window: the task is queued on the TARGET's
+// event loop, so an iframe's context has to have one.
+// (webmessaging/without-ports/017.html has this exact shape.)
+promise_test(async t => {
+  const child = window[0];
+  child.postMessage({tag: "child"}, "*");
+  const e = await new Promise((resolve, reject) => {
+    child.onmessage = resolve;
+    t.step_timeout(() => reject(new Error("no message within 2s")), 2000);
+  });
+  assert_equals(e.data.tag, "child");
+  assert_equals(e.source, window, "source is the posting window");
+}, "a message posted to an iframe's window is delivered in a later task");
 
 promise_test(async t => {
   const order = [];
