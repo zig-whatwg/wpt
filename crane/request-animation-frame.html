@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>requestAnimationFrame fires its callback with a timestamp</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames
+//
+// Crane is headless and paints nothing, but rAF is still an event-loop feature:
+// the callbacks run in the "update the rendering" step, which a headless engine
+// still has. Before this test existed, call_requestAnimationFrame discarded its
+// callback and returned 0, so every rAF in WPT hung for the full timeout - rAF
+// is the standard "wait one frame" idiom, so this reached ~90 worklist sources.
+
+test(() => {
+  // Step 2: the handle is an "implementation-defined integer" that must be
+  // distinguishable from the "no callback" case. 0 is the failure sentinel used
+  // elsewhere in this engine, so a real registration must not return it.
+  const handle = requestAnimationFrame(() => {});
+  assert_greater_than(handle, 0, 'handle must be non-zero');
+  cancelAnimationFrame(handle);
+}, 'requestAnimationFrame returns a non-zero handle');
+
+async_test((t) => {
+  requestAnimationFrame(t.step_func_done((timestamp) => {
+    // The callback is invoked with "now", a DOMHighResTimeStamp.
+    assert_equals(typeof timestamp, 'number', 'callback receives a number');
+    assert_true(isFinite(timestamp), 'timestamp is finite');
+    assert_greater_than_equal(timestamp, 0, 'timestamp is non-negative');
+  }));
+}, 'requestAnimationFrame invokes the callback with a DOMHighResTimeStamp');
+
+async_test((t) => {
+  let ran = false;
+  const handle = requestAnimationFrame(() => { ran = true; });
+  cancelAnimationFrame(handle);
+  // Give it several frames' worth of slack before concluding it did not run.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(t.step_func_done(() => {
+      assert_false(ran, 'a cancelled callback must not run');
+    }));
+  });
+}, 'cancelAnimationFrame prevents the callback');
+
+async_test((t) => {
+  // Every callback in one frame's batch gets the SAME timestamp and they run in
+  // registration order. This is why rAF cannot be implemented as one
+  // independent timer per callback.
+  const order = [];
+  const stamps = [];
+  requestAnimationFrame((ts) => { order.push('a'); stamps.push(ts); });
+  requestAnimationFrame((ts) => { order.push('b'); stamps.push(ts); });
+  requestAnimationFrame(t.step_func_done((ts) => {
+    order.push('c');
+    stamps.push(ts);
+    assert_array_equals(order, ['a', 'b', 'c'], 'callbacks run in registration order');
+    assert_equals(stamps[0], stamps[1], 'same frame shares one timestamp');
+    assert_equals(stamps[1], stamps[2], 'same frame shares one timestamp');
+  }));
+}, 'one frame runs all its callbacks in order with a single shared timestamp');
+
+async_test((t) => {
+  // A callback registered from INSIDE a frame's batch must be deferred to a
+  // later frame, never run in the batch already in progress.
+  requestAnimationFrame((first) => {
+    let reentrant_ran = false;
+    requestAnimationFrame(t.step_func_done((second) => {
+      assert_greater_than_equal(second, first, 'later frame is not earlier');
+      assert_true(reentrant_ran === false || second !== first,
+                  'a callback added during a batch does not join that batch');
+    }));
+    // If the implementation ran the new callback inline, this would already be true.
+    assert_false(reentrant_ran, 'not invoked synchronously');
+  });
+}, 'a callback registered during a frame runs on a later frame');
+
+async_test((t) => {
+  // "Run the animation frame callbacks" takes the callback list, then iterates
+  // it skipping entries whose cancelled flag is set. So cancelling from INSIDE
+  // a callback must still suppress a SIBLING registered for the same frame -
+  // an implementation that only searches the pending list cannot do this,
+  // because the batch is no longer in it.
+  let victim_ran = false;
+  let first_ran = false;
+  requestAnimationFrame(() => {
+    first_ran = true;
+    cancelAnimationFrame(victim);
+  });
+  const victim = requestAnimationFrame(() => { victim_ran = true; });
+  requestAnimationFrame(t.step_func_done(() => {
+    assert_true(first_ran, 'the cancelling callback ran');
+    assert_false(victim_ran, 'a sibling cancelled mid-frame must not run');
+  }));
+}, 'cancelAnimationFrame from inside a callback suppresses a sibling in the same frame');
+</script>
