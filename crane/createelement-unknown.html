@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>createElement with an unknown name returns HTMLUnknownElement</title>
+<p>Body content first, like a real WPT file.
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// https://dom.spec.whatwg.org/#dom-document-createelement
+//
+// An unrecognised local name is NOT an error: "create an element" returns an
+// HTMLUnknownElement (or a custom element). Crane threw InvalidStateError for
+// every name its element factory did not recognise.
+//
+// The factory itself was correct - it returned HTMLUnknownElement. The throw
+// came one line later, from `Element.setLocalName`, because
+// HTMLUnknownElement.init was still the raw codegen stub:
+//
+//     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+//     // TODO: Initialize your instance state here if needed
+//
+// It never chained to HTMLElementImpl.init, so Element/Node/EventTarget state
+// was never created and every accessor on the result failed. Same defect as
+// 82784123d fixed for CDATASection and ProcessingInstruction.
+//
+// This is what makes it matter: dom/common.js line 91 does
+// `xmlDoc.createElement("everyone-hates-hyphenated-element-names")` inside
+// setup(), testharness rethrows out of setup(), and the whole FILE becomes a
+// harness ERROR with zero subtests. It also blocks custom elements, since
+// every custom tag name is an unknown name until it is defined.
+
+test(() => {
+  const el = document.createElement('div');
+  assert_not_equals(el, null);
+  assert_equals(el.localName, 'div');
+}, 'a known name still works');
+
+test(() => {
+  const el = document.createElement('foo');
+  assert_not_equals(el, null, 'returns an element rather than throwing');
+  assert_equals(el.localName, 'foo', 'localName round-trips');
+  assert_equals(el.nodeName, 'FOO', 'nodeName is the uppercased name');
+}, 'an unknown simple name returns an element');
+
+test(() => {
+  const el = document.createElement('everyone-hates-hyphenated-element-names');
+  assert_not_equals(el, null);
+  assert_equals(el.localName, 'everyone-hates-hyphenated-element-names');
+}, 'an unknown hyphenated name returns an element (common.js line 91)');
+
+test(() => {
+  // The result must be a usable node, not just non-null.
+  const el = document.createElement('foo');
+  const child = document.createElement('bar');
+  el.appendChild(child);
+  assert_equals(child.parentNode, el, 'unknown elements accept children');
+  el.setAttribute('x', '1');
+  assert_equals(el.getAttribute('x'), '1', 'unknown elements carry attributes');
+}, 'an unknown element is fully functional');
+
+test(() => {
+  // Documents from createDocument and createHTMLDocument must behave the same.
+  const xmlDoc = document.implementation.createDocument(null, null, null);
+  assert_not_equals(xmlDoc.createElement('foo'), null, 'createDocument doc');
+  const htmlDoc = document.implementation.createHTMLDocument('t');
+  assert_not_equals(htmlDoc.createElement('foo'), null, 'createHTMLDocument doc');
+}, 'unknown names work on DOM-built documents too');
+</script>
