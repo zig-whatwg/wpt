@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset=utf-8><title>input autofill expansion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function check(attr, expected) {
+  const el = document.createElement('input');
+  if (attr !== null) el.setAttribute('autocomplete', attr);
+  assert_equals(el.autocomplete, expected, JSON.stringify(attr));
+}
+test(() => {
+  check(null, '');
+  check('on', 'on');
+  check('off', 'off');
+  check('foobar', '');
+  check('tel', 'tel');
+  check('home tel', 'home tel');
+  check('shipping country', 'shipping country');
+  check('section-foo bday', 'section-foo bday');
+  check('username webauthn', 'username webauthn');
+  check('home country', '');       // country is not a contact field
+  check('tel home', '');           // wrong order
+  check('SHIPPING   Country', 'shipping country');
+}, 'input.autocomplete autofill expansion');
+</script>

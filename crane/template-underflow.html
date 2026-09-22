@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>A stray template end tag must not underflow the insertion-mode stack</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id=host></div>
+<script>
+// tree_builder.zig pops the template insertion mode with
+// `remove(len - 1)` and no emptiness check. On an unsigned length that
+// underflows, and Zig's safety check aborts the PROCESS - taking every other
+// test in the file with it. A stray end tag is all it takes to reach it.
+test(() => {
+  const host = document.getElementById('host');
+  host.innerHTML = '</template>';
+  assert_equals(host.children.length, 0, 'a stray end tag produces no element');
+}, 'stray </template> in innerHTML');
+
+test(() => {
+  const host = document.getElementById('host');
+  host.innerHTML = '<template></template></template>';
+  assert_equals(host.children.length, 1, 'the extra end tag is ignored');
+}, 'unbalanced </template> in innerHTML');
+
+test(() => {
+  const host = document.getElementById('host');
+  host.innerHTML = '<table><template><tr></tr></template></table>';
+  assert_true(host.children.length >= 1, 'template in table parses');
+}, 'template inside table');
+</script>
