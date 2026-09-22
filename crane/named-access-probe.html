@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Named access on the Window object (HTML 7.3.3)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="byId"></div>
+<form name="byName"></form>
+<iframe name="childFrame" srcdoc=""></iframe>
+<script>
+test(() => {
+  assert_equals(Object.getPrototypeOf(window), Window.prototype);
+}, "the global's [[Prototype]] is Window.prototype (known gap: snapshot placeholder)");
+test(() => {
+  const chain = [];
+  for (let o = Object.getPrototypeOf(window); o; o = Object.getPrototypeOf(o))
+    chain.push(Object.prototype.toString.call(o));
+  assert_true(chain.includes("[object WindowProperties]"), chain.join(" > "));
+  assert_true(window instanceof EventTarget, "window instanceof EventTarget");
+}, "WindowProperties and EventTarget.prototype are on the global's chain");
+test(() => {
+  const w = frames[0];
+  assert_equals(w.eval("typeof document.body"), "object");
+  w.document.body.innerHTML = '<p id="inner"></p>';
+  assert_equals(w.inner, w.document.getElementById("inner"));
+}, "named access works in an iframe's window too");
+test(() => assert_equals(window.byId, document.getElementById("byId")), "window.<id> is the element");
+test(() => assert_equals(byId, document.getElementById("byId")), "a bare <id> identifier resolves");
+test(() => assert_true("byId" in window), "'<id>' in window");
+test(() => assert_equals(window.byName, document.forms[0]), "window.<form name> is the form");
+test(() => assert_equals(window.childFrame, document.querySelector("iframe").contentWindow), "window.<iframe name> is its WindowProxy");
+test(() => assert_equals(window.doesNotExist, undefined), "an unknown name is undefined");
+
+</script>
