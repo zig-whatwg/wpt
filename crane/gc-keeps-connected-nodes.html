@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A connected node survives the collection of its wrapper</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="host"></div>
+<script>
+// The engine owns a node that is in the tree; V8 only owns the wrapper. If
+// collecting the wrapper destroys the node, the tree now holds a freed node
+// and the next walk over it (teardown, childNodes, textContent) reads freed
+// memory. Build nodes, drop every JS reference, force a collection, walk.
+setup(() => {
+  const host = document.getElementById("host");
+  for (let i = 0; i < 200; i++) {
+    const d = document.createElement("div");
+    d.id = "n" + i;
+    d.appendChild(document.createTextNode("t" + i));
+    host.appendChild(d);
+  }
+});
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+promise_test(async () => {
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  const host = document.getElementById("host");
+  assert_equals(host.childNodes.length, 200, "children still present");
+  assert_equals(host.firstChild.id, "n0");
+  assert_equals(host.lastChild.textContent, "t199");
+  assert_equals(host.textContent.length, "t0".length * 10 + "t10".length * 90 + "t100".length * 100, "all text survived");
+}, "200 connected nodes survive two collections with no JS reference to them");
+promise_test(async () => {
+  // WebKit keeps a connected node's wrapper reachable through its tree's
+  // opaque root; Blink traces it through the node. Either way an expando
+  // set on a connected element is still there after a collection, and the
+  // wrapper handed back is the same object.
+  const before = document.getElementById("n7");
+  before.expando = "kept";
+  const same = new WeakRef(before);
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  const after = document.getElementById("n7");
+  assert_equals(after.expando, "kept", "expando survives");
+  assert_equals(after, same.deref(), "same wrapper object");
+}, "a connected element keeps its wrapper, its identity and its expandos across a collection");
+</script>
