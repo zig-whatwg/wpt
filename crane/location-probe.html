@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The navigated URL's query reaches location and document.URL</title>
+<meta name="variant" content="?probe=1">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => assert_equals(location.search, "?probe=1"), "location.search carries the variant");
+test(() => assert_equals(location.pathname, "/crane/location-probe.html"), "location.pathname is the page");
+test(() => assert_true(document.URL.endsWith("?probe=1"), "document.URL was " + document.URL), "document.URL carries the variant");
+test(() => assert_equals(location.href, document.URL), "location.href equals document.URL");
+</script>
