@@ -115,6 +115,10 @@ promise_test(async t => {
   assert_equals(e.lastEventId, "");
   assert_false(e.bubbles, "bubbles");
   assert_false(e.cancelable, "cancelable");
+  // Step 8.6: a new frozen array of the transferred ports - empty here.
+  assert_array_equals(e.ports, [], "ports");
+  assert_true(Object.isFrozen(e.ports), "ports is frozen");
+  assert_equals(e.ports, e.ports, "ports is the same array on every read");
 }, "the message event's attributes");
 
 // The event outlives its dispatch: script may keep it and read it later.
