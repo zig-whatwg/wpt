@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>iframe src navigates through the engine and fires load</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-iframe-element">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigating-across-documents">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id=log></div>
+<body>
+<script>
+// An iframe whose src is a relative or http(s) URL must actually navigate:
+// resolve the URL against the container document, fetch it, build a Document
+// of the type the response's MIME type calls for, and fire `load` at the
+// element. Every assertion below is reachable only if the load event fires.
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.addEventListener('load', t.step_func_done(function() {
+    assert_equals(iframe.contentDocument.contentType, 'text/html',
+                  'HTML MIME type produces an HTML document');
+    var marker = iframe.contentDocument.getElementById('marker');
+    assert_true(marker !== null, 'the fetched markup was parsed into the document');
+    assert_equals(marker.textContent, 'hello');
+  }), false);
+  iframe.src = 'resources/iframe-src-hello.html';
+  document.body.appendChild(iframe);
+}, 'relative src: document loads, is parsed, and fires load');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.addEventListener('load', t.step_func_done(function() {
+    assert_equals(iframe.contentDocument.contentType, 'text/plain',
+                  'text/plain routes to "loading a text document"');
+  }), false);
+  iframe.src = 'resources/iframe-src-plain.txt';
+  document.body.appendChild(iframe);
+}, 'relative src: text/plain becomes a text document');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.addEventListener('load', t.step_func_done(function() {
+    assert_equals(iframe.contentDocument.contentType, 'text/css',
+                  'text/css routes to "loading a text document"');
+  }), false);
+  iframe.src = 'resources/iframe-src-style.css';
+  document.body.appendChild(iframe);
+}, 'relative src: text/css becomes a text document');
+
+// A dot-segment relative URL is the shape the Document-contentType tests use
+// ("../resources/style.css"). It only resolves correctly through a real URL
+// parser, so it is pinned separately from the plain relative case above.
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.addEventListener('load', t.step_func_done(function() {
+    assert_equals(iframe.contentDocument.contentType, 'text/html');
+  }), false);
+  iframe.src = './resources/../resources/iframe-src-hello.html';
+  document.body.appendChild(iframe);
+}, 'relative src with dot segments resolves against the container document');
+
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  iframe.addEventListener('load', t.step_func_done(function() {
+    assert_equals(iframe.contentDocument.contentType, 'text/html');
+  }), false);
+  iframe.src = location.href.replace(/[^\/]*$/, 'resources/iframe-src-hello.html');
+  document.body.appendChild(iframe);
+}, 'absolute http(s) src loads and fires load');
+
+// Setting src on an already-connected iframe must navigate too, not only the
+// set-before-append ordering the surrounding tests use.
+async_test(function(t) {
+  var iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  iframe.addEventListener('load', t.step_func_done(function() {
+    assert_equals(iframe.contentDocument.contentType, 'text/html');
+  }), false);
+  iframe.src = 'resources/iframe-src-hello.html';
+}, 'src set after insertion navigates and fires load');
+</script>
+</body>
