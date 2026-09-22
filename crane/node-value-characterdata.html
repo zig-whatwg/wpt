@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<title>nodeValue/textContent/cloneNode/isEqualNode read and write CharacterData data</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<div id=log></div>
+<script>
+// https://dom.spec.whatwg.org/#dom-node-nodevalue
+test(function() {
+  var t = document.createTextNode("abc");
+  assert_equals(t.nodeValue, "abc", "getter reads data");
+  t.nodeValue = "xyz";
+  assert_equals(t.data, "xyz", "setter writes data");
+  assert_equals(t.nodeValue, "xyz", "setter is visible to getter");
+}, "Text nodeValue setter replaces data");
+
+test(function() {
+  var c = document.createComment("abc");
+  c.nodeValue = "xyz";
+  assert_equals(c.data, "xyz");
+  assert_equals(c.nodeValue, "xyz");
+}, "Comment nodeValue setter replaces data");
+
+test(function() {
+  var t = document.createTextNode("abc");
+  t.nodeValue = null;
+  assert_equals(t.data, "", "null becomes empty string");
+}, "Text nodeValue = null empties data");
+
+// https://dom.spec.whatwg.org/#dom-node-textcontent
+test(function() {
+  var t = document.createTextNode("abc");
+  assert_equals(t.textContent, "abc", "getter reads data");
+  t.textContent = "xyz";
+  assert_equals(t.data, "xyz", "setter writes data");
+  assert_equals(t.textContent, "xyz", "setter is visible to getter");
+}, "Text textContent reads and writes data");
+
+test(function() {
+  var c = document.createComment("hello");
+  assert_equals(c.textContent, "hello");
+  c.textContent = "bye";
+  assert_equals(c.data, "bye");
+}, "Comment textContent reads and writes data");
+
+test(function() {
+  var d = document.createElement("div");
+  d.appendChild(document.createTextNode("abc"));
+  assert_equals(d.firstChild.textContent, "abc", "child Text textContent");
+}, "textContent of a Text child of an element");
+
+// https://dom.spec.whatwg.org/#concept-node-clone
+test(function() {
+  var t = document.createTextNode("abc");
+  var c = t.cloneNode(false);
+  assert_equals(c.data, "abc", "clone keeps data");
+  assert_equals(c.nodeValue, "abc", "clone keeps nodeValue");
+}, "cloneNode copies Text data");
+
+test(function() {
+  var c = document.createComment("abc");
+  assert_equals(c.cloneNode(false).data, "abc");
+}, "cloneNode copies Comment data");
+
+test(function() {
+  var d = document.createElement("div");
+  d.appendChild(document.createTextNode("abc"));
+  var copy = d.cloneNode(true);
+  assert_equals(copy.firstChild.data, "abc", "deep clone keeps descendant text");
+  assert_equals(copy.textContent, "abc");
+}, "deep cloneNode copies descendant Text data");
+
+// https://dom.spec.whatwg.org/#concept-node-equals
+test(function() {
+  var a = document.createTextNode("AAA");
+  var b = document.createTextNode("BBB");
+  assert_false(a.isEqualNode(b), "different data is not equal");
+  var c = document.createTextNode("AAA");
+  assert_true(a.isEqualNode(c), "same data is equal");
+}, "isEqualNode compares Text data");
+
+test(function() {
+  var a = document.createComment("AAA");
+  var b = document.createComment("BBB");
+  assert_false(a.isEqualNode(b), "different data is not equal");
+  assert_true(a.isEqualNode(document.createComment("AAA")), "same data is equal");
+}, "isEqualNode compares Comment data");
+
+test(function() {
+  var a = document.createProcessingInstruction("t", "AAA");
+  assert_equals(a.nodeType, 7, "nodeType");
+  assert_equals(a.target, "t", "target");
+  assert_equals(a.data, "AAA", "data");
+}, "createProcessingInstruction sets target and data");
+
+test(function() {
+  var a = document.createProcessingInstruction("t", "AAA");
+  var b = document.createProcessingInstruction("t", "BBB");
+  assert_false(a.isEqualNode(b), "different data is not equal");
+}, "isEqualNode compares ProcessingInstruction data");
+
+test(function() {
+  var d = document.createElement("div");
+  d.setAttribute("id", "x");
+  d.setAttribute("data-y", "2");
+  var copy = d.cloneNode(false);
+  assert_equals(copy.localName, "div", "localName");
+  assert_equals(copy.tagName, "DIV", "tagName");
+  assert_equals(copy.namespaceURI, "http://www.w3.org/1999/xhtml", "namespace");
+  assert_equals(copy.getAttribute("id"), "x", "attribute id copied");
+  assert_equals(copy.getAttribute("data-y"), "2", "attribute data-y copied");
+}, "cloneNode copies element name and attributes");
+
+test(function() {
+  var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  var copy = svg.cloneNode(false);
+  assert_equals(copy.namespaceURI, "http://www.w3.org/2000/svg", "namespace preserved");
+  assert_equals(copy.localName, "svg", "local name preserved");
+}, "cloneNode preserves a non-HTML namespace");
+</script>

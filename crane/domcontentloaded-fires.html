@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<title>DOMContentLoaded fires at the end of parsing</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<div id=log></div>
+<script>
+var dclFired = false;
+var dclEvent = null;
+document.addEventListener("DOMContentLoaded", function(e) { dclFired = true; dclEvent = e; });
+</script>
+<script>
+// https://html.spec.whatwg.org/multipage/parsing.html#the-end step 4
+async_test(function(t) {
+  setTimeout(t.step_func_done(function() {
+    assert_true(dclFired, "DOMContentLoaded listener ran");
+  }), 0);
+}, "DOMContentLoaded fires at the end of parsing");
+
+async_test(function(t) {
+  setTimeout(t.step_func_done(function() {
+    assert_not_equals(dclEvent, null, "event delivered");
+    assert_equals(dclEvent.type, "DOMContentLoaded", "type");
+    assert_true(dclEvent.bubbles, "bubbles is true");
+    assert_false(dclEvent.cancelable, "cancelable is false");
+  }), 0);
+}, "DOMContentLoaded event is a bubbling, non-cancelable event");
+</script>
