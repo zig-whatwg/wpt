@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Which src forms a dynamically inserted script can resolve</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Splits "the insertion steps never ran" from "the URL never resolved".
+// Each case inserts the same script through a different spelling of its URL.
+function insertAndCheck(src, flag) {
+  window[flag] = false;
+  var s = document.createElement('script');
+  s.src = src;
+  document.body.appendChild(s);
+  return window[flag] === true;
+}
+
+test(function () {
+  assert_true(insertAndCheck(
+    'http://web-platform.test:8000/crane/resources/script-insertion-external.js',
+    '__external_ran'));
+}, 'absolute http URL');
+
+test(function () {
+  assert_true(insertAndCheck(
+    '/crane/resources/script-insertion-external.js?root',
+    '__external_ran'));
+}, 'root-relative URL');
+
+test(function () {
+  assert_true(insertAndCheck(
+    'resources/script-insertion-external.js?rel',
+    '__external_ran'));
+}, 'document-relative URL');
+
+// KNOWN FAILING - documents the next defect precisely, do not delete.
+//
+// `Document.InternalState.base_uri` is initialised to "" and assigned by
+// nothing in the tree, and `internal.url` never leaves "about:blank" - the URL
+// the document was fetched from lives only on the V8 context entry, put there
+// by `context_manager.setDocumentUrl`. script_execution.documentBaseUrl() now
+// falls back to that entry, which is why the three cases above pass, but
+// `document.baseURI` itself still reads the empty field and comes back
+// undefined. The fix is to populate the Document's own URL at navigation time;
+// every other consumer of a document base URL is reading the same empty string.
+test(function () {
+  assert_equals(document.baseURI,
+    'http://web-platform.test:8000/crane/script-insertion-src-forms.html');
+}, 'document.baseURI is the document URL');
+</script>
+</body>

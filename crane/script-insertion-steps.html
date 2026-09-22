@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>A script element inserted by script runs "prepare the script element"</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "the script element" says: "When a script element el that is not
+// parser-inserted experiences one of the events listed in the following list,
+// the user agent must immediately prepare the script element: ... The script
+// element becomes connected."
+//
+// html/semantics/scripting-1/the-script-element/execution-timing/ builds nearly
+// every one of its 153 files out of exactly this - testlib.addScript() creates
+// a script and appendChild()s it - so a gap here is not one failing assertion,
+// it is a directory that cannot finish.
+
+test(function () {
+  window.__inline_ran = false;
+  var s = document.createElement('script');
+  s.appendChild(document.createTextNode('window.__inline_ran = true;'));
+  document.body.appendChild(s);
+  assert_true(window.__inline_ran, 'inline script ran on insertion');
+}, 'Inserting an inline classic script executes it synchronously');
+
+test(function () {
+  window.__text_ran = false;
+  var s = document.createElement('script');
+  s.text = 'window.__text_ran = true;';
+  document.body.appendChild(s);
+  assert_true(window.__text_ran, 'script.text form ran on insertion');
+}, 'Inserting an inline classic script assigned via .text executes it');
+
+test(function () {
+  window.__twice = 0;
+  var s = document.createElement('script');
+  s.text = 'window.__twice++;';
+  document.body.appendChild(s);
+  s.remove();
+  document.body.appendChild(s);
+  assert_equals(window.__twice, 1, 'already started blocks re-execution');
+}, 'Re-inserting an already-started script does not run it again');
+
+test(function () {
+  window.__external_ran = false;
+  var s = document.createElement('script');
+  s.src = 'resources/script-insertion-external.js';
+  document.body.appendChild(s);
+  // Crane's external script fetch is synchronous, so the spec's step 35.1
+  // ready-steps have already run by the time appendChild returns.
+  assert_true(window.__external_ran, 'external script ran');
+}, 'Inserting an external classic script executes it');
+
+// The load event is the other half. event_utils' dispatchEvent is a stub that
+// invokes no listener at all, so before this was routed through
+// EventTarget.dispatchEvent neither of the two ways of hearing about a script
+// worked, and a test that waited for one waited forever.
+var t = async_test('load fires at a script element, for addEventListener');
+t.step(function () {
+  var s = document.createElement('script');
+  s.src = 'resources/script-insertion-external.js?listener';
+  s.addEventListener('load', t.step_func_done(function () {
+    assert_true(true);
+  }));
+  document.body.appendChild(s);
+});
+
+var t2 = async_test('load fires at a script element, for the onload IDL attribute');
+t2.step(function () {
+  var s = document.createElement('script');
+  s.src = 'resources/script-insertion-external.js?idl';
+  s.onload = t2.step_func_done(function () {
+    assert_true(true);
+  });
+  document.body.appendChild(s);
+});
+</script>
+</body>
