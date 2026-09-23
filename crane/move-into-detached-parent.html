@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: inserting a node removes it from its old parent, whatever the new parent</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-insert">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-adopt">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const names = parent => Array.from(parent.childNodes, n => n.nodeName).join(",");
+
+test(() => {
+  const div = document.createElement("div");
+  div.innerHTML = "<p>a</p>\n<b>b</b>";
+  const fragment = document.createDocumentFragment();
+  const p = div.firstChild;
+  fragment.appendChild(p);
+  assert_equals(names(div), "#text,B");
+  assert_equals(div.firstChild.nodeName, "#text");
+  assert_equals(names(fragment), "P");
+  assert_equals(p.parentNode, fragment);
+}, "Moving a first child into a DocumentFragment removes it from the old parent");
+
+test(() => {
+  const a = document.createElement("div");
+  const b = document.createElement("div");
+  const c = document.createElement("span");
+  const d = document.createElement("i");
+  a.append(c, d);
+  b.appendChild(c);
+  assert_equals(names(a), "I");
+  assert_equals(a.firstChild, d);
+  assert_equals(d.previousSibling, null);
+  assert_equals(names(b), "SPAN");
+}, "Moving between two elements that were never in a document");
+
+test(() => {
+  const select = document.createElement("select");
+  select.innerHTML = '<option>one</option>\n<option>two</option>';
+  const fragment = document.createDocumentFragment();
+  let moves = 0;
+  while (select.firstChild && moves < 10) {
+    fragment.appendChild(select.firstChild);
+    moves++;
+  }
+  assert_equals(moves, 3);
+  assert_equals(names(fragment), "OPTION,#text,OPTION");
+}, "Emptying a parent into a fragment one child at a time terminates");
+
+test(() => {
+  const other = document.implementation.createHTMLDocument("");
+  const div = document.createElement("div");
+  const span = div.appendChild(document.createElement("span"));
+  other.body.appendChild(div);
+  assert_equals(div.ownerDocument, other);
+  assert_equals(span.ownerDocument, other);
+  document.body.appendChild(div);
+  assert_equals(div.ownerDocument, document);
+  assert_equals(span.ownerDocument, document);
+  div.remove();
+}, "Inserting into another document adopts the whole subtree");
+</script>
