@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an iframe's interface objects are complete, however they are made</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-interfaces">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Each check reads the interface object through the iframe's global - the path
+// that materializes it - and asks for what WebIDL puts on the interface object
+// and its prototype beyond what the template carries.
+function frame() {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  return f.contentWindow;
+}
+
+test(() => {
+  const w = frame();
+  assert_equals(typeof w.AbortSignal.abort, "function", "static operation");
+  assert_equals(typeof w.URL.canParse, "function", "static operation");
+  assert_equals(w.Node.ELEMENT_NODE, 1, "constant on the interface object");
+  assert_equals(w.Node.prototype.ELEMENT_NODE, 1, "constant on the prototype");
+  assert_equals(w.MediaSource.canConstructInDedicatedWorker, true, "static attribute");
+  assert_false(Object.getOwnPropertyDescriptor(w.HTMLDivElement, "prototype").writable, "prototype is read only");
+  assert_equals(Object.prototype.toString.call(w.Headers.prototype), "[object Headers]", "@@toStringTag");
+  assert_equals(typeof w.Headers.prototype[Symbol.iterator], "function", "iterable");
+  assert_equals(typeof w.ReadableStream.prototype[Symbol.asyncIterator], "function", "async iterable");
+  assert_true(Symbol.unscopables in w.Element.prototype, "@@unscopables");
+}, "An iframe's interface objects carry their statics, constants and prototype members");
+
+test(() => {
+  const w = frame();
+  const div = w.document.createElement("div");
+  assert_true(div instanceof w.HTMLDivElement, "instanceof after the global is read");
+  const span = w.document.createElement("span");
+  const proto = Object.getPrototypeOf(span);
+  assert_equals(w.HTMLSpanElement.prototype, proto, "the global's interface object owns the wrapper's prototype");
+  assert_equals(proto.constructor, w.HTMLSpanElement);
+}, "Wrapping before and after the interface object is read agrees on identity");
+
+test(() => {
+  const w = frame();
+  // Read from THIS realm first: the interface object must still be the
+  // iframe's own, built in its realm, not this one's.
+  assert_not_equals(w.DOMParser, DOMParser, "not the parent's DOMParser");
+  assert_equals(Object.getPrototypeOf(w.DOMParser.prototype), w.Object.prototype, "the iframe's %Object.prototype%");
+  assert_true(new w.DOMParser() instanceof w.DOMParser);
+  assert_equals(w.eval("DOMParser"), w.DOMParser, "the iframe's script sees the same one");
+  const v = frame();
+  assert_equals(v.eval("TextEncoder") === TextEncoder, false, "read from inside first");
+}, "An iframe's interface object belongs to the iframe's realm, whoever reads it first");
+
+test(() => {
+  const w = frame();
+  const desc = Object.getOwnPropertyDescriptor(w, "DOMParser");
+  assert_not_equals(desc, undefined);
+  assert_true(desc.writable, "writable");
+  assert_false(desc.enumerable, "not enumerable");
+  assert_true(desc.configurable, "configurable");
+  assert_equals(typeof desc.value, "function");
+}, "An interface object is a writable, non-enumerable, configurable data property of the global");
+</script>
