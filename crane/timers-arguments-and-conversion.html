@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>setTimeout and setInterval: argument conversion, arguments, ids</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// long setTimeout(TimerHandler handler, optional long timeout = 0, any... arguments);
+// TimerHandler is (TrustedScript or DOMString or Function).
+
+async_test(t => {
+  setTimeout(t.step_func_done(function (a, b, c) {
+    assert_equals(this, window, "callback this value");
+    assert_equals(arguments.length, 2, "arguments.length");
+    assert_equals(a, 1);
+    assert_equals(b, "two");
+    assert_equals(c, undefined);
+  }), 0, 1, "two");
+}, "setTimeout passes its extra arguments to a Function handler, with this = window");
+
+async_test(t => {
+  let runs = 0;
+  const id = setInterval(t.step_func(function (x) {
+    assert_equals(this, window, "callback this value");
+    assert_equals(x, "arg");
+    if (++runs === 2) {
+      clearInterval(id);
+      t.done();
+    }
+  }), 0, "arg");
+}, "setInterval passes its extra arguments on every run");
+
+test(() => {
+  assert_throws_js(TypeError, () => setTimeout(), "setTimeout()");
+  assert_throws_js(TypeError, () => setInterval(), "setInterval()");
+}, "the handler argument is required");
+
+test(() => {
+  const fromValueOf = new Error("valueOf");
+  assert_throws_exactly(fromValueOf, () => setTimeout(() => {}, { valueOf() { throw fromValueOf; } }));
+  const fromToString = new Error("toString");
+  assert_throws_exactly(fromToString, () => setTimeout({ toString() { throw fromToString; } }, 0));
+}, "an exception converting an argument propagates to the caller");
+
+test(() => {
+  let calls = 0;
+  const id = setTimeout({ toString() { calls++; return "void 0"; } }, 0);
+  assert_equals(calls, 1, "ToString ran during the call");
+  clearTimeout(id);
+}, "a non-callable handler is converted by ToString when setTimeout is called");
+
+async_test(t => {
+  window.stringHandlerRan = 0;
+  setTimeout("window.stringHandlerRan++", 0);
+  setTimeout(t.step_func_done(() => assert_equals(window.stringHandlerRan, 1)), 20);
+}, "a string handler runs as a classic script");
+
+async_test(t => {
+  let runs = 0;
+  const id = setInterval(() => {
+    if (++runs === 3) clearInterval(id);
+  }, 0);
+  setTimeout(t.step_func(() => {
+    const seen = runs;
+    setTimeout(t.step_func_done(() => {
+      assert_equals(seen, 3, "ran three times");
+      assert_equals(runs, 3, "and never again after clearInterval");
+    }), 50);
+  }), 100);
+}, "an interval keeps the id setInterval returned across its repeats");
+
+async_test(t => {
+  const id = setTimeout(t.unreached_func("cleared by a string id"), 0);
+  clearTimeout(String(id));
+  setTimeout(t.step_func_done(), 20);
+}, "clearTimeout converts its argument with ToInt32");
+</script>

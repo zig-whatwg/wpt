@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>clearTimeout of an id that names no timer cancels nothing else</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-cleartimeout">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The ids setTimeout returns share no namespace with anything else the engine
+// schedules - the timer that drives requestAnimationFrame, for one. Clearing
+// every id near a fresh timer's must still let the frame run.
+async_test(t => {
+  requestAnimationFrame(t.step_func_done());
+  const probe = setTimeout(() => {}, 0);
+  for (let id = probe - 20; id <= probe + 20; id++) {
+    if (id !== probe) clearTimeout(id);
+  }
+}, "clearTimeout of an unknown id does not cancel an animation frame");
+</script>
