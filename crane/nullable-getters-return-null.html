@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Nullable attributes and operations answer null, not an exception</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body><div id=host><span></span></div>
+<script>
+test(() => {
+  const it = document.createNodeIterator(document.getElementById("host"));
+  assert_equals(it.nextNode(), document.getElementById("host"));
+  assert_equals(it.nextNode().localName, "span");
+  assert_equals(it.nextNode(), null, "past the end");
+  assert_equals(it.previousNode().localName, "span");
+  assert_equals(it.previousNode(), document.getElementById("host"));
+  assert_equals(it.previousNode(), null, "before the start");
+}, "NodeIterator.nextNode()/previousNode() return null at either end");
+
+test(() => {
+  const host = document.getElementById("host");
+  const mo = new MutationObserver(() => {});
+  mo.observe(host, {childList: true});
+  host.appendChild(document.createElement("i"));
+  host.textContent = "";
+  const records = mo.takeRecords();
+  mo.disconnect();
+  assert_true(records.length > 0);
+  const first = records[0];
+  assert_equals(first.nextSibling, null);
+  assert_equals(first.previousSibling.localName, "span");
+  assert_equals(records[records.length - 1].previousSibling, null);
+}, "MutationRecord.previousSibling/nextSibling are null when there is none");
+
+test(() => {
+  const sel = getSelection();
+  sel.removeAllRanges();
+  assert_equals(sel.anchorNode, null);
+  assert_equals(sel.focusNode, null);
+}, "an empty Selection's anchorNode and focusNode are null");
+</script>
