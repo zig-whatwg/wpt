@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>ParentNode.children is a live, [SameObject] collection</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-parentnode-children">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="c"></div>
+<script>
+test(t => {
+  const c = document.getElementById("c");
+  t.add_cleanup(() => { c.textContent = ""; });
+  const children = c.children;
+  assert_equals(children.length, 0);
+  c.append(document.createElement("b"), "text", document.createElement("i"));
+  assert_equals(c.children, children, "[SameObject]");
+  assert_equals(children.length, 2, "elements only, after the append");
+  assert_equals(children[0].localName, "b");
+  assert_equals(children.item(1).localName, "i");
+  c.firstChild.remove();
+  assert_equals(children.length, 1, "after a removal");
+  assert_equals(children[0].localName, "i");
+  c.textContent = "";
+  assert_equals(children.length, 0, "after clearing");
+}, "children reflects every change to its element");
+
+test(t => {
+  const c = document.getElementById("c");
+  t.add_cleanup(() => { c.textContent = ""; });
+  const e = document.createElement("span");
+  e.id = "named";
+  c.appendChild(e);
+  assert_equals(c.children.namedItem("named"), e);
+  e.remove();
+  assert_equals(c.children.namedItem("named"), null);
+}, "children.namedItem follows the tree");
+</script>
