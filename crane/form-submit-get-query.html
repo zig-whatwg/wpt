@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>form.submit() with GET: the entry list, encoded with the form's encoding, becomes the target iframe's query</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#form-submission-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+// The encoding/legacy-mb-*/*-encode-form*.html shape: submit into a named
+// iframe, then read the query back from the iframe's location in its load
+// event. The listener is attached after submit(), so the navigation must be
+// planned (a task), not performed inside submit().
+function submitInto(setup) {
+  return new Promise(resolve => {
+    const frame = document.createElement("iframe");
+    frame.name = "target-" + Math.random().toString(36).slice(2);
+    document.body.appendChild(frame);
+    // Let the initial about:blank load, if one is fired, go by first.
+    setTimeout(() => {
+      const form = document.createElement("form");
+      form.method = "GET";
+      form.action = "/common/blank.html";
+      form.target = frame.name;
+      setup(form);
+      document.body.appendChild(form);
+      form.submit();
+      frame.onload = () => resolve(frame.contentWindow.location.search);
+    }, 0);
+  });
+}
+
+function addInput(form, name, value, type) {
+  const input = document.createElement("input");
+  if (type) input.type = type;
+  input.name = name;
+  input.value = value;
+  form.appendChild(input);
+  return input;
+}
+
+promise_test(async () => {
+  const search = await submitInto(form => {
+    form.acceptCharset = "shift_jis";
+    addInput(form, "q", "★ a");
+  });
+  assert_equals(search, "?q=%81%9A+a");
+}, "Shift_JIS: a mapped character is its encoder's bytes and a space is +");
+
+promise_test(async () => {
+  const search = await submitInto(form => {
+    form.acceptCharset = "windows-1252";
+    addInput(form, "q", "☃");
+  });
+  assert_equals(search, "?q=%26%239731%3B");
+}, "an unmappable character is a percent-encoded numeric character reference");
+
+promise_test(async () => {
+  const search = await submitInto(form => {
+    form.acceptCharset = "bogus utf-8";
+    addInput(form, "q", "é");
+  });
+  assert_equals(search, "?q=%C3%A9");
+}, "accept-charset takes the first label that names an encoding");
+
+promise_test(async () => {
+  const search = await submitInto(form => {
+    addInput(form, "a", "1");
+    addInput(form, "", "unnamed");
+    addInput(form, "c", "x", "checkbox");
+    addInput(form, "d", "y", "hidden");
+    addInput(form, "e", "no").disabled = true;
+    addInput(form, "f", "button", "submit");
+  });
+  assert_equals(search, "?a=1&d=y");
+}, "unnamed, unchecked, disabled and button controls contribute nothing");
+
+promise_test(async () => {
+  const search = await submitInto(form => {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.name = "c";
+    box.checked = true;
+    form.appendChild(box);
+    const area = document.createElement("textarea");
+    area.name = "t";
+    area.value = "1\n2";
+    form.appendChild(area);
+  });
+  assert_equals(search, "?c=on&t=1%0D%0A2");
+}, "a checked checkbox without a value is \"on\", and newlines become CRLF");
+
+promise_test(async () => {
+  const search = await submitInto(form => {
+    const select = document.createElement("select");
+    select.name = "s";
+    select.multiple = true;
+    const option = (value, selected, parent) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.selected = selected;
+      (parent || select).appendChild(o);
+      return o;
+    };
+    option("a", true);
+    option("x", false);
+    const group = document.createElement("optgroup");
+    select.appendChild(group);
+    option("b", true, group);
+    const off = document.createElement("optgroup");
+    off.setAttribute("disabled", "");
+    select.appendChild(off);
+    option("c", true, off);
+    option("d", true).disabled = true;
+    form.appendChild(select);
+  });
+  assert_equals(search, "?s=a&s=b");
+}, "a select submits its selected options that are not disabled, optgroups included");
+
+promise_test(async () => {
+  // encode-form-common.js reuses one form, input and iframe per chunk, so
+  // the second submission has to see the controls the first one did - and
+  // reading form.elements must not empty it.
+  const frame = document.createElement("iframe");
+  frame.name = "target-twice";
+  document.body.appendChild(frame);
+  await new Promise(r => setTimeout(r, 0));
+  const form = document.createElement("form");
+  form.method = "GET";
+  form.action = "/common/blank.html";
+  form.target = frame.name;
+  const input = addInput(form, "q", "");
+  document.body.appendChild(form);
+  const seen = [];
+  for (const value of ["one", "two"]) {
+    input.value = value;
+    await new Promise(resolve => {
+      form.submit();
+      frame.onload = () => {
+        seen.push(frame.contentWindow.location.search + " " + form.elements.length);
+        resolve();
+      };
+    });
+  }
+  assert_array_equals(seen, ["?q=one 1", "?q=two 1"]);
+}, "one form submitted twice into one iframe");
+</script>

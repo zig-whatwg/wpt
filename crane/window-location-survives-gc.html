@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A window's Location survives the collection of its wrapper</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A Window owns its Location: Window.deinit frees it, and every read of
+// window.location returns that one instance. If collecting the Location's
+// wrapper frees the instance, the Window is left pointing at a freed slab
+// slot - the next window.location reads whatever was allocated there. An
+// iframe's Location is the exposed one, because nothing else holds its
+// wrapper; creating another iframe forces a collection in this engine.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+async function collectHard() {
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  // A child context's creation forces a collection here.
+  const other = document.createElement("iframe");
+  document.body.appendChild(other);
+  await new Promise(r => setTimeout(r, 0));
+  other.remove();
+}
+
+promise_test(async () => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  await new Promise(r => setTimeout(r, 0));
+  (() => { frame.contentWindow.location.expando = 42; })();
+  await collectHard();
+  assert_equals(frame.contentWindow.location.href, "about:blank");
+  assert_equals(frame.contentWindow.location.expando, 42, "same object, expando kept");
+}, "an iframe's Location survives the collection of its wrapper");
+
+promise_test(async () => {
+  (() => { void location.href; })();
+  await collectHard();
+  assert_true(location.pathname.endsWith("/window-location-survives-gc.html"));
+}, "the top-level Location survives the collection of its wrapper");
+</script>

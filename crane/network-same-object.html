@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>[SameObject] children survive collection; Headers alias their owner's list</title>
+<!--
+  A [SameObject] attribute hands out one object for the owner's whole life,
+  and script routinely stores state on it and drops it: `xhr.upload.onprogress
+  = f`, `controller.signal.onabort = f`. The generated getter caches the child
+  as a bare Instance pointer that V8 cannot see, so a collection freed the
+  child and left the owner pointing into the slab. `Headers` is the reverse
+  case: its list lives in the Request/Response, and it was a by-value COPY of
+  that list's ArrayList header, so the two diverged on the first append.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+promise_test(async () => {
+  const xhr = new XMLHttpRequest();
+  let fired = false;
+  xhr.upload.onloadstart = () => { fired = true; };
+  xhr.upload.marker = "kept";
+  await garbageCollect();
+  assert_equals(xhr.upload.marker, "kept", "expando on xhr.upload");
+  assert_equals(xhr.upload, xhr.upload, "[SameObject]");
+  xhr.open("POST", "/common/blank.html");
+  xhr.send("body");  // upload loadstart is a synchronous step of send()
+  assert_true(fired, "xhr.upload.onloadstart ran");
+  xhr.abort();
+}, "xhr.upload keeps its handlers and identity across a collection");
+
+promise_test(async () => {
+  const controller = new AbortController();
+  controller.signal.marker = "kept";
+  await garbageCollect();  // nothing but the controller holds the signal
+  assert_equals(controller.signal.marker, "kept", "expando on controller.signal");
+  controller.abort();      // reaches the signal through the controller
+  assert_true(controller.signal.aborted, "aborted");
+}, "controller.signal keeps its identity across a collection");
+
+promise_test(async () => {
+  const signal = new AbortController().signal;
+  await garbageCollect();  // the controller is garbage; its signal is not
+  assert_false(signal.aborted, "aborted");
+  assert_equals(signal.reason, undefined, "reason");
+}, "a controller's signal outlives the controller");
+
+promise_test(async () => {
+  const headers = new Response("", {headers: [["a", "1"]]}).headers;
+  await garbageCollect();  // the response is garbage; its headers are not
+  assert_equals(headers.get("a"), "1");
+}, "response.headers outlives its response");
+
+promise_test(async () => {
+  const headers = new Request("/", {headers: [["a", "1"]]}).headers;
+  await garbageCollect();
+  assert_equals(headers.get("a"), "1");
+}, "request.headers outlives its request");
+
+promise_test(async () => {
+  const response = new Response("", {headers: [["a", "1"]]});
+  await garbageCollect();  // nothing holds response.headers yet
+  assert_equals(response.headers.get("a"), "1");
+  await garbageCollect();  // nor after one read
+  assert_equals(response.headers.get("a"), "1");
+}, "response.headers can be collected and handed out again");
+
+test(() => {
+  const request = new Request("/", {headers: [["a", "1"]]});
+  const headers = request.headers;
+  for (let i = 0; i < 64; i++) headers.append("x-" + i, String(i));
+  const clone = request.clone();
+  assert_equals(clone.headers.get("a"), "1");
+  assert_equals(clone.headers.get("x-0"), "0");
+  assert_equals(clone.headers.get("x-63"), "63");
+}, "request.headers is the request's own header list, not a copy of it");
+
+promise_test(async () => {
+  const response = new Response("abc");
+  response.body.marker = "kept";
+  await garbageCollect();
+  assert_equals(response.body.marker, "kept", "expando on response.body");
+}, "response.body keeps its identity across a collection");
+</script>

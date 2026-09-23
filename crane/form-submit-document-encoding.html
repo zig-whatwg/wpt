@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="windows-1252">
+<title>form.submit() with no accept-charset encodes with the document's encoding</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#picking-an-encoding-for-the-form">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+promise_test(async () => {
+  assert_equals(document.characterSet, "windows-1252", "precondition");
+  const frame = document.createElement("iframe");
+  frame.name = "target";
+  document.body.appendChild(frame);
+  await new Promise(r => setTimeout(r, 0));
+  const form = document.createElement("form");
+  form.method = "GET";
+  form.action = "/common/blank.html";
+  form.target = "target";
+  const input = document.createElement("input");
+  input.name = "q";
+  input.value = "é☃";
+  form.appendChild(input);
+  document.body.appendChild(form);
+  const search = await new Promise(resolve => {
+    form.submit();
+    frame.onload = () => resolve(frame.contentWindow.location.search);
+  });
+  assert_equals(search, "?q=%E9%26%239731%3B");
+}, "no accept-charset: the document's encoding, windows-1252 here");
+</script>
