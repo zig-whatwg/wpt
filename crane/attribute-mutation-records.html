@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Every attribute change queues an "attributes" record and reaches attributeChangedCallback</title>
+<link rel=help href="https://dom.spec.whatwg.org/#handle-attribute-changes">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+function observe(target, options, fn) {
+  const mo = new MutationObserver(() => {});
+  mo.observe(target, options);
+  fn();
+  const records = mo.takeRecords();
+  mo.disconnect();
+  return records.map(r => [r.type, r.attributeName, r.attributeNamespace, r.oldValue]);
+}
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a", "1");
+  assert_array_equals(observe(el, {attributes: true, attributeOldValue: true}, () => {
+    el.setAttribute("a", "2");
+    el.setAttribute("b", "x");
+    el.removeAttribute("a");
+    el.toggleAttribute("c");
+    el.toggleAttribute("c");
+  }).map(r => r.join("|")), [
+    "attributes|a||1",
+    "attributes|b||",
+    "attributes|a||2",
+    "attributes|c||",
+    "attributes|c||",
+  ]);
+}, "setAttribute, removeAttribute and toggleAttribute each queue a record, with the old value");
+
+test(() => {
+  const el = document.createElement("div");
+  const ns = "http://example.com/ns";
+  el.setAttributeNS(ns, "p:q", "1");
+  const recs = observe(el, {attributes: true, attributeOldValue: true}, () => {
+    el.setAttributeNS(ns, "p:q", "2");
+    el.removeAttributeNS(ns, "q");
+  });
+  assert_array_equals(recs.map(r => r.join("|")), [`attributes|q|${ns}|1`, `attributes|q|${ns}|2`]);
+}, "namespaced attributes carry their namespace");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a", "1");
+  const recs = observe(el, {attributes: true, attributeOldValue: true}, () => {
+    el.getAttributeNode("a").value = "2";
+    const attr = document.createAttribute("a");
+    attr.value = "3";
+    el.setAttributeNode(attr);
+    el.removeAttributeNode(attr);
+  });
+  assert_array_equals(recs.map(r => r.join("|")), ["attributes|a||1", "attributes|a||2", "attributes|a||3"]);
+}, "Attr.value, setAttributeNode (replace) and removeAttributeNode queue records");
+
+test(() => {
+  const parent = document.createElement("div");
+  const child = document.createElement("span");
+  parent.appendChild(child);
+  const recs = observe(parent, {attributes: true, subtree: true, attributeFilter: ["keep"]}, () => {
+    child.setAttribute("keep", "1");
+    child.setAttribute("drop", "1");
+  });
+  assert_array_equals(recs.map(r => r.join("|")), ["attributes|keep||"]);
+}, "subtree observation and attributeFilter");
+
+test(() => {
+  const calls = [];
+  customElements.define("crane-attr-cb", class extends HTMLElement {
+    static get observedAttributes() { return ["watched"]; }
+    attributeChangedCallback(name, oldValue, newValue, namespace) { calls.push([name, oldValue, newValue, namespace].join("|")); }
+  });
+  const el = document.createElement("crane-attr-cb");
+  el.setAttribute("watched", "1");
+  el.setAttribute("ignored", "1");
+  el.setAttribute("watched", "2");
+  el.removeAttribute("watched");
+  assert_array_equals(calls, ["watched||1|", "watched|1|2|", "watched|2||"]);
+}, "attributeChangedCallback fires for observed attributes, in order");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("DATA-Mixed", "1");
+  assert_equals(el.getAttribute("data-mixed"), "1");
+  assert_equals(el.attributes[0].name, "data-mixed");
+}, "setAttribute lowercases the name on an HTML element in an HTML document");
+</script>
