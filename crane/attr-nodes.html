@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: Attr nodes are the element's attributes, not copies of them</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#interface-attr">
+<link rel="help" href="https://dom.spec.whatwg.org/#interface-namednodemap">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a", "1");
+  const attr = el.getAttributeNode("a");
+  assert_equals(el.getAttributeNode("a"), attr, "getAttributeNode");
+  assert_equals(el.attributes[0], attr, "attributes[0]");
+  assert_equals(el.attributes.getNamedItem("a"), attr, "getNamedItem");
+  assert_equals(el.getAttributeNodeNS(null, "a"), attr, "getAttributeNodeNS");
+  attr.expando = "kept";
+  assert_equals(el.attributes.item(0).expando, "kept");
+}, "The same Attr node is handed out for an attribute every time");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a", "1");
+  const attr = el.getAttributeNode("a");
+  el.setAttribute("a", "2");
+  assert_equals(attr.value, "2", "setAttribute shows through the node");
+  attr.value = "3";
+  assert_equals(el.getAttribute("a"), "3", "the node's value changes the attribute");
+  assert_equals(attr.ownerElement, el);
+}, "An attached Attr's value is the element's attribute value");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a", "1");
+  const attr = el.getAttributeNode("a");
+  el.removeAttribute("a");
+  assert_equals(attr.ownerElement, null);
+  assert_equals(attr.value, "1", "keeps its last value");
+  attr.value = "4";
+  assert_equals(el.getAttribute("a"), null, "a detached node changes nothing on the element");
+  assert_equals(attr.value, "4");
+}, "A removed attribute's node keeps its value and loses its element");
+
+test(() => {
+  const el = document.createElement("div");
+  const map = el.attributes;
+  assert_equals(map.length, 0);
+  el.setAttribute("a", "1");
+  el.setAttribute("b", "2");
+  assert_equals(map.length, 2);
+  assert_equals(map[1].name, "b");
+  el.removeAttribute("a");
+  assert_equals(map.length, 1);
+  assert_equals(map[0].name, "b");
+  assert_equals(map.getNamedItem("a"), null);
+}, "NamedNodeMap is live");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a", "1");
+  const old = el.getAttributeNode("a");
+  const other = document.createElement("div");
+  assert_throws_dom("InUseAttributeError", () => other.setAttributeNode(old));
+  const replacement = document.createAttribute("a");
+  replacement.value = "2";
+  assert_equals(el.setAttributeNode(replacement), old);
+  assert_equals(old.ownerElement, null);
+  assert_equals(old.value, "1");
+  assert_equals(el.getAttributeNode("a"), replacement);
+  assert_equals(el.setAttributeNode(replacement), replacement, "setting it again returns it");
+  assert_equals(el.removeAttributeNode(replacement), replacement);
+  assert_throws_dom("NotFoundError", () => el.removeAttributeNode(replacement));
+}, "setAttributeNode replaces by identity; removeAttributeNode requires the node itself");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a:b", "1");
+  const copy = el.getAttributeNode("a:b").cloneNode();
+  assert_equals(copy.name, "a:b");
+  assert_equals(copy.namespaceURI, null);
+  assert_equals(copy.prefix, null);
+  assert_equals(copy.value, "1");
+  assert_equals(copy.ownerElement, null);
+  const attr = document.createAttribute("x");
+  assert_equals(attr.namespaceURI, null);
+  assert_equals(attr.prefix, null);
+  assert_throws_dom("InvalidCharacterError", () => document.createAttribute(""));
+}, "Attr fields: null namespace and prefix, clones copy exactly");
+
+test(() => {
+  const attr = document.createAttribute("x");
+  attr.value = "1";
+  assert_equals(attr.nodeValue, "1");
+  assert_equals(attr.textContent, "1");
+  attr.textContent = "2";
+  assert_equals(attr.value, "2");
+  attr.nodeValue = "3";
+  assert_equals(attr.value, "3");
+  assert_equals(attr.nodeName, "x");
+}, "nodeName, nodeValue and textContent of an Attr are its name and value");
+</script>
