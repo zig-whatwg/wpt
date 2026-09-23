@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an inherit attribute is writable on the derived interface</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#dfn-inherit-getter">
+<link rel="help" href="https://drafts.fxtf.org/geometry/#DOMRect">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// WebIDL §2.5.2: `inherit attribute` takes its getter from the ancestor's read
+// only attribute and is writable on the derived interface.
+test(() => {
+  const r = new DOMRect(1, 2, 3, 4);
+  r.x = 5; r.y = 6; r.width = 7; r.height = 8;
+  assert_array_equals([r.x, r.y, r.width, r.height], [5, 6, 7, 8]);
+}, "DOMRect's coordinates are writable");
+
+test(() => {
+  for (const name of ["x", "y", "width", "height"]) {
+    const desc = Object.getOwnPropertyDescriptor(DOMRect.prototype, name);
+    assert_not_equals(desc, undefined, `${name} is declared on DOMRect.prototype`);
+    assert_equals(typeof desc.get, "function", `${name} has a getter`);
+    assert_equals(typeof desc.set, "function", `${name} has a setter`);
+    const parent = Object.getOwnPropertyDescriptor(DOMRectReadOnly.prototype, name);
+    assert_equals(parent.set, undefined, `${name} stays read only on DOMRectReadOnly`);
+  }
+}, "DOMRect declares the setters; DOMRectReadOnly's attributes stay read only");
+
+test(() => {
+  for (const [iface, names] of [["DOMPoint", ["x", "y", "z", "w"]],
+                                ["DOMMatrix", ["a", "f", "m11", "m44"]]]) {
+    for (const name of names) {
+      const desc = Object.getOwnPropertyDescriptor(self[iface].prototype, name);
+      assert_equals(typeof desc?.set, "function", `${iface}.${name} has a setter`);
+    }
+  }
+}, "DOMPoint and DOMMatrix declare setters for their inherit attributes");
+</script>
