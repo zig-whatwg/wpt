@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: import.meta.url is the module script's base URL</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#hostgetimportmetaproperties">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script type="module">
+import { url } from "./resources/import-meta.mjs";
+
+test(() => {
+  assert_equals(import.meta.url, document.baseURI);
+}, "An inline module's import.meta.url is the document's base URL");
+
+test(() => {
+  assert_equals(url, new URL("resources/import-meta.mjs", document.baseURI).href);
+}, "An imported module's import.meta.url is its own URL");
+
+promise_test(async () => {
+  const m = await import("./resources/import-meta.mjs?dynamic");
+  assert_equals(m.url, new URL("resources/import-meta.mjs?dynamic", document.baseURI).href);
+}, "A dynamically imported module's import.meta.url is its own URL");
+
+test(() => {
+  assert_equals(Object.getPrototypeOf(import.meta), null, "import.meta has a null prototype");
+  const desc = Object.getOwnPropertyDescriptor(import.meta, "url");
+  assert_true(desc.writable && desc.enumerable && desc.configurable, "url is an ordinary data property");
+}, "import.meta.url is an ordinary data property of a null-prototype object");
+</script>
