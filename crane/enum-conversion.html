@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an enumeration value is converted with ToString</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-enumeration">
+<link rel="help" href="https://webidl.spec.whatwg.org/#dfn-attribute-setter">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// WebIDL 3.2.23: ToString(V), then a TypeError unless the string is one of the
+// enumeration's values. 3.7.6: an attribute setter returns silently instead.
+test(() => {
+  history.scrollRestoration = "manual";
+  assert_equals(history.scrollRestoration, "manual");
+  history.scrollRestoration = "bogus";
+  assert_equals(history.scrollRestoration, "manual", "an unknown string is ignored");
+  history.scrollRestoration = 5;
+  assert_equals(history.scrollRestoration, "manual", "a number is converted, then ignored");
+  history.scrollRestoration = NaN;
+  assert_equals(history.scrollRestoration, "manual", "NaN too");
+  history.scrollRestoration = { toString() { return "auto"; } };
+  assert_equals(history.scrollRestoration, "auto", "an object is converted with ToString");
+}, "An enumeration attribute setter converts with ToString and ignores unknown values");
+
+test(() => {
+  assert_throws_js(TypeError, () => new Blob([], { endings: "bogus" }), "unknown string");
+  assert_throws_js(TypeError, () => new Blob([], { endings: 1 }), "number");
+  assert_equals(new Blob([], { endings: { toString() { return "native"; } } }).size, 0);
+}, "An enumeration argument throws a TypeError for an unknown value, whatever its type");
+</script>
