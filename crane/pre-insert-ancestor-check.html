@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Pre-insertion validity step 2: only a node that is an ancestor of the parent is refused</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-tree-host-including-inclusive-ancestor">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+function list(p) { return [...p.childNodes].map(n => n.textContent).join(""); }
+function make() {
+  const p = document.createElement("p");
+  p.innerHTML = "<span>1</span><span>2</span><span>3</span>";
+  document.body.appendChild(p);
+  return p;
+}
+
+test(() => {
+  const p = make();
+  p.appendChild(p.firstChild.nextSibling);
+  assert_equals(list(p), "132");
+  p.insertBefore(p.lastChild, p.firstChild);
+  assert_equals(list(p), "213");
+  p.replaceChild(p.firstChild.nextSibling, p.firstChild);
+  assert_equals(list(p), "13");
+}, "a child can move within its own parent");
+
+test(() => {
+  const p = make();
+  const grandchild = document.createElement("b");
+  p.firstChild.appendChild(grandchild);
+  document.body.appendChild(grandchild);
+  assert_equals(grandchild.parentNode, document.body);
+}, "a descendant can be appended to one of its ancestors");
+
+test(() => {
+  const p = make();
+  const child = p.firstChild;
+  assert_throws_dom("HierarchyRequestError", () => child.appendChild(p));
+  assert_throws_dom("HierarchyRequestError", () => child.insertBefore(p, null));
+  assert_throws_dom("HierarchyRequestError", () => p.appendChild(p));
+  const span = document.createElement("span");
+  child.appendChild(span);
+  assert_throws_dom("HierarchyRequestError", () => child.replaceChild(p, span));
+  assert_equals(p.parentNode, document.body, "no cycle was made");
+}, "an ancestor cannot be inserted into its own descendant");
+
+test(() => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = host.attachShadow({mode: "open"});
+  const inner = document.createElement("i");
+  root.appendChild(inner);
+  assert_throws_dom("HierarchyRequestError", () => root.appendChild(host), "host into its own shadow root");
+  assert_throws_dom("HierarchyRequestError", () => inner.appendChild(document.body), "an ancestor of the host, through the host");
+}, "the check reaches through a shadow root to its host");
+</script>
