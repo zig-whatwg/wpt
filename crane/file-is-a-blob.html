@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a File is a Blob, with the Blob's bytes and type</title>
+<link rel="help" href="https://w3c.github.io/FileAPI/#file-constructor">
+<link rel="help" href="https://w3c.github.io/FileAPI/#dfn-Blob">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// FileAPI 4.1: a File "refers to the bytes byte sequence" and its size and
+// type are the Blob's. size, type, slice() and text() are Blob members, so
+// they must see a File's bytes.
+test(() => {
+  const f = new File(["abc", new Uint8Array([100, 101])], "a.txt", {type: "Text/Plain"});
+  assert_true(f instanceof Blob);
+  assert_equals(f.size, 5, "size");
+  assert_equals(f.type, "text/plain", "type, lower-cased");
+  assert_equals(f.name, "a.txt", "name");
+}, "A constructed File has its bytes' size and its normalized type");
+
+promise_test(async () => {
+  const f = new File(["hello"], "h.txt");
+  assert_equals(await f.text(), "hello");
+  const part = f.slice(1, 4);
+  assert_true(part instanceof Blob);
+  assert_equals(part.size, 3);
+  assert_equals(await part.text(), "ell");
+  assert_array_equals(new Uint8Array(await f.arrayBuffer()), [104, 101, 108, 108, 111]);
+}, "A File's Blob methods read its bytes");
+
+test(() => {
+  const before = Date.now();
+  const f = new File([], "empty");
+  assert_equals(f.size, 0);
+  assert_equals(f.type, "");
+  assert_greater_than_equal(f.lastModified, before);
+  assert_equals(new File([], "x", {lastModified: 42}).lastModified, 42);
+  assert_equals(new File([], "x", {type: "a\u00e9b"}).type, "", "a type outside U+0020-U+007E is dropped");
+}, "Defaults, lastModified and type validation");
+</script>
