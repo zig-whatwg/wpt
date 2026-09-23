@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>new Range() starts at (document, 0); collected ranges leave the document's list</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-range-range">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body><div id=host></div>
+<script>
+test(() => {
+  const r = new Range();
+  assert_equals(r.startContainer, document);
+  assert_equals(r.startOffset, 0);
+  assert_equals(r.endContainer, document);
+  assert_equals(r.endOffset, 0);
+}, "new Range() starts and ends at (the current global's document, 0)");
+
+test(() => {
+  const host = document.getElementById("host");
+  host.appendChild(document.createElement("p"));
+  const r = new Range();
+  r.setStart(host, 1);
+  host.removeChild(host.firstChild);
+  assert_equals(r.startOffset, 0, "a live range moves when a preceding child is removed");
+}, "new Range() is live");
+
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+promise_test(async () => {
+  const host = document.getElementById("host");
+  for (let i = 0; i < 2000; i++) {
+    const r = i % 2 ? new Range() : document.createRange();
+    r.selectNodeContents(host);
+  }
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  const kept = document.createRange();
+  kept.setStart(host, 0);
+  // Every mutation walks the document's live ranges.
+  for (let i = 0; i < 200; i++) host.appendChild(document.createElement("span"));
+  for (let i = 0; i < 200; i++) host.removeChild(host.lastChild);
+  assert_equals(kept.startContainer, host);
+  assert_equals(kept.startOffset, 0);
+}, "ranges script no longer holds are collected without leaving their document a dangling pointer");
+</script>
+<script>
+test(() => {
+  const host = document.getElementById("host");
+  host.textContent = "";
+  host.appendChild(document.createElement("p"));
+  const r = document.createRange();
+  r.setStart(host, 1);
+  const c = r.cloneRange();
+  host.removeChild(host.firstChild);
+  assert_equals(c.startOffset, 0, "the clone moved with the mutation");
+}, "cloneRange() returns a live range");
+</script>
