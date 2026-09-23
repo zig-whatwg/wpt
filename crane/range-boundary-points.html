@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>AbstractRange's getters answer with the range's own boundary points</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-abstractrange">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body><div id=d><p>a</p><p>b</p></div>
+<script>
+test(() => {
+  const r = document.createRange();
+  assert_equals(r.startContainer, document);
+  assert_equals(r.endContainer, document);
+  assert_equals(r.startOffset, 0);
+  assert_equals(r.endOffset, 0);
+  assert_true(r.collapsed);
+}, "createRange() starts and ends at (document, 0)");
+
+test(() => {
+  const d = document.getElementById("d");
+  const r = document.createRange();
+  r.selectNode(d.lastChild);
+  assert_equals(r.startContainer, d);
+  assert_equals(r.startOffset, 1);
+  assert_equals(r.endContainer, d);
+  assert_equals(r.endOffset, 2);
+  assert_false(r.collapsed);
+}, "selectNode moves both boundary points");
+
+test(() => {
+  const d = document.getElementById("d");
+  const r = new StaticRange({startContainer: d, startOffset: 0, endContainer: d.firstChild, endOffset: 1});
+  assert_equals(r.startContainer, d);
+  assert_equals(r.startOffset, 0);
+  assert_equals(r.endContainer, d.firstChild);
+  assert_equals(r.endOffset, 1);
+  assert_false(r.collapsed);
+}, "a StaticRange answers with its own boundary points");
+</script>

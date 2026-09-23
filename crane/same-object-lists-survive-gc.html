@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[SameObject] childNodes and children survive the collection of their wrappers</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-node-childnodes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="host"><span></span><b></b></div>
+<script>
+// A node's childNodes and children are the same object on every read. If
+// that object is freed when script stops referencing its wrapper, the node's
+// cache points into freed memory and the next read wraps garbage.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+promise_test(async () => {
+  const host = document.getElementById("host");
+  host.childNodes.expando = "kept";
+  host.children.expando = "kept";
+  // Many nodes, each with a list nothing in script holds.
+  const nodes = [];
+  for (let i = 0; i < 500; i++) {
+    const d = document.createElement("div");
+    d.appendChild(document.createElement("i"));
+    void d.childNodes.length;
+    void d.children.length;
+    nodes.push(d);
+  }
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  for (const d of nodes) {
+    assert_equals(d.childNodes.length, 1);
+    assert_equals(d.children.length, 1);
+    assert_equals(d.childNodes, d.childNodes);
+  }
+  assert_equals(host.childNodes.expando, "kept", "childNodes identity survives");
+  assert_equals(host.children.expando, "kept", "children identity survives");
+  assert_equals(host.childNodes.length, 2);
+}, "childNodes and children survive two collections with no script reference");
+</script>
