@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a registered MutationObserver lives as long as a node lists it</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#registered-observer">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="host"></div>
+<script>
+"use strict";
+// "Nodes have a strong reference to registered observers in their registered
+// observer list." An observer script no longer names is still alive while a
+// node lists it: collecting it must neither free it under the node (the next
+// mutation would queue a record into freed memory) nor stop its callback.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+promise_test(async () => {
+  const host = document.getElementById("host");
+  const seen = [];
+  (() => {
+    new MutationObserver(records => {
+      for (const r of records) seen.push(r.type + ":" + r.addedNodes.length);
+    }).observe(host, { childList: true });
+  })();
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  host.appendChild(document.createElement("span"));
+  await new Promise(r => setTimeout(r, 0));
+  assert_array_equals(seen, ["childList:1"]);
+}, "An observer with no JS reference survives collection and still delivers records");
+
+promise_test(async () => {
+  let observed = document.createElement("div");
+  const seen = [];
+  const observer = new MutationObserver(records => seen.push(records.length));
+  observer.observe(observed, { attributes: true });
+  observed.setAttribute("a", "1");
+  observer.disconnect();
+  observed = null;
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  const other = document.createElement("div");
+  observer.observe(other, { attributes: true });
+  other.setAttribute("b", "2");
+  await new Promise(r => setTimeout(r, 0));
+  assert_array_equals(seen, [1]);
+}, "An observer outlives a disconnected node it once observed, and observes again");
+
+promise_test(async () => {
+  const seen = [];
+  const observer = new MutationObserver(records => seen.push(records.length));
+  (() => {
+    const gone = document.createElement("div");
+    observer.observe(gone, { attributes: true });
+  })();
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  observer.disconnect();
+  const other = document.createElement("div");
+  observer.observe(other, { attributes: true, attributeOldValue: true });
+  other.setAttribute("c", "3");
+  await new Promise(r => setTimeout(r, 0));
+  assert_array_equals(seen, [1]);
+}, "disconnect() after an observed node was collected touches nothing freed");
+</script>
