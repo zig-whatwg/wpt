@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: static attributes live on the interface object, not the prototype</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// WebIDL §3.7.6: a static attribute is an accessor property of the interface
+// object; a regular attribute is one of the interface prototype object.
+const statics = [
+  ["Notification", "permission"],
+  ["Notification", "maxActions"],
+  ["PerformanceObserver", "supportedEntryTypes"],
+  ["PushManager", "supportedContentEncodings"],
+  ["PressureObserver", "knownSources"],
+  ["MediaSource", "canConstructInDedicatedWorker"],
+  ["WebTransport", "supportsReliableOnly"],
+];
+for (const [iface, name] of statics) {
+  test(() => {
+    const ctor = self[iface];
+    if (!ctor) return;  // not exposed here: nothing to place
+    const desc = Object.getOwnPropertyDescriptor(ctor, name);
+    assert_not_equals(desc, undefined, `${iface}.${name} is an own property of the interface object`);
+    assert_equals(typeof desc.get, "function", "an accessor with a getter");
+    assert_false(name in ctor.prototype, "not on the prototype");
+  }, `${iface}.${name} is static`);
+}
+
+test(() => {
+  // Exposed on a plain-http page, so this one is never skipped above.
+  assert_equals(typeof MediaSource, "function");
+  assert_equals(typeof MediaSource.canConstructInDedicatedWorker, "boolean");
+}, "A static attribute answers on the interface object");
+</script>
