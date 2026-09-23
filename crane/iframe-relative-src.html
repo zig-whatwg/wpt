@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>An iframe's src is parsed relative to its node document</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#shared-attribute-processing-steps-for-iframe-and-frame-elements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The frame posts its own location to its parent as soon as it parses.
+const page = "resources/origin-echo.html";
+
+for (const [label, src] of [
+  ["path-relative", page],
+  ["root-relative", "/crane/" + page],
+  ["absolute", location.origin + "/crane/" + page],
+]) {
+  promise_test(async t => {
+    const iframe = document.createElement("iframe");
+    const loaded = new Promise((resolve, reject) => {
+      window.addEventListener("message", function listener(e) {
+        if (e.source === iframe.contentWindow) { window.removeEventListener("message", listener); resolve(e); }
+      });
+      t.step_timeout(() => reject(new Error("the frame never loaded")), 3000);
+    });
+    iframe.src = src;
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+    const e = await loaded;
+    assert_equals(e.data.kind, "loaded");
+    assert_equals(iframe.contentWindow.location.href, new URL(src, document.baseURI).href, "the frame's URL");
+    assert_not_equals(iframe.contentDocument, null, "a same-origin frame's contentDocument");
+    assert_equals(iframe.contentDocument, iframe.contentWindow.document);
+  }, `a ${label} src loads, and its same-origin document is reachable`);
+}
+
+test(() => {
+  assert_equals(document.baseURI, document.URL);
+  const div = document.createElement("div");
+  assert_equals(div.baseURI, document.URL, "an element's");
+  assert_equals(document.createAttribute("x").baseURI, document.URL, "an attribute's");
+  assert_equals(document.implementation.createHTMLDocument("").baseURI, "about:blank", "a synthetic document's");
+}, "baseURI is the node document's base URL");
+</script>
