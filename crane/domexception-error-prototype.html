@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: DOMException.prototype inherits from %Error.prototype%</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-DOMException-specialness">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// WebIDL "create an interface prototype object" step 4: DOMException's
+// interface prototype object has %Error.prototype% as its [[Prototype]].
+test(() => {
+  assert_equals(Object.getPrototypeOf(DOMException.prototype), Error.prototype);
+  const e = new DOMException("msg", "NotFoundError");
+  assert_true(e instanceof Error, "instanceof Error");
+  assert_equals(String(e), "NotFoundError: msg", "Error.prototype.toString");
+}, "A constructed DOMException is an Error");
+
+test(() => {
+  let thrown;
+  try { document.body.appendChild(document); } catch (e) { thrown = e; }
+  assert_true(thrown instanceof DOMException);
+  assert_true(thrown instanceof Error, "a thrown DOMException is an Error too");
+  assert_equals(String(thrown).split(":")[0], "HierarchyRequestError");
+}, "A DOMException the engine throws is an Error");
+
+test(() => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  const w = f.contentWindow;
+  assert_equals(Object.getPrototypeOf(w.DOMException.prototype), w.Error.prototype, "the iframe's own %Error.prototype%");
+}, "In each realm, its own %Error.prototype%");
+</script>
