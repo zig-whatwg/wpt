@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Inserting a DocumentFragment with more than four children</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-insert">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="container"></div>
+<script>
+// DOM "insert", step 1: "Let nodes be node's children, if node is a
+// DocumentFragment node" - a copy, taken before step 4 removes them.
+for (const n of [1, 4, 5, 8, 40]) {
+  test(t => {
+    const container = document.getElementById("container");
+    t.add_cleanup(() => { container.textContent = ""; });
+    const strings = Array.from({length: n}, (_, i) => "t" + i);
+    container.append(...strings);
+    assert_equals(container.childNodes.length, n);
+    assert_equals(container.textContent, strings.join(""));
+  }, `append() with ${n} strings`);
+
+  test(t => {
+    const container = document.getElementById("container");
+    t.add_cleanup(() => { container.textContent = ""; });
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < n; i++) fragment.appendChild(document.createElement("i"));
+    container.appendChild(fragment);
+    assert_equals(container.children.length, n, "every child moved");
+    assert_equals(fragment.childNodes.length, 0, "the fragment is left empty");
+  }, `appendChild() of a fragment with ${n} children`);
+}
+</script>
