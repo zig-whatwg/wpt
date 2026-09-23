@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>NodeFilter: stored, exposed, invoked at call time, exceptions rethrown</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-filter">
+<link rel=help href="https://webidl.spec.whatwg.org/#call-a-user-objects-operation">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body><div id=root><p id=a></p><b id=b></b><p id=c></p></div>
+<script>
+const root = document.getElementById("root");
+const ids = walk => { const out = []; let n; while ((n = walk())) out.push(n.id); return out; };
+
+test(() => {
+  const filter = n => n.localName === "p" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+  const it = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, filter);
+  assert_equals(it.filter, filter, "filter is the same object");
+  assert_array_equals(ids(() => it.nextNode()), ["a", "c"]);
+}, "NodeIterator calls a function filter and honours its result");
+
+test(() => {
+  const seen = [];
+  const filter = { acceptNode(n) { seen.push(this); return n.id === "b" ? 1 : 3; } };
+  const it = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, filter);
+  assert_equals(it.filter, filter);
+  assert_array_equals(ids(() => it.nextNode()), ["b"]);
+  assert_true(seen.length > 0 && seen.every(t => t === filter), "this is the filter object");
+}, "NodeIterator calls acceptNode on an object filter, with the object as this");
+
+test(() => {
+  let lookups = 0;
+  const filter = { get acceptNode() { lookups++; return () => NodeFilter.FILTER_ACCEPT; } };
+  const it = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, filter);
+  assert_equals(lookups, 0, "not looked up when the iterator is created");
+  it.nextNode();
+  it.nextNode();
+  assert_equals(lookups, 2, "looked up once per call");
+}, "acceptNode is looked up at call time, every time");
+
+test(() => {
+  const err = { name: "boom" };
+  const it = document.createNodeIterator(root, NodeFilter.SHOW_ALL, () => { throw err; });
+  assert_throws_exactly(err, () => it.nextNode());
+  const it2 = document.createNodeIterator(root, NodeFilter.SHOW_ALL, { acceptNode: 42 });
+  assert_throws_js(TypeError, () => it2.nextNode());
+}, "a filter's exception, or a non-callable acceptNode, propagates out of nextNode()");
+
+test(() => {
+  const it = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, () => "1");
+  assert_equals(it.nextNode(), root, "\"1\" converts to FILTER_ACCEPT");
+}, "the filter's result is converted to unsigned short");
+
+test(() => {
+  let inner;
+  const it = document.createNodeIterator(root, NodeFilter.SHOW_ALL, () => {
+    try { it.nextNode(); } catch (e) { inner = e; }
+    return NodeFilter.FILTER_ACCEPT;
+  });
+  it.nextNode();
+  assert_true(inner instanceof DOMException && inner.name === "InvalidStateError");
+}, "re-entering the iterator from its own filter throws InvalidStateError");
+
+test(() => {
+  const filter = n => n.localName === "p" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, filter);
+  assert_equals(tw.filter, filter);
+  assert_array_equals(ids(() => tw.nextNode()), ["a", "c"]);
+}, "TreeWalker calls its filter too");
+
+promise_test(async t => {
+  let lookups = 0;
+  const target = document.createElement("div");
+  target.addEventListener("foo", { get handleEvent() { lookups++; return () => {}; } });
+  assert_equals(lookups, 0, "addEventListener does not look handleEvent up");
+  target.dispatchEvent(new Event("foo"));
+  target.dispatchEvent(new Event("foo"));
+  assert_equals(lookups, 2);
+}, "handleEvent is looked up at dispatch time, every time");
+</script>
