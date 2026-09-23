@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>MutationRecord's nullable fields are null when they do not apply</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-mutationrecord">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body><div id=host></div>
+<script>
+test(() => {
+  const host = document.getElementById("host");
+  const mo = new MutationObserver(() => {});
+  mo.observe(host, {childList: true});
+  host.appendChild(document.createElement("i"));
+  const [record] = mo.takeRecords();
+  mo.disconnect();
+  assert_equals(record.type, "childList");
+  assert_equals(record.attributeName, null);
+  assert_equals(record.attributeNamespace, null);
+  assert_equals(record.oldValue, null);
+}, "a childList record has no attribute name, namespace or old value");
+
+test(() => {
+  const host = document.getElementById("host");
+  const mo = new MutationObserver(() => {});
+  mo.observe(host, {attributes: true});
+  host.setAttribute("data-a", "1");
+  const [record] = mo.takeRecords();
+  mo.disconnect();
+  assert_equals(record.attributeName, "data-a");
+  assert_equals(record.attributeNamespace, null, "a non-namespaced attribute");
+  assert_equals(record.oldValue, null, "attributeOldValue was not requested");
+}, "an attributes record without a namespace or old value");
+</script>
