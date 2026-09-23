@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: the attribute list keeps order, names and case</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-element-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+
+test(() => {
+  const el = document.createElement("div");
+  for (const name of ["a", "b", "c", "d", "e", "f"]) el.setAttribute(name, name);
+  el.removeAttribute("b");
+  assert_array_equals(el.getAttributeNames(), ["a", "c", "d", "e", "f"]);
+  el.removeAttribute("a");
+  el.setAttribute("g", "g");
+  assert_array_equals(el.getAttributeNames(), ["c", "d", "e", "f", "g"]);
+}, "Removing an attribute keeps the others in order, past the first four");
+
+test(() => {
+  const el = document.createElement("div");
+  assert_true(Array.isArray(el.getAttributeNames()));
+  assert_array_equals(el.getAttributeNames(), []);
+  el.setAttributeNS("urn:x", "p:q", "1");
+  el.setAttribute("r", "2");
+  assert_array_equals(el.getAttributeNames(), ["p:q", "r"]);
+}, "getAttributeNames returns an array of qualified names");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("a:b", "1");
+  el.setAttributeNS(null, "FOO", "2");
+  el.setAttributeNS("urn:x", "p:q", "3");
+  const copy = el.cloneNode();
+  assert_array_equals(copy.getAttributeNames(), ["a:b", "FOO", "p:q"]);
+  assert_equals(copy.getAttributeNS(null, "a:b"), "1");
+  assert_equals(copy.getAttributeNS(null, "FOO"), "2");
+  assert_equals(copy.getAttributeNS("urn:x", "q"), "3");
+  assert_equals(copy.attributes[2].prefix, "p");
+}, "cloneNode copies every attribute exactly, whatever its name");
+
+test(() => {
+  const el = document.createElement("div");
+  el.attributes;  // take the NamedNodeMap early
+  el.setAttribute("late", "1");
+  const copy = el.cloneNode();
+  assert_equals(copy.getAttribute("late"), "1");
+}, "cloneNode copies attributes set after `attributes` was first read");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("DATA-X", "1");
+  assert_array_equals(el.getAttributeNames(), ["data-x"]);
+  assert_true(el.toggleAttribute("HIDDEN"));
+  assert_true(el.hasAttribute("hidden"));
+  assert_false(el.toggleAttribute("Hidden"));
+  assert_false(el.hasAttribute("hidden"));
+  assert_throws_dom("InvalidCharacterError", () => el.setAttribute("a b", "1"));
+  assert_throws_dom("InvalidCharacterError", () => el.toggleAttribute("a=b"));
+}, "setAttribute and toggleAttribute lowercase and validate on an HTML element");
+
+test(() => {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  el.setAttribute("viewBox", "0 0 1 1");
+  assert_array_equals(el.getAttributeNames(), ["viewBox"]);
+  assert_equals(el.getAttribute("viewbox"), null);
+}, "setAttribute keeps case on an element outside the HTML namespace");
+
+test(() => {
+  const el = document.createElement("div");
+  el.id = "one";
+  assert_equals(el.getAttribute("id"), "one");
+  el.setAttributeNS(null, "id", "two");
+  assert_equals(el.id, "two");
+  el.removeAttributeNS(null, "id");
+  assert_equals(el.id, "");
+  el.setAttributeNS("urn:x", "p:id", "three");
+  assert_equals(el.id, "", "a namespaced id is not the element's ID");
+}, "id follows its attribute through every setter");
+</script>
