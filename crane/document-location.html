@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: document.location is the window's Location while the document is fully active</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-document-location">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// "The Document object's location getter steps are to return this's relevant
+// global object's Location object, if this is fully active, and null otherwise."
+test(() => {
+  assert_equals(document.location, window.location);
+  assert_equals(document.location.pathname, location.pathname);
+}, "A window's document answers the window's Location");
+
+test(() => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  assert_equals(f.contentDocument.location, f.contentWindow.location);
+  const doc = f.contentDocument;
+  f.remove();
+  assert_equals(doc.location, null, "a removed iframe's document is not fully active");
+}, "An iframe's document answers its own window's Location, until it is removed");
+
+test(() => {
+  assert_equals(document.implementation.createHTMLDocument("").location, null, "createHTMLDocument");
+  assert_equals(new DOMParser().parseFromString("<p>", "text/html").location, null, "DOMParser");
+}, "A document without a browsing context answers null");
+</script>
