@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: DOMImplementation creates its documents' elements with "create an element"</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-domimplementation-createhtmldocument">
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-domimplementation-createdocument">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("a title");
+  assert_true(doc.documentElement instanceof HTMLHtmlElement, "html");
+  assert_true(doc.head instanceof HTMLHeadElement, "head");
+  assert_true(doc.body instanceof HTMLBodyElement, "body");
+  const title = doc.getElementsByTagName("title")[0];
+  assert_true(title instanceof HTMLTitleElement, "title");
+  assert_equals(title.textContent, "a title");
+  assert_equals(doc.body.namespaceURI, HTML_NS);
+}, "createHTMLDocument's elements are HTML elements");
+
+test(() => {
+  const doc = document.implementation.createDocument(HTML_NS, "html", null);
+  assert_true(doc.documentElement instanceof HTMLHtmlElement, "an HTML-namespace root is an HTML element");
+  assert_equals(doc.documentElement.localName, "html");
+  const other = document.implementation.createDocument("urn:x", "p:root", null);
+  assert_equals(other.documentElement.prefix, "p");
+  assert_equals(other.documentElement.localName, "root");
+  assert_false(other.documentElement instanceof HTMLElement);
+}, "createDocument's document element is created by the internal createElementNS steps");
+
+test(() => {
+  assert_throws_dom("InvalidCharacterError", () => document.implementation.createDocument(null, "1a", null));
+  assert_throws_dom("NamespaceError", () => document.implementation.createDocument(null, "a:b", null));
+  assert_equals(document.implementation.createDocument(null, "", null).documentElement, null);
+}, "createDocument validates the qualified name");
+</script>
