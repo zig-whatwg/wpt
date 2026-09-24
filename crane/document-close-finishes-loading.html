@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: document.close() runs "the end", and a frame's container fires load</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-close">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#completely-finish-loading">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-frameelement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+test(() => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  assert_equals(f.contentWindow.frameElement, f, "a frame's window: its iframe");
+  assert_equals(window.frameElement, null, "a top-level window: none");
+}, "frameElement is the window's container");
+
+promise_test(async () => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  const doc = f.contentDocument;
+  const seen = [];
+  const elementLoaded = new Promise(r => f.addEventListener("load", () => { seen.push("iframe load"); r(); }));
+  doc.open();
+  assert_equals(doc.readyState, "loading", "open() makes the document loading again");
+  doc.addEventListener("readystatechange", () => seen.push("readystatechange " + doc.readyState));
+  doc.addEventListener("DOMContentLoaded", () => seen.push("DOMContentLoaded"));
+  f.contentWindow.addEventListener("load", () => seen.push("window load"));
+  doc.write("<title>t</title><p>written</p>");
+  doc.close();
+  assert_equals(doc.readyState, "interactive", "the parser has stopped");
+  await elementLoaded;
+  assert_array_equals(seen, [
+    "readystatechange interactive",
+    "DOMContentLoaded",
+    "readystatechange complete",
+    "window load",
+    "iframe load",
+  ]);
+  assert_equals(doc.readyState, "complete");
+}, "document.close() finishes loading a frame's document, and the iframe fires load");
+
+test(() => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  const doc = f.contentDocument;
+  doc.open();
+  doc.write("<title>t</title><p>written</p>");
+  doc.close();
+  assert_true(doc.documentElement instanceof f.contentWindow.HTMLHtmlElement, "the stream is parsed as a document");
+  assert_equals(doc.title, "t");
+  assert_equals(doc.body.textContent, "written");
+}, "document.close() parses what was written as the document's input stream");
+</script>
