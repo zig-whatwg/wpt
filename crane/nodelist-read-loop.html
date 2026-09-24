@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Reading a NodeList many times costs nothing that lasts</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div><p></p><p></p><p></p></div>
+<script>
+// A measurement fixture as much as a test: run it under `leaks --atExit`
+// and every allocation that outlives a read shows up N times.
+test(() => {
+  const list = document.querySelectorAll("p");
+  let n = 0;
+  for (let i = 0; i < 200000; ++i) {
+    if (list[i % 3]) ++n;
+    n += list.length;
+  }
+  assert_equals(n, 200000 * 4);
+}, "200,000 indexed reads and length reads");
+</script>
