@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame's load event fires once per navigation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#iframe-load-event-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function loadsOf(t, setup) {
+  const iframe = document.createElement("iframe");
+  let loads = 0;
+  iframe.addEventListener("load", () => ++loads);
+  setup(iframe);
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  return () => loads;
+}
+
+for (const [name, setup] of [
+  ["a data: URL", f => f.src = "data:text/html,<p>data"],
+  ["a same-origin URL", f => f.src = "/common/blank.html"],
+  ["srcdoc", f => f.srcdoc = "<p>srcdoc"],
+]) {
+  async_test(t => {
+    const loads = loadsOf(t, setup);
+    t.step_timeout(() => {
+      assert_equals(loads(), 1, "load fired once");
+      t.done();
+    }, 500);
+  }, `${name} frame fires load once`);
+}
+</script>

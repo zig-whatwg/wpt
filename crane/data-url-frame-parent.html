@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A data: URL frame's parent is its container's window</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-parent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async_test(t => {
+  const iframe = document.createElement("iframe");
+  // Replies once, to its parent, saying whether parent was itself. Once:
+  // were parent the frame itself, replying to every message would ping
+  // the frame forever.
+  iframe.src = "data:text/html," + encodeURIComponent(
+    "<script>let sent = false; window.addEventListener('message', () => { if (sent) return; sent = true; parent.postMessage({ self: parent === window }, '*'); });<\/script>");
+  iframe.onload = t.step_func(() => iframe.contentWindow.postMessage("ping", "*"));
+  window.addEventListener("message", t.step_func_done(e => {
+    assert_false(e.data.self, "parent is not the frame's own window");
+    assert_equals(e.source, iframe.contentWindow, "the reply comes from the frame");
+  }));
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+}, "a data: URL frame's parent.postMessage reaches its container's window");
+</script>

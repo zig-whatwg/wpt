@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame that echoes every message hears only the messages sent to it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/web-messaging.html#posting-messages">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async_test(t => {
+  const iframe = document.createElement("iframe");
+  // Echoes every message it receives to its parent - bounded, so a frame
+  // that hears its own replies cannot ping itself forever.
+  iframe.src = "data:text/html," + encodeURIComponent(
+    "<script>let n = 0; window.addEventListener('message', e => { if (++n > 5) return; parent.postMessage({ n, got: e.data }, '*'); });<\/script>");
+  const replies = [];
+  iframe.onload = t.step_func(() => {
+    iframe.contentWindow.postMessage("ping", "*");
+    t.step_timeout(() => {
+      assert_array_equals(replies.map(r => r.got), ["ping"], "one ping, one echo");
+      t.done();
+    }, 200);
+  });
+  window.addEventListener("message", e => replies.push(e.data));
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+}, "an echoing data: URL frame receives only what is posted to it");
+</script>
