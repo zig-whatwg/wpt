@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<script>
+parent.postMessage({
+  iframeIsHTML: document.createElement("iframe") instanceof HTMLIFrameElement,
+  contentType: document.contentType,
+  divNamespace: document.createElement("div").namespaceURI,
+  documentURL: document.URL,
+  scriptCount: document.getElementsByTagName("script").length,
+  locationHref: location.href,
+}, "*");
+</script>

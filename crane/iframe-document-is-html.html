@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a document loaded into an iframe is an HTML document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+"use strict";
+function probe(origin) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    window.addEventListener("message", function listener(e) {
+      if (e.source !== iframe.contentWindow) return;
+      window.removeEventListener("message", listener);
+      resolve(e.data);
+    });
+    iframe.src = new URL("resources/document-kind-probe.html", origin + location.pathname);
+    document.body.append(iframe);
+  });
+}
+
+for (const [label, origin] of [["same-origin", get_host_info().HTTP_ORIGIN],
+                               ["cross-origin", get_host_info().HTTP_REMOTE_ORIGIN]]) {
+  const result = probe(origin);
+  promise_test(async () => {
+    const r = await result;
+    assert_equals(r.scriptCount, 1, "the running script is in the document it sees");
+    assert_true(r.documentURL.endsWith("/resources/document-kind-probe.html"), `document.URL is ${r.documentURL}`);
+  }, `A ${label} frame's parser-run scripts see their own document`);
+  promise_test(async () => {
+    const r = await result;
+    assert_equals(r.divNamespace, "http://www.w3.org/1999/xhtml", "createElement uses the HTML namespace");
+    assert_true(r.iframeIsHTML, "createElement('iframe') is an HTMLIFrameElement");
+  }, `A ${label} frame's document creates HTML elements`);
+  promise_test(async () => {
+    assert_equals((await result).contentType, "text/html");
+  }, `A ${label} frame's document is text/html`);
+}
+
+test(() => {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  assert_true(iframe.contentDocument.createElement("iframe") instanceof iframe.contentWindow.HTMLIFrameElement);
+}, "The initial about:blank document creates HTML elements");
+
+test(() => {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  assert_equals(iframe.contentDocument.contentType, "text/html");
+}, "The initial about:blank document is text/html");
+</script>
