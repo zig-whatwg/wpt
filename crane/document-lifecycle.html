@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a document goes through readiness, DOMContentLoaded, load and pageshow - in a frame too</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+const seen = ["script " + document.readyState];
+document.addEventListener("readystatechange", () => seen.push("readystatechange " + document.readyState));
+document.addEventListener("DOMContentLoaded", () => seen.push("DOMContentLoaded"));
+window.addEventListener("load", () => seen.push("load " + document.readyState));
+const pageshow = new Promise(r => window.addEventListener("pageshow", e => { seen.push("pageshow " + e.persisted); r(); }));
+
+// HTML 13.2.7 "the end": "interactive" when the parser stops, DOMContentLoaded,
+// then "complete", load at the window, and pageshow with persisted false.
+promise_test(async () => {
+  await pageshow;
+  assert_array_equals(seen, [
+    "script loading",
+    "readystatechange interactive",
+    "DOMContentLoaded",
+    "readystatechange complete",
+    "load complete",
+    "pageshow false",
+  ]);
+  assert_equals(document.readyState, "complete");
+}, "The top-level document");
+
+promise_test(async () => {
+  const got = [];
+  const done = new Promise(r => addEventListener("message", e => {
+    got.push(e.data);
+    if (e.data.startsWith("pageshow")) r();
+  }));
+  const f = document.createElement("iframe");
+  const elementLoad = new Promise(r => f.addEventListener("load", () => { got.push("iframe element load"); r(); }));
+  f.src = "resources/lifecycle-probe.html";
+  document.body.appendChild(f);
+  await Promise.all([done, elementLoad]);
+  assert_array_equals(got.slice(0, 6), [
+    "script loading",
+    "readystatechange interactive",
+    "DOMContentLoaded",
+    "readystatechange complete",
+    "load complete",
+    "pageshow false",
+  ], "the frame's document");
+  assert_equals(f.contentDocument.readyState, "complete");
+}, "A document in an iframe");
+</script>
+<body>

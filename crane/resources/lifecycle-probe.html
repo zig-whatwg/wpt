@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<script>
+const say = m => parent.postMessage(m, "*");
+say("script " + document.readyState);
+document.addEventListener("readystatechange", () => say("readystatechange " + document.readyState));
+document.addEventListener("DOMContentLoaded", () => say("DOMContentLoaded"));
+window.addEventListener("load", () => say("load " + document.readyState));
+window.addEventListener("pageshow", e => say("pageshow " + e.persisted));
+</script>
+<p>hi</p>
