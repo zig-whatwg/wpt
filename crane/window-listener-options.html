@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: window.addEventListener and removeEventListener honour their arguments</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-flatten-more">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+test(() => {
+  let calls = 0;
+  window.addEventListener("crane-once", () => calls++, { once: true });
+  window.dispatchEvent(new Event("crane-once"));
+  window.dispatchEvent(new Event("crane-once"));
+  assert_equals(calls, 1);
+}, "once: a window listener runs once");
+
+test(() => {
+  const seen = [];
+  const f = () => seen.push("capture");
+  window.addEventListener("crane-capture", f, true);
+  // A bubbling registration is a different listener: this removes nothing.
+  window.removeEventListener("crane-capture", f);
+  window.dispatchEvent(new Event("crane-capture"));
+  window.removeEventListener("crane-capture", f, true);
+  window.dispatchEvent(new Event("crane-capture"));
+  assert_array_equals(seen, ["capture"]);
+}, "a boolean third argument is capture, for add and for remove");
+
+test(() => {
+  const seen = [];
+  const f = () => seen.push(1);
+  window.addEventListener("crane-both", f, { capture: true });
+  window.addEventListener("crane-both", f, { capture: false });
+  window.dispatchEvent(new Event("crane-both"));
+  assert_array_equals(seen, [1, 1]);
+}, "capture in a dictionary makes a second registration of the same callback");
+
+test(() => {
+  let calls = 0;
+  window.addEventListener("", () => calls++);
+  window.dispatchEvent(new Event(""));
+  assert_equals(calls, 1);
+}, "the empty string is an event type");
+
+test(() => {
+  let calls = 0;
+  window.addEventListener(null, () => calls++);
+  window.dispatchEvent(new Event("null"));
+  assert_equals(calls, 1);
+}, "the type is converted with ToString");
+</script>
