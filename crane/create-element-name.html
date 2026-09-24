@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: createElement validates its local name and lowercases it in an HTML document</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-document-createelement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// DOM 4.5 createElement: step 1 throws "InvalidCharacterError" unless localName
+// is a valid element local name; step 2 lowercases it in an HTML document.
+test(() => {
+  assert_throws_dom("InvalidCharacterError", () => document.createElement(""));
+  assert_throws_dom("InvalidCharacterError", () => document.createElement("a b"));
+  assert_throws_dom("InvalidCharacterError", () => document.createElement("1a"));
+  assert_equals(document.createElement("a:b").localName, "a:b");
+}, "An invalid local name throws InvalidCharacterError");
+
+test(() => {
+  const el = document.createElement("DIV");
+  assert_equals(el.localName, "div");
+  assert_equals(el.tagName, "DIV");
+  assert_true(el instanceof HTMLDivElement);
+}, "An HTML document lowercases the local name");
+
+test(() => {
+  const doc = document.implementation.createDocument(null, null, null);
+  const el = doc.createElement("DIV");
+  assert_equals(el.localName, "DIV", "an XML document keeps the case");
+}, "An XML document keeps the case");
+
+test(() => {
+  const html = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+  assert_true(html instanceof HTMLDivElement, "the HTML namespace gets the HTML element interface");
+  const plain = document.createElementNS(null, "DIV");
+  assert_equals(plain.localName, "DIV", "case kept");
+  assert_equals(plain.namespaceURI, null);
+  assert_false(plain instanceof HTMLElement);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg:foreignObject");
+  assert_equals(svg.prefix, "svg");
+  assert_equals(svg.localName, "foreignObject");
+  assert_throws_dom("NamespaceError", () => document.createElementNS(null, "a:b"), "a prefix needs a namespace");
+  assert_throws_dom("InvalidCharacterError", () => document.createElementNS(null, ""));
+}, "createElementNS validates and extracts, and keeps the case");
+</script>

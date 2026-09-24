@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a script's clone copies "already started"</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-clone">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+window.runs = 0;
+</script>
+<script id="counted">window.runs++;</script>
+<script>
+"use strict";
+// HTML: "The cloning steps for script elements given node, copy, and subtree
+// are to set copy's already started to node's already started."
+test(() => {
+  assert_equals(window.runs, 1, "the original ran once");
+  const clone = document.getElementById("counted").cloneNode(true);
+  assert_true(clone instanceof HTMLScriptElement);
+  document.body.appendChild(clone);
+  assert_equals(window.runs, 1, "the clone of a script that has run does not run");
+}, "A clone of a script that has run is already started");
+
+test(() => {
+  const script = document.createElement("script");
+  script.textContent = "window.runs++;";
+  document.body.appendChild(script.cloneNode(true));
+  assert_equals(window.runs, 2, "the clone of a script that has not run runs when inserted");
+}, "A clone of a script that has not run is not already started");
+
+test(() => {
+  const copy = document.cloneNode(true);
+  assert_equals(window.runs, 2, "no script ran again");
+  assert_true(copy.getElementById("counted") instanceof HTMLScriptElement);
+}, "Cloning the document runs none of its scripts");
+</script>

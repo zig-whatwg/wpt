@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an element in the HTML namespace implements HTML's element interface for its local name</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#htmlelement">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-create-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+const byNS = name => document.createElementNS(HTML_NS, name);
+const protoOf = el => Object.getPrototypeOf(el);
+
+test(() => {
+  assert_true(byNS("div") instanceof HTMLDivElement);
+  const upper = byNS("DIV");
+  assert_equals(upper.localName, "DIV");
+  assert_equals(protoOf(upper), HTMLUnknownElement.prototype, "createElementNS does not lowercase, and the lookup is exact");
+}, "The lookup matches the local name exactly");
+
+test(() => {
+  for (const name of ["applet", "bgsound", "blink", "isindex", "keygen", "multicol", "nextid", "spacer"])
+    assert_equals(protoOf(document.createElement(name)), HTMLUnknownElement.prototype, name);
+}, "Step 1: these names are HTMLUnknownElement");
+
+test(() => {
+  for (const name of ["acronym", "basefont", "big", "center", "nobr", "noembed", "noframes", "plaintext", "rb", "rtc", "strike", "tt"])
+    assert_equals(protoOf(document.createElement(name)), HTMLElement.prototype, name);
+}, "Step 2: these obsolete elements are HTMLElement");
+
+test(() => {
+  assert_true(document.createElement("listing") instanceof HTMLPreElement, "listing");
+  assert_true(document.createElement("xmp") instanceof HTMLPreElement, "xmp");
+}, "Step 3: listing and xmp are HTMLPreElement");
+
+test(() => {
+  assert_true(document.createElement("marquee") instanceof HTMLMarqueeElement, "marquee");
+  assert_true(document.createElement("frameset") instanceof HTMLFrameSetElement, "frameset");
+  assert_true(document.createElement("frame") instanceof HTMLFrameElement, "frame");
+  assert_true(document.createElement("dir") instanceof HTMLDirectoryElement, "dir");
+  assert_true(document.createElement("font") instanceof HTMLFontElement, "font");
+  assert_true(document.createElement("param") instanceof HTMLParamElement, "param");
+}, "Step 4: the obsolete elements that keep an interface");
+
+test(() => {
+  assert_equals(protoOf(document.createElement("x-foo")), HTMLElement.prototype, "createElement");
+  assert_equals(protoOf(byNS("x-foo")), HTMLElement.prototype, "createElementNS");
+  assert_equals(protoOf(new Document().createElementNS(HTML_NS, "x-foo")), HTMLElement.prototype, "in an XML document");
+  assert_equals(protoOf(document.createElement("annotation-xml")), HTMLUnknownElement.prototype, "a reserved name is not a custom element name");
+}, "Step 6: a valid custom element name is HTMLElement");
+
+test(() => {
+  assert_true(document.createElement("div").cloneNode() instanceof HTMLDivElement, "shallow");
+  assert_true(document.createElement("input").cloneNode(true) instanceof HTMLInputElement, "deep");
+  const unknown = byNS("DIV").cloneNode();
+  assert_equals(protoOf(unknown), HTMLUnknownElement.prototype);
+  assert_equals(unknown.localName, "DIV");
+}, "A clone implements the same interface as its original");
+</script>
