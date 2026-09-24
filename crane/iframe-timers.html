@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame's window has its own timers and animation frames</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#unloading-document-cleanup-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function frame(t) {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  return iframe;
+}
+
+async_test(t => {
+  const w = frame(t).contentWindow;
+  const id = w.setTimeout(function (a, b) {
+    const self = this;
+    t.step(() => {
+      assert_equals(self, w, "a timer's this is its own window");
+      assert_array_equals([a, b], [1, 2], "the extra arguments reach the handler");
+    });
+    t.done();
+  }, 0, 1, 2);
+  assert_true(id > 0, "setTimeout returns a positive id");
+}, "setTimeout in a frame runs its handler");
+
+async_test(t => {
+  const w = frame(t).contentWindow;
+  let runs = 0;
+  const id = w.setInterval(t.step_func(() => {
+    if (++runs === 2) {
+      w.clearInterval(id);
+      t.step_timeout(t.step_func_done(() => assert_equals(runs, 2)), 50);
+    }
+  }), 0);
+}, "setInterval in a frame repeats until clearInterval");
+
+async_test(t => {
+  const w = frame(t).contentWindow;
+  const id = w.setTimeout(t.unreached_func("a cleared timer ran"), 0);
+  w.clearTimeout(id);
+  t.step_timeout(() => t.done(), 50);
+}, "clearTimeout in a frame cancels the frame's timer");
+
+async_test(t => {
+  const w = frame(t).contentWindow;
+  const id = setTimeout(t.step_func_done(), 0);
+  // An id names a timer in ONE window's map: the frame's clearTimeout does
+  // not reach this window's timer.
+  w.clearTimeout(id);
+}, "a frame's clearTimeout does not cancel another window's timer");
+
+async_test(t => {
+  const w = frame(t).contentWindow;
+  w.requestAnimationFrame(t.step_func_done(ts => {
+    assert_equals(typeof ts, "number", "the callback gets a timestamp");
+  }));
+}, "requestAnimationFrame in a frame runs its callback");
+
+async_test(t => {
+  const iframe = frame(t);
+  const w = iframe.contentWindow;
+  w.setTimeout(t.unreached_func("a removed frame's timer ran"), 20);
+  w.requestAnimationFrame(t.unreached_func("a removed frame's animation frame ran"));
+  iframe.remove();
+  t.step_timeout(() => t.done(), 100);
+}, "removing a frame clears its timers and animation frames");
+</script>
