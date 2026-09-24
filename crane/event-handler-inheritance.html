@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: event handler IDL attributes, one implementation for every includer</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#determining-the-target-of-an-event-handler">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+for (const [label, make] of [["an HTML element", () => document.createElement("div")],
+                             ["the document", () => document],
+                             ["the window", () => window]]) {
+  test(() => {
+    const target = make();
+    let calls = 0;
+    const handler = () => calls++;
+    target.onclick = handler;
+    assert_equals(target.onclick, handler, "the getter returns the handler");
+    target.dispatchEvent(new Event("click"));
+    assert_equals(calls, 1, "the handler runs");
+    target.onclick = null;
+    assert_equals(target.onclick, null, "null clears it");
+    target.dispatchEvent(new Event("click"));
+    assert_equals(calls, 1, "and it no longer runs");
+  }, `GlobalEventHandlers on ${label}`);
+}
+
+test(() => {
+  const handler = () => {};
+  document.body.onhashchange = handler;
+  assert_equals(window.onhashchange, handler, "a WindowEventHandlers member on body is the window's");
+  window.onhashchange = null;
+  assert_equals(document.body.onhashchange, null);
+
+  document.body.onfocus = handler;
+  assert_equals(window.onfocus, handler, "and so is one of the six window-reflecting GlobalEventHandlers");
+  window.onfocus = null;
+}, "A body element's window-reflecting handlers are its Window's");
+
+test(() => {
+  const handler = () => {};
+  const unconnected = document.createElement("body");
+  unconnected.onpopstate = handler;
+  assert_equals(window.onpopstate, handler, "an unconnected body in an active document still reaches the window");
+  window.onpopstate = null;
+
+  const inactive = document.implementation.createHTMLDocument("").createElement("body");
+  inactive.onpopstate = handler;
+  assert_equals(inactive.onpopstate, null, "a body whose document is not active has no target");
+}, "Determining the target of a body element's handler");
+
+test(() => {
+  const handler = () => {};
+  const div = document.createElement("div");
+  div.onload = handler;
+  assert_equals(div.onload, handler);
+  assert_not_equals(window.onload, handler, "only body and frameset forward to the window");
+}, "Other elements keep their own handlers");
+</script>
