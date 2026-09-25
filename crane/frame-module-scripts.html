@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame runs its module and defer scripts when parsing finishes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function frameWith(srcdoc) {
+  const iframe = document.createElement("iframe");
+  iframe.srcdoc = srcdoc;
+  const loaded = new Promise(r => iframe.onload = r);
+  document.body.append(iframe);
+  return loaded.then(() => iframe);
+}
+
+promise_test(async t => {
+  const iframe = await frameWith("<script type=module>window.ran = 1;<\/script>");
+  t.add_cleanup(() => iframe.remove());
+  assert_equals(iframe.contentWindow.ran, 1);
+}, "an inline module script in a frame runs before its load event");
+
+promise_test(async t => {
+  const iframe = await frameWith("<script defer src='data:text/javascript,window.ran=1'><\/script>");
+  t.add_cleanup(() => iframe.remove());
+  assert_equals(iframe.contentWindow.ran, 1);
+}, "a defer script in a frame runs before its load event");
+
+promise_test(async t => {
+  const iframe = await frameWith(
+    "<script type=module>window.onmessage = e => e.source.postMessage('pong', '*');<\/script>");
+  t.add_cleanup(() => iframe.remove());
+  const reply = new Promise(r => addEventListener("message", e => r(e.data), { once: true }));
+  iframe.contentWindow.postMessage("ping", "*");
+  assert_equals(await reply, "pong");
+}, "a frame's module script answers postMessage");
+</script>
