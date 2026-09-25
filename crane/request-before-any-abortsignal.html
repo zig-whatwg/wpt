@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A Request made before the realm has any AbortSignal</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-request">
+<link rel="help" href="https://dom.spec.whatwg.org/#create-a-dependent-abort-signal">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Runs as the page parses, before anything has made an AbortSignal. The
+// Request constructor's step 30 makes this's signal a dependent abort signal
+// from « », which needs no signal to exist first. Must run in a fresh
+// process: once any page has made a signal, nothing here can fail.
+const early = fetch("/common/blank.html").then(r => r.status, e => "rejected: " + e.message);
+
+promise_test(async () => {
+  assert_equals(await early, 200);
+}, "fetch() before any AbortSignal exists");
+
+test(() => {
+  const request = new Request("/common/blank.html");
+  assert_true(request.signal instanceof AbortSignal);
+  assert_false(request.signal.aborted);
+}, "a Request's signal is a live, unaborted AbortSignal");
+</script>
