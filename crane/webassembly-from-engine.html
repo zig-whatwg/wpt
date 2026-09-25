@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The WebAssembly namespace is the JavaScript engine's</title>
+<link rel="help" href="https://webassembly.github.io/spec/js-api/#namespacedef-webassembly">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// (module (func (export "inc") (param i32) (result i32) local.get 0 i32.const 1 i32.add))
+const bytes = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x60, 0x01, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x69, 0x6e, 0x63, 0x00, 0x00, 0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b]);
+
+test(() => {
+  assert_true(WebAssembly.validate(bytes));
+  assert_false(WebAssembly.validate(new Uint8Array([1, 2, 3])));
+}, "WebAssembly.validate");
+
+promise_test(async () => {
+  const module = await WebAssembly.compile(bytes);
+  assert_true(module instanceof WebAssembly.Module);
+  const instance = await WebAssembly.instantiate(module);
+  assert_equals(instance.exports.inc(41), 42);
+}, "WebAssembly.compile and instantiate");
+
+test(() => {
+  const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes));
+  assert_equals(instance.exports.inc(1), 2);
+  assert_true(new WebAssembly.Memory({ initial: 1 }).buffer instanceof ArrayBuffer);
+}, "the WebAssembly constructors");
+</script>
