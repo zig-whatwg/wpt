@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>fetch() runs in parallel: the call returns before the network answers</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#fetch-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// fetch() step 12 fetches "in parallel" and settles p from a task queued
+// when the response arrives, so the call itself returns p at once, and the
+// event loop - timers, other fetches - keeps turning while the request is in
+// flight. /common/slow.py holds its response for `delay` milliseconds.
+const slow = ms => `/common/slow.py?delay=${ms}`;
+
+promise_test(async () => {
+  const started = Date.now();
+  const p = fetch(slow(1000));
+  assert_less_than(Date.now() - started, 500, "fetch() returned before its response arrived");
+  const response = await p;
+  assert_equals(response.status, 200);
+}, "fetch() returns before the network has answered");
+
+promise_test(async () => {
+  let fired = false;
+  setTimeout(() => { fired = true; }, 50);
+  await fetch(slow(500));
+  assert_true(fired, "a timer that came due while the fetch was in flight has run");
+}, "a timer runs while a fetch is in flight");
+
+promise_test(async () => {
+  const started = Date.now();
+  const responses = await Promise.all([fetch(slow(1000)), fetch(slow(1000))]);
+  assert_equals(responses[0].status, 200);
+  assert_equals(responses[1].status, 200);
+  assert_less_than(Date.now() - started, 1900, "two one-second fetches overlapped");
+}, "two fetches are in flight at once");
+
+promise_test(async t => {
+  // A network error still rejects - now from a later task.
+  await promise_rejects_js(t, TypeError, fetch("http://127.0.0.1:1/bad-port"));
+}, "a blocked port rejects with a TypeError");
+</script>

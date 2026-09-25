@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A page can end with fetches still in flight</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-fetch-group-terminate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The page finishes while these are still waiting on the server, so the
+// next page loads with them in flight: they have to be terminated with the
+// fetch group of the document that started them, and never settle into it.
+// Run it in the same process as other files - on its own it proves nothing.
+const inflight = [fetch("/common/slow.py?delay=3000"), fetch("/common/slow.py?delay=3000")];
+test(() => {
+  assert_equals(inflight.length, 2);
+}, "the page ends with two fetches in flight");
+</script>
