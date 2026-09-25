@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame that opened a popup can be removed, and so can its page</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-open">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The popup's navigable is created under the frame that opened it, and the
+// frame's window keeps it. Removing the frame destroys both; the page's own
+// teardown - the runner navigating to the next file - must not free them a
+// second time.
+async_test(t => {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const popup = iframe.contentWindow.open("/common/blank.html", "_blank");
+  assert_not_equals(popup, null, "the frame opened a popup");
+  t.step_timeout(() => {
+    iframe.remove();
+    t.step_timeout(() => t.done(), 50);
+  }, 100);
+}, "removing a frame that opened a popup");
+
+async_test(t => {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const popup = iframe.contentWindow.open("/common/blank.html", "_blank");
+  assert_not_equals(popup, null, "the frame opened a popup");
+  // The frame stays; the page ends with it and its popup still open.
+  t.step_timeout(() => t.done(), 100);
+}, "ending the page while a frame's popup is open");
+
+// Here the frame's own script calls open(): the frame is the entry global,
+// so the popup is the frame's, and goes with it.
+function frameThatOpens(t) {
+  const iframe = document.createElement("iframe");
+  iframe.srcdoc = "<script>window.popup = open('/common/blank.html', '_blank');<\/script>";
+  document.body.append(iframe);
+  return new Promise(resolve => iframe.onload = () => resolve(iframe));
+}
+
+promise_test(async t => {
+  const iframe = await frameThatOpens(t);
+  assert_not_equals(iframe.contentWindow.popup, null, "the frame's script opened a popup");
+  iframe.remove();
+  await new Promise(r => t.step_timeout(r, 50));
+}, "removing a frame whose own script opened a popup");
+
+promise_test(async t => {
+  const iframe = await frameThatOpens(t);
+  assert_not_equals(iframe.contentWindow.popup, null, "the frame's script opened a popup");
+}, "ending the page while a popup its frame opened is open");
+</script>
