@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>XMLHttpRequest event handler IDL attributes are ordinary event handlers</title>
+<link rel="help" href="https://xhr.spec.whatwg.org/#event-handlers">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// onloadstart .. onloadend (XMLHttpRequestEventTarget) and onreadystatechange
+// (XMLHttpRequest) are event handler IDL attributes: the getter returns the
+// value set, the handler runs with `this` the event's currentTarget, and it
+// runs where it was first activated among the event listeners.
+const url = "/common/blank.html";
+
+test(() => {
+  const xhr = new XMLHttpRequest();
+  const f = () => {};
+  for (const name of ["onloadstart", "onprogress", "onabort", "onerror", "onload", "ontimeout", "onloadend", "onreadystatechange"]) {
+    assert_equals(xhr[name], null, `${name} starts null`);
+    xhr[name] = f;
+    assert_equals(xhr[name], f, `${name} returns the value set`);
+    xhr[name] = null;
+    assert_equals(xhr[name], null, `${name} is cleared by null`);
+  }
+  xhr.upload.onload = f;
+  assert_equals(xhr.upload.onload, f, "upload.onload returns the value set");
+}, "the getters return what the setters set");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  // A plain function: testharness's step_func would call it with the test as
+  // `this`.
+  xhr.onload = function(e) {
+    const self = this;
+    t.step(() => {
+      assert_equals(self, xhr, "this");
+      assert_equals(e.currentTarget, xhr, "currentTarget");
+    });
+    t.done();
+  };
+  xhr.open("GET", url);
+  xhr.send();
+}, "onload runs with this set to the XMLHttpRequest");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  const order = [];
+  xhr.addEventListener("load", () => order.push("first listener"));
+  xhr.onload = () => order.push("handler");
+  xhr.addEventListener("load", () => order.push("second listener"));
+  xhr.onloadend = t.step_func_done(() => {
+    assert_array_equals(order, ["first listener", "handler", "second listener"]);
+  });
+  xhr.open("GET", url);
+  xhr.send();
+}, "onload runs where it was activated among the listeners");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  const seen = [];
+  xhr.onreadystatechange = function() {
+    seen.push([this, xhr.readyState]);
+    if (xhr.readyState === 4) t.step_timeout(t.step_func_done(() => {
+      assert_true(seen.every(([self]) => self === xhr), "this is the XMLHttpRequest every time");
+      assert_array_equals(seen.map(([, state]) => state).slice(0, 2), [1, 2], "opened, then headers received");
+    }), 0);
+  };
+  xhr.open("GET", url);
+  xhr.send();
+}, "onreadystatechange runs with this set to the XMLHttpRequest");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  xhr.onload = t.step_func(() => {
+    // Clearing its own attribute from inside the handler is safe, and it does
+    // not run again.
+    xhr.onload = null;
+  });
+  xhr.onloadend = t.step_func_done(() => assert_equals(xhr.onload, null));
+  xhr.open("GET", url);
+  xhr.send();
+}, "a handler can clear itself");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  xhr.upload.addEventListener("loadstart", t.step_func_done(function(e) {
+    assert_equals(e.currentTarget, xhr.upload);
+  }));
+  xhr.open("POST", url);
+  xhr.send("body");
+}, "an upload listener added with addEventListener sets the upload listener flag");
+</script>

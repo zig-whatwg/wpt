@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An asynchronous XMLHttpRequest fetches in parallel</title>
+<link rel="help" href="https://xhr.spec.whatwg.org/#the-send()-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+// send() step 11 fetches req in parallel: the event loop keeps turning while
+// the response is on its way, two requests are in flight at once, and a
+// timeout or abort() ends a request that has not been answered.
+const slow = ms => `/common/slow.py?delay=${ms}`;
+
+function get(url, setup) {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", url);
+  if (setup) setup(xhr);
+  xhr.send();
+  return xhr;
+}
+
+async_test(t => {
+  let fired = false;
+  get(slow(500), xhr => {
+    xhr.onload = t.step_func_done(() => assert_true(fired, "a timer due before the response ran first"));
+  });
+  setTimeout(() => { fired = true; }, 50);
+}, "a timer runs while a request is in flight");
+
+async_test(t => {
+  const order = [];
+  get(slow(1000), xhr => xhr.onload = t.step_func_done(() => {
+    order.push("slow");
+    assert_array_equals(order, ["fast", "slow"]);
+  }));
+  get(slow(0), xhr => xhr.onload = () => order.push("fast"));
+}, "two requests are in flight at once, and finish in the order they are answered");
+
+async_test(t => {
+  const started = Date.now();
+  get(slow(2000), xhr => {
+    xhr.timeout = 200;
+    xhr.onload = t.unreached_func("load");
+    xhr.ontimeout = t.step_func_done(() => {
+      assert_less_than(Date.now() - started, 1500, "timed out at the timeout, not at the response");
+      assert_equals(xhr.readyState, 4);
+    });
+  });
+}, "a timeout ends a request still in flight");
+
+async_test(t => {
+  const started = Date.now();
+  const xhr = get(slow(2000), xhr => {
+    xhr.onload = t.unreached_func("load");
+    xhr.onloadend = t.step_func(() => {
+      assert_less_than(Date.now() - started, 1500, "aborted at abort(), not at the response");
+      // Give a late load a chance to show itself.
+      t.step_timeout(() => t.done(), 100);
+    });
+  });
+  t.step_timeout(() => xhr.abort(), 50);
+}, "abort() ends a request still in flight");
+
+async_test(t => {
+  const started = Date.now();
+  const xhr = get(slow(2000), xhr => {
+    xhr.onload = t.unreached_func("load of the first request");
+  });
+  t.step_timeout(() => {
+    xhr.open("GET", slow(0));
+    xhr.onload = t.step_func_done(() => assert_less_than(Date.now() - started, 1500));
+    xhr.send();
+  }, 50);
+}, "open() ends the request in flight, and a new one can be sent");
+
+async_test(t => {
+  // The first request's load handler sends a second one, with a body of its
+  // own, on the same object - while the first request's steps are still
+  // running. Each body must be its own request's.
+  const xhr = new XMLHttpRequest();
+  const bodies = [];
+  xhr.onload = t.step_func(() => {
+    bodies.push(xhr.responseText);
+    if (bodies.length === 1) {
+      xhr.open("POST", "/xhr/resources/content.py");
+      xhr.send("second body");
+    } else {
+      assert_array_equals(bodies, ["first body", "second body"]);
+      t.done();
+    }
+  });
+  xhr.open("POST", "/xhr/resources/content.py");
+  xhr.send("first body");
+}, "a handler can send again, and each request carries its own body");
+
+async_test(t => {
+  // A 307 re-sends the body; the request has to still have it by then.
+  const xhr = new XMLHttpRequest();
+  xhr.onload = t.step_func_done(() => assert_equals(xhr.responseText, "kept across a redirect"));
+  xhr.open("POST", "/xhr/resources/redirect.py?code=307&location=content.py");
+  xhr.send("kept across a redirect");
+}, "a redirect re-sends the request body");
+
+promise_test(async t => {
+  // Nothing holds the request but the fetch itself, and a collection runs
+  // while it is in flight: XHR §3.2, it must not be collected before its
+  // events have fired.
+  const loaded = new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", slow(300));
+    xhr.onloadend = e => resolve(e.type);
+    xhr.send();
+  });
+  await garbageCollect();
+  assert_equals(await loaded, "loadend");
+}, "a request nobody holds is not collected while it is outstanding");
+
+async_test(t => {
+  // The request leaves at send(), not when the script that sent it is done:
+  // a long task does not count against the timeout.
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", slow(100));
+  xhr.timeout = 400;
+  xhr.ontimeout = t.unreached_func("timeout");
+  xhr.onload = t.step_func_done();
+  xhr.send();
+  const start = performance.now();
+  while (performance.now() - start < 500) { }
+}, "a long task does not count against the timeout");
+</script>

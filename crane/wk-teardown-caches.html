@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's isolate goes without leaving the page a handle into it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#terminate-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A terminated worker's isolate is disposed. Anything the process keeps for
+// one isolate at a time must let go of the worker's before that: the async
+// iterator template cache held the worker's template, and the page's next
+// `for await` over a ReadableStream reset a handle of the disposed isolate.
+function workerFrom(source) {
+  return new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })));
+}
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+promise_test(async () => {
+  const worker = workerFrom(`
+    (async () => {
+      const stream = new ReadableStream({ start(c) { c.enqueue(1); c.close(); } });
+      const seen = [];
+      for await (const chunk of stream) seen.push(chunk);
+      postMessage(seen);
+    })();
+  `);
+  const seen = await new Promise(resolve => { worker.onmessage = e => resolve(e.data); });
+  assert_array_equals(seen, [1], "the worker iterated its stream");
+  worker.terminate();
+  await wait(100);
+
+  const stream = new ReadableStream({ start(c) { c.enqueue(2); c.close(); } });
+  const got = [];
+  for await (const chunk of stream) got.push(chunk);
+  assert_array_equals(got, [2], "the page iterates a stream after the worker's isolate is gone");
+}, "async iteration in the page after a worker that used it has been torn down");
+</script>

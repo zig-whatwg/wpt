@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker hears the page's messages through its event listeners</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A message posted to a dedicated worker is delivered by firing a
+// MessageEvent at its global object, so both the onmessage handler and
+// listeners added with addEventListener hear it.
+function workerFrom(source) {
+  return new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })));
+}
+
+function nextMessage(worker) {
+  return new Promise(resolve => { worker.onmessage = e => resolve(e.data); });
+}
+
+promise_test(async t => {
+  const worker = workerFrom(`
+    self.addEventListener("message", e => {
+      postMessage([e.type, String(e.data), e instanceof MessageEvent, e.target === self]);
+    });
+  `);
+  t.add_cleanup(() => worker.terminate());
+  const reply = nextMessage(worker);
+  worker.postMessage("ping");
+  const [type, data, isMessageEvent, targetIsGlobal] = await reply;
+  assert_equals(type, "message");
+  assert_equals(data, "ping");
+  assert_true(isMessageEvent, "the event is a MessageEvent");
+  assert_true(targetIsGlobal, "the event's target is the worker's global object");
+}, "addEventListener('message') on the worker global hears the page's message");
+
+promise_test(async t => {
+  const worker = workerFrom(`
+    let seen = [];
+    self.onmessage = e => { seen.push("handler:" + e.data); };
+    self.addEventListener("message", e => { seen.push("listener:" + e.data); postMessage(seen); });
+  `);
+  t.add_cleanup(() => worker.terminate());
+  const reply = nextMessage(worker);
+  worker.postMessage("x");
+  assert_array_equals(await reply, ["handler:x", "listener:x"]);
+}, "the onmessage handler and a message listener both run, in registration order");
+</script>

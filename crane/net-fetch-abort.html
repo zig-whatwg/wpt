@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Aborting fetch()'s signal while the fetch is in flight</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#fetch-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// fetch() steps 9-11: abort steps added to requestObject's signal abort the
+// fetch and reject p with the signal's abort reason - now that the fetch is
+// in flight after fetch() returns, not finished inside it.
+const slow = ms => `/common/slow.py?delay=${ms}`;
+
+promise_test(async t => {
+  const controller = new AbortController();
+  const started = Date.now();
+  const p = fetch(slow(2000), { signal: controller.signal });
+  controller.abort();
+  await promise_rejects_dom(t, "AbortError", p);
+  assert_less_than(Date.now() - started, 1500, "rejected without waiting for the response");
+}, "abort() after fetch() rejects with an AbortError");
+
+promise_test(async t => {
+  const controller = new AbortController();
+  const p = fetch(slow(2000), { signal: controller.signal });
+  const reason = new Error("mine");
+  t.step_timeout(() => controller.abort(reason), 50);
+  await promise_rejects_exactly(t, reason, p);
+}, "abort(reason) on a later turn rejects with that reason");
+
+promise_test(async t => {
+  const started = Date.now();
+  const p = fetch(slow(2000), { signal: AbortSignal.timeout(100) });
+  await promise_rejects_dom(t, "TimeoutError", p);
+  assert_less_than(Date.now() - started, 1500, "rejected at the timeout, not at the response");
+}, "AbortSignal.timeout() rejects a fetch still in flight");
+
+promise_test(async () => {
+  const controller = new AbortController();
+  const response = await fetch(slow(50), { signal: controller.signal });
+  controller.abort();
+  assert_equals(response.status, 200);
+}, "abort() after the response arrived leaves it resolved");
+
+promise_test(async t => {
+  // The request object's own signal, followed from a Request.
+  const controller = new AbortController();
+  const request = new Request(slow(2000), { signal: controller.signal });
+  const p = fetch(request);
+  controller.abort();
+  await promise_rejects_dom(t, "AbortError", p);
+}, "aborting a Request's signal aborts the fetch of that Request");
+</script>

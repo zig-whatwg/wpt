@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Terminating a worker ends it, and the page goes on</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#terminate-a-worker">
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Terminate a worker" sets the closing flag, discards the worker's tasks,
+// aborts its script and empties the port message queue of the port its
+// implicit port is entangled with. After that the worker runs nothing and
+// posts nothing - and its realm and isolate can go.
+function workerFrom(source) {
+  return new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })));
+}
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+promise_test(async () => {
+  const worker = workerFrom(`setInterval(() => postMessage("tick"), 5); postMessage("tick");`);
+  let ticks = 0;
+  await new Promise(resolve => {
+    worker.onmessage = () => { if (++ticks === 3) resolve(); };
+  });
+  worker.terminate();
+  const atTermination = ticks;
+  await wait(200);
+  assert_equals(ticks, atTermination, "no message arrives after terminate()");
+}, "a terminated worker's timers stop and its messages stop arriving");
+
+promise_test(async () => {
+  // Every worker has a timer armed, a fetch in flight and a listener set
+  // when it is terminated: the teardown has to release all three.
+  const workers = [];
+  for (let i = 0; i < 12; i++) {
+    const worker = workerFrom(`
+      setInterval(() => {}, 1);
+      fetch("/common/slow.py?delay=2000").then(() => postMessage("late"), () => {});
+      self.addEventListener("message", () => {});
+      postMessage("ready");
+    `);
+    workers.push(new Promise(resolve => { worker.onmessage = () => resolve(worker); }));
+  }
+  const ready = await Promise.all(workers);
+  for (const worker of ready) worker.terminate();
+  await wait(300);
+  const fresh = workerFrom(`postMessage(40 + 2);`);
+  const answer = await new Promise(resolve => { fresh.onmessage = e => resolve(e.data); });
+  assert_equals(answer, 42, "a new worker runs after a dozen were torn down");
+  fresh.terminate();
+}, "workers terminated with timers, fetches and listeners in flight leave the page working");
+
+promise_test(async () => {
+  // As workers/interfaces/WorkerGlobalScope/close/{sending-messages,setTimeout}:
+  // the task that calls close() runs to its end and its messages go out, but
+  // a timer it armed is a task that is discarded.
+  const worker = workerFrom(`
+    setTimeout(() => postMessage("timer"), 0);
+    postMessage("before"); close(); postMessage("after");`);
+  const got = [];
+  worker.onmessage = e => got.push(e.data);
+  await wait(300);
+  assert_array_equals(got, ["before", "after"], "the closing task's messages arrive, its timer never runs");
+}, "close() inside the worker ends it after its current task");
+</script>
