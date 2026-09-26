@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>indexedDB.cmp() compares number and string keys, and rejects invalid ones</title>
+<link rel="help" href="https://w3c.github.io/IndexedDB/#dom-idbfactory-cmp">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  assert_equals(indexedDB.cmp(1, 2), -1);
+  assert_equals(indexedDB.cmp(2, 1), 1);
+  assert_equals(indexedDB.cmp(-0, 0), 0);
+  assert_equals(indexedDB.cmp(-Infinity, Infinity), -1);
+}, "number keys");
+
+test(() => {
+  assert_equals(indexedDB.cmp("a", "b"), -1);
+  assert_equals(indexedDB.cmp("b", "a"), 1);
+  assert_equals(indexedDB.cmp("abc", "abc"), 0);
+  assert_equals(indexedDB.cmp("", "a"), -1);
+}, "string keys");
+
+test(() => {
+  assert_equals(indexedDB.cmp(1, "1"), -1, "a string is greater than a number");
+  assert_equals(indexedDB.cmp("1", 1), 1);
+}, "keys of different types");
+
+test(() => {
+  assert_throws_dom("DataError", () => indexedDB.cmp(NaN, 1));
+  assert_throws_dom("DataError", () => indexedDB.cmp(1, null));
+  assert_throws_dom("DataError", () => indexedDB.cmp(true, 1));
+  assert_throws_dom("DataError", () => indexedDB.cmp(undefined, 1));
+}, "invalid keys throw a DataError");
+</script>

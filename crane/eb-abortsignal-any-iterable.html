@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>AbortSignal.any() takes any iterable of AbortSignals, and throwIfAborted() throws the reason itself</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-abortsignal-any">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebIDL sequence<AbortSignal>: the iterator protocol, not only an Array.
+
+test(() => {
+  const controller = new AbortController();
+  const signal = AbortSignal.any(new Set([controller.signal]));
+  assert_false(signal.aborted);
+  const reason = { why: "set" };
+  controller.abort(reason);
+  assert_true(signal.aborted);
+  assert_equals(signal.reason, reason);
+}, "a Set of signals");
+
+test(() => {
+  const controller = new AbortController();
+  function* signals() { yield controller.signal; }
+  const signal = AbortSignal.any(signals());
+  controller.abort();
+  assert_true(signal.aborted);
+  assert_equals(signal.reason.name, "AbortError");
+}, "a generator of signals");
+
+test(() => {
+  assert_throws_js(TypeError, () => AbortSignal.any([{}]));
+  assert_throws_js(TypeError, () => AbortSignal.any({ length: 0 }));
+}, "a non-signal item, or a non-iterable, is a TypeError");
+
+test(() => {
+  const boom = new Error("iterator");
+  const bad = { [Symbol.iterator]() { return { next() { throw boom; } }; } };
+  assert_throws_exactly(boom, () => AbortSignal.any(bad));
+}, "what the iterator throws propagates");
+
+test(() => {
+  const reason = { mine: true };
+  const signal = AbortSignal.abort(reason);
+  assert_throws_exactly(reason, () => signal.throwIfAborted());
+  assert_equals(signal.reason, signal.reason);
+}, "throwIfAborted() throws the reason itself");
+
+promise_test(async () => {
+  const signal = AbortSignal.timeout(0);
+  await new Promise(resolve => signal.onabort = resolve);
+  assert_equals(signal.reason.name, "TimeoutError");
+  assert_true(signal.reason instanceof DOMException);
+}, "timeout() aborts with a TimeoutError DOMException of this realm");
+</script>

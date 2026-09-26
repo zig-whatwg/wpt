@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Event.composedPath() and PointerEvent's event lists are arrays of the operation's realm</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-event-composedpath">
+<link rel="help" href="https://w3c.github.io/pointerevents/#dom-pointerevent-getcoalescedevents">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="outer"><span id="inner"></span></div>
+<iframe id="frame" srcdoc="<p>frame</p>"></iframe>
+<script>
+test(() => {
+  const event = new Event("x");
+  const path = event.composedPath();
+  assert_true(Array.isArray(path));
+  assert_equals(path.length, 0, "not being dispatched");
+  assert_not_equals(event.composedPath(), path, "a new array per call");
+}, "composedPath() outside dispatch is a new empty array");
+
+test(() => {
+  const inner = document.getElementById("inner");
+  let seen = null;
+  inner.addEventListener("ping", (e) => { seen = e.composedPath(); });
+  inner.dispatchEvent(new Event("ping", { bubbles: true }));
+  assert_true(Array.isArray(seen));
+  assert_array_equals(seen, [inner, document.getElementById("outer"), document.body,
+                             document.documentElement, document, window]);
+  assert_equals(Object.getPrototypeOf(seen), Array.prototype);
+}, "composedPath() during dispatch lists the path's targets");
+
+async_test((t) => {
+  const frame = document.getElementById("frame");
+  const check = t.step_func_done(() => {
+    const w = frame.contentWindow;
+    const path = w.Event.prototype.composedPath.call(new Event("x"));
+    assert_true(path instanceof w.Array, "the operation's realm (the frame's), not the caller's");
+  });
+  if (frame.contentDocument && frame.contentDocument.readyState === "complete") check();
+  else frame.onload = check;
+}, "composedPath() converts its result in the operation's realm");
+
+test(() => {
+  assert_equals(typeof PointerEvent, "function");
+  const event = new PointerEvent("pointerdown");
+  for (const list of [event.getCoalescedEvents(), event.getPredictedEvents()]) {
+    assert_true(Array.isArray(list));
+    assert_equals(list.length, 0);
+    assert_equals(Object.getPrototypeOf(list), Array.prototype);
+  }
+}, "an untrusted PointerEvent has empty coalesced and predicted lists");
+</script>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>MessageEvent ports: one frozen array per event, of the ports it was given</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-ports">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML: "The ports attribute must return the value it was initialized to" - a
+// FrozenArray<MessagePort>, the same object on every read.
+
+test(() => {
+  const e = new MessageEvent("message");
+  assert_true(Array.isArray(e.ports), "an array");
+  assert_equals(e.ports.length, 0, "empty when none were given");
+  assert_true(Object.isFrozen(e.ports), "frozen");
+  assert_equals(e.ports, e.ports, "the same array on every read");
+}, "a MessageEvent with no ports has one empty frozen array");
+
+test(() => {
+  const channel = new MessageChannel();
+  const e = new MessageEvent("message", { ports: [channel.port1, channel.port2] });
+  assert_equals(e.ports.length, 2);
+  assert_equals(e.ports[0], channel.port1);
+  assert_equals(e.ports[1], channel.port2);
+  assert_true(Object.isFrozen(e.ports));
+  assert_equals(e.ports, e.ports);
+}, "the constructor's ports are the event's, in order");
+
+test(() => {
+  const data = { answer: 42 };
+  const e = new MessageEvent("message", { data });
+  assert_equals(e.data, data, "the object itself");
+  assert_equals(e.data, e.data);
+}, "the constructor's data is the event's own, and outlives the call");
+
+async_test(t => {
+  const channel = new MessageChannel();
+  const inner = new MessageChannel();
+  channel.port2.onmessage = t.step_func_done(e => {
+    assert_equals(e.data, "hello");
+    assert_true(e.isTrusted, "fired by the user agent");
+    assert_equals(e.ports.length, 1, "the transferred port");
+    assert_true(e.ports[0] instanceof MessagePort);
+    assert_not_equals(e.ports[0], inner.port1, "a new port on the shipped end");
+    assert_equals(e.ports, e.ports);
+  });
+  channel.port1.postMessage("hello", [inner.port1]);
+}, "a port transferred through a port arrives as a new MessagePort in a frozen array");
+
+async_test(t => {
+  const channel = new MessageChannel();
+  let sync = true;
+  channel.port2.onmessage = t.step_func_done(e => {
+    assert_false(sync, "delivered from a task, not from postMessage");
+    assert_equals(e.data.n, 1);
+  });
+  channel.port1.postMessage({ n: 1 });
+  sync = false;
+}, "a message arrives from a task");
+
+test(() => {
+  const channel = new MessageChannel();
+  assert_throws_dom("DataCloneError", () => channel.port1.postMessage("x", [channel.port1]));
+}, "posting a port in its own transfer list is a DataCloneError");
+</script>

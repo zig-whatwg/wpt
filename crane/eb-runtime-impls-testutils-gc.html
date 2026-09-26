@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>TestUtils.gc() returns a promise of the current realm, resolved with undefined</title>
+<link rel="help" href="https://testutils.spec.whatwg.org/#dom-testutils-gc">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async () => {
+  assert_equals(typeof TestUtils, "object", "TestUtils is exposed");
+  const p = TestUtils.gc();
+  assert_true(p instanceof Promise, "a Promise of this realm");
+  assert_equals(await p, undefined);
+}, "gc() resolves with undefined");
+
+promise_test(async () => {
+  const first = TestUtils.gc();
+  const second = TestUtils.gc();
+  assert_not_equals(first, second, "[NewObject]: a new promise per call");
+  await Promise.all([first, second]);
+}, "each call returns a new promise");
+</script>
