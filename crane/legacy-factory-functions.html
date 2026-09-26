@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Legacy factory functions construct their elements</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#LegacyFactoryFunction">
+<link rel="help" href="https://html.spec.whatwg.org/#dom-image">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML: Image(), Audio() and Option() are [LegacyFactoryFunction]s of
+// HTMLImageElement, HTMLAudioElement and HTMLOptionElement.
+
+test(() => {
+  const img = new Image(3, 4);
+  assert_true(img instanceof HTMLImageElement);
+  assert_equals(img.localName, "img");
+  assert_equals(img.getAttribute("width"), "3");
+  assert_equals(img.getAttribute("height"), "4");
+  assert_equals(img.ownerDocument, document);
+}, "new Image(width, height)");
+
+test(() => {
+  const a = new Audio("x.mp3");
+  assert_true(a instanceof HTMLAudioElement);
+  assert_equals(a.getAttribute("preload"), "auto");
+  assert_equals(a.getAttribute("src"), "x.mp3");
+}, "new Audio(src)");
+
+test(() => {
+  const o = new Option("text", "value", true, true);
+  assert_true(o instanceof HTMLOptionElement);
+  assert_equals(o.text, "text");
+  assert_equals(o.value, "value");
+  assert_true(o.defaultSelected);
+  assert_true(o.selected);
+}, "new Option(text, value, defaultSelected, selected)");
+
+test(() => {
+  assert_equals(Image.prototype, HTMLImageElement.prototype);
+  assert_equals(Image.name, "Image");
+  assert_equals(Image.length, 0);
+  assert_equals(Option.length, 0);
+  assert_throws_js(TypeError, () => Image());
+}, "the factory function objects");
+
+</script>
