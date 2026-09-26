@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame's realms are released once the frame is gone</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A navigation that makes a new Window makes a new realm, and the frame keeps
+// the old one until the frame itself goes. Then every realm it had must be
+// collectable: one handle anywhere to anything in a realm pins its whole heap,
+// and a frame navigated a few hundred times - a form submitted into it per
+// chunk, as the encoding tests do - pinned a few hundred realms per file, until
+// a long run of them ran V8 out of memory.
+//
+// WeakRef observes the collection: a realm's Array constructor is collected
+// with its realm and not before.
+async function settle() {
+  for (let i = 0; i < 3; i++) {
+    await TestUtils.gc();
+    await new Promise(r => setTimeout(r, 0));
+  }
+}
+function navigate(frame, url) {
+  return new Promise(resolve => {
+    frame.onload = resolve;
+    frame.src = url;
+  });
+}
+
+promise_test(async () => {
+  let frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  // From the initial about:blank to a same-origin document: the Window is
+  // kept (HTML "create and initialize a Document object" step 6).
+  await navigate(frame, "/common/blank.html?1");
+  // From there, every navigation makes a new realm (step 7).
+  await navigate(frame, "/common/blank.html?2");
+  const second = new WeakRef(frame.contentWindow.Array);
+  await navigate(frame, "/common/blank.html?3");
+  const third = new WeakRef(frame.contentWindow.Array);
+  assert_not_equals(second.deref(), third.deref(), "the navigation made a new realm");
+  frame.remove();
+  frame = null;
+  await settle();
+  assert_equals(second.deref(), undefined, "the retired realm is released");
+  assert_equals(third.deref(), undefined, "the last realm is released");
+}, "a removed frame's realms, retired and current, are collected");
+</script>
