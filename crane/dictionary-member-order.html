@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Dictionary members are read in WebIDL order</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-dictionary">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL 3.2.18 step 4-5: for each dictionary in the inheritance chain, least
+// derived first, read its members in lexicographic order of their names.
+
+function recorder(names) {
+  const log = [];
+  const o = {};
+  for (const n of names) Object.defineProperty(o, n, { get() { log.push(n); return undefined; }, enumerable: true });
+  return { o, log };
+}
+
+test(() => {
+  const { o, log } = recorder(["composed", "cancelable", "bubbles"]);
+  new Event("x", o);
+  assert_array_equals(log, ["bubbles", "cancelable", "composed"]);
+}, "EventInit members in lexicographic order");
+
+test(() => {
+  const { o, log } = recorder(["detail", "composed", "cancelable", "bubbles"]);
+  new CustomEvent("x", o);
+  assert_array_equals(log, ["bubbles", "cancelable", "composed", "detail"]);
+}, "an inherited dictionary's members come first");
+
+test(() => {
+  const names = ["which", "view", "detail", "composed", "cancelable", "bubbles"];
+  const { o, log } = recorder(names);
+  new UIEvent("x", o);
+  assert_array_equals(log, ["bubbles", "cancelable", "composed", "detail", "view", "which"]);
+}, "UIEventInit after EventInit");
+
+test(() => {
+  const { o, log } = recorder(["signal", "passive", "once", "capture"]);
+  new EventTarget().addEventListener("x", null, o);
+  assert_array_equals(log, ["capture", "once", "passive", "signal"]);
+}, "AddEventListenerOptions: EventListenerOptions' capture first, then once, passive, signal");
+
+test(() => {
+  const { o, log } = recorder(["type", "endings"]);
+  new Blob([], o);
+  assert_array_equals(log, ["endings", "type"]);
+}, "BlobPropertyBag in lexicographic order");
+
+</script>
