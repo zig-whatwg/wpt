@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a click on a hyperlink follows it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#following-hyperlinks-2">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe name="target-frame" id="f"></iframe>
+<script>
+"use strict";
+const f = document.getElementById("f");
+function loaded() {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+function link(attrs, tag = "a") {
+  const a = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) a.setAttribute(k, v);
+  document.body.appendChild(a);
+  return a;
+}
+
+promise_test(async t => {
+  const a = link({ href: "resources/nav-probe.html?clicked", target: "target-frame" });
+  t.add_cleanup(() => a.remove());
+  const load = loaded();
+  a.click();
+  await load;
+  assert_equals(f.contentWindow.probeSearch, "?clicked");
+}, "click() on an a element with a target navigates the named frame");
+
+promise_test(async t => {
+  const a = link({ href: "resources/nav-probe.html?cancelled", target: "target-frame" });
+  t.add_cleanup(() => a.remove());
+  a.addEventListener("click", e => e.preventDefault());
+  let loads = 0;
+  f.addEventListener("load", () => ++loads);
+  a.click();
+  await new Promise(r => t.step_timeout(r, 300));
+  assert_equals(loads, 0, "a cancelled click does not follow the link");
+}, "preventDefault() on the click cancels the activation behaviour");
+
+promise_test(async t => {
+  const a = link({ href: "resources/nav-probe.html?href-wins", target: "target-frame" });
+  t.add_cleanup(() => a.remove());
+  a.onclick = () => { f.contentWindow.location = "resources/nav-probe.html?onclick"; };
+  const load = loaded();
+  a.click();
+  await load;
+  await new Promise(r => t.step_timeout(r, 200));
+  assert_equals(f.contentWindow.probeSearch, "?href-wins",
+    "the hyperlink's navigation, begun after the handler's, replaces it");
+}, "the activation behaviour runs after the listeners");
+
+promise_test(async t => {
+  const outer = link({ href: "resources/nav-probe.html?ancestor", target: "target-frame" });
+  t.add_cleanup(() => outer.remove());
+  const span = document.createElement("span");
+  outer.appendChild(span);
+  const load = loaded();
+  span.click();
+  await load;
+  assert_equals(f.contentWindow.probeSearch, "?ancestor");
+}, "a click on a descendant activates the ancestor link");
+
+promise_test(async t => {
+  const area = link({ href: "resources/nav-probe.html?area", target: "target-frame" }, "area");
+  t.add_cleanup(() => area.remove());
+  const load = loaded();
+  area.click();
+  await load;
+  assert_equals(f.contentWindow.probeSearch, "?area");
+}, "an area element follows its hyperlink");
+
+test(() => {
+  const a = document.createElement("a");
+  a.href = "resources/nav-probe.html?q=1#frag";
+  const base = new URL("resources/nav-probe.html?q=1#frag", document.baseURI);
+  assert_equals(a.href, base.href);
+  assert_equals(a.protocol, base.protocol);
+  assert_equals(a.host, base.host);
+  assert_equals(a.pathname, base.pathname);
+  assert_equals(a.search, "?q=1");
+  assert_equals(a.hash, "#frag");
+  a.hash = "other";
+  assert_equals(a.getAttribute("href"), base.href.replace("#frag", "#other"), "a setter updates href");
+  const bare = document.createElement("a");
+  assert_equals(bare.href, "");
+  assert_equals(bare.protocol, ":");
+  a.target = "x";
+  assert_equals(a.getAttribute("target"), "x");
+}, "HTMLHyperlinkElementUtils and reflected attributes");
+</script>

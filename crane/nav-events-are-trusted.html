@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: navigation and lifecycle events the user agent fires are trusted</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-fire">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(f) {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?trusted";
+  const load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  const e = await load;
+  assert_true(e.isTrusted, "the iframe load event");
+
+  const w = f.contentWindow;
+  const seen = {};
+  for (const type of ["beforeunload", "pagehide", "unload"]) {
+    w.addEventListener(type, ev => { seen[type] = ev.isTrusted; });
+  }
+  w.document.addEventListener("visibilitychange", ev => { seen.visibilitychange = ev.isTrusted; });
+  const second = loaded(f);
+  f.src = "resources/nav-probe.html?next";
+  await second;
+  assert_object_equals(seen, { beforeunload: true, pagehide: true, visibilitychange: true, unload: true },
+    "the unload steps' events");
+}, "the frame's load and the unload steps' events");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?frag";
+  const load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+  const w = f.contentWindow;
+  const hash = new Promise(r => w.addEventListener("hashchange", r, { once: true }));
+  w.location.hash = "a";
+  assert_true((await hash).isTrusted, "a fragment navigation's hashchange");
+
+  const popped = new Promise(r => w.addEventListener("popstate", r, { once: true }));
+  history.back();
+  assert_true((await popped).isTrusted, "a traversal's popstate");
+}, "hashchange and popstate");
+
+promise_test(async t => {
+  const got = new Promise(r => addEventListener("message", r, { once: true }));
+  postMessage("hi", "*");
+  const e = await got;
+  assert_true(e.isTrusted, "postMessage's message");
+  const scripted = new Event("x");
+  let trusted;
+  addEventListener("x", ev => { trusted = ev.isTrusted; }, { once: true });
+  dispatchEvent(scripted);
+  assert_false(trusted, "script's dispatchEvent stays untrusted");
+}, "message, and script's own dispatch");
+</script>

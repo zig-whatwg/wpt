@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a document a navigation replaced before it loaded fires no load</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-loop-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The event loop runs only tasks whose document is fully active. A document
+// unloaded by a navigation - here while a slow child frame still delays its
+// load event - must not complete loading afterwards: its window's load and
+// its container's load belong to a document the frame no longer shows. With
+// a new Window per navigation, the old Window still names the old document,
+// so "is it still its window's document" cannot be how that is decided.
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  let loads = 0;
+  f.addEventListener("load", () => ++loads);
+  const parsed = new Promise(r => window.addEventListener("message", function once(e) {
+    if (e.data !== "parsed") return;
+    window.removeEventListener("message", once);
+    r();
+  }));
+  f.src = "resources/nav-delayed-load.html";
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await parsed;
+  assert_equals(loads, 0, "the first document is still loading");
+
+  const after = new Promise(r => f.addEventListener("load", r, { once: true }));
+  f.src = "resources/nav-probe.html?after";
+  await after;
+  await new Promise(r => t.step_timeout(r, 300));
+  assert_equals(f.contentWindow.probeSearch, "?after");
+  assert_equals(loads, 1, "one load, for the document that replaced it");
+}, "a document replaced before its load event never fires it");
+</script>

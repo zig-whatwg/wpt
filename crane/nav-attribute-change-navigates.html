@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: setAttribute on an iframe's src and srcdoc navigates it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-iframe-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  let load = new Promise(r => f.addEventListener("load", r, { once: true }));
+  f.setAttribute("src", "resources/nav-probe.html?attr");
+  await load;
+  assert_equals(f.contentWindow.probeSearch, "?attr", "src via setAttribute");
+
+  load = new Promise(r => f.addEventListener("load", r, { once: true }));
+  f.setAttribute("srcdoc", "<p id=s>srcdoc");
+  await load;
+  assert_equals(f.contentDocument.getElementById("s").textContent, "srcdoc", "srcdoc via setAttribute");
+
+  load = new Promise(r => f.addEventListener("load", r, { once: true }));
+  f.removeAttribute("srcdoc");
+  await load;
+  assert_equals(f.contentWindow.probeSearch, "?attr", "removing srcdoc falls back to src");
+}, "attribute changes process the iframe attributes");
+</script>

@@ -1,0 +1,5 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<p>A document whose load event a slow frame delays.</p>
+<iframe src="/common/slow.py?delay=3000"></iframe>
+<script>parent.postMessage("parsed", "*");</script>

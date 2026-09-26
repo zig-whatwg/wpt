@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a navigation makes a new Window behind the same WindowProxy</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-windowproxy-exotic-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(f) {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?one";
+  const first = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await first;
+
+  const proxy = f.contentWindow, d1 = f.contentDocument;
+  proxy.expando = "old window";
+  let oldLoads = 0;
+  proxy.addEventListener("load", () => ++oldLoads);
+
+  const second = loaded(f);
+  proxy.location.href = "resources/nav-probe.html?two";
+  await second;
+
+  assert_equals(f.contentWindow, proxy, "the WindowProxy keeps its identity");
+  assert_equals(f.contentWindow.probeSearch, "?two", "and reaches the new document's Window");
+  assert_equals(f.contentWindow.expando, undefined, "which is a new global");
+  assert_equals(oldLoads, 0, "the old Window's listeners do not hear the new document");
+  assert_not_equals(f.contentDocument, d1, "a new document");
+  assert_equals(d1.getElementById("probe").textContent, "probe", "the old document is still readable");
+  assert_equals(window.frames[window.frames.length - 1], proxy, "frames[] reaches the same proxy");
+  assert_equals(d1.defaultView, null, "the old document has no browsing context");
+}, "a navigation from a loaded document makes a new Window; the WindowProxy stays");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  const initial = f.contentWindow;
+  initial.expando = "initial about:blank";
+  const load = loaded(f);
+  f.src = "resources/nav-probe.html?same-origin";
+  await load;
+  assert_equals(f.contentWindow, initial);
+  assert_equals(f.contentWindow.expando, "initial about:blank",
+    "the initial about:blank document's Window is reused for a same-origin document");
+}, "the initial about:blank Window is kept for a same-origin navigation");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  const initial = f.contentWindow;
+  initial.expando = "initial about:blank";
+  const load = loaded(f);
+  f.src = "data:text/html,<p>opaque";
+  await load;
+  assert_equals(f.contentWindow, initial, "the WindowProxy keeps its identity");
+  let seen;
+  try { seen = f.contentWindow.expando; } catch (e) { seen = "cross-origin"; }
+  assert_not_equals(seen, "initial about:blank",
+    "the opaque-origin document has its own Window");
+}, "an opaque-origin document gets a new Window even from the initial about:blank");
+
+promise_test(async t => {
+  const w = window.open("resources/nav-probe.html?popup-one");
+  t.add_cleanup(() => w.close());
+  await new Promise(r => w.addEventListener("load", r, { once: true }));
+  w.expando = "popup";
+  w.location.href = "resources/nav-probe.html?popup-two";
+  await new Promise(r => t.step_wait_func(() => w.probeSearch === "?popup-two", r));
+  assert_equals(w.expando, undefined, "the popup's second document has a new Window");
+  assert_equals(w.opener, window, "and keeps its opener");
+}, "a popup's navigation makes a new Window too");
+</script>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: session history - length, pushState, back and forward</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-history-interface">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-history-step">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(f) {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+
+promise_test(async t => {
+  const start = history.length;
+  history.pushState({ n: 1 }, "", "?pushed=1");
+  assert_equals(history.length, start + 1, "pushState adds an entry");
+  assert_equals(location.search, "?pushed=1", "and changes the URL");
+  assert_equals(history.state.n, 1);
+  assert_equals(history.state, history.state, "state is one object per entry");
+  history.replaceState("replaced", "");
+  assert_equals(history.length, start + 1, "replaceState adds none");
+  assert_equals(history.state, "replaced");
+
+  const popped = new Promise(r => addEventListener("popstate", r, { once: true }));
+  history.back();
+  const e = await popped;
+  assert_equals(e.state, null, "back to the first entry's null state");
+  assert_equals(history.state, null);
+  assert_equals(location.search, "", "and its URL");
+
+  const forward = new Promise(r => addEventListener("popstate", r, { once: true }));
+  history.forward();
+  const e2 = await forward;
+  assert_equals(e2.state, "replaced");
+  assert_equals(location.search, "?pushed=1");
+  history.replaceState(null, "", location.pathname);
+}, "pushState, replaceState, back and forward on the page");
+
+promise_test(async t => {
+  const start = history.length;
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?h1";
+  let load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+  assert_equals(history.length, start, "a frame's first document replaces its initial about:blank");
+
+  load = loaded(f);
+  f.src = "resources/nav-probe.html?h2";
+  await load;
+  assert_equals(history.length, start + 1, "a frame's navigation is a step of the joint history");
+
+  load = loaded(f);
+  history.back();
+  await load;
+  assert_equals(f.contentWindow.probeSearch, "?h1", "back reloads the frame's previous document");
+  assert_equals(history.length, start + 1, "and keeps the forward entry");
+
+  load = loaded(f);
+  history.forward();
+  await load;
+  assert_equals(f.contentWindow.probeSearch, "?h2");
+
+  f.remove();
+  assert_equals(history.length, start, "removing the frame removes its entries");
+}, "a frame's navigations and traversals");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?frag";
+  const load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+  const w = f.contentWindow;
+  const start = history.length;
+  w.location.hash = "a";
+  assert_equals(history.length, start + 1, "a fragment navigation adds an entry");
+  const changed = new Promise(r => w.addEventListener("hashchange", r, { once: true }));
+  const popped = new Promise(r => w.addEventListener("popstate", r, { once: true }));
+  history.back();
+  await popped;
+  await changed;
+  assert_equals(w.location.hash, "", "back within the frame's document");
+}, "back over a fragment navigation fires popstate and hashchange");
+</script>

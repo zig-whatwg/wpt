@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: beforeunload is a BeforeUnloadEvent</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#preventing-navigation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?b1";
+  const first = new Promise(r => f.addEventListener("load", r, { once: true }));
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await first;
+  let seen = null;
+  f.contentWindow.addEventListener("beforeunload", e => {
+    seen = {
+      isBUE: e instanceof f.contentWindow.BeforeUnloadEvent,
+      cancelable: e.cancelable,
+      bubbles: e.bubbles,
+      returnValue: e.returnValue,
+    };
+    e.returnValue = "stay";
+  });
+  const second = new Promise(r => f.addEventListener("load", r, { once: true }));
+  f.src = "resources/nav-probe.html?b2";
+  await second;
+  assert_not_equals(seen, null, "beforeunload fired");
+  assert_true(seen.isBUE, "a BeforeUnloadEvent");
+  assert_true(seen.cancelable);
+  assert_false(seen.bubbles);
+  assert_equals(seen.returnValue, "");
+  assert_equals(f.contentWindow.probeSearch, "?b2", "no sticky activation, so no prompt and no cancel");
+}, "beforeunload is a cancelable BeforeUnloadEvent with an empty returnValue");
+</script>
