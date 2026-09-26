@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A promise-returning operation rejects instead of throwing</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-operations">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL: an operation whose return type is a promise runs its steps - the
+// brand check, argument conversion and the operation itself - with an
+// exception handler, and an exception becomes a rejected promise.
+
+promise_test(t => {
+  let result;
+  // A bad enum value in RequestInit fails argument conversion.
+  try { result = fetch("/common/blank.html", { referrerPolicy: "not-a-policy" }); }
+  catch (e) { assert_unreached("threw synchronously: " + e); }
+  return promise_rejects_js(t, TypeError, result);
+}, "an argument-conversion failure in fetch() rejects");
+
+promise_test(t => {
+  let result;
+  try { result = Response.prototype.text.call({}); }
+  catch (e) { assert_unreached("threw synchronously: " + e); }
+  return promise_rejects_js(t, TypeError, result);
+}, "a failed brand check in a promise-returning operation rejects");
+
+test(() => {
+  // A non-promise operation still throws.
+  assert_throws_js(TypeError, () => document.createElement("div").appendChild("x"));
+}, "an operation that does not return a promise still throws");
+</script>
