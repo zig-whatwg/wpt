@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>WebSocket in a blob worker, before and after self.close()</title>
+<!--
+  websockets/Create-on-worker-shutdown.any.js times out: the worker's message
+  never reaches the page. These pull apart the steps it takes, so the one that
+  breaks can be named: the blob worker's location.origin, a WebSocket built
+  from it, and a message posted after close().
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+function run(code) {
+  const blob = new Blob([code], {type: "application/javascript"});
+  const w = new Worker(URL.createObjectURL(blob));
+  return new Promise(resolve => { w.onmessage = e => resolve(e.data); });
+}
+
+promise_test(async () => {
+  const data = await run(`postMessage(self.location.origin);`);
+  assert_equals(data, location.origin);
+}, "a blob worker's location.origin is its creator's");
+
+promise_test(async () => {
+  const data = await run(`
+    try {
+      const ws = new WebSocket(self.location.origin.replace('http', 'ws'));
+      const before = ws.readyState;
+      ws.close();
+      postMessage([before, ws.readyState]);
+    } catch (e) {
+      postMessage(String(e));
+    }`);
+  assert_array_equals(data, [WebSocket.CONNECTING, WebSocket.CLOSING]);
+}, "a WebSocket in a blob worker: CONNECTING, then CLOSING after close()");
+
+promise_test(async () => {
+  const data = await run(`close(); postMessage("after close");`);
+  assert_equals(data, "after close");
+}, "a message posted after self.close() arrives");
+</script>
