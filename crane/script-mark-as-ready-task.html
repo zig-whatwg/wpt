@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>A script-inserted script's result is delivered by a task, not inside the insertion</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#mark-as-ready">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Prepare the script element" step 35: a script-inserted external script (and
+// any module script) is marked ready by fetch's onComplete - a task - so it
+// never executes inside the appendChild that prepared it. A page attaches
+// onload after appendChild all the time (script-crossorigin-network.sub.html
+// does, eight times), and that only works if nothing has fired yet.
+
+async_test(t => {
+  window.__ran_external = false;
+  const s = document.createElement('script');
+  s.src = 'resources/script-insertion-external.js?task';
+  window.__external_ran = false;
+  document.body.appendChild(s);
+  assert_false(window.__external_ran, 'not run inside appendChild');
+  s.onload = t.step_func_done(() => {
+    assert_true(window.__external_ran, 'ran before its load event');
+  });
+}, 'An external script inserted by script runs from a task; onload set after appendChild is heard');
+
+async_test(t => {
+  const s = document.createElement('script');
+  s.src = 'resources/does-not-exist.js';
+  document.body.appendChild(s);
+  s.onerror = t.step_func_done();
+  s.onload = t.unreached_func('a failed fetch fires error, not load');
+}, 'A failed fetch fires error from a task; onerror set after appendChild is heard');
+
+async_test(t => {
+  window.__order = [];
+  const urls = ['a', 'b', 'c'].map(n =>
+      'data:text/javascript,window.__order.push(' + JSON.stringify(n) + ')');
+  let last;
+  for (const url of urls) {
+    const s = document.createElement('script');
+    s.async = false;
+    s.src = url;
+    document.body.appendChild(s);
+    last = s;
+  }
+  assert_array_equals(window.__order, [], 'none ran inside appendChild');
+  last.onload = t.step_func_done(() => {
+    assert_array_equals(window.__order, ['a', 'b', 'c'], 'in insertion order');
+  });
+}, 'async=false scripts run from tasks, in insertion order');
+
+async_test(t => {
+  window.__inline_module_ran = false;
+  const s = document.createElement('script');
+  s.type = 'module';
+  s.textContent = 'window.__inline_module_ran = true;';
+  document.body.appendChild(s);
+  assert_false(window.__inline_module_ran, 'not run inside appendChild');
+  t.step_timeout(() => {
+    assert_true(window.__inline_module_ran, 'ran from a task');
+    t.done();
+  }, 0);
+}, 'An inline module script inserted by script runs from a task');
+
+test(() => {
+  window.__inline_classic_ran = false;
+  const s = document.createElement('script');
+  s.textContent = 'window.__inline_classic_ran = true;';
+  document.body.appendChild(s);
+  assert_true(window.__inline_classic_ran);
+}, 'An inline classic script still runs inside appendChild (step 36: immediately)');
+</script>
+</body>
+</html>

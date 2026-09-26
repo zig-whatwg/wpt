@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>A script's source is its child text content, not its descendant text content</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-child-text-content">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Prepare the script element" step 5: "Let source text be el's child text
+// content." DOM: "the concatenation of the data of all the Text node CHILDREN
+// of node, in tree order" - an element child's text is not part of it.
+
+test(() => {
+  window.__outer = false;
+  window.__inner = false;
+  const s = document.createElement('script');
+  const span = document.createElement('span');
+  span.textContent = 'window.__inner = true;';
+  s.append('window.__outer = ', span, 'true;');
+  document.body.append(s);
+  assert_true(window.__outer, 'the Text children ran, joined without the span');
+  assert_false(window.__inner, "the span's text is not part of the source");
+}, 'An element child of a script contributes nothing to its source');
+
+test(() => {
+  window.__only_element = false;
+  const s = document.createElement('script');
+  const b = document.createElement('b');
+  b.textContent = 'window.__only_element = true;';
+  s.append(b);
+  document.body.append(s);
+  assert_false(window.__only_element, 'nothing ran');
+  // Step 6: no src and an empty source - returned before "already started".
+  s.append('window.__only_element = "text";');
+  assert_equals(window.__only_element, 'text',
+      'a Text child appended later is the source (children changed steps)');
+}, 'A script whose only child is an element has an empty source');
+</script>
+</body>
+</html>

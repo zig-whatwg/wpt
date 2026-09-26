@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Scripts created by innerHTML never run</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-innerhtml">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="host"></div>
+<script>
+// The HTML fragment parsing algorithm marks every script it creates as
+// already started (the "script" start tag in "in head", step 4 - the fragment
+// case), so none of them ever runs: not on insertion, not when text is added,
+// not when moved. module/modulepreload-inline-referrerpolicy.html replaces
+// documentElement.innerHTML with the page's own markup, and a copy of its
+// first script that ran would redeclare that script's consts.
+
+test(() => {
+  window.__inner_ran = 0;
+  const host = document.getElementById('host');
+  host.innerHTML = '<script>window.__inner_ran++;<\/script>';
+  assert_equals(window.__inner_ran, 0, 'not on insertion');
+  const script = host.firstChild;
+  script.append('window.__inner_ran++;');
+  assert_equals(window.__inner_ran, 0, 'not when text is added');
+  document.body.append(script);
+  assert_equals(window.__inner_ran, 0, 'not when moved');
+}, "a script from a connected element's innerHTML");
+
+test(() => {
+  window.__detached_ran = 0;
+  const div = document.createElement('div');
+  div.innerHTML = '<script>window.__detached_ran++;<\/script>';
+  document.body.append(div);
+  assert_equals(window.__detached_ran, 0);
+}, "a script from a detached element's innerHTML, inserted later");
+
+async_test(t => {
+  const frame = document.createElement('iframe');
+  frame.onload = t.step_func_done(() => {
+    const w = frame.contentWindow;
+    w.__head_ran = 0;
+    w.__body_ran = 0;
+    frame.contentDocument.documentElement.innerHTML =
+        '<head><script>window.__head_ran++;<\/script></head>' +
+        '<body><script>window.__body_ran++;<\/script></body>';
+    assert_equals(w.__head_ran, 0, 'a head script');
+    assert_equals(w.__body_ran, 0, 'a body script');
+  });
+  document.body.append(frame);
+}, "documentElement.innerHTML's head and body scripts");
+</script>
+</body>
+</html>

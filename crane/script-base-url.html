@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>A script's src, and an inline module's imports, resolve against the document base URL</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/urls-and-fetching.html#document-base-url">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Prepare step 33.5: "Let url be the result of encoding-parsing a URL given
+// src, relative to el's node document" - against its document BASE URL, which
+// a <base href> changes. Step 34.1 takes an inline script's base URL from the
+// same place. Inserted here, after the harness, so the harness's own absolute
+// URLs are unaffected either way.
+const base = document.createElement('base');
+base.setAttribute('href', 'resources/');
+document.head.append(base);
+
+async_test(t => {
+  window.__external_ran = false;
+  const s = document.createElement('script');
+  s.src = 'script-insertion-external.js?base-url';
+  s.onload = t.step_func_done(() => {
+    assert_true(window.__external_ran);
+  });
+  s.onerror = t.unreached_func('src resolved against the document URL, not its base URL');
+  document.body.append(s);
+}, 'A script-inserted script resolves its src against <base href>');
+
+promise_test(async () => {
+  window.__module_url = null;
+  const s = document.createElement('script');
+  s.type = 'module';
+  s.textContent =
+      'import { url } from "./import-meta.mjs?base-url"; window.__module_url = url;';
+  const loaded = new Promise((resolve, reject) => {
+    s.onerror = reject;
+    window.addEventListener('error', reject, { once: true });
+    const poll = () => window.__module_url ? resolve() : setTimeout(poll, 10);
+    poll();
+  });
+  document.body.append(s);
+  await loaded;
+  assert_equals(window.__module_url,
+      new URL('resources/import-meta.mjs?base-url', location).href);
+}, "An inline module's imports resolve against <base href>");
+</script>
+</body>
+</html>
