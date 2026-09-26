@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A [SameObject] child read from two realms outlives both reads</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#SameObject">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A span's DOMStringMap is wrapped once per realm that reads it: the parent's
+// wrapper and the frame's. The map must outlive every wrapper and the element
+// that caches it - freeing it when the first wrapper is collected left the
+// element's cached pointer, and the other realm's wrapper, on freed memory.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 200000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+promise_test(async () => {
+  const f = document.createElement("iframe");
+  let spans = "";
+  for (let i = 0; i < 300; i++) spans += `<span id=s${i} data-n=${i}></span>`;
+  f.srcdoc = spans + "<script>window.readN = i => document.getElementById('s' + i).dataset.n;<\/script>";
+  await new Promise(r => { f.onload = r; document.body.appendChild(f); });
+  const w = f.contentWindow, d = f.contentDocument;
+  for (let round = 0; round < 6; round++) {
+    for (let i = 0; i < 300; i++) {
+      assert_equals(d.getElementById("s" + i).dataset.n, String(i), "parent's read");
+      assert_equals(w.readN(i), String(i), "frame's read");
+    }
+    await collect();
+  }
+}, "a span's dataset, read from its frame and from its parent, survives collections");
+</script>
