@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker can end with its fetches in flight, or settling</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-fetch-group-terminate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A worker that ends takes its realm with it: its fetches in flight are
+// terminated, and a fetch whose response has arrived but whose settle task
+// has not run must find the realm gone and let go - never run in it. Worker
+// ends are spread across the moments a fetch can be in, so some land between
+// the response and its task.
+function workerFetching(url, count) {
+  const source = `
+    for (let i = 0; i < ${count}; i++) fetch(${JSON.stringify(url)}).then(r => r.text()).catch(() => {});
+    postMessage("started");`;
+  return new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })));
+}
+
+promise_test(async () => {
+  const url = new URL("/common/blank.html", location.href).href;
+  for (const delay of [0, 1, 2, 5, 10, 20, 40]) {
+    for (let round = 0; round < 3; round++) {
+      const worker = workerFetching(url, 4);
+      await new Promise(resolve => worker.onmessage = resolve);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      worker.terminate();
+    }
+  }
+  // Give every settle task and teardown timer its turn.
+  await new Promise(resolve => setTimeout(resolve, 300));
+}, "terminating workers whose fetches are in flight or settling");
+
+promise_test(async () => {
+  const url = new URL("/common/slow.py?delay=300", location.href).href;
+  const worker = workerFetching(url, 3);
+  await new Promise(resolve => worker.onmessage = resolve);
+  worker.terminate();
+  await new Promise(resolve => setTimeout(resolve, 600));
+}, "terminating a worker whose fetches are still waiting for the server");
+</script>
