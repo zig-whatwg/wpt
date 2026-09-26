@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Numeric attribute setters convert their value as WebIDL does</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-integer-types">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-double">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// An attribute setter converts its value exactly as an operation argument
+// is converted: ToNumber, then ConvertToInt for an integer type. A string
+// is a number, not a TypeError; only a Symbol or a BigInt throws.
+
+test(() => {
+  const t = document.createElement("textarea");
+  t.rows = "3";
+  assert_equals(t.rows, 3);
+  t.rows = { valueOf() { return 4; } };
+  assert_equals(t.rows, 4);
+}, "an unsigned long setter converts a string and an object");
+
+test(() => {
+  const t = document.createElement("textarea");
+  t.rows = "7";
+  assert_equals(t.rows, 7);
+  t.cols = 12.9;
+  assert_equals(t.cols, 12, "truncated");
+}, "unsigned long setters truncate and convert");
+
+test(() => {
+  const r = new DOMRect();
+  r.x = "2.5";
+  assert_equals(r.x, 2.5);
+}, "a double setter converts a string");
+
+test(() => {
+  const t = document.createElement("textarea");
+  assert_throws_js(TypeError, () => { t.rows = Symbol(); });
+  assert_throws_js(TypeError, () => { t.rows = 1n; });
+}, "a Symbol or a BigInt throws a TypeError");
+
+test(() => {
+  const r = document.createRange();
+  const t = document.createTextNode("abcdef");
+  r.setStart(t, "2");
+  assert_equals(r.startOffset, 2);
+}, "an operation argument converts the same way (control)");
+</script>
