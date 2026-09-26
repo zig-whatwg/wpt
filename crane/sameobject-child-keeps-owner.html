@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A [SameObject] child keeps its owner alive</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#SameObject">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// classList, dataset, attributes and style each belong to one element and
+// read or write through it. Script can keep the child and drop the element;
+// the element must then live as long as the child does (Blink traces the
+// child to its element, WebKit forwards the child's refcount to it).
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 200000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+promise_test(async () => {
+  const lists = [], sets = [], maps = [];
+  for (let i = 0; i < 200; i++) {
+    const el = document.createElement("div");
+    el.className = "a b" + i;
+    el.dataset.n = String(i);
+    el.setAttribute("title", "t" + i);
+    lists.push(el.classList);
+    sets.push(el.dataset);
+    maps.push(el.attributes);
+  }
+  await collect();
+  await collect();
+  for (let i = 0; i < 200; i++) {
+    assert_equals(lists[i].length, 2, "classList " + i);
+    assert_true(lists[i].contains("b" + i), "classList token " + i);
+    assert_equals(sets[i].n, String(i), "dataset " + i);
+    assert_equals(maps[i].getNamedItem("title").value, "t" + i, "attributes " + i);
+  }
+}, "children read after their elements were dropped and collected");
+</script>

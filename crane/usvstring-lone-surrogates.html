@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>USVString replaces lone surrogates with U+FFFD</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-USVString">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL: converting to USVString converts to DOMString and then replaces
+// every lone surrogate with U+FFFD. A surrogate pair is a character, not a
+// lone surrogate, and is kept.
+
+test(() => {
+  assert_equals(new URLSearchParams("a=\uD800").get("a"), "�");
+  assert_equals(new URLSearchParams("a=x\uDC00y").get("a"), "x�y");
+}, "a constructor argument");
+
+test(() => {
+  const p = new URLSearchParams();
+  p.append("k", "😀\uD800");
+  assert_equals(p.get("k"), "😀�");
+}, "an operation argument keeps a pair and replaces a lone surrogate");
+
+test(() => {
+  assert_equals(new URL("http://example.com/\uD800").pathname, "/%EF%BF%BD");
+}, "a URL parsed from a lone surrogate");
+
+test(() => {
+  const u = new URL("http://example.com/");
+  u.pathname = "/a\uDFFF";
+  assert_equals(u.pathname, "/a%EF%BF%BD");
+}, "an attribute setter");
+</script>
