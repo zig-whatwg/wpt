@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Reflect] DOMString and USVString attributes reflect their content attribute</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 2.6.1: a DOMString getter returns the content attribute's value, or ""
+// when it is absent; the setter sets it. A USVString getter returns the value
+// converted to a scalar value string. The content attribute is the one with a
+// null namespace whose local name is the reflected name - the IDL name
+// lowercased, or the string [Reflect="..."] gives.
+
+const binary = "\x00\x01\x02\x03\x04\x05\x06\x07 \x08\x09\x0a\x0b\x0c\x0d\x0e\x0f " +
+  "\x10\x11\x12\x13\x14\x15\x16\x17 \x18\x19\x1a\x1b\x1c\x1d\x1e\x1f ";
+const values = ["", " " + binary + " foo ", undefined, 7, 1.5, "5%", "+100", ".5", true,
+  false, {"test": 6}, NaN, +Infinity, -Infinity, "\0", null,
+  {toString() { return "test-toString"; }},
+  {valueOf() { return "test-valueOf"; }, toString: null}];
+
+// [element, IDL name, content attribute name]
+const strings = [
+  ["td", "abbr", "abbr"],
+  ["td", "axis", "axis"],
+  ["td", "headers", "headers"],
+  ["td", "ch", "char"],
+  ["td", "chOff", "charoff"],
+  ["td", "vAlign", "valign"],
+  ["table", "summary", "summary"],
+  ["col", "width", "width"],
+  ["div", "align", "align"],
+  ["br", "clear", "clear"],
+  ["font", "face", "face"],
+  ["data", "value", "value"],
+  ["label", "htmlFor", "for"],
+  ["meta", "httpEquiv", "http-equiv"],
+  ["form", "acceptCharset", "accept-charset"],
+  ["img", "sizes", "sizes"],
+  ["marquee", "behavior", "behavior"],
+  ["param", "valueType", "valuetype"],
+  ["time", "dateTime", "datetime"],
+  // HTMLElement's own: the binding installs lang and accessKey lazily.
+  ["div", "title", "title"],
+  ["div", "lang", "lang"],
+  ["div", "accessKey", "accesskey"],
+  ["tbody", "vAlign", "valign"],
+];
+
+for (const [tag, idl, content] of strings) {
+  test(() => {
+    const el = document.createElement(tag);
+    assert_equals(typeof el[idl], "string");
+    assert_equals(el[idl], "");
+  }, `${tag}.${idl}: "" while ${content} is absent`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    for (const v of values) {
+      el.setAttribute(content, v);
+      assert_equals(el[idl], String(v), `setAttribute(${content}, ${String(v)})`);
+    }
+  }, `${tag}.${idl} reads the ${content} content attribute`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    for (const v of values) {
+      el[idl] = v;
+      assert_equals(el.getAttribute(content), String(v), `IDL set ${String(v)}`);
+      assert_equals(el[idl], String(v));
+    }
+  }, `${tag}.${idl} writes the ${content} content attribute`);
+}
+
+test(() => {
+  const td = document.createElement("td");
+  td.setAttributeNS("http://example.com/ns", "abbr", "namespaced");
+  assert_equals(td.abbr, "", "an attribute in a namespace is not the reflected one");
+  td.abbr = "plain";
+  assert_equals(td.getAttributeNS(null, "abbr"), "plain");
+  assert_equals(td.getAttributeNS("http://example.com/ns", "abbr"), "namespaced");
+  assert_equals(td.attributes.length, 2);
+}, "the reflected content attribute is the one with a null namespace");
+
+test(() => {
+  const td = document.createElement("td");
+  td.bgColor = null;
+  assert_equals(td.getAttribute("bgcolor"), "", "[LegacyNullToEmptyString]");
+  td.bgColor = "red";
+  assert_equals(td.bgColor, "red");
+  const body = document.createElement("body");
+  body.text = null;
+  assert_equals(body.getAttribute("text"), "");
+}, "[LegacyNullToEmptyString] DOMString: null sets the empty string");
+
+test(() => {
+  const img = document.createElement("img");
+  assert_equals(img.srcset, "");
+  img.setAttribute("srcset", "a.png 1x, b.png 2x");
+  assert_equals(img.srcset, "a.png 1x, b.png 2x");
+  img.srcset = "c\uD800d";
+  assert_equals(img.srcset, "c\uFFFDd", "a lone surrogate reads back as U+FFFD");
+  img.removeAttribute("srcset");
+  assert_equals(img.srcset, "");
+}, "USVString: the value converted to a scalar value string");
+
+test(() => {
+  const link = document.createElement("link");
+  link.imageSrcset = "x.png 2x";
+  assert_equals(link.getAttribute("imagesrcset"), "x.png 2x");
+  assert_equals(link.imageSrcset, "x.png 2x");
+}, "link.imageSrcset reflects imagesrcset");
+
+test(() => {
+  // [ReflectSetter]: the getter is the attribute's own (an enumerated one
+  // here), but setting sets the content attribute to the given value.
+  const dialog = document.createElement("dialog");
+  dialog.closedBy = "Any";
+  assert_equals(dialog.getAttribute("closedby"), "Any");
+  const button = document.createElement("button");
+  button.command = "--custom";
+  assert_equals(button.getAttribute("command"), "--custom");
+  button.type = "RESET";
+  assert_equals(button.getAttribute("type"), "RESET");
+}, "[ReflectSetter] DOMString sets the content attribute");
+
+test(() => {
+  const td = document.createElement("td");
+  td.abbr = "one";
+  const value = td.abbr;
+  td.abbr = "two";
+  assert_equals(value, "one", "a read value does not change with the attribute");
+  assert_equals(td.abbr, "two");
+}, "a read value is a copy");
+</script>

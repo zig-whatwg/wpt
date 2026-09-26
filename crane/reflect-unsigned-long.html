@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Reflect] unsigned long attributes: limits, defaults, [ReflectRange]</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 2.6.1, unsigned long. Getter: the rules for parsing non-negative
+// integers; a value in [minimum, maximum] is returned, a clamped one is pulled
+// into its range, anything else gives the default or the minimum. minimum is
+// 0, 1 when limited to positive numbers (with or without fallback), or the
+// range's low end; maximum is 2147483647 or the range's high end. Setter: 0
+// throws IndexSizeError when limited to positive numbers (not with fallback);
+// a value outside [minimum, 2147483647] writes the default, else the minimum.
+
+const maxInt = 2147483647;
+
+// [content value, rules for parsing non-negative integers (null: error)]
+const values = [
+  ["", null], ["-", null], ["+", null], ["-1", null], ["-0", 0], ["0", 0], ["1", 1],
+  ["  12abc", 12], ["\t\n\f\r 7", 7], ["\u000B7", null], ["\u00A07", null], ["7\u000B", 7],
+  ["+100", 100], ["5%", 5], [".5", null], ["1.5", 1], ["257", 257], ["1000", 1000],
+  ["1001", 1001], ["65534", 65534], ["65535", 65535], ["2147483647", maxInt],
+  ["2147483648", 2147483648], ["4294967295", 4294967295], ["4294967296", 4294967296],
+  ["99999999999999999999999", Infinity], ["abc", null],
+];
+
+// [element, IDL name, content name, {limit, fallback (default), range}]
+const attrs = [
+  ["img", "hspace", "hspace", {}],
+  ["img", "vspace", "vspace", {}],
+  ["video", "width", "width", {}],
+  ["video", "height", "height", {}],
+  ["source", "width", "width", {}],
+  ["object", "hspace", "hspace", {}],
+  ["marquee", "hspace", "hspace", {}],
+  ["select", "size", "size", {fallback: 0}],
+  ["marquee", "scrollAmount", "scrollamount", {fallback: 6}],
+  ["marquee", "scrollDelay", "scrolldelay", {fallback: 85}],
+  ["td", "colSpan", "colspan", {fallback: 1, range: [1, 1000]}],
+  ["td", "rowSpan", "rowspan", {fallback: 1, range: [0, 65534]}],
+  ["col", "span", "span", {fallback: 1, range: [1, 1000]}],
+  ["div", "headingOffset", "headingoffset", {range: [0, 8]}],
+  ["textarea", "cols", "cols", {limit: "fallback", fallback: 20}],
+  ["textarea", "rows", "rows", {limit: "fallback", fallback: 2}],
+];
+
+function minimumOf(o) {
+  if (o.range) return o.range[0];
+  return o.limit ? 1 : 0;
+}
+
+function expectedGet(parsed, o) {
+  const minimum = minimumOf(o);
+  const maximum = o.range ? o.range[1] : maxInt;
+  if (parsed !== null) {
+    if (parsed >= minimum && parsed <= maximum) return parsed;
+    if (o.range) return parsed < minimum ? minimum : maximum;
+  }
+  return o.fallback !== undefined ? o.fallback : minimum;
+}
+
+function expectedSet(value, o) {
+  const minimum = o.limit ? 1 : 0;
+  let result = o.fallback !== undefined ? o.fallback : minimum;
+  if (value >= minimum && value <= maxInt) result = value;
+  return String(result);
+}
+
+for (const [tag, idl, content, o] of attrs) {
+  test(() => {
+    const el = document.createElement(tag);
+    assert_equals(el[idl], expectedGet(null, o), "absent");
+    for (const [value, parsed] of values) {
+      el.setAttribute(content, value);
+      assert_equals(el[idl], expectedGet(parsed, o), `content ${JSON.stringify(value)}`);
+    }
+  }, `${tag}.${idl} parses ${content}`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    for (const v of [0, 1, 257, 1001, 65535, maxInt, maxInt + 1, 4294967295, -1]) {
+      el[idl] = v;
+      const unsigned = v < 0 ? v + 4294967296 : v;  // WebIDL unsigned long conversion
+      assert_equals(el.getAttribute(content), expectedSet(unsigned, o), `IDL set ${v}`);
+    }
+  }, `${tag}.${idl} setter`);
+}
+
+test(() => {
+  // With fallback, 0 writes the default rather than throwing (setter step 1
+  // throws only for "limited to only positive numbers" without fallback).
+  const textarea = document.createElement("textarea");
+  textarea.cols = 0;
+  assert_equals(textarea.getAttribute("cols"), "20");
+  textarea.rows = 0;
+  assert_equals(textarea.getAttribute("rows"), "2");
+}, "limited to only positive numbers with fallback: 0 writes the default");
+
+test(() => {
+  // [ReflectSetter] unsigned long: the setter steps with no default.
+  const img = document.createElement("img");
+  img.width = 20;
+  assert_equals(img.getAttribute("width"), "20");
+  img.height = 2147483648;
+  assert_equals(img.getAttribute("height"), "0");
+}, "[ReflectSetter] img.width and img.height write the attribute");
+</script>

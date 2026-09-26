@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Reflect] DOMTokenList attributes are token lists over their content attribute</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<link rel="help" href="https://dom.spec.whatwg.org/#interface-domtokenlist">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 2.6.1: a DOMTokenList getter returns "a DOMTokenList object whose
+// associated element is this and associated attribute's local name is the
+// reflected content attribute name". These are [SameObject, PutForwards=value].
+
+// [element, IDL name, content attribute name]
+const lists = [
+  ["output", "htmlFor", "for"],
+  ["link", "relList", "rel"],
+  ["link", "sizes", "sizes"],
+  ["link", "blocking", "blocking"],
+  ["style", "blocking", "blocking"],
+  ["form", "relList", "rel"],
+];
+
+for (const [tag, idl, content] of lists) {
+  test(() => {
+    const el = document.createElement(tag);
+    const list = el[idl];
+    assert_true(list instanceof DOMTokenList);
+    assert_equals(el[idl], list, "[SameObject]");
+    assert_equals(list.length, 0);
+    assert_equals(list.value, "");
+  }, `${tag}.${idl} is a DOMTokenList, the same one each time`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    el.setAttribute(content, "  a b\tc ");
+    const list = el[idl];
+    assert_equals(list.length, 3, "the attribute's value, parsed");
+    assert_true(list.contains("a"));
+    assert_true(list.contains("c"));
+    assert_equals(list.item(1), "b");
+  }, `${tag}.${idl} starts from ${content}`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    el.setAttribute(content, "a");
+    const list = el[idl];
+    list.add("b", "c");
+    assert_equals(el.getAttribute(content), "a b c");
+    list.remove("a");
+    assert_equals(el.getAttribute(content), "b c");
+    list.toggle("d");
+    assert_equals(el.getAttribute(content), "b c d");
+    list.replace("b", "e");
+    assert_equals(el.getAttribute(content), "e c d");
+  }, `${tag}.${idl} writes ${content} when it changes`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    const list = el[idl];
+    el[idl] = "x  y";
+    assert_array_equals(el.getAttribute(content).split(/\s+/), ["x", "y"], "[PutForwards=value]");
+    assert_equals(el[idl], list);
+    assert_equals(list.length, 2);
+  }, `${tag}.${idl} assignment forwards to value`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    const list = el[idl];
+    el.setAttribute(content, "p q");
+    assert_equals(list.length, 2, "DOM: the token set follows the associated attribute");
+    assert_true(list.contains("q"));
+    el.removeAttribute(content);
+    assert_equals(list.length, 0);
+    el.setAttribute(content, "a a b");
+    assert_equals(list.length, 2, "DOM: the token set is an ordered set");
+    list.value = "m  n";
+    assert_equals(el.getAttribute(content), "m  n", "DOM: the value setter sets the attribute verbatim");
+  }, `${tag}.${idl} follows later changes to ${content} (DOMTokenList's own steps)`);
+}
+
+test(() => {
+  const output = document.createElement("output");
+  output.setAttributeNS("http://example.com/ns", "for", "ns");
+  assert_equals(output.htmlFor.length, 0, "an attribute in a namespace is not the associated one");
+}, "the associated attribute has a null namespace");
+</script>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[ReflectURL] attributes are treated as a URL</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 2.6.1, USVString "treated as a URL": absent is ""; otherwise the value
+// encoding-parsed and serialized relative to the element's node document -
+// its document base URL - or, when that fails, the value itself converted to
+// a scalar value string. Setting sets the content attribute verbatim.
+//
+// Expected values come from the URL constructor, not from <a>.href (which the
+// suite's own ReflectionTests.resolveUrl uses).
+
+function resolved(value) {
+  try {
+    return new URL(String(value), document.baseURI).href;
+  } catch (e) {
+    return String(value);
+  }
+}
+
+const values = ["", " foo ", "http://site.example/", "//site.example/path???@#l",
+  "foo/bar?baz#qux", "../up", "#frag", "?query", 7, 1.5, "5%", "+100", ".5", true,
+  false, {"test": 6}, NaN, +Infinity, -Infinity, "\0", null, undefined,
+  "http://[", "http://a b/", "mailto:someone@example.com", "data:text/plain,x"];
+
+// [element, IDL name, content attribute name]
+const urls = [
+  ["q", "cite", "cite"],
+  ["blockquote", "cite", "cite"],
+  ["ins", "cite", "cite"],
+  ["del", "cite", "cite"],
+  ["img", "longDesc", "longdesc"],
+  ["img", "lowsrc", "lowsrc"],
+  ["video", "poster", "poster"],
+  ["audio", "src", "src"],
+  ["embed", "src", "src"],
+  ["object", "data", "data"],
+  ["source", "src", "src"],
+  ["track", "src", "src"],
+  ["input", "src", "src"],
+  ["link", "href", "href"],
+];
+
+for (const [tag, idl, content] of urls) {
+  test(() => {
+    const el = document.createElement(tag);
+    assert_equals(typeof el[idl], "string");
+    assert_equals(el[idl], "");
+  }, `${tag}.${idl}: "" while ${content} is absent`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    for (const v of values) {
+      el.setAttribute(content, v);
+      assert_equals(el.getAttribute(content), String(v));
+      assert_equals(el[idl], resolved(v), `setAttribute(${content}, ${String(v)})`);
+    }
+  }, `${tag}.${idl} parses ${content} against the document base URL`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    for (const v of values) {
+      el[idl] = v;
+      assert_equals(el.getAttribute(content), String(v), `IDL set ${String(v)}: set verbatim`);
+      assert_equals(el[idl], resolved(v));
+    }
+  }, `${tag}.${idl} setter sets ${content} verbatim`);
+}
+
+test(() => {
+  const q = document.createElement("q");
+  q.setAttribute("cite", "http://[\uD800");
+  assert_equals(q.cite, "http://[\uFFFD", "failure returns the value as a scalar value string");
+}, "an unparseable value is returned, with lone surrogates replaced");
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("");
+  const base = doc.createElement("base");
+  base.setAttribute("href", "http://base.example/dir/page.html");
+  doc.head.appendChild(base);
+  const q = doc.createElement("q");
+  q.setAttribute("cite", "other.html");
+  assert_equals(q.cite, "http://base.example/dir/other.html");
+  q.setAttribute("cite", "");
+  assert_equals(q.cite, "http://base.example/dir/page.html");
+}, "relative to the element's node document's base URL");
+
+test(() => {
+  const object = document.createElement("object");
+  assert_equals(object.codeBase, "");
+  object.setAttribute("codebase", "applets/");
+  assert_equals(object.codeBase, resolved("applets/"));
+  object.codeBase = "http://[";
+  assert_equals(object.getAttribute("codebase"), "http://[");
+  assert_equals(object.codeBase, "http://[");
+}, "object.codeBase is a DOMString treated as a URL");
+
+test(() => {
+  // [ReflectSetter] USVString: only the setter reflects.
+  const form = document.createElement("form");
+  form.action = "submit/here";
+  assert_equals(form.getAttribute("action"), "submit/here");
+  const base = document.createElement("base");
+  base.href = "somewhere/";
+  assert_equals(base.getAttribute("href"), "somewhere/");
+  const button = document.createElement("button");
+  button.formAction = "x?y";
+  assert_equals(button.getAttribute("formaction"), "x?y");
+}, "[ReflectSetter] USVString sets the content attribute verbatim");
+</script>

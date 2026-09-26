@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Reflect] long attributes: rules for parsing integers, defaults, [ReflectNonNegative]</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-microsyntaxes.html#rules-for-parsing-integers">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 2.6.1, long: the content attribute through the rules for parsing
+// integers (non-negative ones for [ReflectNonNegative]); a value that fails or
+// is outside the long range gives the default - [ReflectDefault], else -1 when
+// limited to non-negative numbers, else 0. Setting writes the shortest valid
+// integer; a negative value throws IndexSizeError when limited.
+
+const maxInt = 2147483647, minInt = -2147483648;
+
+// [content value, parsed by the rules for parsing integers (null: error)]
+const integers = [
+  ["", null], ["-", null], ["+", null], ["-1", -1], ["-0", 0], ["0", 0], ["1", 1],
+  ["  12abc", 12], ["\t\n\f\r 7", 7], ["\u000B7", null], ["\u00A07", null],
+  ["\uFEFF7", null], ["\u30007", null], ["7\u000B", 7], ["+100", 100], ["5%", 5],
+  [".5", null], ["1.5", 1], ["1e3", 1], ["abc", null], ["0x10", 0], ["007", 7],
+  ["2147483647", maxInt], ["2147483648", 2147483648], ["-2147483648", minInt],
+  ["-2147483649", -2147483649], ["99999999999999999999999", Infinity],
+  ["-99999999999999999999999", -Infinity], ["- 1", null], ["--1", null], ["+-1", null],
+];
+
+function expectedLong(parsed, fallback, nonNegative) {
+  if (parsed === null) return fallback;
+  if (nonNegative && parsed < 0) return fallback;
+  if (parsed > maxInt || parsed < minInt) return fallback;
+  return parsed;
+}
+
+// [element, IDL name, content name, default, limited to non-negative]
+const longs = [
+  ["ol", "start", "start", 1, false],
+  ["input", "maxLength", "maxlength", -1, true],
+  ["input", "minLength", "minlength", -1, true],
+  ["textarea", "maxLength", "maxlength", -1, true],
+  ["textarea", "minLength", "minlength", -1, true],
+];
+
+for (const [tag, idl, content, fallback, nonNegative] of longs) {
+  test(() => {
+    const el = document.createElement(tag);
+    assert_equals(el[idl], fallback);
+    for (const [value, parsed] of integers) {
+      el.setAttribute(content, value);
+      assert_equals(el[idl], expectedLong(parsed, fallback, nonNegative), `content ${JSON.stringify(value)}`);
+    }
+  }, `${tag}.${idl} parses ${content}`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    for (const v of [0, 1, 7, maxInt, -0]) {
+      const n = v === 0 ? 0 : v;  // -0 converts to the long 0
+      el[idl] = v;
+      assert_equals(el.getAttribute(content), String(n));
+      assert_equals(el[idl], n);
+    }
+    for (const v of [-1, -36, minInt]) {
+      if (nonNegative) {
+        el.setAttribute(content, "5");
+        assert_throws_dom("IndexSizeError", () => { el[idl] = v; });
+        assert_equals(el.getAttribute(content), "5", "unchanged after the throw");
+      } else {
+        el[idl] = v;
+        assert_equals(el.getAttribute(content), String(v));
+        assert_equals(el[idl], v);
+      }
+    }
+    // WebIDL long conversion wraps before the setter runs.
+    if (!nonNegative) {
+      el[idl] = 2147483648;
+      assert_equals(el.getAttribute(content), String(minInt));
+    }
+  }, `${tag}.${idl} setter`);
+}
+
+test(() => {
+  // [ReflectSetter] long: tabIndex's getter is its own, its setter reflects.
+  const div = document.createElement("div");
+  div.tabIndex = -3;
+  assert_equals(div.getAttribute("tabindex"), "-3");
+  div.tabIndex = 42;
+  assert_equals(div.getAttribute("tabindex"), "42");
+}, "[ReflectSetter] tabIndex writes the shortest valid integer");
+</script>

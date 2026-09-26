@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Reflect*] double attributes: rules for parsing floating-point number values</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-microsyntaxes.html#rules-for-parsing-floating-point-number-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 2.6.1, double. progress.max is [ReflectPositive, ReflectDefault=1.0]:
+// a parsed value greater than 0 is returned, anything else gives 1; setting a
+// value not greater than 0 does nothing. meter's are [ReflectSetter]: their
+// setters write "the best representation of the number as a floating-point
+// number" - ECMAScript's Number::toString.
+
+// [content value, rules for parsing floating-point number values (null: error)]
+const floats = [
+  ["", null], ["-", null], ["+", null], [" ", null], ["1", 1], ["-1", -1], ["0", 0], ["-0", 0],
+  ["1.5", 1.5], [".5", 0.5], ["-.5", -0.5], ["+.5", 0.5], ["1.", 1], ["1.e2", 100],
+  ["1e2", 100], ["1e+2", 100], ["1e-2", 0.01], ["1E2", 100], ["1E+2", 100], ["1E-2", 0.01],
+  ["1.0e2", 100], ["1. 1", 1], ["1 .1", 1], ["1. e2", 1], ["1 .e2", 1], ["1 e2", 1],
+  ["1e 2", 1], ["1e -2", 1], ["1e- 2", 1], ["1e", 1], ["1e+", 1], ["  12abc", 12],
+  ["\t\n\f\r 7", 7], ["\u000B7", null], [" 7", null], ["7\u000B", 7], ["5%", 5],
+  ["0.1", 0.1], ["0.30000000000000004", 0.30000000000000004], ["123456789012345678901234567890", 1.2345678901234568e29],
+  ["1.8e308", null], ["-1.8e308", null], ["1.7976931348623157e308", 1.7976931348623157e308],
+  ["1e400", null], ["1e-400", 0], ["abc", null], ["Infinity", null], ["NaN", null],
+  [".", null], [".e2", null], ["0x10", 0], ["00012.50", 12.5],
+];
+
+test(() => {
+  const progress = document.createElement("progress");
+  assert_equals(progress.max, 1, "absent");
+  for (const [value, parsed] of floats) {
+    progress.setAttribute("max", value);
+    const expected = parsed !== null && parsed > 0 ? parsed : 1;
+    assert_equals(progress.max, expected, `content ${JSON.stringify(value)}`);
+  }
+}, "progress.max parses max, limited to positive numbers, default 1");
+
+test(() => {
+  const progress = document.createElement("progress");
+  for (const [v, text] of [[1, "1"], [1.5, "1.5"], [1e25, "1e+25"], [1e21, "1e+21"],
+                           [1e20, "100000000000000000000"], [1e-7, "1e-7"], [1e-6, "0.000001"],
+                           [0.1 + 0.2, "0.30000000000000004"], [123.456, "123.456"],
+                           [5e-324, "5e-324"], [1.7976931348623157e308, "1.7976931348623157e+308"],
+                           [2 ** 53, "9007199254740992"], [1234567.125, "1234567.125"]]) {
+    progress.max = v;
+    assert_equals(progress.getAttribute("max"), text, `IDL set ${v}`);
+    assert_equals(progress.max, v);
+  }
+  progress.setAttribute("max", "previous value");
+  for (const v of [0, -0, -1, -1e25]) {
+    progress.max = v;
+    assert_equals(progress.getAttribute("max"), "previous value", `IDL set ${v} does nothing`);
+  }
+}, "progress.max setter writes the best representation; non-positive does nothing");
+
+test(() => {
+  // WebIDL double (not unrestricted): the conversion throws before the setter.
+  const progress = document.createElement("progress");
+  assert_throws_js(TypeError, () => { progress.max = NaN; });
+  assert_throws_js(TypeError, () => { progress.max = Infinity; });
+  assert_false(progress.hasAttribute("max"));
+}, "progress.max = NaN or Infinity throws a TypeError");
+
+test(() => {
+  const meter = document.createElement("meter");
+  for (const name of ["value", "min", "max", "low", "high", "optimum"]) {
+    for (const [v, text] of [[0, "0"], [-0, "0"], [-1.5, "-1.5"], [1e21, "1e+21"], [1e-7, "1e-7"], [42, "42"]]) {
+      meter[name] = v;
+      assert_equals(meter.getAttribute(name), text, `meter.${name} = ${v}`);
+    }
+  }
+  const progress = document.createElement("progress");
+  progress.value = 0.25;
+  assert_equals(progress.getAttribute("value"), "0.25");
+}, "[ReflectSetter] double setters write the best representation of the number");
+</script>

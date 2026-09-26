@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>HTML reflection suite (grouping), resolving URLs without a.href</title>
+<meta name=timeout content=long>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<!--
+  html/dom/reflection-grouping.html, unchanged, but for one thing: reflection.js
+  builds its expected URL values at load with ReflectionTests.resolveUrl, which
+  reads <a>.href's URL parts (HTMLHyperlinkElementUtils). Until those work the
+  real file ERRORs at setup whatever reflection does. reflect-url-resolver.js
+  supplies only what resolveUrl touches, from the URL constructor, and only
+  when the real ones are missing. Retire this file when html/dom/ runs.
+-->
+<div id=log></div>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/html/dom/original-harness.js"></script>
+<script src="/html/dom/new-harness.js"></script>
+<script src="/html/dom/elements-grouping.js"></script>
+<script src="reflect-url-resolver.js"></script>
+<script src="/html/dom/reflection.js"></script>

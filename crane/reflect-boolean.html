@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Reflect] boolean attributes reflect the presence of their content attribute</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 2.6.1: a boolean getter is true when the content attribute is present,
+// whatever its value; setting false removes it and setting true sets it to "".
+
+const values = ["", " foo ", undefined, null, 7, 1.5, "5%", "+100", ".5", true, false,
+  {"test": 6}, NaN, +Infinity, -Infinity, "\0", "false", "0", "off"];
+
+// [element, IDL name, content attribute name]
+const booleans = [
+  ["td", "noWrap", "nowrap"],
+  ["dl", "compact", "compact"],
+  ["menu", "compact", "compact"],
+  ["ul", "compact", "compact"],
+  ["ol", "reversed", "reversed"],
+  ["hr", "noShade", "noshade"],
+  ["img", "isMap", "ismap"],
+  ["video", "playsInline", "playsinline"],
+  ["audio", "autoplay", "autoplay"],
+  ["audio", "loop", "loop"],
+  ["audio", "controls", "controls"],
+  ["audio", "defaultMuted", "muted"],
+  ["fieldset", "disabled", "disabled"],
+  ["optgroup", "disabled", "disabled"],
+  ["button", "disabled", "disabled"],
+  ["button", "formNoValidate", "formnovalidate"],
+  ["input", "formNoValidate", "formnovalidate"],
+  ["input", "alpha", "alpha"],
+  ["link", "disabled", "disabled"],
+  ["track", "default", "default"],
+  ["object", "declare", "declare"],
+  ["marquee", "trueSpeed", "truespeed"],
+  ["template", "shadowRootDelegatesFocus", "shadowrootdelegatesfocus"],
+  ["template", "shadowRootClonable", "shadowrootclonable"],
+  ["template", "shadowRootSerializable", "shadowrootserializable"],
+  // HTMLElement's and HTMLOrSVGElement's own: inert is installed lazily.
+  ["div", "inert", "inert"],
+  ["div", "headingReset", "headingreset"],
+  ["div", "autofocus", "autofocus"],
+];
+
+for (const [tag, idl, content] of booleans) {
+  test(() => {
+    const el = document.createElement(tag);
+    assert_equals(typeof el[idl], "boolean");
+    assert_false(el[idl]);
+    for (const v of values) {
+      el.setAttribute(content, v);
+      assert_true(el[idl], `setAttribute(${content}, ${String(v)})`);
+    }
+    el.removeAttribute(content);
+    assert_false(el[idl]);
+  }, `${tag}.${idl} is the presence of ${content}`);
+
+  test(() => {
+    const el = document.createElement(tag);
+    el[idl] = true;
+    assert_equals(el.getAttribute(content), "");
+    assert_true(el[idl]);
+    el.setAttribute(content, "kept?");
+    el[idl] = true;
+    assert_equals(el.getAttribute(content), "", "true sets the empty string");
+    el[idl] = false;
+    assert_false(el.hasAttribute(content));
+    assert_false(el[idl]);
+    for (const v of values) {
+      el[idl] = v;
+      assert_equals(el.hasAttribute(content), Boolean(v), `IDL set ${String(v)}`);
+    }
+  }, `${tag}.${idl} setter adds or removes ${content}`);
+}
+
+test(() => {
+  const td = document.createElement("td");
+  td.setAttributeNS("http://example.com/ns", "nowrap", "");
+  assert_false(td.noWrap, "an attribute in a namespace is not the reflected one");
+  td.noWrap = true;
+  td.noWrap = false;
+  assert_true(td.hasAttributeNS("http://example.com/ns", "nowrap"), "removing leaves the namespaced one");
+}, "a boolean reflects the null-namespace attribute only");
+</script>
