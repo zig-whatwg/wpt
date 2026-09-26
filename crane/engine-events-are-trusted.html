@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Events the user agent fires are trusted</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-fire">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// DOM 2.10: "fire an event" dispatches with isTrusted true. Only script's
+// dispatchEvent() sets it false (2.8 step 2).
+
+test(() => {
+  const c = new AbortController();
+  let trusted = null;
+  c.signal.addEventListener("abort", e => { trusted = e.isTrusted; });
+  c.abort();
+  assert_true(trusted);
+}, "AbortSignal's abort event is trusted");
+
+promise_test(async () => {
+  const s = document.createElement("script");
+  s.src = "data:text/javascript,void 0";
+  const e = await new Promise(r => { s.onload = r; document.body.appendChild(s); });
+  assert_true(e.isTrusted);
+}, "a script element's load event is trusted");
+
+promise_test(async () => {
+  const s = document.createElement("script");
+  s.src = "/does-not-exist-" + Math.random() + ".js";
+  const e = await new Promise(r => { s.onerror = r; document.body.appendChild(s); });
+  assert_true(e.isTrusted);
+}, "a script element's error event is trusted");
+
+test(() => {
+  const t = new EventTarget();
+  let trusted = null;
+  t.addEventListener("x", e => { trusted = e.isTrusted; });
+  t.dispatchEvent(new Event("x"));
+  assert_false(trusted);
+}, "an event script dispatches is not trusted");
+</script>
