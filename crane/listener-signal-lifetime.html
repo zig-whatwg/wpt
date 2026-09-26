@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A listener's abort signal outlives, or is outlived by, its target</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#add-an-event-listener">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// DOM "add an event listener" step 6 adds abort steps to the listener's
+// signal that remove the listener. The signal can abort after the target is
+// collected, or be collected without ever aborting; neither may touch freed
+// memory, and a listener removed another way must stay removed.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 200000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+promise_test(async () => {
+  const controller = new AbortController();
+  for (let i = 0; i < 500; i++)
+    new EventTarget().addEventListener("x", () => {}, { signal: controller.signal });
+  await collect();
+  await collect();
+  controller.abort();
+}, "aborting after the targets were collected");
+
+promise_test(async () => {
+  const target = new EventTarget();
+  let count = 0;
+  for (let i = 0; i < 500; i++) {
+    const c = new AbortController();
+    target.addEventListener("x" + i, () => count++, { signal: c.signal });
+  }
+  await collect();
+  await collect();
+  for (let i = 0; i < 500; i++) target.dispatchEvent(new Event("x" + i));
+  assert_equals(count, 500, "a collected signal cannot abort, so its listener stays");
+}, "the signals are collected without aborting");
+
+test(() => {
+  const target = new EventTarget();
+  const controller = new AbortController();
+  let count = 0;
+  const f = () => count++;
+  target.addEventListener("x", f, { signal: controller.signal });
+  target.removeEventListener("x", f);
+  target.addEventListener("x", f);
+  controller.abort();
+  target.dispatchEvent(new Event("x"));
+  assert_equals(count, 1, "the abort steps remove the listener they were added for, not an equal one");
+}, "a listener removed and re-added without the signal survives the abort");
+
+test(() => {
+  const target = new EventTarget();
+  const other = new EventTarget();
+  assert_throws_js(TypeError, () => target.addEventListener("x", () => {}, { signal: other }));
+  assert_throws_js(TypeError, () => target.addEventListener("x", () => {}, { signal: {} }));
+}, "a signal that is not an AbortSignal throws");
+
+test(() => {
+  const target = new EventTarget();
+  assert_throws_js(SyntaxError, () => target.addEventListener("x", () => {}, { get signal() { throw new SyntaxError("from getter"); } }));
+  assert_throws_js(SyntaxError, () => target.addEventListener("x", () => {}, { get once() { throw new SyntaxError("from getter"); } }));
+}, "an exception from a member getter propagates");
+</script>
