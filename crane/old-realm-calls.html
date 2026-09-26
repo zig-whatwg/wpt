@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Code from a navigated-away document still reaches its own globals</title>
+<link rel="help" href="https://html.spec.whatwg.org/#navigate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A navigation to a new document gives the frame a new Window behind the same
+// WindowProxy. Functions created in the old document keep the old realm: an
+// unqualified global in them resolves on the old Window, which still exists.
+// Browsers run such code (unload handlers and timers left behind depend on
+// it); it must not throw "Illegal invocation".
+
+promise_test(async () => {
+  const f = document.createElement("iframe");
+  f.srcdoc = "<title>first</title><script>" +
+    "window.readTitle = () => document.title;" +
+    "window.readTypeofTimer = () => typeof setTimeout;" +
+    "window.readSelf = () => self === window;" +
+    "<\/script>";
+  await new Promise(r => { f.onload = r; document.body.appendChild(f); });
+  const w = f.contentWindow;
+  const readTitle = w.readTitle, readTypeofTimer = w.readTypeofTimer,
+        readSelf = w.readSelf;
+  assert_equals(readTitle(), "first", "before navigating");
+
+  await new Promise(r => { f.onload = r; f.srcdoc = "<title>second</title>"; });
+  assert_equals(f.contentDocument.title, "second", "the frame navigated");
+
+  assert_equals(readTitle(), "first", "document is the old Window's document");
+  assert_equals(readTypeofTimer(), "function", "a native global");
+  assert_true(readSelf(), "self and window agree in the old realm");
+}, "functions from the previous document run against their own Window");
+</script>
