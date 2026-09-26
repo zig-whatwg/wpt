@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Attribute getters and setters brand-check their receiver</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#dfn-attribute-getter">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebIDL 3.7.6 attribute getter / setter step 1: if the receiver is not a
+// platform object that implements the interface, throw a TypeError
+// ([LegacyLenientThis]: return undefined, or do nothing).
+
+function accessor(proto, name) {
+  for (let o = proto; o; o = Object.getPrototypeOf(o)) {
+    const d = Object.getOwnPropertyDescriptor(o, name);
+    if (d) return d;
+  }
+  throw new Error("no " + name);
+}
+
+test(() => {
+  const { get } = accessor(Node.prototype, "nodeName");
+  assert_throws_js(TypeError, () => get.call({}));
+}, "a getter on a plain object throws");
+
+test(() => {
+  const { get } = accessor(Node.prototype, "nodeName");
+  assert_throws_js(TypeError, () => get.call(new EventTarget()));
+}, "a getter on a platform object of an ancestor interface throws");
+
+test(() => {
+  const { get } = accessor(HTMLInputElement.prototype, "value");
+  assert_throws_js(TypeError, () => get.call(document.createElement("textarea")));
+}, "a getter on a sibling interface's object throws");
+
+test(() => {
+  const { set } = accessor(Element.prototype, "id");
+  assert_throws_js(TypeError, () => set.call(document.createTextNode("t"), "x"));
+}, "a setter on another Node type throws");
+
+test(() => {
+  const { set } = accessor(Element.prototype, "id");
+  assert_throws_js(TypeError, () => set.call({}, "x"));
+}, "a setter on a plain object throws");
+
+test(() => {
+  // children comes from the ParentNode mixin, which Document also includes.
+  // Element.prototype's copy belongs to Element, so a Document fails it.
+  const { get } = accessor(Element.prototype, "children");
+  assert_throws_js(TypeError, () => get.call(document));
+  assert_equals(accessor(Document.prototype, "children").get.call(document).length, 1);
+}, "a mixin getter checks the includer, not the mixin");
+
+test(() => {
+  const { set } = accessor(Element.prototype, "className");
+  const div = document.createElement("div");
+  set.call(div, "a");
+  assert_equals(div.className, "a");
+  assert_equals(accessor(Element.prototype, "className").get.call(div), "a");
+}, "the right receiver still works through the accessor functions");
+
+test(() => {
+  const { get, set } = accessor(Document.prototype, "onreadystatechange");
+  assert_equals(get.call({}), undefined);
+  set.call({}, () => {});
+}, "a [LegacyLenientThis] accessor ignores a wrong receiver");
+
+test(() => {
+  const { get } = accessor(window, "name");
+  assert_throws_js(TypeError, () => get.call({}));
+}, "a [Global] getter on a plain object throws");
+
+test(() => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  const other = f.contentDocument.createElement("span");
+  assert_equals(accessor(Node.prototype, "nodeName").get.call(other), "SPAN");
+  const { get } = accessor(f.contentWindow.Node.prototype, "nodeName");
+  assert_throws_js(f.contentWindow.TypeError, () => get.call({}));
+}, "a getter from another realm checks the same brand");
+</script>
