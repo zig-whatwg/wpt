@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A Request's signal lives as long as the Request, and a fetch's while it can be aborted</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-request-signal">
+<link rel="help" href="https://dom.spec.whatwg.org/#abort-signal-garbage-collection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Request's signal getter returns this's signal: one object for the Request's
+// whole life. And DOM § 3.3.1: a signal with source signals and abort
+// algorithms must not be collected - fetch()'s requestObject is gone as soon
+// as fetch() returns, but its dependent signal carries the call's abort steps.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+const trickle = (ms, count) => `/fetch/api/resources/trickle.py?ms=${ms}&count=${count}`;
+
+promise_test(async () => {
+  const request = new Request("/common/blank.html");
+  request.signal.expando = "kept";
+  const same = new WeakRef(request.signal);
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  assert_equals(request.signal.expando, "kept", "expando survives");
+  assert_equals(request.signal, same.deref(), "same signal object");
+}, "a Request's signal keeps its identity and expandos across a collection");
+
+promise_test(async () => {
+  const controller = new AbortController();
+  const request = new Request("/common/blank.html", { signal: controller.signal });
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  controller.abort();
+  assert_true(request.signal.aborted, "the dependent signal followed its source");
+}, "a Request's dependent signal still follows its source after a collection");
+
+promise_test(async t => {
+  const controller = new AbortController();
+  const response = await fetch(trickle(100, 30), { signal: controller.signal });
+  const reader = response.body.getReader();
+  await reader.read();
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  controller.abort();
+  await promise_rejects_dom(t, "AbortError", reader.read());
+}, "a fetch can still be aborted after a collection");
+</script>

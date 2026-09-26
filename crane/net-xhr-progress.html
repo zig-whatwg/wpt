@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An asynchronous XMLHttpRequest reads its response body as it arrives</title>
+<link rel="help" href="https://xhr.spec.whatwg.org/#the-send()-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// send() step 11.9.13 reads the body incrementally: processBodyChunk runs
+// per piece (loading, readystatechange and progress at most every ~50ms),
+// then processEndOfBody. trickle.py sends 12 lines 100ms apart.
+const LINE = "TEST_TRICKLE\n";
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  const progress = [];
+  let partialText = null;
+  xhr.onprogress = t.step_func(e => {
+    progress.push(e.loaded);
+    if (xhr.readyState === 3 && partialText === null) partialText = xhr.responseText;
+  });
+  xhr.onload = t.step_func_done(() => {
+    assert_equals(xhr.responseText, LINE.repeat(12));
+    assert_greater_than_equal(progress.length, 3, "progress fired as the body arrived");
+    for (let i = 1; i < progress.length; i++) assert_greater_than_equal(progress[i], progress[i - 1], "loaded never goes back");
+    assert_not_equals(partialText, null, "responseText was read while loading");
+    assert_less_than(partialText.length, LINE.length * 12, "while loading, responseText held part of the body");
+  });
+  xhr.open("GET", "/fetch/api/resources/trickle.py?ms=100&count=12");
+  xhr.send();
+}, "progress and responseText follow the body as it arrives");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  let loadingAt = 0;
+  const started = Date.now();
+  xhr.onreadystatechange = t.step_func(() => {
+    if (xhr.readyState === 3 && !loadingAt) loadingAt = Date.now();
+    if (xhr.readyState === 4) {
+      assert_greater_than(loadingAt, 0, "reached loading");
+      assert_greater_than_equal(Date.now() - loadingAt, 500, "loading began long before the end");
+      t.done();
+    }
+  });
+  xhr.open("GET", "/fetch/api/resources/trickle.py?ms=100&count=10");
+  xhr.send();
+}, "loading begins with the body's first piece, not its last");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  xhr.onprogress = t.step_func(() => xhr.abort());
+  xhr.onload = t.unreached_func("load");
+  xhr.onabort = t.step_func(() => t.step_timeout(() => t.done(), 300));
+  xhr.open("GET", "/fetch/api/resources/trickle.py?ms=100&count=20");
+  xhr.send();
+}, "abort() while the body arrives ends the request");
+</script>

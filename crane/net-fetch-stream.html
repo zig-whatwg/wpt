@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>fetch() hands on a response at its headers, and its body streams</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#http-network-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTTP-network fetch hands the response on as soon as its headers are in
+// (step 20), and enqueues body bytes into the body's stream as they arrive.
+// trickle.py sends its headers after `ms`, then `count` lines of
+// "TEST_TRICKLE\n" `ms` apart.
+const trickle = (ms, count) => `/fetch/api/resources/trickle.py?ms=${ms}&count=${count}`;
+const LINE = "TEST_TRICKLE\n";
+
+promise_test(async () => {
+  const started = Date.now();
+  const response = await fetch(trickle(100, 10));
+  assert_less_than(Date.now() - started, 800, "the response came with its headers, not its last byte");
+  assert_equals(response.status, 200);
+  const text = await response.text();
+  assert_equals(text, LINE.repeat(10));
+  assert_greater_than_equal(Date.now() - started, 1000, "text() waited for the whole body");
+}, "fetch() resolves at the headers, and text() waits for the body");
+
+promise_test(async () => {
+  const response = await fetch(trickle(100, 6));
+  const reader = response.body.getReader();
+  let reads = 0, bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    assert_true(value instanceof Uint8Array, "chunks are Uint8Arrays");
+    reads += 1;
+    bytes += value.byteLength;
+  }
+  assert_equals(bytes, LINE.length * 6);
+  assert_greater_than_equal(reads, 2, "the body arrived in more than one piece");
+}, "response.body delivers the body as it arrives");
+
+promise_test(async t => {
+  const controller = new AbortController();
+  const response = await fetch(trickle(100, 20), { signal: controller.signal });
+  const reader = response.body.getReader();
+  await reader.read();
+  controller.abort();
+  await promise_rejects_dom(t, "AbortError", reader.read());
+}, "aborting after the response errors its body with an AbortError");
+
+promise_test(async t => {
+  const controller = new AbortController();
+  const response = await fetch(trickle(100, 20), { signal: controller.signal });
+  const reason = new Error("mine");
+  controller.abort(reason);
+  await promise_rejects_exactly(t, reason, response.text());
+}, "aborting after the response rejects a pending text() with the abort reason");
+
+promise_test(async () => {
+  const response = await fetch(trickle(50, 5));
+  const clone = response.clone();
+  const [a, b] = await Promise.all([response.text(), clone.text()]);
+  assert_equals(a, LINE.repeat(5));
+  assert_equals(b, LINE.repeat(5));
+}, "a clone made while the body arrives reads all of it too");
+
+promise_test(async t => {
+  const response = await fetch("/fetch/api/resources/bad-chunk-encoding.py?ms=50&count=1");
+  const reader = response.body.getReader();
+  const first = await reader.read();
+  assert_false(first.done);
+  await promise_rejects_js(t, TypeError, reader.read());
+}, "a network error after the headers errors the body with a TypeError");
+
+promise_test(async () => {
+  const response = await fetch(trickle(50, 3));
+  assert_false(response.bodyUsed);
+  const reader = response.body.getReader();
+  await reader.read();
+  assert_true(response.bodyUsed, "reading the stream disturbs the body");
+  await reader.cancel();
+}, "bodyUsed follows the stream");
+</script>

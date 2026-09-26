@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: setting an iframe's src navigates asynchronously</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  const initial = f.contentDocument;
+  assert_equals(f.contentWindow.location.href, "about:blank");
+
+  const loaded = new Promise(r => f.addEventListener("load", r, { once: true }));
+  f.src = "resources/nav-probe.html?async";
+  assert_equals(f.contentDocument, initial, "the frame still shows its initial document when the setter returns");
+  assert_equals(f.contentWindow.location.href, "about:blank", "and its URL");
+  assert_equals(f.contentWindow.probeRan, undefined, "the new page's script has not run");
+  await loaded;
+  assert_not_equals(f.contentDocument, initial, "a new document once it loads");
+  assert_equals(f.contentWindow.probeSearch, "?async");
+}, "src= returns before the navigation commits");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  let loads = 0;
+  f.addEventListener("load", () => ++loads);
+  f.src = "resources/nav-probe.html?first";
+  f.src = "resources/nav-probe.html?second";
+  await new Promise(r => f.addEventListener("load", r, { once: true }));
+  await new Promise(r => t.step_timeout(r, 300));
+  assert_equals(f.contentWindow.probeSearch, "?second", "the later navigation wins");
+  assert_equals(loads, 1, "the first navigation was aborted and never loaded");
+}, "a second navigation in the same task aborts the first");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?start";
+  const first = new Promise(r => f.addEventListener("load", r, { once: true }));
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await first;
+  const w = f.contentWindow;
+  let loads = 0;
+  f.addEventListener("load", () => ++loads);
+  w.location.href = "resources/nav-probe.html?one";
+  w.location.assign("resources/nav-probe.html?two");
+  assert_equals(w.location.search, "?start", "location is unchanged until the navigation commits");
+  await new Promise(r => f.addEventListener("load", r, { once: true }));
+  await new Promise(r => t.step_timeout(r, 300));
+  assert_equals(f.contentWindow.probeSearch, "?two");
+  assert_equals(loads, 1);
+}, "location navigations are asynchronous too, and the later one wins");
+</script>

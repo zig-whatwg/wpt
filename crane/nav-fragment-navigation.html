@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a fragment navigation is synchronous and keeps the document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-fragid">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?frag";
+  const first = new Promise(r => f.addEventListener("load", r, { once: true }));
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await first;
+  const w = f.contentWindow, d = f.contentDocument;
+  let loads = 0;
+  f.addEventListener("load", () => ++loads);
+  const events = [];
+  w.addEventListener("hashchange", e => events.push("hashchange " + new URL(e.oldURL).hash + " " + new URL(e.newURL).hash));
+
+  w.location.hash = "x";
+  assert_equals(w.location.hash, "#x", "the URL changes synchronously");
+  assert_equals(d.URL.endsWith("?frag#x"), true, "the document's URL too");
+  assert_array_equals(events, [], "hashchange is queued, not fired synchronously");
+
+  w.location.href = w.location.href.replace(/#.*$/, "") + "#y";
+  assert_equals(w.location.hash, "#y");
+  await new Promise(r => t.step_timeout(r, 200));
+  assert_equals(f.contentDocument, d, "the same document");
+  assert_equals(loads, 0, "no load event");
+  assert_array_equals(events, ["hashchange  #x", "hashchange #x #y"]);
+}, "location.hash and a same-document href navigate to the fragment");
+</script>

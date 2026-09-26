@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: a [SameObject] attribute read across realms keeps its object</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#SameObject">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body onload="run()">
+<iframe src="resources/nav-many-spans.html" id="frame"></iframe>
+<script>
+// The frame's 13000 spans are read from this realm, as the encoding/legacy-mb
+// decode tests read theirs. Red: under the collections this forces, a span's
+// dataset comes back null, then the process crashes.
+var t = async_test("dataset of 13000 elements of another realm, read twice each");
+function run() {
+  t.step(() => {
+    var nodes = document.getElementById("frame").contentWindow.document.querySelectorAll("span");
+    assert_equals(nodes.length, 13000);
+    var nulls = 0, differ = 0;
+    for (var i = 0; i < nodes.length; i++) {
+      var a = nodes[i].dataset;
+      if (a === null) { nulls++; continue; }
+      var cp = a.cp;
+      var b = nodes[i].dataset;
+      if (b === null) nulls++;
+      else if (a !== b) differ++;
+    }
+    assert_equals(nulls, 0, "null datasets");
+    assert_equals(differ, 0, "datasets that are not the same object");
+  });
+  t.done();
+}
+</script>

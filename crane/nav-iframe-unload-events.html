@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: navigating a frame unloads its document first</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#unload-a-document">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-opens-during-unload-counter">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(iframe) {
+  return new Promise(r => iframe.addEventListener("load", r, { once: true }));
+}
+
+promise_test(async () => {
+  const f = document.createElement("iframe");
+  f.src = "resources/lifecycle-probe.html";
+  const first = loaded(f);
+  document.body.appendChild(f);
+  await first;
+
+  const w = f.contentWindow, d = f.contentDocument;
+  const seen = [];
+  w.addEventListener("beforeunload", () => seen.push("beforeunload"));
+  w.addEventListener("pagehide", e => seen.push("pagehide " + e.persisted));
+  d.addEventListener("visibilitychange", () => seen.push("visibilitychange " + d.visibilityState));
+  w.addEventListener("unload", () => {
+    const nodes = d.childNodes.length;
+    assert_equals(d.open(), d, "open() returns the document");
+    seen.push("unload, open ignored: " + (d.childNodes.length === nodes));
+  });
+
+  const second = loaded(f);
+  f.src = "/common/blank.html";
+  await second;
+  assert_array_equals(seen, [
+    "beforeunload",
+    "pagehide false",
+    "visibilitychange hidden",
+    "unload, open ignored: true",
+  ]);
+}, "beforeunload, pagehide, visibilitychange and unload, in that order; open() is ignored while unloading");
+</script>

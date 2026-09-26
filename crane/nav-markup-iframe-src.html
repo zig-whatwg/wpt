@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a parser-inserted iframe loads its src, and holds its document's load event</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#process-the-iframe-attributes">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#potentially-delays-the-load-event">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const order = [];
+const t = async_test("the frame's src loads before the window's load event, and the frame's load fires first");
+</script>
+<iframe id="f" src="resources/nav-probe.html?markup" onload="order.push('iframe load')"></iframe>
+<script>
+addEventListener("load", t.step_func_done(() => {
+  order.push("window load");
+  const f = document.getElementById("f");
+  assert_equals(f.contentDocument.URL, new URL("resources/nav-probe.html?markup", location.href).href, "the frame's document is its src");
+  assert_equals(f.contentDocument.readyState, "complete", "the frame finished loading");
+  assert_equals(f.contentWindow.probeRan, true, "the frame's script ran");
+  assert_array_equals(order, ["iframe load", "window load"]);
+}));
+</script>
