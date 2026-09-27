@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>What the bindings throw and convert does not keep a frame's realm alive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// One handle anywhere into a realm keeps its whole heap. The binding made a
+// handle for every exception it threw and for every value an attribute setter
+// converted, and released neither - so a TypeError thrown in a frame's realm,
+// caught and dropped by script, or an object of the frame's realm assigned to
+// a boolean attribute, kept the frame's realm alive after the frame was gone.
+//
+// WeakRef observes the collection: a realm's Array constructor is collected
+// with its realm and not before.
+async function settle() {
+  for (let i = 0; i < 3; i++) {
+    await TestUtils.gc();
+    await new Promise(r => setTimeout(r, 0));
+  }
+}
+function navigate(frame, url) {
+  return new Promise(resolve => {
+    frame.onload = resolve;
+    frame.src = url;
+  });
+}
+// A frame whose realm is its own (not its initial about:blank one), and a
+// WeakRef to that realm's Array.
+async function frameRealm() {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  await navigate(frame, "/common/blank.html?1");
+  await navigate(frame, "/common/blank.html?2");
+  return { frame, realm: new WeakRef(frame.contentWindow.Array) };
+}
+
+// The frame's own getter, called on an object that is not a Node: the
+// binding throws a TypeError made in the frame's realm.
+function throwInFrame(frame) {
+  const getter = Object.getOwnPropertyDescriptor(frame.contentWindow.Node.prototype, "nodeName").get;
+  let thrown = 0;
+  for (let i = 0; i < 8; i++) {
+    try { getter.call({}); } catch (e) { thrown++; }
+  }
+  return thrown;
+}
+
+// An object of the frame's realm, converted to a boolean by this realm's
+// Event.cancelBubble setter.
+function assignFromFrame(frame) {
+  const event = new Event("x");
+  for (let i = 0; i < 8; i++) event.cancelBubble = new frame.contentWindow.Object();
+  return event.cancelBubble;
+}
+
+promise_test(async () => {
+  let { frame, realm } = await frameRealm();
+  assert_equals(throwInFrame(frame), 8, "the getter threw every time");
+  frame.remove();
+  frame = null;
+  await settle();
+  assert_equals(realm.deref(), undefined, "the frame's realm is released");
+}, "a TypeError the binding threw in a frame's realm does not keep the realm alive");
+
+promise_test(async () => {
+  let { frame, realm } = await frameRealm();
+  assert_true(assignFromFrame(frame), "an object is true");
+  frame.remove();
+  frame = null;
+  await settle();
+  assert_equals(realm.deref(), undefined, "the frame's realm is released");
+}, "a value an attribute setter converted does not keep its realm alive");
+</script>
