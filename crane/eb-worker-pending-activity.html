@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A running Worker outlives script's references to it; a terminated one does not</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#the-worker's-lifetime">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A Worker with pending activity (Blink's ActiveScriptWrappable) is kept alive
+// whatever script holds; once terminated it has none, and its wrapper is as
+// collectable as any other object's.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+// The next message `target` hears. Its handler's closure must not reach the
+// target itself: Crane holds an event handler strongly, as a root, so a
+// handler whose closure captured the worker would keep it alive whatever its
+// pending activity (Blink traces handlers from their target instead).
+function nextMessage(target) {
+  let resolve;
+  const heard = new Promise(r => { resolve = r; });
+  target.onmessage = e => resolve(e.data);
+  return heard;
+}
+
+// A worker that has answered one message, and a WeakRef to it; no other
+// reference survives this function.
+async function answeredWorker() {
+  const worker = new Worker("resources/eb-echo-worker.js");
+  const answered = nextMessage(worker);
+  worker.postMessage("ping");
+  const reply = await answered;
+  assert_equals(reply.data, "ping");
+  return { ref: new WeakRef(worker), worker };
+}
+
+// Collect until `ref` is empty, or give up after a few rounds. Each round
+// starts a new task, so no WeakRef.deref() from an earlier job keeps the
+// target alive ([[KeptAlive]] ends with the job).
+async function collectedWithin(t, ref, rounds) {
+  for (let i = 0; i < rounds; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+    if (ref.deref() === undefined) return true;
+  }
+  return false;
+}
+
+// A worker that has answered, terminated; only a WeakRef to it comes back. Its
+// own async frame is gone before the caller collects - a suspended frame can
+// keep what it held alive.
+async function terminatedWorker() {
+  const made = await answeredWorker();
+  made.worker.terminate();
+  return made.ref;
+}
+
+promise_test(async t => {
+  const ref = await terminatedWorker();
+  assert_true(await collectedWithin(t, ref, 10), "the terminated Worker was collected");
+}, "a terminated Worker nobody references is collected");
+
+promise_test(async t => {
+  let ref;
+  let replies = 0;
+  {
+    const made = await answeredWorker();
+    ref = made.ref;
+    made.worker.onmessage = () => { replies++; };
+  }
+  assert_false(await collectedWithin(t, ref, 3), "the running Worker survived collection");
+  // And it still works: its handler hears its reply.
+  const worker = ref.deref();
+  const heard = nextMessage(worker);
+  worker.postMessage("still here");
+  assert_equals((await heard).data, "still here");
+  worker.terminate();
+}, "a running Worker nobody references survives collection");
+</script>

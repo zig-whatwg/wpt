@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Worker messages are structured clones, delivered as trusted events to every listener</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#dom-worker-postmessage">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function worker() { return new Worker("resources/eb-echo-worker.js"); }
+
+async_test(t => {
+  const w = worker();
+  const sent = { n: 1, when: new Date(0), map: new Map([["k", "v"]]), nested: [1, [2]] };
+  w.addEventListener("message", t.step_func_done(e => {
+    const echoed = e.data.data;
+    assert_equals(echoed.n, 1);
+    assert_true(echoed.when instanceof Date, "a Date stays a Date");
+    assert_equals(echoed.when.getTime(), 0);
+    assert_true(echoed.map instanceof Map, "a Map stays a Map");
+    assert_equals(echoed.map.get("k"), "v");
+    assert_equals(echoed.nested[1][0], 2);
+    assert_true(e.data.trusted, "the worker's event is trusted");
+    assert_true(e.isTrusted, "the page's event is trusted");
+    w.terminate();
+  }));
+  w.postMessage(sent);
+}, "a message round-trips through a worker as a structured clone, heard by addEventListener");
+
+async_test(t => {
+  const w = worker();
+  const buffer = new Uint8Array([7, 8, 9]).buffer;
+  w.onmessage = t.step_func_done(e => {
+    assert_equals(e.data.data.byteLength, 3);
+    assert_equals(new Uint8Array(e.data.data)[2], 9);
+    w.terminate();
+  });
+  w.postMessage(buffer, [buffer]);
+  assert_equals(buffer.byteLength, 0, "the sender's buffer is detached");
+}, "a transferred ArrayBuffer moves to the worker and back");
+
+async_test(t => {
+  const w = worker();
+  const channel = new MessageChannel();
+  w.onmessage = t.step_func(e => {
+    assert_equals(e.data.ports, 1, "the worker received the port");
+    assert_equals(e.ports.length, 1, "and sent it back");
+    const back = e.ports[0];
+    back.onmessage = t.step_func_done(m => {
+      assert_equals(m.data, "through the port");
+      w.terminate();
+    });
+    channel.port2.postMessage("through the port");
+  });
+  w.postMessage("with a port", [channel.port1]);
+}, "a MessagePort transferred to a worker and back still reaches its entangled port");
+
+async_test(t => {
+  const w = worker();
+  w.onerror = t.step_func_done(e => {
+    assert_true(e instanceof ErrorEvent);
+    assert_true(e.message.includes("thrown in the worker"), e.message);
+    assert_equals(e.error, null, "the exception value does not reach the owner's realm");
+    assert_true(e.cancelable);
+    e.preventDefault();
+    w.terminate();
+  });
+  w.postMessage("throw");
+}, "an uncaught error in the worker is an ErrorEvent at the Worker, with error null");
+
+async_test(t => {
+  const w = worker();
+  w.onmessage = t.step_func_done(e => {
+    assert_true(e.data.fromTimer, "the timer handler ran with the global as this");
+    w.terminate();
+  });
+  w.postMessage("timer");
+}, "a worker's timer runs its handler");
+</script>
