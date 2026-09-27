@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>HTMLSelectElement.add(element, before): the unions, converted as WebIDL does</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmloptionscollection-add">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function selectOf(...labels) {
+  const select = document.createElement("select");
+  for (const label of labels) {
+    const option = document.createElement("option");
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  return select;
+}
+// A fresh list each time: this reads the tree, not `select.options` (a
+// [SameObject] collection).
+function labels(select) {
+  return Array.from(select.querySelectorAll("option"), o => o.textContent);
+}
+function option(label) {
+  const o = document.createElement("option");
+  o.textContent = label;
+  return o;
+}
+
+test(() => {
+  const select = selectOf("a");
+  assert_throws_js(TypeError, () => select.add(document.createElement("div")));
+  assert_throws_js(TypeError, () => select.add({}));
+  assert_array_equals(labels(select), ["a"], "nothing was inserted");
+  select.add(document.createElement("optgroup"));
+  assert_equals(select.children.length, 2, "an optgroup is an element the union takes");
+}, "element is (HTMLOptionElement or HTMLOptGroupElement)");
+
+test(() => {
+  const select = selectOf("a", "b", "c");
+  select.add(option("x"), 1.9);
+  assert_array_equals(labels(select), ["a", "x", "b", "c"], "1.9 converts to long 1");
+  select.add(option("y"), "0");
+  assert_array_equals(labels(select), ["y", "a", "x", "b", "c"], '"0" converts to long 0');
+  select.add(option("z"), {});
+  assert_array_equals(labels(select), ["z", "y", "a", "x", "b", "c"], "an object that is not an HTMLElement is ToNumber'd: NaN is 0");
+  select.add(option("w"), -1);
+  assert_array_equals(labels(select), ["z", "y", "a", "x", "b", "c", "w"], "no item at a negative index: appended");
+}, "before is (HTMLElement or long)?: anything but an HTMLElement is a long");
+
+test(() => {
+  const select = selectOf("a");
+  assert_throws_dom("NotFoundError", () => select.add(option("x"), document.body));
+}, "an HTMLElement before that is not in the select");
+</script>

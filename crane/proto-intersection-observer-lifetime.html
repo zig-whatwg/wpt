@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An IntersectionObserver lives while it observes a target, and not after</title>
+<link rel="help" href="https://w3c.github.io/IntersectionObserver/#lifetime">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target" style="width: 10px; height: 10px"></div>
+<div id="second" style="width: 10px; height: 10px"></div>
+<script>
+// "An IntersectionObserver will remain alive until both of these conditions
+// hold: there are no scripting references to the observer, and the observer
+// is not observing any targets." Blink keeps an observing observer alive as
+// pending activity (ActiveScriptWrappable); so does Crane.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+// Collect until `ref` is empty, or give up after `rounds`. Each round starts a
+// new task, so no deref() from an earlier job keeps the target alive.
+async function collectedWithin(t, ref, rounds) {
+  for (let i = 0; i < rounds; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+    if (ref.deref() === undefined) return true;
+  }
+  return false;
+}
+
+// An observer observing `targets`, and a WeakRef to it; nothing else refers
+// to it once this returns. `notified` counts its callbacks.
+function observerOf(targets, notified) {
+  const observer = new IntersectionObserver(() => { notified.count++; });
+  for (const target of targets) observer.observe(target);
+  return new WeakRef(observer);
+}
+
+promise_test(async t => {
+  const notified = { count: 0 };
+  const ref = observerOf([document.getElementById("target")], notified);
+  assert_false(await collectedWithin(t, ref, 4), "an observing observer is not collected");
+  assert_greater_than(notified.count, 0, "and it notified");
+  ref.deref().disconnect();
+}, "an observer with no script reference lives while it observes a target");
+
+promise_test(async t => {
+  const ref = observerOf([document.getElementById("target")], { count: 0 });
+  await nextTask(t);
+  ref.deref().disconnect();
+  assert_true(await collectedWithin(t, ref, 8), "a disconnected observer is collected");
+}, "disconnect() ends the observer's hold on itself");
+
+promise_test(async t => {
+  const target = document.getElementById("target");
+  const second = document.getElementById("second");
+  const ref = observerOf([target, second], { count: 0 });
+  await nextTask(t);
+  ref.deref().unobserve(target);
+  assert_false(await collectedWithin(t, ref, 4), "still observing one target");
+  ref.deref().unobserve(second);
+  assert_true(await collectedWithin(t, ref, 8), "observing nothing, it is collected");
+}, "unobserving the last target ends the hold");
+</script>

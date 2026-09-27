@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>URLSearchParams(init): the (sequence or record or USVString) union, converted as WebIDL does</title>
+<link rel="help" href="https://url.spec.whatwg.org/#dom-urlsearchparams-urlsearchparams">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-union">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  assert_equals(new URLSearchParams(1).toString(), "1=", "a number is ToString'd");
+  assert_equals(new URLSearchParams(true).toString(), "true=");
+  assert_equals(new URLSearchParams("?a=b").get("a"), "b");
+}, "a value that is not an object converts to USVString");
+
+test(() => {
+  const params = new URLSearchParams([["a", "1"], ["b", "2"], ["a", "3"]]);
+  assert_equals(params.toString(), "a=1&b=2&a=3");
+  assert_throws_js(TypeError, () => new URLSearchParams([["a"]]), "an inner sequence of one");
+  assert_throws_js(TypeError, () => new URLSearchParams([["a", "b", "c"]]), "an inner sequence of three");
+  assert_throws_js(TypeError, () => new URLSearchParams([1]), "an item that is not a sequence");
+}, "an object with @@iterator is a sequence of pairs");
+
+test(() => {
+  const iterable = {
+    *[Symbol.iterator]() { yield ["x", "1"]; yield new Set(["y", "2"]); },
+  };
+  assert_equals(new URLSearchParams(iterable).toString(), "x=1&y=2");
+}, "any iterable of iterables");
+
+test(() => {
+  const params = new URLSearchParams({ b: "2", a: "1", c: 3 });
+  assert_equals(params.toString(), "b=2&a=1&c=3", "own enumerable keys, in order");
+  assert_equals(new URLSearchParams({}).toString(), "");
+}, "an object without @@iterator is a record");
+
+test(() => {
+  const error = new RangeError("from a getter");
+  const record = { get a() { throw error; } };
+  assert_throws_exactly(error, () => new URLSearchParams(record), "a record's getter");
+  const iterable = { [Symbol.iterator]() { throw error; } };
+  assert_throws_exactly(error, () => new URLSearchParams(iterable), "the @@iterator method");
+}, "what the conversion throws propagates");
+</script>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>CookieChangeEvent's changed and deleted are [SameObject] FrozenArrays</title>
+<link rel="help" href="https://cookiestore.spec.whatwg.org/#cookiechangeevent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// [SameObject] readonly attribute FrozenArray<CookieListItem> changed / deleted:
+// one frozen array per event, the same object on every read.
+test(() => {
+  const event = new CookieChangeEvent("change", {
+    changed: [{ name: "a", value: "1" }],
+    deleted: [{ name: "b", value: "" }],
+  });
+  assert_true(Array.isArray(event.changed));
+  assert_equals(event.changed, event.changed, "changed is the same object on every read");
+  assert_equals(event.deleted, event.deleted, "deleted is the same object on every read");
+  assert_true(Object.isFrozen(event.changed), "changed is frozen");
+  assert_true(Object.isFrozen(event.deleted), "deleted is frozen");
+  assert_equals(event.changed.length, 1);
+  assert_equals(event.changed[0].name, "a");
+  assert_equals(event.changed[0].value, "1");
+  assert_equals(event.deleted.length, 1);
+  assert_equals(event.deleted[0].name, "b");
+}, "changed and deleted from the init dictionary");
+
+test(() => {
+  const event = new CookieChangeEvent("change", { bubbles: true, cancelable: true });
+  assert_equals(event.type, "change");
+  assert_true(event.bubbles);
+  assert_true(event.cancelable);
+  let heard = null;
+  document.body.addEventListener("change", e => { heard = e; }, { once: true });
+  assert_true(document.body.dispatchEvent(event), "dispatched (the event is initialized)");
+  assert_equals(heard, event);
+}, "the Event attributes, from EventInit; the event can be dispatched");
+
+test(() => {
+  const event = new CookieChangeEvent("change");
+  assert_array_equals(event.changed, []);
+  assert_array_equals(event.deleted, []);
+  assert_equals(event.changed, event.changed);
+  assert_true(Object.isFrozen(event.changed));
+}, "an event without them has empty frozen arrays");
+
+test(() => {
+  // Many reads make one array: a getter that built a new array per read
+  // held a handle to each.
+  const event = new CookieChangeEvent("change", { changed: [{ name: "c", value: "3" }] });
+  const first = event.changed;
+  for (let i = 0; i < 1000; i++) assert_equals(event.changed, first);
+}, "a thousand reads, one array");
+</script>

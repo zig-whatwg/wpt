@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>URL.createObjectURL takes a Blob (or MediaSource), and nothing else</title>
+<link rel="help" href="https://w3c.github.io/FileAPI/#dfn-createObjectURL">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const url = URL.createObjectURL(new Blob(["x"]));
+  assert_true(url.startsWith("blob:"), url);
+  URL.revokeObjectURL(url);
+  const file = URL.createObjectURL(new File(["y"], "f.txt"));
+  assert_true(file.startsWith("blob:"), "a File is a Blob");
+  URL.revokeObjectURL(file);
+}, "a Blob, or a File, makes a blob URL");
+
+test(() => {
+  assert_throws_js(TypeError, () => URL.createObjectURL(document.body), "a platform object that is not a Blob");
+  assert_throws_js(TypeError, () => URL.createObjectURL(new URLSearchParams()), "another");
+  assert_throws_js(TypeError, () => URL.createObjectURL({}), "an ordinary object");
+  assert_throws_js(TypeError, () => URL.createObjectURL("blob"), "a string");
+  assert_throws_js(TypeError, () => URL.createObjectURL(1), "a number");
+}, "anything that is not a Blob (or MediaSource) is a TypeError");
+</script>
