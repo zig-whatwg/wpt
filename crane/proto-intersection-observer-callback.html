@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>IntersectionObserver invokes its callback with the observer as this, and reports what it throws</title>
+<link rel="help" href="https://w3c.github.io/IntersectionObserver/#notify-intersection-observers">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target" style="width: 10px; height: 10px"></div>
+<script>
+setup({ allow_uncaught_exception: true });
+
+// "Invoke callback with queue as the first argument, observer as the second
+// argument, and observer as the callback this value. If this throws an
+// exception, report the exception."
+async_test((t) => {
+  const target = document.getElementById("target");
+  // Not a step_func: that would call it with the test as this.
+  const observer = new IntersectionObserver(function (entries, second) {
+    "use strict";
+    const receiver = this;
+    observer.disconnect();
+    t.step(() => {
+      assert_equals(receiver, observer, "the callback this value");
+      assert_equals(second, observer, "the second argument");
+      assert_true(Array.isArray(entries), "a sequence of entries");
+      assert_greater_than(entries.length, 0);
+      assert_equals(entries[0].target, target);
+    });
+    t.done();
+  });
+  observer.observe(target);
+}, "the observer is the callback this value and its second argument");
+
+async_test((t) => {
+  const target = document.getElementById("target");
+  const thrown = new Error("from the IntersectionObserver callback");
+  let reported = null;
+  const onerror = (event) => {
+    reported = event.error;
+    event.preventDefault();
+  };
+  window.addEventListener("error", onerror);
+  t.add_cleanup(() => window.removeEventListener("error", onerror));
+  const observer = new IntersectionObserver(() => {
+    observer.disconnect();
+    // The report happens when the callback returns; check after it.
+    t.step_timeout(t.step_func_done(() => {
+      assert_equals(reported, thrown, "reported at the window as an ErrorEvent");
+    }), 0);
+    throw thrown;
+  });
+  observer.observe(target);
+}, "an exception the callback throws is reported");
+</script>

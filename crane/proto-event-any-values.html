@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An event's `any` attribute returns the value it was initialized to, platform objects included</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-customevent-detail">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#dom-errorevent-error">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#dom-promiserejectionevent-reason">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A platform object is an ES value like any other: the attribute returns the
+// same object, not undefined.
+test(() => {
+  const target = document.body;
+  assert_equals(new CustomEvent("x", { detail: target }).detail, target);
+  const event = new CustomEvent("x");
+  event.initCustomEvent("y", false, false, target);
+  assert_equals(event.detail, target, "initCustomEvent");
+}, "CustomEvent.detail keeps a platform object");
+
+test(() => {
+  const target = document.body;
+  assert_equals(new ErrorEvent("x", { error: target }).error, target);
+}, "ErrorEvent.error keeps a platform object");
+
+test(() => {
+  const promise = Promise.resolve();
+  const target = document.body;
+  const event = new PromiseRejectionEvent("x", { promise, reason: target });
+  assert_equals(event.promise, promise);
+  assert_equals(event.reason, target);
+}, "PromiseRejectionEvent.reason keeps a platform object");
+
+test(() => {
+  const object = { a: 1 };
+  for (const value of ["text", 42, -0, true, null, object]) {
+    assert_equals(new CustomEvent("x", { detail: value }).detail, value, String(value));
+    assert_equals(new ErrorEvent("x", { error: value }).error, value, String(value));
+    const event = new PromiseRejectionEvent("x", { promise: Promise.resolve(), reason: value });
+    assert_equals(event.reason, value, String(value));
+  }
+  assert_equals(new CustomEvent("x").detail, null, "detail defaults to null");
+  assert_equals(new ErrorEvent("x").error, undefined, "error defaults to undefined");
+  assert_equals(new PromiseRejectionEvent("x", { promise: Promise.resolve() }).reason, undefined,
+                "reason defaults to undefined");
+}, "primitives and objects are returned as given");
+
+test(() => {
+  const event = new CustomEvent("x", { detail: document.body });
+  // The same object on every read, and after a collection.
+  assert_equals(event.detail, event.detail);
+  if (self.TestUtils) TestUtils.gc();
+  assert_equals(event.detail, document.body);
+}, "the value lives as long as the event");
+</script>
