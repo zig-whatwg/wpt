@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>TextEncoder's results are made in the current realm, and encodeInto writes a view of any realm</title>
+<link rel="help" href="https://encoding.spec.whatwg.org/#dom-textencoder-encode">
+<link rel="help" href="https://encoding.spec.whatwg.org/#dom-textencoder-encodeinto">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-buffer-source-types">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe id="frame"></iframe>
+<script>
+// WebIDL converts an operation's return value in the current realm - the
+// realm of the function called - not the encoder's own.
+
+async_test((t) => {
+  window.addEventListener("load", t.step_func_done(() => {
+    const frameWindow = document.getElementById("frame").contentWindow;
+    const encoder = new TextEncoder();
+    const bytes = frameWindow.TextEncoder.prototype.encode.call(encoder, "hé");
+    assert_equals(Object.getPrototypeOf(bytes), frameWindow.Uint8Array.prototype,
+                  "a Uint8Array of the frame's realm");
+    assert_array_equals(Array.from(bytes), [0x68, 0xc3, 0xa9]);
+
+    const own = encoder.encode("hé");
+    assert_equals(Object.getPrototypeOf(own), Uint8Array.prototype, "and of this realm when called here");
+  }));
+}, "encode() called from another realm");
+
+async_test((t) => {
+  window.addEventListener("load", t.step_func_done(() => {
+    const frameWindow = document.getElementById("frame").contentWindow;
+    const destination = new frameWindow.Uint8Array(4);
+    const result = new TextEncoder().encodeInto("hé!", destination);
+    assert_equals(result.read, 3, "read");
+    assert_equals(result.written, 4, "written");
+    assert_array_equals(Array.from(destination), [0x68, 0xc3, 0xa9, 0x21]);
+    assert_throws_js(TypeError, () => new TextEncoder().encodeInto("x", new frameWindow.Uint16Array(2)),
+                     "a view that is not a Uint8Array");
+  }));
+}, "encodeInto() writes a Uint8Array of another realm");
+</script>

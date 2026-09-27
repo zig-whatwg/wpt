@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An observer callback that throws a non-Error value is reported with where it threw</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception">
+<link rel="help" href="https://dom.spec.whatwg.org/#notify-mutation-observers">
+<link rel="help" href="https://w3c.github.io/IntersectionObserver/#notify-intersection-observers">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target" style="width: 10px; height: 10px"></div>
+<script>
+setup({ allow_uncaught_exception: true });
+
+// "Report an exception" extracts the error information - filename, line and
+// column - from the exception where it was thrown. A thrown string carries no
+// stack of its own, so only the throw site can supply them: re-deriving them
+// from the value after the callback has returned finds no script running.
+
+function expectReport(t, value) {
+  return new Promise((resolve) => {
+    const onerror = t.step_func((event) => {
+      if (event.error !== value) return;
+      window.removeEventListener("error", onerror);
+      event.preventDefault();
+      resolve(event);
+    });
+    window.addEventListener("error", onerror);
+    t.add_cleanup(() => window.removeEventListener("error", onerror));
+  });
+}
+
+promise_test(async (t) => {
+  const value = "thrown by a MutationObserver callback";
+  const reported = expectReport(t, value);
+  const observer = new MutationObserver(() => {
+    observer.disconnect();
+    throw value;
+  });
+  observer.observe(document.getElementById("target"), { attributes: true });
+  document.getElementById("target").setAttribute("data-x", "1");
+  const event = await reported;
+  assert_equals(event.filename, location.href, "filename");
+  assert_greater_than(event.lineno, 0, "lineno");
+  assert_greater_than(event.colno, 0, "colno");
+}, "MutationObserver");
+
+promise_test(async (t) => {
+  const value = "thrown by an IntersectionObserver callback";
+  const reported = expectReport(t, value);
+  const observer = new IntersectionObserver(() => {
+    observer.disconnect();
+    throw value;
+  });
+  observer.observe(document.getElementById("target"));
+  const event = await reported;
+  assert_equals(event.filename, location.href, "filename");
+  assert_greater_than(event.lineno, 0, "lineno");
+  assert_greater_than(event.colno, 0, "colno");
+}, "IntersectionObserver");
+</script>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>composedPath() and a NodeFilter's argument give each node its wrapper from the node's own realm</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-event-composedpath">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-filter">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-platform-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="host"></div>
+<iframe id="frame"></iframe>
+<script>
+// A platform object's wrapper is made in its relevant realm, whichever realm
+// the operation that hands it to script runs in. Each test calls a method of
+// the frame's realm on objects of this one, over nodes script has not touched
+// yet, so the node's first wrapper is made by that call.
+
+function freshTree(markup) {
+  const host = document.getElementById("host");
+  host.innerHTML = markup;
+  return host;
+}
+
+async_test((t) => {
+  window.addEventListener("load", t.step_func_done(() => {
+    const frameWindow = document.getElementById("frame").contentWindow;
+    const host = freshTree("<section><p><span></span></p></section>");
+    const span = host.querySelector("span"); // the only new node with a wrapper
+    let path = null;
+    span.addEventListener("x", (event) => {
+      path = frameWindow.Event.prototype.composedPath.call(event);
+    });
+    span.dispatchEvent(new Event("x"));
+
+    assert_true(Array.isArray(path), "a sequence");
+    assert_equals(Object.getPrototypeOf(path), frameWindow.Array.prototype,
+                  "the sequence is made in the current realm, the frame's");
+    assert_equals(path[0], span);
+    assert_equals(Object.getPrototypeOf(path[1]), HTMLParagraphElement.prototype,
+                  "the <p>'s wrapper is made in its own realm");
+    assert_equals(Object.getPrototypeOf(path[2]), HTMLElement.prototype,
+                  "the <section>'s wrapper is made in its own realm");
+    assert_equals(path[1], host.querySelector("p"), "and it is the one script meets later");
+  }));
+}, "composedPath() called from another realm");
+
+async_test((t) => {
+  window.addEventListener("load", t.step_func_done(() => {
+    const frameWindow = document.getElementById("frame").contentWindow;
+    const host = freshTree("<article><em></em></article>");
+    const seen = [];
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_ELEMENT, {
+      acceptNode(node) {
+        seen.push(node);
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const first = frameWindow.TreeWalker.prototype.nextNode.call(walker);
+
+    assert_equals(seen.length, 1, "acceptNode called once");
+    assert_equals(Object.getPrototypeOf(seen[0]), HTMLElement.prototype,
+                  "the <article> handed to acceptNode has its own realm's wrapper");
+    assert_equals(first, seen[0], "nextNode() returns the same wrapper");
+  }));
+}, "a NodeFilter called while a traversal method of another realm runs");
+</script>
