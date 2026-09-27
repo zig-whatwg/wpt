@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>setLineDash converts the whole sequence<unrestricted double> before its steps run</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-setlinedash">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-sequence">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<canvas></canvas>
+<script>
+const ctx = document.querySelector("canvas").getContext("2d");
+
+test(() => {
+  ctx.setLineDash([]);
+  assert_array_equals(ctx.getLineDash(), []);
+  ctx.setLineDash([5]);
+  assert_array_equals(ctx.getLineDash(), [5, 5], "an odd count is doubled");
+  const first = ctx.getLineDash();
+  assert_not_equals(ctx.getLineDash(), first, "each call returns a new sequence");
+  assert_true(Array.isArray(first));
+}, "getLineDash returns a new Array of the dash list");
+
+test(() => {
+  ctx.setLineDash([1, 2]);
+  assert_throws_js(TypeError, () => ctx.setLineDash(null), "null is not an object");
+  assert_throws_js(TypeError, () => ctx.setLineDash(undefined), "undefined is not an object");
+  assert_throws_js(TypeError, () => ctx.setLineDash(5), "a number is not an object");
+  assert_throws_js(TypeError, () => ctx.setLineDash({ length: 2, 0: 1, 1: 2 }), "an object with no @@iterator");
+  assert_array_equals(ctx.getLineDash(), [1, 2], "a TypeError leaves the dash list");
+}, "anything that is not an iterable object is a TypeError");
+
+test(() => {
+  ctx.setLineDash([1, 2]);
+  const boom = new Error("valueOf");
+  assert_throws_exactly(boom, () => ctx.setLineDash([3, { valueOf() { throw boom; } }]));
+  assert_array_equals(ctx.getLineDash(), [1, 2]);
+}, "what an item's valueOf throws propagates");
+
+test(() => {
+  ctx.setLineDash([1, 2]);
+  let converted = 0;
+  const later = { valueOf() { converted++; return 4; } };
+  ctx.setLineDash([-1, later]);
+  assert_equals(converted, 1, "every item is converted before the method's steps run");
+  assert_array_equals(ctx.getLineDash(), [1, 2], "a negative value leaves the dash list");
+}, "a negative value returns only after the whole sequence converted");
+
+test(t => {
+  t.add_cleanup(() => { delete Array.prototype[0]; });
+  Object.defineProperty(Array.prototype, "0", { configurable: true, get() { return 99; } });
+  ctx.setLineDash([7, 8]);
+  const dash = ctx.getLineDash();
+  assert_equals(Object.getOwnPropertyDescriptor(dash, "0").value, 7,
+                "the result's items are its own data properties, not the prototype's accessor");
+}, "getLineDash's items are data properties even with an accessor on Array.prototype");
+</script>

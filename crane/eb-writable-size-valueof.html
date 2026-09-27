@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A size() result whose valueOf throws errors the WritableStream; write() does not throw</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#writable-stream-default-controller-get-chunk-size">
+<link rel="help" href="https://webidl.spec.whatwg.org/#invoke-a-callback-function">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WritableStreamDefaultControllerGetChunkSize: the size algorithm invokes
+// size() and converts its result to unrestricted double; if that throws, the
+// completion is abrupt - step 3 errors the stream with the thrown value and
+// the chunk counts as 1. Nothing escapes write() itself.
+
+promise_test(async t => {
+  const boom = new Error("valueOf");
+  const ws = new WritableStream({}, {
+    size() { return { valueOf() { throw boom; } }; },
+    highWaterMark: 5
+  });
+  const writer = ws.getWriter();
+  let write;
+  try {
+    write = writer.write("chunk");
+  } catch (e) {
+    assert_unreached("write() threw " + e);
+  }
+  await promise_rejects_exactly(t, boom, write, "the write rejects with the thrown value");
+  await promise_rejects_exactly(t, boom, writer.closed, "the stream errored with it");
+}, "a throwing valueOf on size()'s result is an abrupt completion of the size algorithm");
+
+promise_test(async t => {
+  let converted = 0;
+  const ws = new WritableStream({}, {
+    size() { return { valueOf() { converted++; return 2; } }; },
+    highWaterMark: 5
+  });
+  const writer = ws.getWriter();
+  await writer.write("a");
+  assert_equals(converted, 1, "the result is converted once");
+  assert_equals(writer.desiredSize, 5, "a written chunk leaves the queue");
+}, "a size() result is converted by valueOf");
+</script>
