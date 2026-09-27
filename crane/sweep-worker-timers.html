@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's clearInterval cancels the interval it named, however often it has fired</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-clearinterval">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "timer initialization steps": the id is the key in the global's map of
+// active timers for as long as the timer lives, and a repeating timer keeps
+// it across repeats. clearInterval(id) removes that entry, and a timer whose
+// id is no longer in the map does not run again.
+promise_test(async () => {
+  const worker = new Worker("resources/sweep-interval-worker.js");
+  const { inside, atClear, outside } = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error(e.message));
+  });
+  worker.terminate();
+  assert_equals(inside, 3, "cleared from inside its own callback after three runs");
+  assert_greater_than(atClear, 1, "the other interval had repeated before it was cleared");
+  assert_equals(outside, atClear, "cleared from outside, it does not run again");
+}, "clearInterval in a worker cancels a repeating timer, from inside or outside its callback");
+</script>

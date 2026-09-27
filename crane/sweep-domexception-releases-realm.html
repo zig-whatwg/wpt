@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Constructing a DOMException in a frame does not keep the frame's realm alive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A DOMException gets a stack, captured by running a script in its realm. The
+// binding kept that script, the realm's global object and the script's result
+// as Globals it never released - so one DOMException, thrown by the binding or
+// made by script, kept its whole page alive for the life of the process: the
+// creep that ran a long sweep out of V8 heap.
+//
+// WeakRef observes the collection: a realm's Array constructor is collected
+// with its realm and not before.
+async function settle() {
+  for (let i = 0; i < 3; i++) {
+    await TestUtils.gc();
+    await new Promise(r => setTimeout(r, 0));
+  }
+}
+function navigate(frame, url) {
+  return new Promise(resolve => {
+    frame.onload = resolve;
+    frame.src = url;
+  });
+}
+
+// In a function of its own, so nothing the test goes on to hold refers to
+// what was made.
+function makeDOMExceptionsIn(frame) {
+  // Made by script, and thrown by the binding (querySelector's SyntaxError).
+  const made = new frame.contentWindow.DOMException("m", "AbortError");
+  assert_equals(typeof made.stack, "string", "a DOMException has a stack");
+  assert_throws_dom("SyntaxError", frame.contentWindow.DOMException, () => frame.contentDocument.querySelector("::["));
+}
+
+promise_test(async () => {
+  let frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  await navigate(frame, "/common/blank.html?1");
+  await navigate(frame, "/common/blank.html?2");
+  const realm = new WeakRef(frame.contentWindow.Array);
+  makeDOMExceptionsIn(frame);
+  frame.remove();
+  frame = null;
+  await settle();
+  assert_equals(realm.deref(), undefined, "the frame's realm is released");
+}, "a frame's realm is released after DOMExceptions were made in it");
+</script>

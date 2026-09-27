@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's URL is its script's URL, whatever the script is called</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "run a worker": the worker global scope's url is the script
+// response's URL, and importScripts() parses relative URLs against it. A
+// script name carrying ".h2." (a WPT file-name flag) changes neither.
+promise_test(async () => {
+  const worker = new Worker("resources/sweep-location.h2.worker.js");
+  const data = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error(e.message));
+  });
+  worker.terminate();
+  const expected = new URL("resources/sweep-location.h2.worker.js", location.href).href;
+  assert_equals(data.href, expected, "location.href is the script's URL");
+  assert_equals(data.protocol, location.protocol, "the scheme is the page's");
+  assert_equals(data.imported, true, "importScripts resolved against the worker's URL");
+}, "a worker script named *.h2.* keeps its own URL");
+</script>
