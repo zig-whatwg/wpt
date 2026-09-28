@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: a stream body goes out on HTTP/2 only (Fetch HTTP-network fetch 8.3)</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/utils.js></script>
+<script>
+// This page comes from wpt serve's TLS listener (:8443), which speaks
+// HTTP/1.1 only: ALPN never chooses h2 there. Its HTTP/2 listener is :9000.
+// A request body made from a ReadableStream has a null source, and HTTP-network
+// fetch step 8.3 refuses one on an HTTP/1.x connection - before any of the
+// request is sent, which stash-put.py (it stores on arrival) makes visible.
+
+const STASH = "/fetch/api/resources/";
+
+function streamOf(text) {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    }
+  });
+}
+
+async function stashed(key) {
+  const response = await fetch(`${STASH}stash-take.py?key=${key}`);
+  return response.json();
+}
+
+promise_test(async t => {
+  const key = token();
+  const upload = fetch(`${STASH}stash-put.py?key=${key}&value=sent`, {
+    method: "POST", body: streamOf("over 1.1"), duplex: "half"
+  });
+  await promise_rejects_js(t, TypeError, upload);
+  assert_equals(await stashed(key), null, "the server received no request");
+}, "on an HTTP/1.1 TLS connection a stream upload is refused, and nothing is sent");
+
+promise_test(async t => {
+  const key = token();
+  // Another port, so a CORS request - with a preflight, which a stream body's
+  // use-CORS-preflight flag asks for. stash-put.py answers both with `*`.
+  const upload = await fetch(
+    `https://${location.hostname}:9000${STASH}stash-put.py?key=${key}&value=sent`,
+    { method: "POST", body: streamOf("over h2"), duplex: "half" });
+  assert_equals(upload.status, 200);
+  assert_equals(await stashed(key), "sent", "the server received the request");
+}, "on an HTTP/2 connection the same upload is sent");
+
+promise_test(async t => {
+  // An ordinary byte body still goes out on HTTP/1.1.
+  const key = token();
+  const response = await fetch(`${STASH}stash-put.py?key=${key}&value=bytes`, {
+    method: "POST", body: "over 1.1"
+  });
+  assert_equals(response.status, 200);
+  assert_equals(await stashed(key), "bytes");
+}, "a byte body is not held to HTTP/2");
+</script>
