@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>BodyInit: every kind of body a Request or Response can be made from</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-bodyinit-extract">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-union">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL converts a BodyInit by what the value IS: a platform object goes to
+// the member interface it implements, an ArrayBuffer or view to BufferSource,
+// and only anything else to USVString. Fetch's "extract a body" then takes
+// each kind's bytes and type.
+const encoder = new TextEncoder();
+
+function streamOf(...chunks) {
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(encoder.encode(c));
+      controller.close();
+    }
+  });
+}
+
+promise_test(async () => {
+  const response = new Response(streamOf("hel", "lo"));
+  assert_equals(response.headers.get("Content-Type"), null, "a stream has no type");
+  assert_equals(await response.text(), "hello");
+}, "a ReadableStream body is read through");
+
+promise_test(async () => {
+  const stream = streamOf("x");
+  const response = new Response(stream);
+  assert_equals(response.body, stream, "the body is the stream itself");
+}, "a ReadableStream body is the stream it was given");
+
+test(() => {
+  const stream = streamOf("x");
+  stream.getReader();
+  assert_throws_js(TypeError, () => new Response(stream));
+}, "a locked ReadableStream is not a body");
+
+promise_test(async () => {
+  const bytes = encoder.encode("array buffer");
+  const response = new Response(bytes.buffer);
+  assert_equals(response.headers.get("Content-Type"), null);
+  assert_equals(await response.text(), "array buffer");
+}, "an ArrayBuffer body is its bytes");
+
+promise_test(async () => {
+  const bytes = encoder.encode("[the view]");
+  assert_equals(await new Response(bytes.subarray(1, 9)).text(), "the view");
+}, "a typed array body is the bytes it views, not its whole buffer");
+
+promise_test(async () => {
+  const bytes = encoder.encode("--data view--");
+  assert_equals(await new Response(new DataView(bytes.buffer, 2, 9)).text(), "data view");
+}, "a DataView body is the bytes it views");
+
+promise_test(async () => {
+  const bytes = encoder.encode("copied");
+  const response = new Response(bytes);
+  bytes[0] = 0x43;
+  assert_equals(await response.text(), "copied");
+}, "a BufferSource body is a copy of its bytes");
+
+promise_test(async () => {
+  const response = new Response(new URLSearchParams("a=b c&d=é"));
+  assert_equals(response.headers.get("Content-Type"), "application/x-www-form-urlencoded;charset=UTF-8");
+  assert_equals(await response.text(), "a=b+c&d=%C3%A9");
+}, "a URLSearchParams body is its serialization");
+
+promise_test(async () => {
+  const response = new Response(new Blob(["a blob"], { type: "text/x-test" }));
+  assert_equals(response.headers.get("Content-Type"), "text/x-test");
+  assert_equals(await response.text(), "a blob");
+}, "a Blob body is its bytes, and its type the body's");
+
+promise_test(async () => {
+  const form = new FormData();
+  form.append("name", "value");
+  const response = new Response(form);
+  const type = response.headers.get("Content-Type");
+  assert_true(type.startsWith("multipart/form-data; boundary="), type);
+  const text = await response.text();
+  assert_true(text.includes('Content-Disposition: form-data; name="name"\r\n\r\nvalue'), text);
+}, "a FormData body is its multipart/form-data encoding");
+
+promise_test(async () => {
+  const response = new Response("");
+  assert_not_equals(response.body, null, "an empty string is still a body");
+  assert_equals(response.headers.get("Content-Type"), "text/plain;charset=UTF-8");
+  assert_equals(await response.text(), "");
+}, "an empty string body is a body");
+
+promise_test(async () => {
+  const request = new Request("/common/blank.html", { method: "POST", body: encoder.encode("request bytes") });
+  assert_equals(await request.text(), "request bytes");
+}, "a Request's BufferSource body is its bytes");
+
+promise_test(async () => {
+  const response = await fetch(new URL("/common/blank.html", location.href));
+  assert_equals(response.status, 200);
+}, "fetch() takes a URL object as the string it stringifies to");
+
+test(() => {
+  const div = document.createElement("div");
+  div.append(new URLSearchParams("x=1"));
+  assert_equals(div.textContent, "x=1");
+}, "a platform object that is not a Node goes to (Node or DOMString)'s string");
+</script>
