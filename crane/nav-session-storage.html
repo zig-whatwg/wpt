@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: sessionStorage belongs to the top-level traversable and the origin</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webstorage.html#the-sessionstorage-attribute">
+<link rel="help" href="https://storage.spec.whatwg.org/#obtain-a-session-storage-bottle-map">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(f) {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+
+promise_test(async t => {
+  const key = "nav-session-storage-" + Math.random();
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?one";
+  let load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+
+  f.contentWindow.sessionStorage.setItem(key, "from the frame");
+  assert_equals(sessionStorage.getItem(key), "from the frame",
+    "a same-origin frame shares its top-level traversable's session storage");
+
+  load = loaded(f);
+  f.src = "resources/nav-probe.html?two";
+  await load;
+  assert_equals(f.contentWindow.sessionStorage.getItem(key), "from the frame",
+    "the frame's next Window sees the same session storage");
+  f.contentWindow.sessionStorage.setItem(key, "from the next Window");
+  assert_equals(sessionStorage.getItem(key), "from the next Window");
+}, "a frame, its next Window and its parent share session storage");
+</script>

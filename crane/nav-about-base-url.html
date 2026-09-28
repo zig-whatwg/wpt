@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: about:blank and srcdoc documents take their creator's base URL</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/urls-and-fetching.html#fallback-base-url">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-browsing-context">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(f) {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+const here = document.baseURI;
+const resolved = new URL("resources/x.html", here).href;
+
+test(t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  const d = f.contentDocument;
+  assert_equals(d.URL, "about:blank");
+  assert_equals(d.baseURI, here, "the initial about:blank document's base is its creator's");
+  const a = d.createElement("a");
+  a.setAttribute("href", "resources/x.html");
+  assert_equals(a.href, resolved, "and relative URLs resolve against it");
+}, "the initial about:blank document of a frame");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.srcdoc = "<p>srcdoc</p>";
+  const load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+  assert_equals(f.contentDocument.URL, "about:srcdoc");
+  assert_equals(f.contentDocument.baseURI, here, "an iframe srcdoc document's base is its container document's");
+  f.contentWindow.location.hash = "frag";
+  assert_equals(f.contentDocument.baseURI, here, "a fragment navigation keeps it");
+}, "an iframe srcdoc document");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?first";
+  let load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+  assert_equals(f.contentDocument.baseURI, new URL("resources/nav-probe.html?first", here).href,
+    "a fetched document's base is its URL");
+  load = loaded(f);
+  f.src = "about:blank";
+  await load;
+  assert_equals(f.contentDocument.URL, "about:blank");
+  assert_equals(f.contentDocument.baseURI, here, "about:blank navigated to takes the navigation's source document's base");
+}, "an about:blank document a navigation makes");
+
+test(t => {
+  const w = window.open();
+  t.add_cleanup(() => w.close());
+  assert_equals(w.document.URL, "about:blank");
+  assert_equals(w.document.baseURI, here, "a popup's initial about:blank takes its opener's base");
+}, "a popup's initial about:blank document");
+</script>

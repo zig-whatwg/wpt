@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Teed bodies: read to the end, cancelled, errored - and the tee's state goes with them</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#readable-stream-tee">
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-body-clone">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Run under CRANE_LEAK_TRACES=1: every tee here ends - both branches read to
+// the end, cancelled, or errored - so its state must be freed with it.
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function streamOf(...chunks) {
+  return new ReadableStream({
+    start(c) {
+      for (const chunk of chunks) c.enqueue(encoder.encode(chunk));
+      c.close();
+    }
+  });
+}
+
+async function readAll(stream) {
+  const reader = stream.getReader();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text;
+    text += decoder.decode(value);
+  }
+}
+
+promise_test(async () => {
+  const response = new Response(streamOf("a", "b"));
+  const clone = response.clone();
+  assert_equals(await response.text(), "ab");
+  assert_equals(await clone.text(), "ab");
+}, "a clone of a stream body, both read to the end");
+
+promise_test(async () => {
+  const response = new Response(streamOf("a", "b"));
+  const clone = response.clone();
+  // A branch's cancel settles once both branches are cancelled.
+  await Promise.all([response.body.cancel(), clone.body.cancel()]);
+}, "a clone of a stream body, both cancelled early");
+
+promise_test(async t => {
+  const error = new Error("broken");
+  const response = new Response(new ReadableStream({ start(c) { c.error(error); } }));
+  const clone = response.clone();
+  await promise_rejects_exactly(t, error, response.text());
+  await promise_rejects_exactly(t, error, clone.text());
+}, "a clone of an errored stream body");
+
+promise_test(async () => {
+  const response = await fetch("/fetch/api/resources/data.json");
+  response.body; // made, a byte stream: the clone tees it as bytes
+  const clone = response.clone();
+  const [a, b] = await Promise.all([response.text(), clone.text()]);
+  assert_equals(a, b);
+  assert_true(a.length > 0);
+}, "a clone of a fetched body's byte stream, both read");
+
+promise_test(async () => {
+  const [a, b] = streamOf("x", "y").tee();
+  assert_equals(await readAll(a), "xy");
+  assert_equals(await readAll(b), "xy");
+}, "stream.tee(), both read");
+
+promise_test(async () => {
+  const [a, b] = streamOf("x", "y").tee();
+  await Promise.all([a.cancel(), b.cancel()]);
+}, "stream.tee(), both cancelled");
+
+promise_test(async () => {
+  const response = await fetch("/fetch/api/resources/data.json");
+  const [a, b] = response.body.tee();
+  const [x, y] = await Promise.all([readAll(a), readAll(b)]);
+  assert_equals(x, y);
+}, "a byte stream's tee(), both read");
+</script>

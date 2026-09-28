@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: frames[i] reaches a frame's own realm, with working timers, before anything else touched the frame</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-item">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.name = "lazyframe";
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+
+  // Nothing has asked for the frame's window yet: frames[0] is the first.
+  const w = frames[0];
+  assert_true(w !== undefined && w !== null, "frames[0] is the frame's window");
+  assert_equals(w, f.contentWindow, "the same WindowProxy contentWindow gives");
+  assert_not_equals(w, window, "a window of its own");
+  assert_equals(w.parent, window, "whose parent is this window");
+  assert_true(w.document instanceof w.Document, "its document is of its own realm");
+  assert_not_equals(w.Document, Document, "which has its own interface objects");
+
+  // Its timers are the window operations of a real Window realm, not stubs.
+  const fired = await new Promise((resolve, reject) => {
+    try {
+      w.setTimeout(() => resolve(true), 0);
+    } catch (e) {
+      reject(e);
+    }
+  });
+  assert_true(fired, "the frame's setTimeout fires");
+}, "frames[0] makes the frame's realm");
+
+promise_test(async t => {
+  const outer = document.createElement("iframe");
+  document.body.appendChild(outer);
+  t.add_cleanup(() => outer.remove());
+  const inner = outer.contentDocument.createElement("iframe");
+  outer.contentDocument.body.appendChild(inner);
+
+  const w = outer.contentWindow.frames[0];
+  assert_equals(w, inner.contentWindow, "the nested frame's window");
+  assert_equals(w.parent, outer.contentWindow, "whose parent is the outer frame's window");
+  assert_equals(w.top, window, "and whose top is this one");
+  const fired = await new Promise(resolve => w.setTimeout(() => resolve(true), 0));
+  assert_true(fired, "the nested frame's setTimeout fires");
+}, "a frame's frames[0] makes the nested frame's realm under it");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  const w = f.contentWindow;
+  let fired = false;
+  w.setTimeout(() => { fired = true; }, 0);
+  // Removing the frame destroys its document: its timers end with it.
+  f.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_false(fired, "a removed frame's timer does not fire");
+}, "removing a frame ends its timers");
+</script>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a Window keeps its Storage objects and its CustomElementRegistry alive</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webstorage.html#dom-sessionstorage">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webstorage.html#dom-localstorage">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#dom-window-customelements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The Window holds each of these for its whole life (the Document's session
+// storage holder, its local storage holder, its CustomElementRegistry), so a
+// garbage collection with nothing else referring to one must leave the same
+// object in place: a WeakRef to it still reaches it, and the getter returns
+// it - not a new object, and not one read out of freed memory.
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+for (const name of ["sessionStorage", "localStorage", "customElements"]) {
+  promise_test(async t => {
+    // Only a WeakRef refers to the object once this job ends.
+    const ref = new WeakRef(window[name]);
+    await nextTask(t);
+    await TestUtils.gc();
+    await nextTask(t);
+    const again = window[name];
+    assert_equals(typeof again, "object", `window.${name} is still an object`);
+    assert_equals(ref.deref(), again, `window.${name} is the object it was before the collection`);
+  }, `window.${name} survives a garbage collection with no script reference`);
+}
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  const load = new Promise(r => f.addEventListener("load", r, { once: true }));
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+  const ref = new WeakRef(f.contentWindow.sessionStorage);
+  await nextTask(t);
+  await TestUtils.gc();
+  await nextTask(t);
+  assert_equals(ref.deref(), f.contentWindow.sessionStorage, "a frame's Window keeps its sessionStorage");
+  assert_equals(typeof sessionStorage.getItem, "function", "and the parent's is still whole");
+}, "a frame's sessionStorage survives a garbage collection too");
+</script>

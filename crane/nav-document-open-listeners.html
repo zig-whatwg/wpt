@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: document.open() erases the listeners and handlers of the document's nodes and its window</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#erase-all-event-listeners-and-handlers">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function frame(t) {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  return f;
+}
+
+test(t => {
+  const f = frame(t);
+  const d = f.contentDocument, w = f.contentWindow;
+  const el = d.body.appendChild(d.createElement("div"));
+  const log = [];
+  el.addEventListener("click", () => log.push("element listener"));
+  el.onclick = () => log.push("element handler");
+  d.addEventListener("x", () => log.push("document listener"));
+  d.onclick = () => log.push("document handler");
+  w.addEventListener("x", () => log.push("window listener"));
+  w.onmessage = () => log.push("window handler");
+
+  d.open();
+  d.close();
+
+  el.dispatchEvent(new w.Event("click"));
+  d.dispatchEvent(new w.Event("x"));
+  d.dispatchEvent(new w.Event("click"));
+  w.dispatchEvent(new w.Event("x"));
+  w.dispatchEvent(new w.Event("message"));
+  assert_array_equals(log, [], "no listener or handler is left");
+  assert_equals(el.onclick, null, "the element's handler is null");
+  assert_equals(d.onclick, null, "the document's handler is null");
+  assert_equals(w.onmessage, null, "the window's handler is null");
+
+  w.addEventListener("x", () => log.push("added after"));
+  w.dispatchEvent(new w.Event("x"));
+  assert_array_equals(log, ["added after"], "listeners added afterwards work");
+}, "the listeners and handlers of the document's nodes and its window go");
+
+test(t => {
+  const f = frame(t);
+  const d = f.contentDocument, w = f.contentWindow;
+  const log = [];
+  d.addEventListener("y", () => {
+    log.push("first");
+    d.addEventListener("y", () => log.push("added during dispatch"));
+    d.open();
+  });
+  d.addEventListener("y", () => log.push("second"));
+  d.dispatchEvent(new w.Event("y"));
+  assert_array_equals(log, ["first"], "a listener removed mid-dispatch does not run");
+  d.dispatchEvent(new w.Event("y"));
+  assert_array_equals(log, ["first"], "nor does one added before the open() call");
+  d.close();
+}, "document.open() in a listener erases the rest of the dispatch's listeners");
+</script>

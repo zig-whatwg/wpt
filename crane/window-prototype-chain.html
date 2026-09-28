@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The Window object's prototype chain</title>
+<link rel="help" href="https://html.spec.whatwg.org/#the-window-object">
+<link rel="help" href="https://webidl.spec.whatwg.org/#named-properties-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="named"></div>
+<script>
+// WebIDL: [Global] Window's prototype is its named properties object
+// (WindowProperties), whose prototype is Window.prototype, then
+// EventTarget.prototype, then Object.prototype.
+
+test(() => {
+  const wp = Object.getPrototypeOf(window);
+  assert_equals(Object.getPrototypeOf(wp), Window.prototype);
+}, "window's prototype is the named properties object, whose prototype is Window.prototype");
+
+test(() => {
+  assert_equals(Object.getPrototypeOf(Window.prototype), EventTarget.prototype);
+  assert_equals(Object.getPrototypeOf(EventTarget.prototype), Object.prototype);
+}, "Window.prototype inherits from EventTarget.prototype");
+
+test(() => {
+  assert_true(window instanceof Window, "Window");
+  assert_true(window instanceof EventTarget, "EventTarget");
+}, "window is an instance of Window and EventTarget");
+
+test(() => {
+  assert_equals(Object.getPrototypeOf(window)[Symbol.toStringTag], "WindowProperties");
+  assert_equals(String(window), "[object Window]");
+}, "the named properties object and the window stringify as WebIDL says");
+
+test(() => {
+  assert_equals(window.named, document.getElementById("named"));
+}, "named access still works through the chain");
+
+test(() => {
+  const d = Object.getOwnPropertyDescriptor(Window.prototype, "self") ||
+            Object.getOwnPropertyDescriptor(window, "self");
+  assert_equals(d.get.call(window), window);
+  self = 5;
+  assert_equals(self, 5, "self is [Replaceable]");
+}, "Window's accessors behave through the chain");
+
+test(() => {
+  assert_equals(typeof Window.prototype.addEventListener, "undefined", "addEventListener is inherited, not own");
+  assert_equals(EventTarget.prototype.addEventListener, window.addEventListener);
+}, "addEventListener comes from EventTarget.prototype");
+</script>

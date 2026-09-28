@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a document's defaultView is null once it is not its navigable's active document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-document-defaultview">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#concept-document-bc">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(f) {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?first";
+  let load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+  const d1 = f.contentDocument, w1 = f.contentWindow;
+  assert_equals(d1.defaultView, w1, "the active document's view is its window");
+
+  let seenDuringUnload;
+  w1.addEventListener("unload", () => { seenDuringUnload = d1.defaultView; });
+  load = loaded(f);
+  f.src = "resources/nav-probe.html?second";
+  await load;
+  assert_equals(seenDuringUnload, w1, "during unload the document is still active");
+  assert_equals(d1.defaultView, null, "a document a navigation replaced has no browsing context");
+  assert_equals(f.contentDocument.defaultView, f.contentWindow, "the new one has");
+}, "a navigated-away document");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  const initial = f.contentDocument;
+  assert_equals(initial.defaultView, f.contentWindow);
+  const load = loaded(f);
+  f.src = "resources/nav-probe.html?same-origin";
+  await load;
+  assert_equals(initial.defaultView, null,
+    "the initial about:blank document, whose Window the new document took over");
+  assert_equals(f.contentDocument.defaultView, f.contentWindow);
+}, "the initial about:blank document replaced by a same-origin one");
+
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?removed";
+  const load = loaded(f);
+  document.body.appendChild(f);
+  await load;
+  const d = f.contentDocument;
+  f.remove();
+  assert_equals(d.defaultView, null, "a removed frame's document");
+  assert_equals(document.defaultView, window, "the page's own");
+}, "a document whose frame was removed");
+</script>

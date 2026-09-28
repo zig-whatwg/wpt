@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>XMLHttpRequest: the events the user agent fires are trusted</title>
+<link rel="help" href="https://xhr.spec.whatwg.org/#firing-events-using-the-progressevent-interface">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-fire">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Fire an event" sets isTrusted; dispatchEvent() is script's and does not.
+const seen = (target, types, log) => {
+  for (const type of types) target.addEventListener(type, e => log.push(`${type}:${e.isTrusted}`));
+};
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  const log = [];
+  seen(xhr, ["readystatechange", "loadstart", "progress", "load", "loadend"], log);
+  xhr.onloadend = t.step_func_done(() => {
+    assert_true(log.length >= 5, log.join(" "));
+    assert_array_equals(log.filter(e => e.endsWith(":false")), [], "every event trusted");
+  });
+  xhr.open("GET", "/common/blank.html");
+  xhr.send();
+}, "a request's own events are trusted");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  const log = [];
+  seen(xhr.upload, ["loadstart", "progress", "load", "loadend"], log);
+  xhr.onloadend = t.step_func_done(() => {
+    assert_true(log.length >= 3, log.join(" "));
+    assert_array_equals(log.filter(e => e.endsWith(":false")), [], "every event trusted");
+  });
+  xhr.open("POST", "/fetch/api/resources/echo-content.py");
+  xhr.send("upload body");
+}, "the upload object's events are trusted");
+
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  xhr.onabort = t.step_func_done(e => assert_true(e.isTrusted));
+  xhr.open("GET", "/common/blank.html");
+  xhr.send();
+  xhr.abort();
+}, "abort is trusted");
+
+test(() => {
+  const xhr = new XMLHttpRequest();
+  let trusted;
+  xhr.addEventListener("load", e => { trusted = e.isTrusted; });
+  xhr.dispatchEvent(new Event("load"));
+  assert_false(trusted);
+}, "an event script dispatches is not");
+</script>
