@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>A script executed from inside another script is followed by no microtask checkpoint</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#clean-up-after-running-script">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The second case's inserted script throws on purpose: its report is part of
+// what is tested, not a harness error.
+setup({ allow_uncaught_exception: true });
+
+// "Execute the script element" runs the classic script, and "run a classic
+// script" ends with "clean up after running script": a microtask checkpoint
+// only "if the JavaScript execution context stack is now empty". A script
+// inserted by appendChild from a script runs while the outer script is still
+// on the stack, so no microtask may run between it and the rest of the outer
+// script - they wait for the checkpoint after the outer one.
+
+const order = [];
+Promise.resolve().then(() => order.push('microtask queued before'));
+
+const inserted = document.createElement('script');
+inserted.textContent = "order.push('inserted'); Promise.resolve().then(() => order.push('microtask queued inside'));";
+document.body.appendChild(inserted);
+order.push('after appendChild');
+
+test(() => {
+  assert_array_equals(order, ['inserted', 'after appendChild']);
+}, 'a microtask queued before appendChild has not run when the inserted script returns');
+
+const throwing = document.createElement('script');
+throwing.textContent = "order.push('throwing'); throw new Error('reported');";
+let reported = false;
+window.onerror = () => {
+  reported = true;
+  Promise.resolve().then(() => order.push('microtask queued by onerror'));
+  return true;
+};
+document.body.appendChild(throwing);
+window.onerror = null;
+order.push('after the throwing script');
+
+test(() => {
+  assert_true(reported, 'the inserted script\'s exception was reported');
+  assert_array_equals(order, ['inserted', 'after appendChild', 'throwing', 'after the throwing script']);
+}, 'reporting an inserted script\'s exception performs no checkpoint either');
+</script>
+<script>
+test(() => {
+  assert_array_equals(order, [
+    'inserted', 'after appendChild', 'throwing', 'after the throwing script',
+    'microtask queued before', 'microtask queued inside', 'microtask queued by onerror',
+  ]);
+}, 'the microtasks run at the checkpoint after the outer script, in the order they were queued');
+</script>

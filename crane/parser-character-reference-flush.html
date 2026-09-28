@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Character references: what the tokenizer consumes, and what it flushes, keeps its place in the text</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#character-reference-state">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-end-state">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<p id="and">a && b</p>
+<p id="hash">1 &# 2</p>
+<p id="hex">&#x; x</p>
+<p id="noname">x &c y</p>
+<p id="att">AT&T</p>
+<p id="prefix">&notit;</p>
+<p id="two">&NotEqualTilde;</p>
+<p id="title" title="&notit; &not;x &amp=1"></p>
+<p id="dec">&#65;x &#66x</p>
+<p id="hexref">&#x43;y &#x44y</p>
+<script>
+const text = id => document.getElementById(id).textContent;
+
+// "&" followed by something that cannot start a character reference is text:
+// the character reference state flushes it and the text after it follows.
+test(() => {
+  assert_equals(text('and'), 'a && b');
+  assert_equals(text('hash'), '1 &# 2');
+  assert_equals(text('hex'), '&#x; x');
+}, 'a flushed "&", "&#" or "&#x" keeps its place before the text after it');
+
+test(() => {
+  const div = document.createElement('div');
+  div.innerHTML = 'if (a && b) { &#; }';
+  assert_equals(div.textContent, 'if (a && b) { &#; }');
+  const doc = new DOMParser().parseFromString('<p>a &', 'text/html');
+  assert_equals(doc.querySelector('p').textContent, 'a &', 'a "&" flushed as the input ends');
+}, 'the fragment parser and DOMParser keep a flushed "&" in place too');
+
+// The named character reference state consumes the longest name in the table
+// that the input starts with - and only that: a name that matches nothing is
+// left for the ambiguous ampersand state, and what follows a shorter match is
+// left for the return state.
+test(() => {
+  assert_equals(text('noname'), 'x &c y');
+  assert_equals(text('att'), 'AT&T');
+  assert_equals(text('prefix'), '¬it;');
+  assert_equals(text('two'), '≂̸', 'both code points of a two-code-point reference');
+}, 'a named character reference in text consumes exactly the name it matched');
+
+test(() => {
+  assert_equals(document.getElementById('title').getAttribute('title'), '&notit; ¬x &amp=1');
+}, 'in an attribute value, a legacy name followed by an alphanumeric or "=" is left as written');
+
+// The numeric character reference end state consumes nothing: the character
+// after the reference is the return state's.
+test(() => {
+  assert_equals(text('dec'), 'Ax Bx');
+  assert_equals(text('hexref'), 'Cy Dy');
+}, 'the character after a numeric character reference is kept');
+</script>
