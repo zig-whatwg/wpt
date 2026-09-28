@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A Request's body can be a ReadableStream; over HTTP/1.x fetch() refuses to send it</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-request">
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-global-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const encoder = new TextEncoder();
+const echo = "/fetch/api/resources/echo-content.py";
+
+function streamOf(...chunks) {
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(typeof c === "string" ? encoder.encode(c) : c);
+      controller.close();
+    }
+  });
+}
+
+// Fetch, HTTP-network fetch step 8.3: "If connection is an HTTP/1.x
+// connection, request's body is non-null, and request's body's source is
+// null, then return a network error." This page is served over HTTP/1.1, so a
+// stream upload is refused rather than sent; over HTTP/2 it is sent.
+promise_test(async t => {
+  await promise_rejects_js(t, TypeError,
+    fetch(echo, { method: "POST", body: streamOf("str", "eam"), duplex: "half" }));
+}, "fetch() of a ReadableStream body over HTTP/1.1 is a network error");
+
+test(() => {
+  assert_throws_js(TypeError, () => new Request(echo, { method: "POST", body: streamOf("x") }));
+}, "a stream body needs duplex");
+
+promise_test(async () => {
+  const request = new Request(echo, { method: "POST", body: streamOf("a", "b"), duplex: "half" });
+  assert_true(request.body instanceof ReadableStream);
+  assert_equals(await request.text(), "ab");
+  assert_true(request.bodyUsed);
+}, "a Request reads its stream body");
+
+promise_test(async () => {
+  const original = new Request(echo, { method: "POST", body: "carried over" });
+  const body = original.body;
+  const request = new Request(original);
+  assert_true(original.bodyUsed, "the input's body is disturbed");
+  assert_equals(original.body, body, "and keeps its stream");
+  assert_throws_js(TypeError, () => new Request(original), "and is unusable");
+  assert_equals(await request.text(), "carried over");
+}, "a Request made from another takes its body over");
+
+promise_test(async t => {
+  const original = new Request(echo, { method: "POST", body: streamOf("proxied"), duplex: "half" });
+  const fetched = fetch(original);
+  assert_true(original.bodyUsed, "the input's body is taken over");
+  await promise_rejects_js(t, TypeError, fetched);
+}, "fetch() of a Request with a stream body over HTTP/1.1 is a network error");
+
+promise_test(async () => {
+  const request = new Request(echo, { method: "POST", body: streamOf("twice"), duplex: "half" });
+  const clone = request.clone();
+  assert_equals(await request.text(), "twice");
+  assert_equals(await clone.text(), "twice");
+}, "a clone reads the stream body too");
+
+promise_test(async t => {
+  const controller = new AbortController();
+  let cancelReason;
+  const body = new ReadableStream({
+    pull(c) { c.enqueue(new Uint8Array([1])); },
+    cancel(reason) { cancelReason = reason; }
+  });
+  const p = fetch(echo, { method: "POST", body, duplex: "half", signal: controller.signal });
+  controller.abort();
+  assert_true(!!cancelReason, "cancelled synchronously");
+  assert_equals(cancelReason.name, "AbortError");
+  const error = await p.catch(e => e);
+  assert_equals(error, cancelReason, "fetch() rejects with the same error");
+}, "aborting while the body is read cancels it with the reason");
+
+promise_test(async t => {
+  await promise_rejects_js(t, TypeError,
+    fetch(echo, { method: "POST", body: streamOf("not bytes", "x".repeat(0)).pipeThrough(new TransformStream({ transform(c, ctl) { ctl.enqueue("a string"); } })), duplex: "half" }));
+}, "a chunk that is not a Uint8Array is a network error");
+</script>
