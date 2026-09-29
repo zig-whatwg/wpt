@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: a blob URL names its creator's origin, and fetch() reads it back</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// File API "generate a new blob URL": "blob:" + the ASCII serialization of
+// the current settings object's origin + "/" + a UUID. Scheme fetch "blob"
+// then finds the blob behind it - same origin, so a basic response.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+test(() => {
+  const url = URL.createObjectURL(new Blob(["x"]));
+  assert_true(url.startsWith("blob:" + location.origin + "/"), url);
+  assert_regexp_match(url.slice(("blob:" + location.origin + "/").length), UUID);
+  assert_equals(new URL(url).origin, location.origin);
+}, "a window's blob URL carries its origin");
+
+promise_test(() => new Promise((resolve, reject) => {
+  const source = "postMessage([URL.createObjectURL(new Blob(['y'])), self.origin]);";
+  const worker = new Worker(URL.createObjectURL(new Blob([source], {type: "text/javascript"})));
+  worker.onmessage = e => {
+    try {
+      const [url, workerOrigin] = e.data;
+      assert_equals(workerOrigin, location.origin, "the worker's origin");
+      assert_true(url.startsWith("blob:" + location.origin + "/"), url);
+      resolve();
+    } catch (err) { reject(err); }
+  };
+  worker.onerror = () => reject(new Error("worker failed"));
+}), "a worker's blob URL carries its origin");
+
+promise_test(async () => {
+  const url = URL.createObjectURL(new Blob(["hello"], {type: "text/plain"}));
+  const response = await fetch(url);
+  assert_equals(response.status, 200);
+  assert_equals(response.statusText, "OK");
+  assert_equals(response.type, "basic");
+  assert_equals(response.headers.get("Content-Type"), "text/plain");
+  assert_equals(response.headers.get("Content-Length"), "5");
+  assert_equals(await response.text(), "hello");
+}, "fetch() of a blob URL is the blob");
+
+promise_test(async () => {
+  const url = URL.createObjectURL(new Blob(["0123456789"]));
+  const response = await fetch(url, {headers: {Range: "bytes=2-4"}});
+  assert_equals(response.status, 206);
+  assert_equals(response.statusText, "Partial Content");
+  assert_equals(response.headers.get("Content-Range"), "bytes 2-4/10");
+  assert_equals(await response.text(), "234");
+}, "fetch() of a blob URL with a Range is that slice");
+
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(["gone"]));
+  URL.revokeObjectURL(url);
+  await promise_rejects_js(t, TypeError, fetch(url));
+}, "a revoked blob URL fetches nothing");
+</script>

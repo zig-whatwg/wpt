@@ -1,0 +1,183 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: one cookie jar for every realm a Browser makes</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/get-host-info.sub.js></script>
+<script>
+// The user agent has one cookie store (RFC 6265bis). HTTP-network-or-cache
+// fetch sends its cookies, and HTTP-network fetch stores a response's
+// `Set-Cookie`, whenever the request includes credentials - whichever
+// realm made it: a window, a worker, a worker's worker, a frame, a popup.
+const ORIGIN = location.origin;
+const REMOTE = get_host_info().HTTP_REMOTE_ORIGIN;
+let serial = 0;
+const cookieName = () => `crane_jar_${Date.now()}_${serial++}`;
+
+const setUrl = (origin, name, value) =>
+  `${origin}/cookies/resources/set.py?${encodeURIComponent(`${name}=${value}; path=/`)}`;
+const listUrl = origin => `${origin}/cookies/resources/list.py`;
+const dropUrl = (origin, name) => `${origin}/cookies/resources/drop.py?name=${name}`;
+
+async function listed(origin = ORIGIN, init = {}) {
+  const response = await fetch(listUrl(origin), init);
+  return response.json();
+}
+
+function dropLater(t, name, origin = ORIGIN) {
+  t.add_cleanup(() => fetch(dropUrl(origin, name), {credentials: "include"}));
+}
+
+function workerSource(body) {
+  return URL.createObjectURL(new Blob([body], {type: "text/javascript"}));
+}
+
+function reply(worker) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error("worker failed: " + (e.message || "")));
+  });
+}
+
+promise_test(async t => {
+  const name = cookieName();
+  dropLater(t, name);
+  await fetch(setUrl(ORIGIN, name, "v1"));
+  assert_equals((await listed())[name], "v1", "sent with the next fetch()");
+  await fetch(setUrl(ORIGIN, name, "v2"));
+  assert_equals((await listed())[name], "v2", "a second Set-Cookie replaces it");
+  await fetch(dropUrl(ORIGIN, name));
+  assert_false(name in await listed(), "Max-Age=0 removes it");
+}, "a fetch() response's Set-Cookie is sent with the next same-origin fetch()");
+
+promise_test(async t => {
+  const sent = cookieName(), omitted = cookieName();
+  dropLater(t, sent);
+  dropLater(t, omitted);
+  await fetch(setUrl(ORIGIN, sent, "1"));
+  assert_false(sent in await listed(ORIGIN, {credentials: "omit"}), "not sent");
+  await fetch(setUrl(ORIGIN, omitted, "1"), {credentials: "omit"});
+  assert_false(omitted in await listed(), "not stored");
+}, "credentials: 'omit' neither sends nor stores cookies");
+
+promise_test(async t => {
+  const name = cookieName();
+  dropLater(t, name);
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", setUrl(ORIGIN, name, "xhr"), false);
+  xhr.send();
+  assert_equals(xhr.status, 200);
+  xhr.open("GET", listUrl(ORIGIN), false);
+  xhr.send();
+  assert_equals(JSON.parse(xhr.responseText)[name], "xhr", "XHR sends what XHR stored");
+  assert_equals((await listed())[name], "xhr", "and fetch() sees it");
+}, "XMLHttpRequest stores and sends cookies in the same jar");
+
+promise_test(async t => {
+  const fromWindow = cookieName(), fromWorker = cookieName();
+  dropLater(t, fromWindow);
+  dropLater(t, fromWorker);
+  await fetch(setUrl(ORIGIN, fromWindow, "w"));
+  const worker = new Worker(workerSource(`
+    onmessage = async e => {
+      const [setUrl, listUrl] = e.data;
+      await fetch(setUrl);
+      postMessage(await (await fetch(listUrl)).json());
+    };`));
+  const answer = reply(worker);
+  worker.postMessage([setUrl(ORIGIN, fromWorker, "k"), listUrl(ORIGIN)]);
+  const seen = await answer;
+  worker.terminate();
+  assert_equals(seen[fromWindow], "w", "the worker sends the window's cookie");
+  assert_equals(seen[fromWorker], "k", "the worker sends its own");
+  assert_equals((await listed())[fromWorker], "k", "the window sends the worker's cookie");
+}, "a dedicated worker's fetch() uses its creator's jar, both ways");
+
+promise_test(async t => {
+  const fromWindow = cookieName(), fromNested = cookieName();
+  dropLater(t, fromWindow);
+  dropLater(t, fromNested);
+  await fetch(setUrl(ORIGIN, fromWindow, "w"));
+  // Synchronous XHR: the jar is the point here, and a nested worker's
+  // fetch() and timers do not settle yet.
+  const nested = `
+    onmessage = e => {
+      const [setUrl, listUrl] = e.data;
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", setUrl, false);
+      xhr.send();
+      xhr.open("GET", listUrl, false);
+      xhr.send();
+      postMessage(JSON.parse(xhr.responseText));
+    };`;
+  const worker = new Worker(workerSource(`
+    onmessage = e => {
+      const inner = new Worker(URL.createObjectURL(new Blob([${JSON.stringify(nested)}], {type: "text/javascript"})));
+      inner.onmessage = m => postMessage(m.data);
+      inner.onerror = () => postMessage("nested worker failed");
+      inner.postMessage(e.data);
+    };`));
+  const answer = reply(worker);
+  worker.postMessage([setUrl(ORIGIN, fromNested, "n"), listUrl(ORIGIN)]);
+  const seen = await answer;
+  worker.terminate();
+  assert_equals(typeof seen, "object", String(seen));
+  assert_equals(seen[fromWindow], "w", "the nested worker sends the window's cookie");
+  assert_equals(seen[fromNested], "n", "the nested worker sends its own");
+  assert_equals((await listed())[fromNested], "n", "the window sends the nested worker's cookie");
+}, "a nested worker's XMLHttpRequest uses the jar its creating worker reached");
+
+promise_test(async t => {
+  const fromWindow = cookieName(), fromFrame = cookieName();
+  dropLater(t, fromWindow);
+  dropLater(t, fromFrame);
+  await fetch(setUrl(ORIGIN, fromWindow, "w"));
+  const frame = document.createElement("iframe");
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const frameWindow = frame.contentWindow;
+  await frameWindow.fetch(setUrl(ORIGIN, fromFrame, "f"));
+  const seen = await (await frameWindow.fetch(listUrl(ORIGIN))).json();
+  assert_equals(seen[fromWindow], "w", "the frame sends its parent's cookie");
+  assert_equals((await listed())[fromFrame], "f", "the parent sends the frame's cookie");
+}, "an iframe's fetch() uses its top-level browsing context's jar");
+
+promise_test(async t => {
+  const fromOpener = cookieName(), fromPopup = cookieName();
+  dropLater(t, fromOpener);
+  dropLater(t, fromPopup);
+  await fetch(setUrl(ORIGIN, fromOpener, "o"));
+  const popup = window.open("/common/blank.html");
+  assert_not_equals(popup, null, "window.open");
+  t.add_cleanup(() => popup.close());
+  await new Promise(resolve => {
+    if (popup.document && popup.document.readyState === "complete" && popup.location.href !== "about:blank") resolve();
+    else popup.addEventListener("load", resolve, {once: true});
+  });
+  await popup.fetch(setUrl(ORIGIN, fromPopup, "p"));
+  const seen = await (await popup.fetch(listUrl(ORIGIN))).json();
+  assert_equals(seen[fromOpener], "o", "the popup sends its opener's cookie");
+  assert_equals((await listed())[fromPopup], "p", "the opener sends the popup's cookie");
+}, "a popup gets its opener's jar when it is created");
+
+promise_test(async t => {
+  const name = cookieName();
+  dropLater(t, name, REMOTE);
+  await fetch(setUrl(REMOTE, name, "r"), {credentials: "include"});
+  assert_false(name in await listed(), "a host-only cookie is not sent to another host");
+  assert_equals((await listed(REMOTE, {credentials: "include"}))[name], "r",
+                "sent cross-origin with credentials: 'include'");
+  assert_false(name in await listed(REMOTE), "not sent cross-origin with credentials: 'same-origin'");
+}, "a cross-origin cookie is host-only and goes only where credentials are included");
+
+promise_test(async t => {
+  const name = cookieName();
+  dropLater(t, name, REMOTE);
+  await fetch(setUrl(REMOTE, name, "r"));
+  assert_false(name in await listed(REMOTE, {credentials: "include"}),
+               "a cross-origin 'same-origin' fetch stores nothing");
+}, "a cross-origin response's Set-Cookie is not stored without credentials: 'include'");
+</script>

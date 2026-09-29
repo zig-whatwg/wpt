@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: navigations send and store cookies through the user agent's jar</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// HTML "create a navigation request" makes a request whose credentials mode
+// is "include", so a navigation's fetch sends the jar's cookies and stores
+// its response's Set-Cookie - the top-level page's own response
+// (net-cookies-navigation.html.headers sets one), a frame's, a popup's.
+const ORIGIN = location.origin;
+let serial = 0;
+const cookieName = () => `crane_nav_${Date.now()}_${serial++}`;
+const setUrl = (name, value) =>
+  `/cookies/resources/set.py?${encodeURIComponent(`${name}=${value}; path=/`)}`;
+const dropUrl = name => `/cookies/resources/drop.py?name=${name}`;
+
+async function listed() {
+  return (await fetch("/cookies/resources/list.py")).json();
+}
+
+function loaded(target) {
+  return new Promise(resolve => target.addEventListener("load", resolve, {once: true}));
+}
+
+promise_test(async t => {
+  t.add_cleanup(() => fetch(dropUrl("crane_nav_top")));
+  assert_equals((await listed()).crane_nav_top, "from-page");
+}, "the top-level page's own Set-Cookie is in the jar");
+
+promise_test(async t => {
+  const name = cookieName();
+  t.add_cleanup(() => fetch(dropUrl(name)));
+  await fetch(setUrl(name, "sent"));
+  const frame = document.createElement("iframe");
+  const done = loaded(frame);
+  frame.src = "/cookies/resources/list.py";
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await done;
+  const seen = JSON.parse(frame.contentDocument.body.textContent);
+  assert_equals(seen[name], "sent");
+}, "an iframe's navigation request sends the jar's cookies");
+
+promise_test(async t => {
+  const name = cookieName();
+  t.add_cleanup(() => fetch(dropUrl(name)));
+  const frame = document.createElement("iframe");
+  const done = loaded(frame);
+  frame.src = setUrl(name, "stored");
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await done;
+  assert_equals((await listed())[name], "stored");
+}, "an iframe's navigation response's Set-Cookie is stored");
+
+promise_test(async t => {
+  const name = cookieName();
+  t.add_cleanup(() => fetch(dropUrl(name)));
+  await fetch(setUrl(name, "popup"));
+  const popup = window.open("/cookies/resources/list.py");
+  assert_not_equals(popup, null, "window.open");
+  t.add_cleanup(() => popup.close());
+  await new Promise(resolve => {
+    const check = () => {
+      const doc = popup.document;
+      if (doc && doc.readyState === "complete" && popup.location.href !== "about:blank") resolve();
+      else t.step_timeout(check, 20);
+    };
+    check();
+  });
+  const seen = JSON.parse(popup.document.body.textContent);
+  assert_equals(seen[name], "popup");
+}, "a popup's navigation request sends its opener's cookies");
+</script>

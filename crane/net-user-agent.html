@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: navigator.userAgent, in a window and a worker, is the User-Agent fetch sends</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// HTML's navigator.userAgent returns the "default `User-Agent` value", and
+// Fetch's HTTP-network-or-cache fetch sends that same value when a request
+// has no User-Agent of its own. One string, three readers.
+const INSPECT = "/fetch/api/resources/inspect-headers.py?headers=user-agent";
+
+promise_test(async () => {
+  const response = await fetch(INSPECT);
+  assert_equals(response.headers.get("x-request-user-agent"), navigator.userAgent);
+}, "fetch() sends navigator.userAgent as User-Agent");
+
+promise_test(() => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", INSPECT);
+  xhr.onload = () => {
+    try {
+      assert_equals(xhr.getResponseHeader("x-request-user-agent"), navigator.userAgent);
+      resolve();
+    } catch (e) { reject(e); }
+  };
+  xhr.onerror = () => reject(new Error("XHR failed"));
+  xhr.send();
+}), "XMLHttpRequest sends navigator.userAgent as User-Agent");
+
+promise_test(() => new Promise((resolve, reject) => {
+  const source = "postMessage([navigator.userAgent, navigator.appVersion]);";
+  const worker = new Worker(URL.createObjectURL(new Blob([source], {type: "text/javascript"})));
+  worker.onmessage = e => {
+    try {
+      assert_equals(e.data[0], navigator.userAgent, "userAgent");
+      assert_equals(e.data[1], navigator.appVersion, "appVersion");
+      resolve();
+    } catch (err) { reject(err); }
+  };
+  worker.onerror = () => reject(new Error("worker failed"));
+}), "a worker's navigator.userAgent and appVersion are the window's");
+
+test(() => {
+  assert_true(navigator.userAgent.startsWith("Mozilla/"));
+  assert_equals(navigator.appVersion, navigator.userAgent.slice("Mozilla/".length));
+}, "appVersion is the user agent after Mozilla/");
+</script>

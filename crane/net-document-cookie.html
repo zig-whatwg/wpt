@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: document.cookie is the user agent's jar, seen through a non-HTTP API</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// HTML document.cookie: the cookie-string for the document's URL for a
+// "non-HTTP" API, and on setting, the storage model for one. The jar is the
+// one fetch sends from and stores to, so each sees the other's cookies -
+// except HttpOnly ones, which script can neither read nor replace.
+let serial = 0;
+const cookieName = () => `crane_doc_${Date.now()}_${serial++}`;
+const expire = name => { document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`; };
+const cookies = () => Object.fromEntries(document.cookie.split("; ").filter(Boolean).map(pair => {
+  const eq = pair.indexOf("=");
+  return eq < 0 ? ["", pair] : [pair.slice(0, eq), pair.slice(eq + 1)];
+}));
+async function listed() {
+  return (await fetch("/cookies/resources/list.py")).json();
+}
+const setUrl = (name, value) =>
+  `/cookies/resources/set.py?${encodeURIComponent(`${name}=${value}; path=/`)}`;
+
+test(t => {
+  const name = cookieName();
+  t.add_cleanup(() => expire(name));
+  document.cookie = `${name}=v1; path=/`;
+  assert_equals(cookies()[name], "v1");
+  document.cookie = `${name}=v2; path=/`;
+  assert_equals(cookies()[name], "v2", "the same name, host and path replace it");
+  expire(name);
+  assert_false(name in cookies(), "an Expires in the past removes it");
+}, "document.cookie sets, replaces and removes a cookie");
+
+promise_test(async t => {
+  const fromScript = cookieName(), fromServer = cookieName();
+  t.add_cleanup(() => { expire(fromScript); expire(fromServer); });
+  document.cookie = `${fromScript}=s; path=/`;
+  assert_equals((await listed())[fromScript], "s", "fetch() sends what script set");
+  await fetch(setUrl(fromServer, "h"));
+  assert_equals(cookies()[fromServer], "h", "script reads what a response set");
+}, "document.cookie and fetch() share one jar");
+
+promise_test(async t => {
+  const name = cookieName();
+  t.add_cleanup(() => fetch(`/cookies/resources/drop.py?name=${name}`));
+  await fetch(`/cookies/resources/set.py?${encodeURIComponent(`${name}=secret; path=/; HttpOnly`)}`);
+  assert_false(name in cookies(), "script does not see an HttpOnly cookie");
+  assert_equals((await listed())[name], "secret", "fetch() sends it");
+  document.cookie = `${name}=overwritten; path=/`;
+  assert_equals((await listed())[name], "secret", "script cannot replace it");
+  document.cookie = `${name}2=x; path=/; HttpOnly`;
+  assert_false(`${name}2` in (await listed()), "script cannot set one");
+}, "HttpOnly cookies are for HTTP APIs only");
+
+test(t => {
+  document.cookie = "crane_ctl=A\0Z";
+  assert_false("crane_ctl" in cookies(), "a control byte ignores the string");
+  const bare = cookieName();
+  t.add_cleanup(() => { document.cookie = `${bare}; expires=Thu, 01 Jan 1970 00:00:00 GMT`; });
+  document.cookie = bare;
+  assert_true(document.cookie.split("; ").includes(bare), "a nameless cookie reads as its value");
+}, "document.cookie parses as the storage model does");
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("averse");
+  assert_equals(doc.cookie, "");
+  doc.cookie = "crane_averse=1";
+  assert_equals(doc.cookie, "");
+  assert_false("crane_averse" in cookies());
+}, "a Document without a browsing context is cookie-averse");
+
+promise_test(async t => {
+  const name = cookieName();
+  t.add_cleanup(() => expire(name));
+  document.cookie = `${name}=parent; path=/`;
+  const frame = document.createElement("iframe");
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  assert_equals(frame.contentDocument.cookie.split("; ").find(p => p.startsWith(name + "=")), `${name}=parent`);
+  frame.contentDocument.cookie = `${name}=frame; path=/`;
+  assert_equals(cookies()[name], "frame");
+}, "a same-origin frame's document.cookie is the same jar");
+
+promise_test(async t => {
+  const name = cookieName();
+  t.add_cleanup(() => expire(name));
+  document.cookie = `${name}=opener; path=/`;
+  const popup = window.open("/common/blank.html");
+  assert_not_equals(popup, null, "window.open");
+  t.add_cleanup(() => popup.close());
+  await new Promise(resolve => {
+    const check = () => {
+      if (popup.document && popup.document.readyState === "complete" && popup.location.href !== "about:blank") resolve();
+      else t.step_timeout(check, 20);
+    };
+    check();
+  });
+  assert_true(popup.document.cookie.split("; ").includes(`${name}=opener`), popup.document.cookie);
+}, "a popup's document.cookie sees its opener's cookies");
+</script>

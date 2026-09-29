@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: cookieStore change events, including changes made while one is dispatched</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// Cookie Store "process cookie changes": each change to the user agent's
+// cookie store is observed once, in a `change` event fired from a task. A
+// listener - or the microtasks it releases - can itself change cookies
+// while that event is being dispatched; those changes belong to the NEXT
+// event, and must not be dropped with the one being fired.
+let serial = 0;
+const cookieName = () => `crane_change_${Date.now()}_${serial++}`;
+const nextChange = () => new Promise(resolve => cookieStore.addEventListener("change", resolve, {once: true}));
+const names = list => list.map(item => item.name);
+
+promise_test(async t => {
+  const name = cookieName();
+  t.add_cleanup(() => cookieStore.delete(name));
+  const event = nextChange();
+  await cookieStore.set(name, "v");
+  const e = await event;
+  assert_array_equals(names(e.changed), [name]);
+  assert_equals(e.changed[0].value, "v");
+  assert_array_equals(e.deleted, []);
+}, "cookieStore.set() fires one change event");
+
+promise_test(async t => {
+  const first = cookieName(), second = cookieName();
+  t.add_cleanup(async () => { await cookieStore.delete(first); await cookieStore.delete(second); });
+  const events = [];
+  const both = new Promise(resolve => {
+    cookieStore.addEventListener("change", function listener(e) {
+      events.push(e);
+      // A change made during this dispatch: its own, later event.
+      if (events.length === 1) cookieStore.set(second, "2");
+      if (events.length === 2) { cookieStore.removeEventListener("change", listener); resolve(); }
+    });
+  });
+  await cookieStore.set(first, "1");
+  await Promise.race([both, new Promise((_, reject) => t.step_timeout(() => reject(new Error(`${events.length} event(s)`)), 3000))]);
+  assert_array_equals(names(events[0].changed), [first]);
+  assert_array_equals(names(events[1].changed), [second]);
+}, "a change made while a change event is dispatched gets the next event");
+
+promise_test(async t => {
+  const name = cookieName();
+  const events = [];
+  const deleted = new Promise(resolve => {
+    cookieStore.addEventListener("change", function listener(e) {
+      events.push(e);
+      // Microtasks the listener releases run before its dispatch ends.
+      if (events.length === 1) Promise.resolve().then(() => cookieStore.delete(name));
+      if (events.length === 2) { cookieStore.removeEventListener("change", listener); resolve(); }
+    });
+  });
+  await cookieStore.set(name, "v");
+  await Promise.race([deleted, new Promise((_, reject) => t.step_timeout(() => reject(new Error(`${events.length} event(s)`)), 3000))]);
+  assert_array_equals(names(events[1].deleted), [name]);
+  assert_false("value" in events[1].deleted[0], "a deleted cookie's item has no value");
+}, "a deletion made in a microtask of a change event's listener gets the next event");
+
+promise_test(async t => {
+  const earlier = cookieName(), later = cookieName();
+  t.add_cleanup(async () => { await cookieStore.delete(earlier); await cookieStore.delete(later); });
+  // Each promise settles from a task, behind the change event its call
+  // queued: by the time these awaits return, those events have fired.
+  await cookieStore.set(earlier, "v");
+  await cookieStore.delete(earlier);
+  const event = nextChange();
+  await cookieStore.set(later, "w");
+  const e = await event;
+  assert_array_equals(names(e.changed), [later], "only the change made after the listener was added");
+  assert_array_equals(e.deleted, []);
+}, "a change awaited before a listener is added is not in that listener's event");
+</script>
