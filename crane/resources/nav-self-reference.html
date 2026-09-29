@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame that navigates a new child frame to its own URL</title>
+<body>
+<script>
+// How far below the top this document is.
+let depth = 0;
+for (let w = window; w !== top; w = w.parent) depth++;
+top.postMessage({ depth }, "*");
+// A script-started navigation, which the iframe attribute steps' ancestor
+// check (HTML "shared attribute processing steps", step 3) does not cover:
+// the same URL, a new fragment.
+const frame = document.createElement("iframe");
+document.body.append(frame);
+frame.contentWindow.location.href = location.href.split("#")[0] + "#" + (depth + 1);
+</script>
+</body>

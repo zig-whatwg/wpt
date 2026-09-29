@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an IntersectionObserver whose targets are gone is collectable</title>
+<link rel="help" href="https://w3c.github.io/IntersectionObserver/#lifetime">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// "An IntersectionObserver will remain alive until both of these conditions
+// hold: there are no scripting references to the observer, and the observer
+// is not observing any targets." Once its only target is removed and nothing
+// refers to either, both are garbage: the observer must not keep itself alive
+// for a target that is gone.
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+promise_test(async t => {
+  let ref;
+  (() => {
+    const target = document.createElement("div");
+    document.body.append(target);
+    const observer = new IntersectionObserver(() => {});
+    observer.observe(target);
+    target.remove();
+    ref = new WeakRef(observer);
+  })();
+  for (let i = 0; i < 4 && ref.deref() !== undefined; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  assert_equals(ref.deref(), undefined, "the observer was collected");
+}, "an observer whose removed target was collected is collected too");
+
+promise_test(async t => {
+  const target = document.createElement("div");
+  document.body.append(target);
+  t.add_cleanup(() => target.remove());
+  let ref;
+  (() => {
+    const observer = new IntersectionObserver(() => {});
+    observer.observe(target);
+    ref = new WeakRef(observer);
+  })();
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  assert_not_equals(ref.deref(), undefined, "an observer observing a live target stays alive");
+}, "an observer with a live target stays alive");
+</script>

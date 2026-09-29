@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>SharedWorker: one global scope per (origin, URL, name), a connect event per SharedWorker</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#dom-sharedworker">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A case that never hears back fails after 3 seconds instead of hanging.
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 3000))]);
+}
+function firstMessage(port) {
+  return new Promise(resolve => port.addEventListener("message", e => resolve(e.data), { once: true }));
+}
+function connect(url, options) {
+  const worker = options === undefined ? new SharedWorker(url) : new SharedWorker(url, options);
+  const reply = firstMessage(worker.port);
+  worker.port.start();
+  return { worker, reply };
+}
+const counter = "resources/net-shared-counter.js";
+
+test(() => {
+  const worker = new SharedWorker(counter + "?shape");
+  assert_true(worker instanceof SharedWorker);
+  assert_true(worker.port instanceof MessagePort);
+  assert_equals(worker.port, worker.port, "[SameObject]");
+  assert_equals(worker.onerror, null);
+}, "a SharedWorker has a MessagePort");
+
+promise_test(async t => {
+  const { reply } = connect(counter + "?connect-event", "n1");
+  const got = await within(t, reply, "the first reply");
+  assert_equals(got.connections, 1);
+  assert_equals(got.name, "n1");
+  assert_true(got.global, "self is a SharedWorkerGlobalScope");
+  assert_true(got.isMessageEvent, "connect is a MessageEvent");
+  assert_equals(got.data, "", "data is the empty string");
+  assert_equals(got.portsLength, 1);
+  assert_true(got.sourceIsPort, "source is ports[0]");
+}, "the connect event carries the inside port as ports[0] and source");
+
+promise_test(async t => {
+  const url = counter + "?same-scope";
+  const a = connect(url, "same");
+  assert_equals((await within(t, a.reply, "the first reply")).connections, 1);
+  const b = connect(url, { name: "same" });
+  assert_equals((await within(t, b.reply, "the second reply")).connections, 2,
+    "the same URL and name reach the same global scope");
+  const c = connect(url, "other");
+  const other = await within(t, c.reply, "the third reply");
+  assert_equals(other.connections, 1, "another name is another global scope");
+  assert_equals(other.name, "other");
+  const d = connect(url);
+  const unnamed = await within(t, d.reply, "the fourth reply");
+  assert_equals(unnamed.connections, 1, "no name is the empty name, another scope");
+  assert_equals(unnamed.name, "");
+}, "SharedWorkers with the same URL and name share one global scope");
+
+promise_test(async t => {
+  const { worker, reply } = connect(counter + "?echo", "echo");
+  await within(t, reply, "the connect reply");
+  const echoed = firstMessage(worker.port);
+  worker.port.postMessage("hi");
+  assert_equals(await within(t, echoed, "the echo"), "echo hi");
+}, "messages go both ways over the port");
+
+promise_test(async t => {
+  const got = await within(t, connect(counter + "?number", 1).reply, "the reply");
+  assert_equals(got.name, "1", "a non-object options is converted to a DOMString name");
+  const dict = await within(t, connect(counter + "?dict", { name: "d" }).reply, "the reply");
+  assert_equals(dict.name, "d");
+  const nul = await within(t, connect(counter + "?null", null).reply, "the reply");
+  assert_equals(nul.name, "", "null is the dictionary, with its default name");
+}, "options is a name or a WorkerOptions dictionary");
+
+promise_test(async t => {
+  const source = "onconnect = e => e.ports[0].postMessage(['data', self.name, location.protocol]);";
+  const { reply } = connect("data:text/javascript," + encodeURIComponent(source), "d");
+  assert_array_equals(await within(t, reply, "the reply"), ["data", "d", "data:"]);
+}, "a data: URL shared worker runs");
+
+promise_test(async t => {
+  const worker = new SharedWorker("resources/no-such-shared-worker.js");
+  const event = await within(t, new Promise(resolve => worker.onerror = resolve), "the error event");
+  assert_equals(event.type, "error");
+  assert_false(event instanceof ErrorEvent, "a plain Event");
+}, "a script that fails to load fires error at the SharedWorker");
+
+test(() => {
+  assert_throws_dom("SyntaxError", () => new SharedWorker("http://[invalid"));
+}, "an unparsable URL throws SyntaxError");
+</script>

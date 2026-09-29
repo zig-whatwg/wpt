@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.scroll(), scrollTo() and scrollBy() return promises, in both forms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body style="height: 10000px; width: 10000px">
+<script>
+// CSSOM View: each has an options form and an (x, y) form, both returning a
+// Promise<undefined>; non-finite values are normalized to 0.
+promise_test(async () => {
+  const to = window.scrollTo(0, 0);
+  assert_true(to instanceof Promise, "scrollTo(x, y) returns a promise");
+  assert_equals(await to, undefined);
+  await window.scrollBy(0, 10);
+  assert_equals(window.scrollY, 10, "scrollBy(x, y) adds to the position");
+  await window.scrollBy({ top: 5 });
+  assert_equals(window.scrollY, 15, "scrollBy(options) adds to the position");
+  await window.scroll({ top: 7 });
+  assert_equals(window.scrollY, 7, "scroll(options) sets the position");
+  assert_true(window.scroll() instanceof Promise, "scroll() with no arguments returns a promise");
+  await window.scrollTo(NaN, Infinity);
+  assert_equals(window.scrollX, 0, "NaN is normalized to 0");
+  assert_equals(window.scrollY, 0, "Infinity is normalized to 0");
+}, "the window scroll methods");
+</script>
+</body>

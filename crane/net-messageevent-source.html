@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>MessageEvent: the constructor's source and ports, and an event as their only holder</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-source">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-ports">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+test(() => {
+  const port = new MessageChannel().port1;
+  assert_equals(new MessageEvent("message", { source: port }).source, port);
+  assert_equals(new MessageEvent("message", { source: window }).source, window);
+  assert_equals(new MessageEvent("message", { source: null }).source, null);
+  assert_equals(new MessageEvent("message").source, null);
+}, "the constructor initializes source from the dictionary");
+
+test(() => {
+  assert_throws_js(TypeError, () => new MessageEvent("message", { source: {} }));
+}, "a source that is none of WindowProxy, MessagePort or ServiceWorker throws");
+
+// A port given to the constructor and dropped has nothing but the event to
+// hold it: it was never started, so it has no pending activity of its own.
+// A collection must leave it whole.
+promise_test(async t => {
+  const event = new MessageEvent("message", { source: new MessageChannel().port1 });
+  await nextTask(t);
+  await TestUtils.gc();
+  await nextTask(t);
+  assert_true(event.source instanceof MessagePort, "source is still a MessagePort");
+  event.source.postMessage("still entangled or not, a working port");
+  event.source.close();
+}, "an event that is its source's only holder keeps it across a collection");
+
+promise_test(async t => {
+  const event = new MessageEvent("message", { ports: [new MessageChannel().port1] });
+  await nextTask(t);
+  await TestUtils.gc();
+  await nextTask(t);
+  assert_equals(event.ports.length, 1);
+  assert_true(event.ports[0] instanceof MessagePort, "ports[0] is still a MessagePort");
+  assert_equals(event.ports, event.ports, "one frozen array");
+  assert_true(Object.isFrozen(event.ports));
+}, "an event that is its ports' only holder keeps them across a collection");
+</script>

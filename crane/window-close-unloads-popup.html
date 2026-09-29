@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.close(): is closing now, then beforeunload, pagehide and unload in a task</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 7.2.2.1: close() on a script-closable top-level traversable sets its
+// "is closing" - window.closed is true at once - and queues a task to
+// "definitely close" it: beforeunload, then unload (pagehide, unload), then
+// destroy.
+async_test(t => {
+  const events = [];
+  window.closeEvent = name => events.push(name);
+  const w = window.open("resources/window-close-events.html");
+  window.onmessage = t.step_func(e => {
+    if (e.data !== "loaded") return;
+    assert_false(w.closed, "not closed before close()");
+    w.close();
+    assert_true(w.closed, "closed as soon as close() returns: is closing");
+    assert_array_equals(events, [], "nothing unloads before the task");
+    t.step_timeout(() => {
+      assert_array_equals(events, ["beforeunload", "pagehide", "unload"]);
+      assert_true(w.closed, "still closed");
+      t.done();
+    }, 300);
+  });
+}, "a popup closed by its opener unloads in a task after close() returns");
+
+test(() => {
+  const frame = document.createElement("iframe");
+  document.body.append(frame);
+  frame.contentWindow.close();
+  assert_false(frame.contentWindow.closed, "a frame's navigable is not a top-level traversable");
+  frame.remove();
+}, "close() on a frame's window does nothing");
+</script>
+</body>

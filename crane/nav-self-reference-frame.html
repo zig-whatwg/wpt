@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: a page may embed itself once, never twice</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+// HTML's "shared attribute processing steps for iframe and frame elements"
+// step 3 refuses a URL that any inclusive ancestor navigable shows. Every
+// engine allows ONE such self-reference (WebKit's
+// HTMLFrameOwnerElement::isProhibitedSelfReference: "We allow one level of
+// self-reference because some websites depend on that"), and WPT's
+// feature-policy helpers embed the test page in itself. A second level is
+// still refused.
+if (location.hash === "#child") {
+  const grandchild = document.createElement("iframe");
+  grandchild.src = location.pathname + "#grandchild";
+  document.body.append(grandchild);
+  setTimeout(() => parent.postMessage({
+    from: "child",
+    grandchild: grandchild.contentWindow ? grandchild.contentWindow.location.href : null,
+  }, "*"), 300);
+} else if (location.hash === "#grandchild") {
+  parent.parent.postMessage({from: "grandchild"}, "*");
+} else {
+  promise_test(async t => {
+    const seen = [];
+    const done = new Promise(resolve => window.addEventListener("message", e => {
+      seen.push(e.data.from);
+      if (e.data.from === "child") resolve(e.data);
+    }));
+    const frame = document.createElement("iframe");
+    frame.src = location.pathname + "#child";
+    document.body.append(frame);
+    const child = await Promise.race([done, new Promise((_, reject) => t.step_timeout(() => reject(new Error("the self-embedding frame never loaded")), 5000))]);
+    assert_equals(new URL(frame.contentWindow.location.href).hash, "#child", "the first self-reference loads");
+    assert_equals(child.grandchild, "about:blank", "the second is refused, and stays about:blank");
+    assert_array_equals(seen, ["child"], "no grandchild ever ran");
+  }, "one level of self-reference loads; a second is refused");
+}
+</script>

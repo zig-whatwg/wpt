@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame navigated to a URL two ancestors show is not loaded</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML bounds nesting only for an iframe's src (the "shared attribute
+// processing steps", step 3). A navigation script starts in a frame to its
+// ancestors' URL is unbounded in the spec, and every browser bounds it:
+// Chromium cancels a subframe navigation whose URL, fragments excluded, two
+// ancestors already show (NavigationRequest::IsSelfReferentialURL - one level
+// of self-reference is allowed). Without a bound each document loads the
+// next, and no load event ever fires.
+async_test(t => {
+  const depths = [];
+  window.addEventListener("message", e => depths.push(e.data.depth));
+  window.addEventListener("load", t.step_func_done(() => {
+    assert_array_equals(depths, [1, 2], "the frames that loaded, by depth");
+  }));
+  const frame = document.createElement("iframe");
+  frame.src = "resources/nav-self-reference.html";
+  document.body.append(frame);
+}, "a script-started self-referential frame navigation loads one level deep and no further");
+</script>
+</body>

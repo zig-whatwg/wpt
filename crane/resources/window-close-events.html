@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A popup that reports its unloading events to its opener</title>
+<script>
+onload = () => opener.postMessage("loaded", "*");
+onbeforeunload = () => opener.closeEvent("beforeunload");
+onpagehide = () => opener.closeEvent("pagehide");
+onunload = () => opener.closeEvent("unload");
+</script>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: removing an iframe unloads its document first, as browsers do</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// HTML's "destroy a child navigable" does not unload the frame's document,
+// but Chrome, Firefox and Safari all fire pagehide and unload at it when the
+// iframe is removed - while its window.parent still reaches the page - and
+// pages depend on it (fetch/api/cors/cors-keepalive's "in unload").
+promise_test(async t => {
+  const f = document.createElement("iframe");
+  f.srcdoc = `<script>
+    addEventListener("pagehide", () => parent.postMessage("pagehide", "*"));
+    addEventListener("unload", () => parent.postMessage("unload", "*"));
+  <\/script>`;
+  const loaded = new Promise(r => f.addEventListener("load", r, { once: true }));
+  document.body.appendChild(f);
+  await loaded;
+  const seen = [];
+  const both = new Promise(resolve => {
+    window.addEventListener("message", function listener(e) {
+      seen.push(e.data);
+      if (seen.length === 2) {
+        window.removeEventListener("message", listener);
+        resolve();
+      }
+    });
+  });
+  f.remove();
+  await both;
+  assert_array_equals(seen, ["pagehide", "unload"]);
+}, "a removed iframe's document hears pagehide, then unload, and can still post to its parent");
+</script>

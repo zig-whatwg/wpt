@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>WorkerLocation reflects the worker's URL record</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#worker-locations">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A worker's location is its global scope's URL as a URL record: every
+// getter returns what URL's own getter returns for the same URL (protocol is
+// the scheme and ":", origin its serialized origin, and so on) - for http,
+// data: and blob: workers, dedicated and shared alike.
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 3000))]);
+}
+const REPORT = `(() => {
+  const keys = ["href", "protocol", "host", "hostname", "port", "pathname", "search", "hash", "origin"];
+  const out = {};
+  for (const k of keys) out[k] = location[k];
+  out.string = String(location);
+  return out;
+})()`;
+function expectedFor(url) {
+  const u = new URL(url);
+  return {
+    href: u.href, protocol: u.protocol, host: u.host, hostname: u.hostname, port: u.port,
+    pathname: u.pathname, search: u.search, hash: u.hash,
+    // A data: worker's origin is opaque; a blob: worker's is its creator's.
+    origin: u.protocol === "data:" ? "null" : u.origin,
+    string: u.href,
+  };
+}
+function dedicated(url) {
+  const worker = new Worker(url);
+  return new Promise(resolve => worker.onmessage = e => { worker.terminate(); resolve(e.data); });
+}
+function shared(url) {
+  const worker = new SharedWorker(url);
+  const reply = new Promise(resolve => worker.port.onmessage = e => resolve(e.data));
+  return reply;
+}
+const dedicatedSource = `postMessage(${REPORT});`;
+const sharedSource = `onconnect = e => e.ports[0].postMessage(${REPORT});`;
+
+const httpDedicated = new URL("resources/net-location-worker.js?q=1", location.href).href;
+const httpShared = new URL("resources/net-location-shared.js?q=2", location.href).href;
+
+for (const [kind, make, source, httpUrl] of [
+  ["dedicated", dedicated, dedicatedSource, httpDedicated],
+  ["shared", shared, sharedSource, httpShared],
+]) {
+  promise_test(async t => {
+    const got = await within(t, make(httpUrl), "the report");
+    assert_object_equals(got, expectedFor(httpUrl));
+  }, `an http ${kind} worker's location`);
+
+  promise_test(async t => {
+    const url = "data:text/javascript," + encodeURIComponent(source);
+    const got = await within(t, make(url), "the report");
+    assert_object_equals(got, expectedFor(url));
+  }, `a data: ${kind} worker's location`);
+
+  promise_test(async t => {
+    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+    t.add_cleanup(() => URL.revokeObjectURL(url));
+    const got = await within(t, make(url), "the report");
+    assert_object_equals(got, expectedFor(url));
+  }, `a blob: ${kind} worker's location`);
+}
+</script>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A nested dedicated worker has timers and fetch of its own</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "run a worker" gives every worker - one a worker makes too - its own
+// event loop and settings object, so its timers fire and its fetches settle
+// whoever made it. Each case makes an outer worker that makes an inner one
+// and relays what the inner one reports; a case that never reports fails
+// after 3 seconds rather than hanging.
+function nested(query) {
+  return new Promise((resolve, reject) => {
+    const outer = new Worker("resources/net-nested-outer.js?" + query);
+    const seen = [];
+    outer.onmessage = e => { seen.push(e.data); resolve(seen); };
+    outer.onerror = e => reject(new Error("outer error: " + e.message));
+  });
+}
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 3000))]);
+}
+
+promise_test(async t => {
+  assert_array_equals(await within(t, nested("message"), "the message"), ["inner alive"]);
+}, "a nested worker's postMessage reaches its creator (control)");
+
+promise_test(async t => {
+  assert_array_equals(await within(t, nested("timeout"), "the timeout"), ["timeout fired"]);
+}, "setTimeout(0) fires in a nested worker");
+
+promise_test(async t => {
+  assert_array_equals(await within(t, nested("relay-by-timer=timeout"), "the timeout"), ["timeout fired"]);
+}, "setTimeout(0) fires in a nested worker, relayed from a timer of the outer worker");
+
+promise_test(async t => {
+  assert_array_equals(await within(t, nested("interval"), "the interval"), ["interval fired 3 times"]);
+}, "setInterval repeats and clears in a nested worker");
+
+promise_test(async t => {
+  assert_array_equals(await within(t, nested("fetch-data"), "the fetch"), ["fetched hello"]);
+}, "fetch() of a data: URL settles in a nested worker");
+
+promise_test(async t => {
+  const got = await within(t, nested("fetch-http"), "the fetch");
+  assert_equals(got.length, 1);
+  assert_true(got[0].startsWith("fetched "), got[0]);
+}, "fetch() over HTTP settles in a nested worker");
+
+promise_test(async t => {
+  const outer = new Worker("resources/net-nested-outer.js?outer-timeout");
+  const got = await within(t, new Promise(resolve => outer.onmessage = e => resolve(e.data)), "the outer timeout");
+  assert_equals(got, "outer timeout fired");
+}, "the outer worker's own timer still fires after it makes a nested worker");
+
+promise_test(async t => {
+  await within(t, nested("message"), "the message");
+  const fired = await within(t, new Promise(resolve => setTimeout(() => resolve(true), 0)), "the page's timeout");
+  assert_true(fired);
+}, "the page's timers still fire after a nested worker is made");
+</script>

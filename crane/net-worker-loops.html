@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's tasks run on its creator's loop, whoever made a worker since</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A worker's event loop is its own (HTML "run a worker"); a worker made by
+// an iframe, and that iframe going away, must not take any other worker's
+// timers with it. Crane once kept one thread-wide "loop workers run on",
+// which every Worker constructor overwrote; a WorkerHost now records its
+// creator's loop (8726e1106).
+//
+// A REGRESSION GUARD, not a red-green test: it passes on the engine before
+// that change too (an iframe's worker did not expose the old thread-wide
+// loop this way). It pins that a page's worker keeps its timers across an
+// iframe's worker and the iframe's removal.
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 3000))]);
+}
+
+promise_test(async t => {
+  const source = `let n = 0;
+    onmessage = e => setTimeout(() => postMessage("tick " + (++n)), 0);`;
+  const worker = new Worker(URL.createObjectURL(new Blob([source], { type: "text/javascript" })));
+  t.add_cleanup(() => worker.terminate());
+  const tick = () => new Promise(resolve => {
+    worker.onmessage = e => resolve(e.data);
+    worker.postMessage("tick?");
+  });
+  assert_equals(await within(t, tick(), "the first tick"), "tick 1");
+
+  const frame = document.createElement("iframe");
+  frame.srcdoc = `<script>
+    const w = new Worker(URL.createObjectURL(new Blob(["postMessage('hello')"], { type: "text/javascript" })));
+    w.onmessage = e => parent.postMessage("frame worker: " + e.data, "*");
+  <\/script>`;
+  const heard = new Promise(resolve => addEventListener("message", e => resolve(e.data), { once: true }));
+  document.body.append(frame);
+  assert_equals(await within(t, heard, "the frame's worker"), "frame worker: hello");
+  frame.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+
+  assert_equals(await within(t, tick(), "a tick after the frame went"), "tick 2");
+}, "a page's worker keeps its timers after an iframe's worker and the iframe are gone");
+</script>

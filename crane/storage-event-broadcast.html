@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A Storage change fires storage at the other same-origin windows</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 12.2.1 "broadcast": setItem, removeItem and clear queue a storage
+// event at every other Window of the origin - here a frame whose script has
+// never read localStorage, as in WPT's PrefixedLocalStorage - and none at the
+// window that made the change. setItem of the same value, and removeItem of
+// an absent key, change nothing and broadcast nothing.
+async_test(t => {
+  const frame = document.createElement("iframe");
+  frame.src = "resources/iframe-src-hello.html";
+  frame.onload = t.step_func(() => {
+    const w = frame.contentWindow;
+    const seen = [];
+    let own = 0;
+    window.addEventListener("storage", () => own++);
+    w.addEventListener("storage", t.step_func(e => {
+      seen.push(e);
+      if (seen.length < 4) return;
+      const [set, change, remove, clear] = seen;
+      assert_true(set instanceof w.StorageEvent, "a StorageEvent of the frame's realm");
+      assert_true(set.isTrusted, "trusted");
+      assert_equals(set.type, "storage");
+      assert_array_equals([set.key, set.oldValue, set.newValue], ["crane-k", null, "v1"]);
+      assert_equals(set.url, location.href, "the URL of the document whose storage changed");
+      assert_equals(set.storageArea, w.localStorage, "the frame's own Storage object");
+      assert_array_equals([change.key, change.oldValue, change.newValue], ["crane-k", "v1", "v2"]);
+      assert_array_equals([remove.key, remove.oldValue, remove.newValue], ["crane-k", "v2", null]);
+      assert_array_equals([clear.key, clear.oldValue, clear.newValue], [null, null, null]);
+      t.step_timeout(() => {
+        assert_equals(seen.length, 4, "no event for the changes that changed nothing");
+        assert_equals(own, 0, "the window that changed it hears nothing");
+        t.done();
+      }, 100);
+    }));
+    localStorage.removeItem("crane-k");
+    localStorage.setItem("crane-k", "v1");
+    localStorage.setItem("crane-k", "v1");
+    localStorage.setItem("crane-k", "v2");
+    localStorage.removeItem("crane-k");
+    localStorage.removeItem("crane-k");
+    localStorage.clear();
+  });
+  document.body.append(frame);
+}, "localStorage changes fire storage events at the other windows of the origin, not at its own");
+
+test(() => {
+  const e = new StorageEvent("storage", { key: "k", oldValue: "o", newValue: "n", url: "http://example.test/", storageArea: localStorage, bubbles: true });
+  assert_equals(e.type, "storage");
+  assert_true(e.bubbles);
+  assert_array_equals([e.key, e.oldValue, e.newValue, e.url], ["k", "o", "n", "http://example.test/"]);
+  assert_equals(e.storageArea, localStorage);
+  assert_true(document.body.dispatchEvent(e), "dispatchable");
+  const d = new StorageEvent("storage");
+  assert_array_equals([d.key, d.oldValue, d.newValue, d.url, d.storageArea], [null, null, null, "", null]);
+}, "the StorageEvent constructor");
+</script>
+</body>

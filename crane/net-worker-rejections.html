@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Unhandled rejections in workers, and each agent notifies its own globals</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#unhandled-promise-rejections">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The page case rejects a promise of the page's own on purpose.
+setup({ allow_uncaught_exception: true });
+// HostPromiseRejectionTracker and "notify about rejected promises" hold for
+// a worker's global as for a window's: an unhandled rejection fires
+// `unhandledrejection` at the worker's global scope, and handling it later
+// fires `rejectionhandled`. "Perform a microtask checkpoint" notifies the
+// globals of the checkpointing agent only: a page and its frames share an
+// agent and are each notified; a worker's rejection reaches no window.
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 3000))]);
+}
+
+const workerSource = `
+  const seen = [];
+  const report = () => (self.reportTo || self).postMessage(seen.join(" "));
+  addEventListener("unhandledrejection", e => {
+    seen.push("unhandledrejection:" + e.reason + ":" + (e.promise instanceof Promise));
+    // Handle it one task later: rejectionhandled follows.
+    setTimeout(() => e.promise.catch(() => {}), 0);
+  });
+  addEventListener("rejectionhandled", e => {
+    seen.push("rejectionhandled:" + e.reason);
+    report();
+  });
+  function go() { Promise.reject("r1"); }
+`;
+const expected = "unhandledrejection:r1:true rejectionhandled:r1";
+
+promise_test(async t => {
+  let windowHeard = 0;
+  const onWindow = () => windowHeard++;
+  addEventListener("unhandledrejection", onWindow);
+  t.add_cleanup(() => removeEventListener("unhandledrejection", onWindow));
+  const url = URL.createObjectURL(new Blob([workerSource + "go();"], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  t.add_cleanup(() => worker.terminate());
+  const got = await within(t, new Promise(resolve => worker.onmessage = e => resolve(e.data)), "the worker's report");
+  assert_equals(got, expected);
+  assert_equals(windowHeard, 0, "the page heard no unhandledrejection of the worker's");
+}, "a dedicated worker's unhandled rejection fires unhandledrejection, then rejectionhandled, at its global");
+
+promise_test(async t => {
+  const source = workerSource + `onconnect = e => { self.reportTo = e.ports[0]; e.ports[0].start(); go(); };`;
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new SharedWorker(url);
+  const got = await within(t, new Promise(resolve => {
+    worker.port.onmessage = e => resolve(e.data);
+  }), "the shared worker's report");
+  assert_equals(got, expected);
+}, "a shared worker's unhandled rejection fires unhandledrejection, then rejectionhandled, at its global");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const heard = [];
+  const both = new Promise(resolve => {
+    const done = () => { if (heard.length === 2) resolve(); };
+    addEventListener("unhandledrejection", function onPage(e) {
+      if (e.reason !== "page") return;
+      removeEventListener("unhandledrejection", onPage);
+      e.preventDefault();
+      heard.push("page");
+      done();
+    });
+    frame.contentWindow.addEventListener("unhandledrejection", e => {
+      e.preventDefault();
+      heard.push("frame:" + e.reason);
+      done();
+    });
+  });
+  Promise.reject("page");
+  frame.contentWindow.Promise.reject("frame");
+  await within(t, both, "both notifications");
+  assert_array_equals(heard.slice().sort(), ["frame:frame", "page"]);
+}, "a page and its frame share an agent, and each global is notified of its own rejection");
+</script>
