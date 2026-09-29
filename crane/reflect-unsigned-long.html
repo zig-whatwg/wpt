@@ -99,6 +99,23 @@ test(() => {
 }, "limited to only positive numbers with fallback: 0 writes the default");
 
 test(() => {
+  // input.size: html.idl says [Reflect], the prose says "limited to only
+  // positive numbers" with a default value of 20.
+  const input = document.createElement("input");
+  assert_equals(input.size, 20, "absent");
+  for (const [value, parsed] of values) {
+    input.setAttribute("size", value);
+    const expected = parsed !== null && parsed >= 1 && parsed <= maxInt ? parsed : 20;
+    assert_equals(input.size, expected, `content ${JSON.stringify(value)}`);
+  }
+  assert_throws_dom("IndexSizeError", () => { input.size = 0; });
+  input.size = 7;
+  assert_equals(input.getAttribute("size"), "7");
+  input.size = maxInt + 1;
+  assert_equals(input.getAttribute("size"), "20", "out of range writes the default");
+}, "input.size is limited to only positive numbers, default 20");
+
+test(() => {
   // [ReflectSetter] unsigned long: the setter steps with no default.
   const img = document.createElement("img");
   img.width = 20;

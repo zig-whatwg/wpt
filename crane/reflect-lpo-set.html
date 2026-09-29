@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[[Set]] on a legacy platform object runs prototype setters (WebIDL 3.9.3)</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#legacy-platform-object-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<table><tbody id="body"><tr><td>x</td></tr></tbody></table>
+<script>
+// WebIDL 3.9.3: an indexed or named setter takes a matching P; otherwise
+// OrdinarySetWithOwnDescriptor - a setter on the prototype chain runs, an
+// accessor without one is a failed set (TypeError in strict code), and only
+// then does the value become an own data property.
+
+test(() => {
+  for (const tag of ["tbody", "thead", "tfoot"]) {
+    const section = document.createElement(tag);
+    section.vAlign = "top";
+    assert_equals(section.getAttribute("valign"), "top", `${tag}.vAlign`);
+    section.title = "t";
+    assert_equals(section.getAttribute("title"), "t", `${tag}.title`);
+    section.className = "c";
+    assert_equals(section.getAttribute("class"), "c", `${tag}.className`);
+    assert_false(Object.prototype.hasOwnProperty.call(section, "vAlign"), "no own data property");
+  }
+}, "tbody, thead and tfoot setters run (they are not legacy platform objects)");
+
+test(() => {
+  const link = document.createElement("link");
+  link.relList = "a b";
+  assert_equals(link.getAttribute("rel"), "a b");
+  assert_equals(link.relList.value, "a b");
+  assert_equals(link.relList.length, 2);
+  const form = document.createElement("form");
+  form.relList = "noopener";
+  assert_equals(form.getAttribute("rel"), "noopener");
+}, "[PutForwards=value]: el.relList = x reaches DOMTokenList.value");
+
+test(() => {
+  const div = document.createElement("div");
+  div.classList.value = "p q";
+  assert_equals(div.getAttribute("class"), "p q");
+  assert_false(Object.prototype.hasOwnProperty.call(div.classList, "value"), "no own data property");
+}, "classList.value = x runs the value setter");
+
+test(() => {
+  const list = document.body.childNodes;
+  list.expando = 42;
+  assert_true(Object.prototype.hasOwnProperty.call(list, "expando"));
+  assert_equals(list.expando, 42);
+}, "an expando on a NodeList is still an own property");
+
+test(t => {
+  localStorage.clear();
+  t.add_cleanup(() => localStorage.clear());
+  localStorage.foo = 1;
+  assert_equals(localStorage.getItem("foo"), "1", "the named setter");
+  localStorage.length = 5;
+  assert_equals(localStorage.getItem("length"), "5", "a named setter takes every string, even a prototype attribute's name");
+  assert_equals(localStorage.length, 2, "and the attribute still reads the count");
+}, "Storage still goes through its named setter");
+
+test(() => {
+  "use strict";
+  const list = document.body.childNodes;
+  const length = list.length;
+  assert_throws_js(TypeError, () => { list.length = 7; });
+  assert_equals(list.length, length);
+}, "a read-only attribute set in strict mode throws");
+
+test(() => {
+  const list = document.body.childNodes;
+  const length = list.length;
+  (function () { list.length = 7; })();
+  assert_equals(list.length, length);
+  assert_false(Object.prototype.hasOwnProperty.call(list, "length"));
+}, "a read-only attribute set in sloppy mode changes nothing");
+
+test(() => {
+  const select = document.createElement("select");
+  for (let i = 0; i < 3; i++) select.appendChild(document.createElement("option"));
+  select.options.length = 1;
+  assert_equals(select.options.length, 1);
+  assert_equals(select.children.length, 1);
+}, "HTMLOptionsCollection.length's setter runs");
+
+test(() => {
+  const div = document.createElement("div");
+  div.style.cssText = "color: red";
+  assert_true(/color/.test(div.getAttribute("style") || ""), div.getAttribute("style"));
+}, "CSSStyleDeclaration.cssText's setter runs");
+</script>

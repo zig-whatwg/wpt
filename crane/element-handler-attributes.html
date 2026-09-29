@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Event handler content attributes and getAttributeNames() on an element</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-attributes">
+<link rel=help href="https://dom.spec.whatwg.org/#dom-element-getattributenames">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+setup({ allow_uncaught_exception: true });
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("onclick", "return event.type;");
+  assert_equals(typeof el.onclick, "function");
+  assert_equals(el.onclick.name, "onclick");
+  assert_equals(el.onclick.length, 1);
+  assert_equals(el.onclick(new Event("custom")), "custom");
+}, "An onclick content attribute is a function of event, named onclick");
+
+test(() => {
+  const el = document.createElement("div");
+  el.id = "scoped";
+  el.setAttribute("onclick", "return [id, typeof getElementById];");
+  const [id, getter] = el.onclick(new Event("x"));
+  assert_equals(id, "scoped", "the element's own properties are in scope");
+  assert_equals(getter, "function", "the document's are too");
+}, "The handler's scope is the element, then its document");
+
+test(() => {
+  const el = document.createElement("div");
+  window.handlerRuns = 0;
+  el.setAttribute("onclick", "window.handlerRuns++;");
+  el.dispatchEvent(new Event("click"));
+  assert_equals(window.handlerRuns, 1);
+  el.removeAttribute("onclick");
+  assert_equals(el.onclick, null, "removing the attribute deactivates the handler");
+  el.dispatchEvent(new Event("click"));
+  assert_equals(window.handlerRuns, 1);
+}, "Dispatch runs the handler, and removing the attribute stops it");
+
+test(t => {
+  const el = document.createElement("div");
+  el.setAttribute("onnotanevent", "return 1;");
+  assert_false("onnotanevent" in el);
+  assert_equals(el.getAttribute("onnotanevent"), "return 1;");
+}, "An on* attribute that names no event handler stays an attribute");
+
+test(t => {
+  const body = document.createElement("body");
+  t.add_cleanup(() => { window.onmessage = null; window.onerror = null; });
+  body.setAttribute("onmessage", "return 'm';");
+  assert_equals(typeof window.onmessage, "function", "a body's onmessage is the Window's");
+  assert_equals(window.onmessage(new Event("message")), "m");
+  body.setAttribute("onerror", "return [event, source, lineno, colno, error].length;");
+  assert_equals(window.onerror.length, 5, "a Window's onerror takes the five error arguments");
+}, "A body's window-reflecting attributes set the Window's handlers");
+
+test(() => {
+  const errors = [];
+  const listener = e => errors.push(e);
+  window.addEventListener("error", listener);
+  let handler;
+  try {
+    const el = document.createElement("div");
+    el.setAttribute("onclick", "}");
+    handler = el.onclick;
+  } finally {
+    window.removeEventListener("error", listener);
+  }
+  assert_equals(handler, null, "a body that does not parse leaves the handler null");
+  assert_equals(errors.length, 1, "one error reported");
+  assert_true(errors[0] instanceof ErrorEvent);
+  assert_equals(errors[0].error.constructor, SyntaxError);
+  assert_equals(errors[0].filename, document.URL);
+}, "A handler that does not parse reports its SyntaxError to the Window");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("b", "1");
+  el.setAttributeNS("http://example.com/ns", "p:a", "2");
+  const names = el.getAttributeNames();
+  assert_true(Array.isArray(names));
+  assert_equals(Object.getPrototypeOf(names), Array.prototype);
+  assert_array_equals(names, ["b", "p:a"]);
+  assert_not_equals(el.getAttributeNames(), names, "a new list each call");
+  assert_array_equals(document.createElement("div").getAttributeNames(), []);
+}, "getAttributeNames() is a new Array of the qualified names, in order");
+
+test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  const el = document.createElement("div");
+  el.setAttribute("x", "1");
+  const names = w.Element.prototype.getAttributeNames.call(el);
+  assert_equals(Object.getPrototypeOf(names), w.Array.prototype);
+  assert_array_equals(names, ["x"]);
+}, "getAttributeNames() makes its Array in the current realm");
+</script>

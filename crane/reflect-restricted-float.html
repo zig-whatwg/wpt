@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Restricted double and float reject NaN and the infinities; unrestricted ones do not</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-double">
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-float">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebIDL 3.2.7 float / 3.2.9 double: "Let x be ? ToNumber(V). If x is NaN,
+// +Infinity, or -Infinity, then throw a TypeError." `unrestricted double` and
+// `unrestricted float` convert the same values without throwing. The check is
+// part of converting that one value - an attribute setter's, an operation
+// argument's, a dictionary member's.
+
+const bad = [NaN, Infinity, -Infinity, "NaN", {valueOf() { return Infinity; }}];
+
+// Anything but a TypeError: an unrestricted value was accepted by the
+// conversion, even if the operation behind it then fails on its own terms.
+function notATypeError(f, label) {
+  try { f(); } catch (e) {
+    assert_false(e instanceof TypeError, `${label}: threw a TypeError`);
+  }
+}
+
+test(() => {
+  const progress = document.createElement("progress");
+  const meter = document.createElement("meter");
+  for (const v of bad) {
+    assert_throws_js(TypeError, () => { progress.max = v; }, `progress.max = ${String(v)}`);
+    assert_throws_js(TypeError, () => { meter.value = v; }, `meter.value = ${String(v)}`);
+  }
+  assert_false(progress.hasAttribute("max"), "nothing was set");
+  assert_false(meter.hasAttribute("value"));
+  progress.max = 2;
+  assert_equals(progress.max, 2, "a finite value still sets");
+}, "a restricted double attribute setter throws a TypeError");
+
+test(() => {
+  for (const v of bad) {
+    assert_throws_js(TypeError, () => document.elementFromPoint(v, 0), `x = ${String(v)}`);
+    assert_throws_js(TypeError, () => document.elementFromPoint(0, v), `y = ${String(v)}`);
+  }
+  document.elementFromPoint(1, 1);
+}, "a restricted double operation argument throws a TypeError");
+
+test(() => {
+  let secondRead = false;
+  const y = {valueOf() { secondRead = true; return 0; }};
+  assert_throws_js(TypeError, () => document.elementFromPoint(NaN, y));
+  assert_false(secondRead, "arguments after the failing one are not converted");
+}, "the TypeError comes from the argument's own conversion step");
+
+test(() => {
+  for (const v of bad) {
+    assert_throws_js(TypeError, () => new WheelEvent("wheel", {deltaX: v}), `deltaX: ${String(v)}`);
+    assert_throws_js(TypeError, () => performance.mark("m", {startTime: v}), `startTime: ${String(v)}`);
+  }
+  assert_equals(new WheelEvent("wheel", {deltaX: 1.5}).deltaX, 1.5);
+}, "a restricted double dictionary member throws a TypeError (and through a typedef)");
+
+test(() => {
+  for (const v of bad) {
+    notATypeError(() => new DOMPoint(v, v, v, v), `new DOMPoint(${String(v)})`);
+    notATypeError(() => DOMPoint.fromPoint({x: v}), `DOMPoint.fromPoint({x: ${String(v)}})`);
+    const input = document.createElement("input");
+    input.type = "number";
+    notATypeError(() => { input.valueAsNumber = v; }, `valueAsNumber = ${String(v)}`);
+  }
+}, "unrestricted double arguments, members and attributes accept NaN and the infinities");
+</script>

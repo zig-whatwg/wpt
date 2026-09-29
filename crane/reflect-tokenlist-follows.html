@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A DOMTokenList follows its associated attribute</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#interface-domtokenlist">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// DOM 7.1: a DOMTokenList has attribute change steps for its element - the
+// associated attribute set to null empties the token set, any other value is
+// parsed into it (an ordered set). Its value getter is the attribute's value,
+// verbatim; its setter sets the attribute verbatim; its update steps write
+// nothing when there is no attribute and the set is empty.
+
+for (const [tag, idl, content] of [["div", "classList", "class"], ["link", "relList", "rel"], ["output", "htmlFor", "for"]]) {
+  test(() => {
+    const el = document.createElement(tag);
+    const list = el[idl];
+    el.setAttribute(content, "a b");
+    assert_equals(list.length, 2);
+    assert_true(list.contains("b"));
+    el.setAttribute(content, "c");
+    assert_equals(list.length, 1);
+    assert_false(list.contains("a"));
+    assert_equals(list.item(0), "c");
+    el.removeAttribute(content);
+    assert_equals(list.length, 0);
+    assert_equals(list.value, "");
+    el.setAttributeNS("http://example.com/ns", content, "x y");
+    assert_equals(list.length, 0, "an attribute in a namespace is not the associated one");
+  }, `${tag}.${idl} follows setAttribute and removeAttribute`);
+}
+
+test(() => {
+  const div = document.createElement("div");
+  div.className = "  b  a b\ta ";
+  assert_equals(div.classList.length, 2, "an ordered set: each token once");
+  assert_equals(div.classList.item(0), "b");
+  assert_equals(div.classList.item(1), "a");
+  assert_equals(div.classList.value, "  b  a b\ta ", "value is the attribute, verbatim");
+}, "value is the attribute's value, not the set re-serialized");
+
+test(() => {
+  const div = document.createElement("div");
+  div.classList.value = "x   y";
+  assert_equals(div.getAttribute("class"), "x   y", "the setter sets the attribute verbatim");
+  assert_equals(div.classList.length, 2);
+  div.classList.add("z");
+  assert_equals(div.getAttribute("class"), "x y z", "the update steps write the set serialized");
+}, "the value setter sets the attribute verbatim");
+
+test(() => {
+  const div = document.createElement("div");
+  div.classList.remove("a");
+  assert_false(div.hasAttribute("class"), "remove() writes nothing with no attribute and an empty set");
+  div.classList.toggle("a", false);
+  assert_false(div.hasAttribute("class"));
+  div.setAttribute("class", "");
+  div.classList.remove("a");
+  assert_true(div.hasAttribute("class"), "an existing attribute is rewritten");
+  assert_equals(div.getAttribute("class"), "");
+}, "update steps: no attribute and an empty set writes nothing");
+
+test(() => {
+  const div = document.createElement("div");
+  div.className = "a b";
+  assert_throws_dom("InvalidCharacterError", () => div.classList.add("c", "d e"));
+  assert_equals(div.className, "a b", "nothing added when a later token is invalid");
+  assert_throws_dom("SyntaxError", () => div.classList.toggle("", false));
+  assert_throws_dom("InvalidCharacterError", () => div.classList.toggle("x y", false));
+}, "tokens are validated before the set changes");
+
+test(() => {
+  const div = document.createElement("div");
+  div.className = "a b c";
+  assert_true(div.classList.replace("c", "a"));
+  assert_equals(div.className, "a b", "replacing with a present token keeps the first");
+  div.className = "a b c";
+  assert_true(div.classList.replace("a", "c"));
+  assert_equals(div.className, "c b");
+}, "replace() is an ordered-set replace");
+
+test(() => {
+  const div = document.createElement("div");
+  div.className = "one two";
+  const list = div.classList;
+  for (let i = 0; i < 50; i++) {
+    assert_equals(list.item(0), "one");
+    assert_equals(list[1], "two");
+  }
+  assert_equals(list.value, "one two");
+}, "item() hands out copies: the set's tokens survive being read");
+
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+promise_test(async () => {
+  let el = document.createElement("div");
+  el.className = "a b";
+  const list = el.classList;
+  el = null;
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  // Blink and WebKit keep the element alive through its list; whatever
+  // Crane does, reading the list must not touch freed memory.
+  list.length;
+  list.contains("a");
+  list.value;
+  assert_true(true);
+}, "a list read after its element was dropped and collected");
+</script>

@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A platform object a getter returns is its relevant realm's wrapper</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#es-platform-objects">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+function frame(t) {
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  return f;
+}
+
+test(t => {
+  const f = frame(t);
+  const w = f.contentWindow;
+  // The parent reads the frame's body, through the parent's own getter,
+  // before the frame's script has seen it.
+  const bodyGetter = Object.getOwnPropertyDescriptor(Document.prototype, "body").get;
+  const body = bodyGetter.call(f.contentDocument);
+  assert_equals(Object.getPrototypeOf(body), w.HTMLBodyElement.prototype, "the frame's HTMLBodyElement.prototype");
+  assert_equals(w.eval("document.body"), body, "one wrapper, whichever realm reads it first");
+}, "A node of a frame's document read from the parent is the frame's wrapper");
+
+test(t => {
+  const f = frame(t);
+  const w = f.contentWindow;
+  const el = w.eval("const e = document.createElement('span'); document.body.appendChild(e); e");
+  assert_equals(f.contentDocument.body.firstChild, el);
+  assert_equals(Object.getPrototypeOf(f.contentDocument.body.firstChild), w.HTMLSpanElement.prototype);
+}, "A node the frame made, read through a parent's getter, is the same object");
+
+test(t => {
+  const f = frame(t);
+  const w = f.contentWindow;
+  // A getter of the parent realm's prototype, called on the frame's node.
+  const getter = Object.getOwnPropertyDescriptor(Node.prototype, "parentNode").get;
+  const div = w.eval("const d = document.createElement('div'); document.body.appendChild(d); d");
+  const parent = getter.call(div);
+  assert_equals(parent, f.contentDocument.body);
+  assert_equals(Object.getPrototypeOf(parent), w.HTMLBodyElement.prototype, "its relevant realm, not the getter's");
+}, "A getter from another realm returns the object's own wrapper");
+
+test(() => {
+  const el = document.createElement("p");
+  document.body.appendChild(el);
+  assert_equals(document.body.lastChild, el);
+  assert_equals(Object.getPrototypeOf(el), HTMLParagraphElement.prototype);
+  el.remove();
+}, "Same-realm reads are unchanged");
+</script>

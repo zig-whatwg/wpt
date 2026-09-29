@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A dictionary's any member present as null is null, not absent</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#js-dictionary">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// WebIDL 3.2.18: a member is present unless its value is undefined; one
+// whose value is null is present, and an `any` member keeps that null.
+
+test(() => {
+  assert_equals(new ErrorEvent("e", { error: null }).error, null);
+}, "ErrorEvent: error present as null");
+
+test(() => {
+  const p = Promise.resolve();
+  assert_equals(new PromiseRejectionEvent("p", { promise: p, reason: null }).reason, null);
+}, "PromiseRejectionEvent: reason present as null");
+
+test(() => {
+  assert_equals(new MessageEvent("m", { data: null }).data, null);
+}, "MessageEvent: data present as null");
+
+test(() => {
+  assert_equals(new CustomEvent("c", { detail: null }).detail, null);
+  assert_equals(new CustomEvent("c", {}).detail, null, "absent: the member's default, null");
+}, "CustomEvent: detail present as null, and absent");
+
+test(() => {
+  const e = new ErrorEvent("e", { error: undefined });
+  assert_true(e.error === null || e.error === undefined, "undefined is not present");
+  const value = { x: 1 };
+  assert_equals(new ErrorEvent("e", { error: value }).error, value);
+}, "ErrorEvent: undefined is absent; an object is kept");
+
+test(() => {
+  const observer = new IntersectionObserver(() => {}, { root: null });
+  assert_equals(observer.root, null);
+}, "A nullable interface member present as null is still null");
+</script>

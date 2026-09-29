@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>An operation called with fewer arguments than it requires throws a TypeError</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#es-overloads">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+// WebIDL 3.7.6 "create an operation function", step 3: the overload
+// resolution algorithm. An operation's effective overload set has an entry
+// for each number of arguments it can be called with; with fewer than it
+// requires there is none, and the algorithm throws a TypeError before any
+// argument is converted.
+
+const calls = [
+  ["localStorage.getItem()", () => localStorage.getItem()],
+  ["localStorage.setItem('a')", () => localStorage.setItem("a")],
+  ["localStorage.removeItem()", () => localStorage.removeItem()],
+  ["document.createElement()", () => document.createElement()],
+  ["document.getElementById()", () => document.getElementById()],
+  ["element.setAttribute('a')", () => document.createElement("div").setAttribute("a")],
+  ["element.getAttribute()", () => document.createElement("div").getAttribute()],
+  ["new URLSearchParams().append('a')", () => new URLSearchParams().append("a")],
+];
+for (const [name, call] of calls) {
+  test(() => { assert_throws_js(TypeError, call); }, name + " throws a TypeError");
+}
+
+test(() => {
+  // An explicit undefined is an argument.
+  assert_equals(document.createElement("div").getAttribute(undefined), null);
+  assert_equals(document.getElementById(undefined), null);
+}, "undefined passed explicitly is an argument, not a missing one");
+
+test(() => {
+  const div = document.createElement("div");
+  assert_true(div.toggleAttribute("x"), "optional force left out");
+  assert_equals(document.createElement("div", undefined).localName, "div");
+  div.remove();
+}, "Optional arguments may be left out");
+
+test(() => {
+  assert_equals(Storage.prototype.getItem.length, 1);
+  assert_equals(Storage.prototype.setItem.length, 2);
+  assert_equals(Element.prototype.setAttribute.length, 2);
+  assert_equals(Element.prototype.toggleAttribute.length, 1);
+}, "length is the number of arguments required");
+
+test(() => {
+  const errors = [];
+  let converted = false;
+  const probe = { toString() { converted = true; return "x"; } };
+  assert_throws_js(TypeError, () => localStorage.setItem(probe));
+  assert_false(converted, "no argument is converted before the count is checked");
+}, "The count is checked before any argument is converted");
+</script>

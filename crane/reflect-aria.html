@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>ARIAMixin's string attributes reflect their aria-* content attributes on elements</title>
+
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// ARIAMixin (https://w3c.github.io/aria/#ARIAMixin), wai-aria.idl: `[CEReactions, Reflect="aria-..."] attribute DOMString? ...`.
+// HTML 2.6.1, DOMString?: the getter is the attribute's value or null; the
+// setter removes the attribute for null and sets it otherwise.
+
+const names = [
+  ["role", "role"], ["ariaLabel", "aria-label"], ["ariaHidden", "aria-hidden"],
+  ["ariaChecked", "aria-checked"], ["ariaValueNow", "aria-valuenow"],
+  ["ariaRowIndexText", "aria-rowindextext"], ["ariaBrailleLabel", "aria-braillelabel"],
+];
+
+for (const [idl, content] of names) {
+  for (const tag of ["div", "button"]) {
+    test(() => {
+      const el = document.createElement(tag);
+      assert_equals(el[idl], null, "absent is null");
+      el.setAttribute(content, "");
+      assert_equals(el[idl], "", "present and empty");
+      el.setAttribute(content, "  Some Value ");
+      assert_equals(el[idl], "  Some Value ", "verbatim");
+      el[idl] = "x";
+      assert_equals(el.getAttribute(content), "x");
+      el[idl] = null;
+      assert_false(el.hasAttribute(content), "null removes");
+      el[idl] = "y";
+      el[idl] = undefined;
+      assert_false(el.hasAttribute(content), "undefined converts to null for DOMString?");
+    }, `${tag}.${idl} reflects ${content}`);
+  }
+}
+
+test(() => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.ariaLabel = "chart";
+  assert_equals(svg.getAttribute("aria-label"), "chart");
+  assert_equals(svg.role, null);
+}, "ARIAMixin reflects on any element");
+
+test(() => {
+  const div = document.createElement("div");
+  assert_equals(div.elementTiming, "");
+  div.elementTiming = "hero";
+  assert_equals(div.getAttribute("elementtiming"), "hero");
+}, "Element.elementTiming reflects elementtiming");
+</script>
