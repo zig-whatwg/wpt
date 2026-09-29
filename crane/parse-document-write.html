@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>document.write() while the page's own parser runs</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+window.order = [];
+// Step 11: what an inline script writes is parsed - and a script in it run -
+// before write() returns.
+order.push('a1');
+document.write('<script>order.push("w1")<\/script><p id="written">x</p>');
+order.push('a2:' + !!document.getElementById('written'));
+</script>
+<script>
+// A written script that writes: the nested output comes first.
+document.write('<script>document.write("<span id=nested>n<\/span>"); order.push("b:" + !!document.getElementById("nested"))<\/script>');
+</script>
+<script>
+// A written parser-blocking external script waits for the script that wrote
+// it; a second write while it is pending is inserted and parsed after it.
+window.__external_ran = false;
+document.write('<script src="resources/script-insertion-external.js?written"><\/script>');
+order.push('c1:' + window.__external_ran);
+document.write('<script>order.push("c2:" + window.__external_ran)<\/script>');
+order.push('c3');
+</script>
+<script>
+order.push('d');
+</script>
+<div id="after">after</div>
+<script>
+test(() => {
+  assert_array_equals(order.slice(0, 3), ['a1', 'w1', 'a2:true']);
+}, 'A script an inline script writes runs before write() returns, and the written markup is in the document');
+
+test(() => {
+  assert_equals(order[3], 'b:true');
+}, 'A written script that writes: its output is parsed before it continues');
+
+test(() => {
+  assert_array_equals(order.slice(4), ['c1:false', 'c3', 'c2:true', 'd']);
+}, 'A written external script runs after the script that wrote it; what was written after it, after it');
+
+test(() => {
+  const written = document.getElementById('written');
+  const after = document.getElementById('after');
+  assert_true(!!(written.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING),
+      'written content precedes the markup after the script');
+}, 'Written markup is inserted at the insertion point, before the rest of the page');
+</script>
+</body>
+</html>

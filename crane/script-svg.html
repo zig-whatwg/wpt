@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>SVG script elements in an HTML document: parsed as foreign content, run at their end tag</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+window.order = [];
+window.__external_ran = false;
+</script>
+<svg><script id="plain">window.order.push('plain:' + (document.currentScript && document.currentScript.id));</script></svg>
+<svg><script id="outer">window.order.push('outer');
+var a = {
+  <script id="inner">window.order.push('inner');</script>
+a: 1};
+window.order.push('end outer');</script></svg>
+<svg><script id="ext" href="resources/script-insertion-external.js?svg-href"></script></svg>
+<script>
+window.order.push('href ran:' + window.__external_ran);
+</script>
+<svg><script id="xlink" xlink:href="resources/script-svg-external.js"></script></svg>
+<svg><script id="src" src="resources/script-svg-external.js?src"></script></svg>
+<svg><script id="badtype" type="text/plain">window.order.push('text/plain ran');</script></svg>
+<script>
+test(() => {
+  const s = document.getElementById('plain');
+  assert_equals(s.namespaceURI, 'http://www.w3.org/2000/svg');
+  assert_equals(s.parentNode.namespaceURI, 'http://www.w3.org/2000/svg');
+  assert_false(s instanceof HTMLScriptElement);
+}, 'A script inside svg is an element in the SVG namespace');
+
+test(() => {
+  assert_equals(window.order[0], 'plain:plain');
+}, 'An SVG script runs at its end tag, with itself as document.currentScript');
+
+test(() => {
+  // The inner script is a child element of the outer one, not script text:
+  // it runs at its own end tag, first, and the outer script's source is its
+  // Text children only.
+  assert_array_equals(window.order.slice(1, 4), ['inner', 'outer', 'end outer']);
+}, 'A script nested in an SVG script is an element that runs first');
+
+test(() => {
+  const s = document.getElementById('xlink');
+  assert_equals(s.getAttributeNS('http://www.w3.org/1999/xlink', 'href'), 'resources/script-svg-external.js');
+  const attr = Array.from(s.attributes).find(a => a.localName === 'href');
+  assert_equals(attr.prefix, 'xlink');
+  assert_equals(attr.name, 'xlink:href');
+}, 'xlink:href is the href attribute in the XLink namespace');
+
+test(() => {
+  assert_true(window.order.includes('href ran:true'), 'the href script ran before the next script');
+  assert_true(window.order.includes('svg external'), 'the xlink:href script ran');
+  assert_equals(window.order.filter(x => x === 'svg external').length, 1,
+      'an SVG script does not use src');
+}, 'An SVG script is fetched from its href or xlink:href, never src');
+
+test(() => {
+  assert_false(window.order.includes('text/plain ran'));
+}, 'An SVG script whose type is not a JavaScript MIME type does not run');
+</script>
+</body>
+</html>

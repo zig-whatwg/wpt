@@ -42,15 +42,19 @@ test(function () {
   assert_equals(window.__twice, 1, 'already started blocks re-execution');
 }, 'Re-inserting an already-started script does not run it again');
 
-test(function () {
+async_test(function (t) {
   window.__external_ran = false;
   var s = document.createElement('script');
   s.src = 'resources/script-insertion-external.js';
+  s.onload = t.step_func_done(function () {
+    assert_true(window.__external_ran, 'external script ran before its load event');
+  });
+  s.onerror = t.unreached_func('error event');
   document.body.appendChild(s);
-  // Crane's external script fetch is synchronous, so the spec's step 35.1
-  // ready-steps have already run by the time appendChild returns.
-  assert_true(window.__external_ran, 'external script ran');
-}, 'Inserting an external classic script executes it');
+  // Prepare step 35: a script-inserted external script is marked ready by
+  // fetch's onComplete, a task - it never runs inside appendChild.
+  assert_false(window.__external_ran, 'not run inside appendChild');
+}, 'Inserting an external classic script executes it, from a task');
 
 // The load event is the other half. event_utils' dispatchEvent is a stub that
 // invokes no listener at all, so before this was routed through

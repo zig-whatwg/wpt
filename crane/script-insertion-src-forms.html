@@ -6,43 +6,41 @@
 <body>
 <script>
 // Splits "the insertion steps never ran" from "the URL never resolved".
-// Each case inserts the same script through a different spelling of its URL.
-function insertAndCheck(src, flag) {
+// Each case inserts the same script through a different spelling of its URL,
+// and waits for its load event: a script-inserted external script runs from a
+// task (prepare step 35), never inside appendChild.
+function insertAndWait(t, src, flag) {
   window[flag] = false;
   var s = document.createElement('script');
   s.src = src;
+  s.onload = t.step_func_done(function () {
+    assert_true(window[flag] === true, 'ran before its load event');
+  });
+  s.onerror = t.unreached_func('error event: the URL did not resolve or fetch');
   document.body.appendChild(s);
-  return window[flag] === true;
 }
 
-test(function () {
-  assert_true(insertAndCheck(
+async_test(function (t) {
+  insertAndWait(t,
     'http://web-platform.test:8000/crane/resources/script-insertion-external.js',
-    '__external_ran'));
+    '__external_ran');
 }, 'absolute http URL');
 
-test(function () {
-  assert_true(insertAndCheck(
+async_test(function (t) {
+  insertAndWait(t,
     '/crane/resources/script-insertion-external.js?root',
-    '__external_ran'));
+    '__external_ran');
 }, 'root-relative URL');
 
-test(function () {
-  assert_true(insertAndCheck(
+async_test(function (t) {
+  insertAndWait(t,
     'resources/script-insertion-external.js?rel',
-    '__external_ran'));
+    '__external_ran');
 }, 'document-relative URL');
 
-// KNOWN FAILING - documents the next defect precisely, do not delete.
-//
-// `Document.InternalState.base_uri` is initialised to "" and assigned by
-// nothing in the tree, and `internal.url` never leaves "about:blank" - the URL
-// the document was fetched from lives only on the V8 context entry, put there
-// by `context_manager.setDocumentUrl`. script_execution.documentBaseUrl() now
-// falls back to that entry, which is why the three cases above pass, but
-// `document.baseURI` itself still reads the empty field and comes back
-// undefined. The fix is to populate the Document's own URL at navigation time;
-// every other consumer of a document base URL is reading the same empty string.
+// document.baseURI is the URL the scripts above resolve against. It once read
+// an internal field nothing assigned and came back undefined, while script
+// URL resolution fell back to the V8 context's document URL.
 test(function () {
   assert_equals(document.baseURI,
     'http://web-platform.test:8000/crane/script-insertion-src-forms.html');

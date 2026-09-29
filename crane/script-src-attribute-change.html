@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Setting src on a connected, unstarted script prepares it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML's attribute change steps for script elements: "If localName is src
+// and element is connected, then run the script HTML element post-connection
+// steps, given element." A script inserted with no src and no text returns
+// from "prepare the script element" at step 6 without starting, so setting
+// its src afterwards - by the IDL attribute or by setAttribute - is what
+// runs it (execution-timing/023.html, change-src-attr-prepare-a-script.html).
+
+async_test(t => {
+  window.__external_ran = false;
+  const s = document.createElement('script');
+  document.body.append(s);
+  s.src = 'resources/script-insertion-external.js?idl';
+  s.onload = t.step_func_done(() => assert_true(window.__external_ran));
+  s.onerror = t.unreached_func('error');
+}, 'src set through the IDL attribute on an empty connected script');
+
+async_test(t => {
+  window.__external_ran = false;
+  const s = document.createElement('script');
+  document.body.append(s);
+  s.setAttribute('src', 'resources/script-insertion-external.js?setattribute');
+  s.onload = t.step_func_done(() => assert_true(window.__external_ran));
+  s.onerror = t.unreached_func('error');
+}, 'src set through setAttribute on an empty connected script');
+
+async_test(t => {
+  const s = document.createElement('script');
+  s.src = 'resources/script-insertion-external.js?disconnected';
+  let loads = 0;
+  s.onload = () => loads++;
+  s.setAttribute('src', 'resources/script-insertion-external.js?disconnected-2');
+  t.step_timeout(t.step_func_done(() => {
+    assert_equals(loads, 0, 'a disconnected script is not prepared');
+  }), 100);
+}, 'src set on a disconnected script does nothing');
+
+test(() => {
+  const s = document.createElement('script');
+  assert_true(s.async, 'force async is initially true');
+  s.setAttribute('async', '');
+  s.removeAttribute('async');
+  assert_false(s.async, 'adding an async attribute cleared force async');
+}, 'Adding an async attribute unsets force async');
+</script>
+</body>
+</html>
