@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A navigated document's encoding: UTF-8 by default, the Content-Type charset when it names one</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-document-encoding">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#determining-the-character-encoding">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// mimesniff/mime-types/charset-parameter.window.js in miniature: a frame
+// loads a page whose Content-Type is given in the query (the handler writes
+// the header's bytes as they are), and its document's characterSet is read on
+// load. The page itself says <meta charset=utf-8>; the transport layer's
+// charset wins over it.
+function latin1ToURL(str) {
+  let out = "";
+  for (let i = 0; i < str.length; i++) out += "%" + str.charCodeAt(i).toString(16).padStart(2, "0");
+  return out;
+}
+function frameCharset(t, type) {
+  return new Promise((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    frame.onload = () => {
+      if (frame.contentWindow.location.href === "about:blank") return;
+      resolve(frame.contentDocument.characterSet);
+    };
+    t.step_timeout(() => reject(new Error("the frame never loaded")), 5000);
+    frame.src = "/mimesniff/mime-types/resources/mime-charset.py?type=" + latin1ToURL(type);
+    document.body.appendChild(frame);
+  });
+}
+
+test(() => {
+  assert_equals(document.characterSet, "UTF-8");
+  assert_equals(document.implementation.createHTMLDocument("").characterSet, "UTF-8");
+}, "a document's encoding is UTF-8 unless something sets it");
+
+promise_test(async t => {
+  assert_equals(await frameCharset(t, "text/html"), "UTF-8");
+}, "a frame served with no charset is UTF-8 (its meta says so too)");
+
+promise_test(async t => {
+  assert_equals(await frameCharset(t, "text/html;charset=gbk"), "GBK");
+}, "the Content-Type's charset parameter decides the frame's encoding");
+
+promise_test(async t => {
+  assert_equals(await frameCharset(t, "text/html;charset=gbk("), "UTF-8");
+}, "a charset parameter that names no encoding is ignored");
+
+promise_test(async t => {
+  assert_equals(await frameCharset(t, 'text/html;charset="gbk"'), "GBK");
+}, "a quoted charset parameter is unquoted");
+
+promise_test(async t => {
+  assert_equals(await frameCharset(t, "text/html;test=ÿ;charset=gbk"), "GBK");
+}, "a header byte above 0x7F neither stops the load nor the charset");
+</script>

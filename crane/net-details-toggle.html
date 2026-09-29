@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>details: toggle is a queued task, coalesced, and keeps its element alive</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interactive-elements.html#queue-a-details-toggle-event-task">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Setting `open` queues a task that fires `toggle` (a ToggleEvent). Toggling
+// again before it runs replaces it: one event, from the first old state to
+// the last new one. The queued task keeps its element alive - WPT's
+// promise-rejection helpers queue a task exactly this way, with an element
+// nothing else refers to.
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 3000))]);
+}
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+promise_test(async t => {
+  const d = document.createElement("details");
+  const events = [];
+  d.ontoggle = e => events.push([e.constructor.name, e.oldState, e.newState, e.isTrusted]);
+  d.setAttribute("open", "");
+  assert_array_equals(events, [], "not fired synchronously");
+  await within(t, new Promise(resolve => d.addEventListener("toggle", resolve, { once: true })), "toggle");
+  assert_equals(events.length, 1);
+  assert_array_equals(events[0], ["ToggleEvent", "closed", "open", true]);
+}, "setting open fires a trusted ToggleEvent from a task");
+
+promise_test(async t => {
+  const d = document.createElement("details");
+  const events = [];
+  d.ontoggle = e => events.push(e.oldState + "->" + e.newState);
+  d.open = true;
+  d.open = false;
+  d.open = true;
+  await nextTask(t);
+  await nextTask(t);
+  assert_array_equals(events, ["closed->open"], "one event, first old state to last new");
+}, "toggling several times before the task runs fires one event");
+
+promise_test(async t => {
+  let fired = false;
+  (() => {
+    const d = document.createElement("details");
+    d.ontoggle = () => { fired = true; };
+    d.setAttribute("open", "");
+  })();
+  await TestUtils.gc();
+  await nextTask(t);
+  await nextTask(t);
+  assert_true(fired, "the queued task kept its element");
+}, "a toggle task keeps an element nothing else refers to");
+
+promise_test(async t => {
+  const a = document.createElement("details");
+  const b = document.createElement("details");
+  a.name = b.name = "group";
+  document.body.append(a, b);
+  t.add_cleanup(() => { a.remove(); b.remove(); });
+  a.open = true;
+  b.open = true;
+  assert_false(a.open, "opening b closed a");
+  assert_true(b.open);
+  const late = document.createElement("details");
+  late.name = "group";
+  late.open = true;
+  document.body.append(late);
+  t.add_cleanup(() => late.remove());
+  assert_false(late.open, "an open element joining a group with an open member closes");
+  a.open = true;
+  assert_false(b.open, "and the other way round");
+}, "a details name group keeps at most one element open");
+</script>
