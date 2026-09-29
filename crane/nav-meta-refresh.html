@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a meta refresh navigates its document's navigable once it has come due</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-refresh">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#shared-declarative-refresh-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const support = "/html/semantics/document-metadata/the-meta-element/pragma-directives/attr-meta-http-equiv-refresh/support/";
+
+// The frame's load events, in order, as the text of the document each one
+// saw - until `count` of them have fired.
+function loads(frame, count) {
+  return new Promise(resolve => {
+    const seen = [];
+    frame.onload = () => {
+      seen.push(frame.contentDocument.body.textContent.trim());
+      if (seen.length === count) resolve(seen);
+    };
+  });
+}
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const seen = loads(frame, 2);
+  frame.src = support + "refresh.sub.html?input=" + encodeURIComponent("0; url=foo");
+  document.body.appendChild(frame);
+  assert_array_equals(await seen, ["refresh.sub.html", "foo"]);
+}, "a refresh of no time comes due after the iframe's load event for the refreshing document");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const seen = loads(frame, 2);
+  frame.srcdoc = `<meta http-equiv=refresh content="0; url=${support}foo">` +
+                 `<meta http-equiv=refresh content="0; url=${support}ufoo">first`;
+  document.body.appendChild(frame);
+  assert_array_equals(await seen, ["first", "foo"]);
+}, "only a document's first refresh counts: it will declaratively refresh");
+
+promise_test(async t => {
+  let ran = false;
+  window.refreshRanJavascript = () => { ran = true; };
+  t.add_cleanup(() => { delete window.refreshRanJavascript; });
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const seen = loads(frame, 2);
+  frame.srcdoc = `<meta http-equiv=refresh content="0; url=javascript:parent.refreshRanJavascript()">` +
+                 `<meta http-equiv=refresh content="0; url=${support}foo">first`;
+  document.body.appendChild(frame);
+  assert_array_equals(await seen, ["first", "foo"]);
+  assert_false(ran, "a javascript: URL is never refreshed to");
+}, "a javascript: URL is refused before the document will declaratively refresh");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const first = loads(frame, 1);
+  frame.src = support + "refresh.sub.html?input=" + encodeURIComponent("0; url=foo");
+  document.body.appendChild(frame);
+  await first;
+  const event = await new Promise(resolve => {
+    frame.contentWindow.navigation.onnavigate = e => {
+      e.preventDefault();
+      resolve(e);
+    };
+  });
+  assert_equals(event.navigationType, "replace");
+  assert_equals(event.destination.url, new URL(support + "foo", location.href).href);
+  assert_true(event.cancelable, "cancelable");
+  assert_false(event.userInitiated, "userInitiated");
+}, "a refresh to another URL is a replace navigation");
+</script>
+</body>
