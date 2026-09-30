@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: :nth-child(An+B of S), :state() and :target in selector matching</title>
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#the-nth-child-pseudo">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#custom-state-pseudo-class">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics-other.html#selector-target">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="list"><p class="x" id="a"></p><p id="b"></p><p class="x" id="c"></p><p class="x" id="d"></p></div>
+<script>
+"use strict";
+
+test(() => {
+  assert_equals(document.querySelector(":nth-child(2 of .x)").id, "c", "the second .x, not the second child");
+  assert_array_equals(Array.from(document.querySelectorAll("#list > :nth-child(odd of .x)"), e => e.id), ["a", "d"]);
+  assert_equals(document.querySelector(":nth-last-child(1 of .x)").id, "d");
+  assert_false(document.getElementById("b").matches(":nth-child(2 of .x)"), "an element that does not match S never matches");
+  assert_true(document.getElementById("c").matches(":nth-child(3 of .x, #b)"), "S is a list: #b counts too");
+  assert_equals(document.querySelector(":nth-child(2 of #b, .x)").id, "b");
+}, ":nth-child(An+B of S) counts only the siblings that match S");
+
+test(() => {
+  assert_equals(document.querySelector(":state(--green)"), null, "no element has custom states yet");
+  assert_false(document.body.matches(":state(--green)"));
+  assert_throws_dom("SyntaxError", () => document.querySelector(":state()"));
+  assert_throws_dom("SyntaxError", () => document.querySelector(":state(1)"));
+}, ":state(<ident>) parses, and matches no element without a custom state set");
+
+test(() => {
+  assert_equals(document.querySelector(":target"), null, "this page's URL has no fragment");
+  assert_false(document.body.matches(":target"));
+  assert_equals(document.querySelectorAll("p:not(:target)").length, 4);
+}, ":target parses, and matches nothing on a page loaded without a fragment");
+</script>

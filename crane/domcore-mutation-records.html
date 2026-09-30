@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: replace data, normalize and Range contents - live ranges and mutation records</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-cd-replace">
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-node-normalize">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-range-extract">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-remove">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function describe(records) {
+  return records.map(r => {
+    const parts = [r.type];
+    if (r.type === "characterData") parts.push("old=" + r.oldValue);
+    if (r.removedNodes.length) parts.push("-" + Array.from(r.removedNodes, n => n.data ?? n.nodeName).join("|"));
+    if (r.addedNodes.length) parts.push("+" + Array.from(r.addedNodes, n => n.data ?? n.nodeName).join("|"));
+    return parts.join(" ");
+  });
+}
+
+test(() => {
+  const text = document.createTextNode("abcdef");
+  document.body.appendChild(text);
+  const inside = document.createRange();
+  inside.setStart(text, 2);
+  inside.setEnd(text, 4);
+  const after = document.createRange();
+  after.setStart(text, 5);
+  after.setEnd(text, 6);
+  text.replaceData(1, 3, "XY");  // "aXYef"
+  assert_equals(text.data, "aXYef");
+  assert_array_equals([inside.startOffset, inside.endOffset], [1, 1], "points inside the replaced units move to offset");
+  assert_array_equals([after.startOffset, after.endOffset], [4, 5], "points after them shift by the difference");
+  text.data = "";
+  assert_array_equals([after.startContainer === text, after.startOffset, after.endOffset], [true, 0, 0], "setting data moves everything to 0");
+  text.remove();
+}, "replace data updates the live ranges in the node");
+
+test(() => {
+  const p = document.createElement("p");
+  p.append("CHANN", "NNN", "NGED");
+  document.body.appendChild(p);
+  const [first, middle, last] = p.childNodes;
+  const range = document.createRange();
+  range.setStart(first, 4);
+  range.setEnd(last, 1);
+  const observer = new MutationObserver(() => {});
+  observer.observe(p, { childList: true, characterData: true, characterDataOldValue: true, subtree: true });
+  range.deleteContents();
+  assert_equals(p.textContent, "CHANGED");
+  assert_array_equals(describe(observer.takeRecords()),
+    ["characterData old=CHANN", "childList -NNN", "characterData old=NGED"]);
+  // originalStartNode is not an inclusive ancestor of originalEndNode: the
+  // range collapses just after first, in p.
+  assert_array_equals([range.startContainer === p, range.startOffset, range.collapsed], [true, 1, true]);
+  observer.disconnect();
+  p.remove();
+}, "deleteContents across Text nodes replaces data at both ends and removes what is contained");
+
+test(() => {
+  const div = document.createElement("div");
+  div.innerHTML = "<b>one</b><i>two</i><u>three</u>";
+  document.body.appendChild(div);
+  const range = document.createRange();
+  range.setStart(div.firstChild.firstChild, 1);
+  range.setEnd(div.lastChild.firstChild, 2);
+  const fragment = range.extractContents();
+  const holder = document.createElement("div");
+  holder.appendChild(fragment);
+  assert_equals(holder.innerHTML, "<b>ne</b><i>two</i><u>th</u>");
+  assert_equals(div.innerHTML, "<b>o</b><u>ree</u>");
+  assert_array_equals([range.startContainer === div, range.startOffset, range.collapsed], [true, 1, true]);
+  div.remove();
+}, "extractContents splits the partially contained elements and moves the contained ones");
+
+test(() => {
+  const div = document.createElement("div");
+  div.innerHTML = "<b>one</b><i>two</i><u>three</u>";
+  const range = document.createRange();
+  range.setStart(div.firstChild.firstChild, 1);
+  range.setEnd(div.lastChild.firstChild, 2);
+  const holder = document.createElement("div");
+  holder.appendChild(range.cloneContents());
+  assert_equals(holder.innerHTML, "<b>ne</b><i>two</i><u>th</u>");
+  assert_equals(div.innerHTML, "<b>one</b><i>two</i><u>three</u>");
+}, "cloneContents copies the same shape and leaves the tree alone");
+
+test(() => {
+  const p = document.createElement("p");
+  p.append("a", "", "b", "c");
+  document.body.appendChild(p);
+  const range = document.createRange();
+  range.setStart(p.childNodes[2], 1);
+  range.setEnd(p, 4);
+  const observer = new MutationObserver(() => {});
+  observer.observe(p, { childList: true, characterData: true, subtree: true });
+  p.normalize();
+  assert_equals(p.childNodes.length, 1);
+  assert_equals(p.firstChild.data, "abc");
+  assert_array_equals(describe(observer.takeRecords()),
+    ["characterData old=null", "childList -", "childList -b", "childList -c"]);
+  assert_array_equals([range.startContainer === p.firstChild, range.startOffset], [true, 2], "a start in a merged node moves into the first");
+  assert_array_equals([range.endContainer === p, range.endOffset], [true, 1], "an end after the run follows the removals");
+  observer.disconnect();
+  p.remove();
+}, "normalize removes empty Text nodes and merges the rest, with their records and live ranges");
+
+async_test(t => {
+  const parent = document.createElement("div");
+  const child = document.createElement("span");
+  child.textContent = "x";
+  parent.appendChild(child);
+  document.body.appendChild(parent);
+  const seen = [];
+  const observer = new MutationObserver(t.step_func(records => {
+    seen.push(...describe(records));
+    if (seen.length === 2) {
+      assert_array_equals(seen, ["childList -SPAN", "characterData old=x"]);
+      // The transient observer is gone after the notification.
+      child.firstChild.data = "z";
+      assert_equals(observer.takeRecords().length, 0, "no record once the transient observer is removed");
+      observer.disconnect();
+      parent.remove();
+      t.done();
+    }
+  }));
+  observer.observe(parent, { childList: true, characterData: true, characterDataOldValue: true, subtree: true });
+  parent.removeChild(child);
+  child.firstChild.data = "y";
+}, "a node removed from an observed subtree is observed until the next notification");
+
+test(() => {
+  const div = document.createElement("div");
+  div.append("ab", "cd");
+  document.body.appendChild(div);
+  const wrapper = document.createElement("em");
+  wrapper.textContent = "old";
+  const range = document.createRange();
+  range.setStart(div, 0);
+  range.setEnd(div, 2);
+  const observer = new MutationObserver(() => {});
+  observer.observe(div, { childList: true });
+  range.surroundContents(wrapper);
+  assert_array_equals(describe(observer.takeRecords()), ["childList -ab", "childList -cd", "childList +EM"]);
+  assert_equals(div.innerHTML, "<em>abcd</em>");
+  observer.disconnect();
+  div.remove();
+}, "surroundContents moves the contents one child at a time, then inserts the new parent");
+
+test(() => {
+  const range = document.createRange();
+  range.selectNodeContents(document);
+  assert_throws_dom("HierarchyRequestError", () => range.cloneContents(), "clone");
+  assert_throws_dom("HierarchyRequestError", () => range.extractContents(), "extract");
+  assert_equals(document.doctype.parentNode, document, "nothing moved");
+  assert_throws_dom("HierarchyRequestError", () => range.cloneContents(), "and again");
+}, "a contained doctype makes clone and extract throw, and leaves the tree alone");
+
+test(() => {
+  const p = document.createElement("p");
+  p.textContent = "abc";
+  const text = p.firstChild;
+  const range = document.createRange();
+  range.setStart(text, 0);
+  const span = document.createElement("span");
+  range.insertNode(span);
+  assert_array_equals(Array.from(p.childNodes, n => n.nodeName + ":" + (n.data ?? "")), ["#text:", "SPAN:", "#text:abc"],
+    "insert splits the start Text node at offset 0 too, leaving it empty");
+  assert_array_equals([range.startContainer === text, range.startOffset, range.endContainer === p, range.endOffset], [true, 0, true, 2]);
+  const comment = document.createComment("c");
+  p.appendChild(comment);
+  range.setStart(comment, 0);
+  assert_throws_dom("HierarchyRequestError", () => range.insertNode(document.createElement("i")));
+  const doctypeRange = document.createRange();
+  doctypeRange.setStart(document.body, 0);
+  assert_throws_dom("HierarchyRequestError", () => doctypeRange.insertNode(document.doctype), "pre-insert validity is checked before anything splits");
+}, "insertNode splits a Text start at offset 0, and checks pre-insert validity first");
+
+test(() => {
+  const a = document.createElement("div");
+  const inner = document.createElement("span");
+  a.append(inner, document.createElement("i"));
+  const range = document.createRange();
+  range.setStart(a, 1);
+  range.setEnd(a, 2);
+  assert_equals(range.comparePoint(inner, 0), -1, "(inner, 0) is before (a, 1)");
+  assert_equals(range.comparePoint(a, 0), -1);
+  assert_true(range.isPointInRange(a.lastChild, 0), "(i, 0) is inside (a, 1)-(a, 2)");
+  range.setStart(inner, 0);
+  assert_array_equals([range.startContainer === inner, range.endContainer === a, range.endOffset], [true, true, 2], "a start in a descendant does not collapse an end after it");
+}, "boundary points in a node and in its ancestor compare by the child's index");
+</script>
+</body>
