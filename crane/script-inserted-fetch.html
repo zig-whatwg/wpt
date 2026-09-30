@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A script-inserted external classic script is fetched in parallel</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each script appends its name to `order` when it runs.
+window.order = [];
+const slow = name => "resources/script-inserted-log.js?name=" + name + "&pipe=trickle(d1)";
+const fast = name => "resources/script-inserted-log.js?name=" + name;
+const start = performance.now();
+
+// Moved to another document before its fetch ends: never executed.
+const moved = document.createElement("script");
+moved.src = slow("moved");
+document.head.appendChild(moved);
+const other = document.implementation.createHTMLDocument("");
+other.body.appendChild(moved);
+
+// In order as soon as possible: the slow first one still runs first.
+for (const src of [slow("first"), fast("second")]) {
+  const s = document.createElement("script");
+  s.async = false;
+  s.src = src;
+  document.head.appendChild(s);
+}
+
+// Async: runs when it arrives, before the load event.
+const asyncScript = document.createElement("script");
+asyncScript.src = slow("async");
+document.head.appendChild(asyncScript);
+
+window.syncAfterInsert = window.order.slice();
+window.insertTime = performance.now() - start;
+
+async_test(t => {
+  window.addEventListener("load", t.step_func_done(() => {
+    assert_array_equals(window.syncAfterInsert, [], "no inserted script ran inside appendChild");
+    assert_less_than(window.insertTime, 500, "appendChild did not wait for the fetches");
+    assert_greater_than_equal(performance.now() - start, 900, "load waited for the slow scripts");
+    assert_true(window.order.includes("async"), "the async script ran before load: " + window.order.join());
+    assert_false(window.order.includes("moved"), "the moved script did not run");
+    const inOrder = window.order.filter(n => n === "first" || n === "second");
+    assert_array_equals(inOrder, ["first", "second"], "in-order scripts kept their order");
+  }));
+}, "script-inserted scripts: fetched in parallel, the moved one skipped, in-order kept, load waits");
+</script>

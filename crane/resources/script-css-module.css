@@ -1,0 +1,7 @@
+@import "never-fetched.css";
+div  >  p.x {
+  content: 'a b';
+  color: red;
+}
+#bad } { color: green }
+#second { }

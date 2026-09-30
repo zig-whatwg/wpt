@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>importScripts(): fetch a classic worker-imported script, run it with rethrow errors</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#import-scripts-into-worker-global-scope">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-worker-imported-script">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+fetch_tests_from_worker(new Worker("resources/script-import-scripts-worker.js"));
+</script>

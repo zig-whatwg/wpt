@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Module workers: a Worker and a SharedWorker of type "module" run a module worker script graph</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-module-worker-script-tree">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({ allow_uncaught_exception: true });
+
+const resource = name => new URL("resources/" + name, location.href).href;
+
+function nextEvent(target, type) {
+  return new Promise(resolve => target.addEventListener(type, resolve, { once: true }));
+}
+
+function nextMessage(target) {
+  return new Promise((resolve, reject) => {
+    target.addEventListener("message", e => resolve(e.data), { once: true });
+    target.addEventListener("error", e => reject(new Error("error event: " + e.message)), { once: true });
+  });
+}
+
+promise_test(async () => {
+  const worker = new Worker("resources/script-module-worker.js", { type: "module" });
+  const data = await nextMessage(worker);
+  assert_equals(data.value, "dep:" + resource("script-module-worker-dep.js"), "the static import ran first");
+  assert_equals(data.url, resource("script-module-worker.js"), "import.meta.url is the worker script's URL");
+  assert_equals(data.importScriptsError, "TypeError", "importScripts() throws in a module worker");
+  assert_equals(data.thisValue, "undefined", "a module's this is undefined");
+  worker.terminate();
+}, "a module Worker runs its module graph");
+
+promise_test(async () => {
+  const worker = new Worker("resources/script-module-worker-syntax.js", { type: "module" });
+  const event = await nextEvent(worker, "error");
+  assert_equals(event.constructor, Event, "a plain Event, not an ErrorEvent");
+  assert_false(event.cancelable);
+}, "a module Worker whose script does not parse fires error at the worker");
+
+promise_test(async () => {
+  const worker = new Worker("resources/script-module-worker-missing-import.js", { type: "module" });
+  const event = await nextEvent(worker, "error");
+  assert_equals(event.constructor, Event);
+}, "a module Worker whose static import fails to fetch fires error at the worker");
+
+promise_test(async () => {
+  const worker = new Worker("resources/iframe-src-plain.txt");
+  const event = await nextEvent(worker, "error");
+  assert_equals(event.constructor, Event);
+}, "a classic Worker whose script is no JavaScript MIME type fires error at the worker");
+
+promise_test(async () => {
+  const worker = new Worker("resources/script-module-worker-throw.js", { type: "module" });
+  const [inside, outside] = await Promise.all([nextEvent(worker, "message"), nextEvent(worker, "error")]);
+  assert_equals(inside.data, "RangeError: thrown by a module worker", "the worker's global heard it first");
+  assert_true(outside instanceof ErrorEvent, "then the Worker, as an ErrorEvent");
+}, "what a module worker's evaluation throws is reported at its global, then at the Worker");
+
+promise_test(async () => {
+  const worker = new SharedWorker("resources/script-module-shared-worker.js", { type: "module" });
+  const data = await new Promise((resolve, reject) => {
+    worker.port.onmessage = e => resolve(e.data);
+    worker.onerror = () => reject(new Error("error at the SharedWorker"));
+  });
+  assert_equals(data.value, "dep:" + resource("script-module-worker-dep.js"));
+  assert_equals(data.url, resource("script-module-shared-worker.js"));
+}, "a module SharedWorker runs its module graph and hears connect");
+
+promise_test(async () => {
+  const worker = new SharedWorker("resources/script-module-worker-syntax.js", { type: "module", name: "syntax" });
+  const event = await nextEvent(worker, "error");
+  assert_equals(event.constructor, Event);
+}, "a module SharedWorker whose script does not parse fires error at the worker");
+</script>

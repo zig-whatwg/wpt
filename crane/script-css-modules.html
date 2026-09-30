@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>CSS module scripts: a constructed CSSStyleSheet as the default export, and its CSSOM</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#creating-a-css-module-script">
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#dom-cssstylesheet-replacesync">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({ allow_uncaught_exception: true });
+window.errors = [];
+window.addEventListener("error", e => errors.push(e.message));
+</script>
+<script type="module">
+import sheet from "./resources/script-css-module.css" with { type: "css" };
+import again from "./resources/script-css-module.css" with { type: "css" };
+
+test(() => {
+  assert_true(sheet instanceof CSSStyleSheet);
+  assert_equals(again, sheet, "the module map shares one module script");
+}, "the default export of a CSS module is a CSSStyleSheet");
+
+test(() => {
+  assert_equals(sheet.cssRules, sheet.cssRules, "[SameObject]");
+  assert_equals(sheet.rules, sheet.cssRules, "rules is cssRules");
+  assert_true(sheet.cssRules instanceof CSSRuleList);
+  // @import is dropped; an invalid selector drops its rule; the rest stay.
+  assert_equals(sheet.cssRules.length, 2);
+  assert_equals(sheet.cssRules[0], sheet.cssRules.item(0), "one object per rule");
+  assert_equals(sheet.cssRules[2], undefined);
+  assert_equals(sheet.cssRules.item(2), null);
+}, "cssRules holds the style rules, @import and invalid rules dropped");
+
+test(() => {
+  const rule = sheet.cssRules[0];
+  assert_true(rule instanceof CSSStyleRule);
+  assert_equals(rule.type, CSSRule.STYLE_RULE);
+  assert_equals(rule.selectorText, "div > p.x");
+  assert_equals(rule.style.content, "\"a b\"");
+  assert_equals(rule.style.color, "red");
+  assert_equals(rule.parentStyleSheet, sheet);
+  assert_equals(rule.parentRule, null);
+  assert_equals(rule.cssText, "div > p.x { content: \"a b\"; color: red; }");
+  assert_equals(sheet.cssRules[1].selectorText, "#second");
+}, "a style rule's selectorText, style, parentStyleSheet and cssText");
+
+test(() => {
+  const constructed = new CSSStyleSheet();
+  assert_equals(constructed.cssRules.length, 0);
+  const list = constructed.cssRules;
+  constructed.replaceSync("a { color: blue } b { }");
+  assert_equals(list.length, 2, "the list is live");
+  const first = list[0];
+  constructed.replaceSync("i { }");
+  assert_equals(list.length, 1);
+  assert_equals(first.parentStyleSheet, null, "a removed rule has no parent sheet");
+  assert_equals(list[0].selectorText, "i");
+}, "replaceSync replaces the rules of a constructed sheet");
+
+test(() => {
+  assert_array_equals(errors, []);
+}, "nothing was reported");
+</script>
+<script>
+promise_test(async t => {
+  await promise_rejects_js(t, TypeError,
+      import("./resources/script-css-module.css?plain&pipe=header(Content-Type,text/plain)", { with: { type: "css" } }));
+}, "a CSS module served as anything but text/css fails to load");
+
+promise_test(async () => {
+  const module = await import("./resources/script-css-module.css?dynamic", { with: { type: "css" } });
+  assert_true(module.default instanceof CSSStyleSheet);
+  assert_equals(module.default.cssRules.length, 2);
+}, "import() of a CSS module");
+
+promise_test(async () => {
+  const worker = new Worker("resources/script-css-module-worker.js", { type: "module" });
+  const data = await new Promise(resolve => worker.onmessage = e => resolve(e.data));
+  assert_equals(data, "TypeError");
+  worker.terminate();
+}, "a worker cannot import a CSS module: CSSStyleSheet is not exposed there");
+</script>

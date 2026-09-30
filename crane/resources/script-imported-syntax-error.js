@@ -1,0 +1,2 @@
+self.syntaxErrorRan = true;
+}}} (
