@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>test_driver.click: the trusted events a real click produces, in order</title>
+<link rel="help" href="https://w3c.github.io/webdriver/#element-click">
+<link rel="help" href="https://w3c.github.io/uievents/#events-mouseevent-event-order">
+<link rel="help" href="https://w3c.github.io/pointerevents/#the-pointerdown-event">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focus-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<button id="button">button</button>
+<input id="checkbox" type="checkbox">
+<div id="plain">plain text</div>
+<button id="disabled" disabled>disabled</button>
+<div id="outer"><span id="inner">inner</span></div>
+<script>
+const kTypes = ["pointerover", "pointerenter", "mouseover", "mouseenter",
+                "pointermove", "mousemove", "pointerdown", "mousedown",
+                "focus", "focusin", "pointerup", "mouseup", "click",
+                "pointerout", "pointerleave", "mouseout", "mouseleave",
+                "blur", "focusout"];
+
+function record(target) {
+  const events = [];
+  for (const type of kTypes) {
+    target.addEventListener(type, e => events.push(e));
+  }
+  return events;
+}
+
+// testdriver's commands reject with the WebDriver error, as a vendor's do.
+async function assert_command_rejects(promise, code, description) {
+  let reason = null;
+  await promise.then(() => assert_unreached(`${description}: resolved`), e => reason = String(e));
+  assert_true(reason.startsWith(code), `${description}: rejected with "${reason}", not ${code}`);
+}
+
+promise_test(async t => {
+  const button = document.getElementById("button");
+  const events = record(button);
+  await test_driver.click(button);
+  assert_array_equals(events.map(e => e.type),
+    ["pointerover", "pointerenter", "mouseover", "mouseenter",
+     "pointermove", "mousemove", "pointerdown", "mousedown",
+     "focus", "focusin", "pointerup", "mouseup", "click"],
+    "the events of a first click, in order");
+  for (const e of events) {
+    assert_true(e.isTrusted, `${e.type} is trusted`);
+  }
+  const enter = events.find(e => e.type == "mouseenter");
+  assert_false(enter.bubbles || enter.cancelable || enter.composed, "mouseenter neither bubbles, cancels nor is composed");
+  assert_equals(document.activeElement, button, "the click focused the button");
+}, "A click on a button fires the pointer, mouse and focus events in UI Events order");
+
+promise_test(async t => {
+  const button = document.getElementById("button");
+  const events = record(button);
+  await test_driver.click(button);
+  const byType = type => events.find(e => e.type == type);
+  const down = byType("pointerdown");
+  assert_true(down instanceof PointerEvent, "pointerdown is a PointerEvent");
+  assert_equals(down.pointerType, "mouse");
+  assert_true(down.isPrimary, "the mouse is the primary pointer");
+  assert_equals(down.button, 0);
+  assert_equals(down.buttons, 1);
+  const mousedown = byType("mousedown");
+  assert_true(mousedown instanceof MouseEvent, "mousedown is a MouseEvent");
+  assert_equals(mousedown.button, 0);
+  assert_equals(mousedown.buttons, 1);
+  assert_equals(mousedown.detail, 1, "mousedown's click count");
+  assert_true(mousedown.bubbles && mousedown.cancelable && mousedown.composed);
+  const click = byType("click");
+  assert_true(click instanceof PointerEvent, "click is a PointerEvent");
+  assert_equals(click.button, 0);
+  assert_equals(click.buttons, 0);
+  assert_equals(click.detail, 1, "click's click count");
+  assert_equals(click.view, window);
+  assert_true(click.bubbles && click.cancelable && click.composed);
+}, "The events carry the button state and the click count");
+
+promise_test(async t => {
+  const box = document.getElementById("checkbox");
+  box.checked = false;
+  const seen = [];
+  box.addEventListener("input", e => seen.push(e));
+  box.addEventListener("change", e => seen.push(e));
+  await test_driver.click(box);
+  assert_true(box.checked, "the click ran the checkbox's activation behaviour");
+  assert_array_equals(seen.map(e => e.type), ["input", "change"]);
+  assert_true(seen.every(e => e.isTrusted), "input and change are trusted");
+}, "A click runs activation behaviour through the normal dispatch");
+
+promise_test(async t => {
+  const box = document.getElementById("checkbox");
+  box.checked = false;
+  box.addEventListener("click", e => e.preventDefault(), {once: true});
+  await test_driver.click(box);
+  assert_false(box.checked, "a cancelled click is undone");
+}, "A cancelled click runs the legacy-canceled-activation behaviour");
+
+promise_test(async t => {
+  const disabled = document.getElementById("disabled");
+  let clicked = false;
+  disabled.addEventListener("click", () => clicked = true);
+  await test_driver.click(disabled);
+  assert_false(clicked, "no click at a disabled form control");
+  disabled.disabled = false;
+  await test_driver.click(disabled);
+  assert_true(clicked, "an enabled one is clicked");
+  disabled.disabled = true;
+}, "A real click is not dispatched at a disabled form control");
+
+promise_test(async t => {
+  // dom/events/Event-dispatch-on-disabled-elements.html's last subtest, which
+  // its CSS transition subtests keep from running.
+  for (const localName of ["button", "input", "select", "textarea"]) {
+    const elem = document.createElement(localName);
+    elem.disabled = true;
+    document.body.appendChild(elem);
+    let clicked = false;
+    elem.onclick = () => clicked = true;
+    await test_driver.click(elem);
+    assert_false(clicked, `a disabled ${localName} gets no click`);
+    elem.disabled = false;
+    await test_driver.click(elem);
+    assert_true(clicked, `an enabled ${localName} is clicked`);
+    elem.remove();
+  }
+}, "Real clicks on disabled button, input, select and textarea elements dispatch no click");
+
+promise_test(async t => {
+  const button = document.getElementById("button");
+  await test_driver.click(button);
+  assert_equals(document.activeElement, button);
+  const plain = document.getElementById("plain");
+  const events = record(button);
+  await test_driver.click(plain);
+  assert_equals(document.activeElement, document.body,
+                "clicking something that is not focusable unfocuses");
+  assert_array_equals(events.map(e => e.type),
+    ["pointerout", "pointerleave", "mouseout", "mouseleave", "blur", "focusout"],
+    "the button saw the pointer leave, then lost focus");
+}, "A click on a non-focusable element moves the pointer off the old target and unfocuses");
+
+promise_test(async t => {
+  const inner = document.getElementById("inner");
+  const outer = document.getElementById("outer");
+  let clickTarget = null;
+  outer.addEventListener("click", e => clickTarget = e.target, {once: true});
+  inner.addEventListener("mousedown", () => inner.remove(), {once: true});
+  await test_driver.click(inner);
+  assert_equals(clickTarget, null, "no common ancestor in the document: no click");
+  outer.appendChild(inner);
+}, "A target removed during mousedown gets no click, and the command still resolves");
+
+promise_test(async t => {
+  const button = document.getElementById("button");
+  let heard = false;
+  button.addEventListener("click", () => heard = true, {once: true});
+  const promise = test_driver.click(button);
+  assert_false(heard, "the click is dispatched from a task, not synchronously");
+  await promise;
+  assert_true(heard, "the promise settles after the click was dispatched");
+}, "The command is asynchronous and settles after its events");
+
+promise_test(async t => {
+  const detached = document.createElement("button");
+  await assert_command_rejects(test_driver.click(detached), "stale element reference", "a detached element");
+}, "A click on an element that is not connected is rejected");
+
+promise_test(async t => {
+  await test_driver.bless("the bless helper");
+}, "test_driver.bless resolves");
+</script>

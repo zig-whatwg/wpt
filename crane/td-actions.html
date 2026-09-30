@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>test_driver.Actions: WebDriver actions dispatched with an element origin</title>
+<link rel="help" href="https://w3c.github.io/webdriver/#actions">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<div id="target">target</div>
+<input id="text">
+<map name="shapes"><area id="left" shape="rect" coords="0,0,25,50"><area id="right" shape="rect" coords="25,0,50,50"></map>
+<img id="mapped" usemap="#shapes" style="width: 50px; height: 50px">
+<script>
+// testdriver's commands reject with the WebDriver error, as a vendor's do.
+async function assert_command_rejects(promise, code, description) {
+  let reason = null;
+  await promise.then(() => assert_unreached(`${description}: resolved`), e => reason = String(e));
+  assert_true(reason.startsWith(code), `${description}: rejected with "${reason}", not ${code}`);
+}
+
+promise_test(async t => {
+  const target = document.getElementById("target");
+  const seen = [];
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+    target.addEventListener(type, e => seen.push(e));
+  }
+  await new test_driver.Actions()
+      .pointerMove(0, 0, {origin: target})
+      .pointerDown()
+      .pointerUp()
+      .send();
+  assert_array_equals(seen.map(e => e.type),
+                      ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]);
+  assert_true(seen.every(e => e.isTrusted && e.target === target));
+}, "pointerMove to an element, pointerDown and pointerUp click it");
+
+promise_test(async t => {
+  const target = document.getElementById("target");
+  let aux = null, click = null;
+  target.addEventListener("auxclick", e => aux = e, {once: true});
+  target.addEventListener("click", e => click = e, {once: true});
+  const actions = new test_driver.Actions();
+  await actions.pointerMove(0, 0, {origin: target})
+      .pointerDown({button: actions.ButtonType.MIDDLE})
+      .pointerUp({button: actions.ButtonType.MIDDLE})
+      .send();
+  assert_equals(click, null, "no click for the middle button");
+  assert_not_equals(aux, null, "auxclick for the middle button");
+  assert_equals(aux.button, 1);
+}, "A non-primary button fires auxclick, not click");
+
+promise_test(async t => {
+  const input = document.getElementById("text");
+  input.value = "";
+  input.focus();
+  await new test_driver.Actions().keyDown("h").keyUp("h").keyDown("i").keyUp("i").send();
+  assert_equals(input.value, "hi");
+}, "keyDown and keyUp type into the focused control");
+
+promise_test(async t => {
+  const target = document.getElementById("target");
+  let down = null;
+  target.addEventListener("mousedown", e => down = e, {once: true});
+  // Actions in one tick run in input source order: the key source's keyUp
+  // would precede the pointer source's pointerUp, so the key goes up a tick
+  // later.
+  await new test_driver.Actions()
+      .keyDown("\uE008")
+      .pointerMove(0, 0, {origin: target})
+      .pointerDown()
+      .pointerUp()
+      .addTick()
+      .keyUp("\uE008")
+      .send();
+  assert_true(down.shiftKey, "the held Shift key is reported on mousedown");
+}, "A held modifier key is reported on pointer events");
+
+promise_test(async t => {
+  const img = document.getElementById("mapped");
+  const clicked = [];
+  for (const id of ["left", "right"]) {
+    document.getElementById(id).addEventListener("click", e => clicked.push(e.target.id));
+  }
+  img.addEventListener("click", e => clicked.push("img:" + e.target.id));
+  // The image's centre is (25, 25): an offset of 1 is in the right half.
+  await new test_driver.Actions().pointerMove(1, 1, {origin: img}).pointerDown().pointerUp().send();
+  await new test_driver.Actions().pointerMove(-10, 0, {origin: img}).pointerDown().pointerUp().send();
+  assert_array_equals(clicked, ["right", "left"],
+                      "the area under the point is the target (its path is the map's, not the image's)");
+}, "A pointer over an image map is over the area whose shape contains the point");
+
+promise_test(async t => {
+  const target = document.getElementById("target");
+  let clicked = false;
+  target.addEventListener("click", () => clicked = true, {once: true});
+  await new test_driver.click(target);
+  assert_true(clicked);
+}, "test_driver.click can be called with new, as upstream's can");
+
+promise_test(async t => {
+  const start = performance.now();
+  await new test_driver.Actions().addTick(200).send();
+  assert_greater_than_equal(performance.now() - start, 150, "the tick waited for its duration");
+}, "A pause waits for its duration");
+
+promise_test(async t => {
+  await assert_command_rejects(
+      new test_driver.Actions().pointerMove(10, 10).pointerDown().pointerUp().send(),
+      "unsupported operation", "a viewport-coordinate move needs layout");
+}, "A coordinate-only pointer move is rejected as unsupported");
+
+promise_test(async t => {
+  const target = document.getElementById("target");
+  const removed = document.createElement("div");
+  await assert_command_rejects(
+      new test_driver.Actions().pointerMove(0, 0, {origin: removed}).send(),
+      "stale element reference", "a detached origin");
+}, "An origin element that is not connected is rejected");
+</script>

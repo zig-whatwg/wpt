@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>test_driver.send_keys: focus, keyboard events and the text editing of a focused text control</title>
+<link rel="help" href="https://w3c.github.io/webdriver/#element-send-keys">
+<link rel="help" href="https://w3c.github.io/uievents/#events-keyboard-event-order">
+<link rel="help" href="https://w3c.github.io/input-events/#interface-InputEvent-Attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<input id="text">
+<textarea id="area"></textarea>
+<button id="button">button</button>
+<div id="plain">plain</div>
+<input id="t1" tabindex="1"><input id="t3" tabindex="3"><input id="t2" tabindex="2">
+<form><input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2" disabled><input type="radio" name="g" id="r3"><input type="radio" name="other" id="r4"></form>
+<script>
+const kTypes = ["focus", "focusin", "keydown", "keypress", "beforeinput", "input",
+                "keyup", "change", "blur", "focusout"];
+
+function record(target) {
+  const events = [];
+  for (const type of kTypes) {
+    target.addEventListener(type, e => events.push(e));
+  }
+  return events;
+}
+
+function fresh(id, value = "") {
+  const old = document.getElementById(id);
+  const element = old.cloneNode();
+  old.replaceWith(element);
+  element.value = value;
+  return element;
+}
+
+// testdriver's commands reject with the WebDriver error, as a vendor's do.
+async function assert_command_rejects(promise, code, description) {
+  let reason = null;
+  await promise.then(() => assert_unreached(`${description}: resolved`), e => reason = String(e));
+  assert_true(reason.startsWith(code), `${description}: rejected with "${reason}", not ${code}`);
+}
+
+promise_test(async t => {
+  const input = fresh("text");
+  const events = record(input);
+  await test_driver.send_keys(input, "ab");
+  assert_equals(input.value, "ab");
+  assert_equals(input.selectionStart, 2);
+  assert_equals(input.selectionEnd, 2);
+  assert_array_equals(events.map(e => e.type + (e.key ? ":" + e.key : "")),
+    ["focus", "focusin",
+     "keydown:a", "keypress:a", "beforeinput", "input", "keyup:a",
+     "keydown:b", "keypress:b", "beforeinput", "input", "keyup:b"]);
+  assert_true(events.every(e => e.isTrusted), "every event is trusted");
+  assert_equals(document.activeElement, input);
+}, "Typing into a text input focuses it and fires keydown, keypress, beforeinput, input, keyup per key");
+
+promise_test(async t => {
+  const input = fresh("text");
+  const events = record(input);
+  await test_driver.send_keys(input, "a");
+  const keydown = events.find(e => e.type == "keydown");
+  assert_true(keydown instanceof KeyboardEvent);
+  assert_equals(keydown.code, "KeyA");
+  assert_equals(keydown.keyCode, 65);
+  assert_equals(keydown.charCode, 0);
+  assert_equals(keydown.location, 0);
+  assert_false(keydown.repeat);
+  assert_true(keydown.bubbles && keydown.cancelable && keydown.composed);
+  const keypress = events.find(e => e.type == "keypress");
+  assert_equals(keypress.charCode, 97);
+  const beforeinput = events.find(e => e.type == "beforeinput");
+  assert_true(beforeinput instanceof InputEvent);
+  assert_equals(beforeinput.inputType, "insertText");
+  assert_equals(beforeinput.data, "a");
+  assert_true(beforeinput.cancelable, "beforeinput is cancelable");
+  const input_event = events.find(e => e.type == "input");
+  assert_equals(input_event.inputType, "insertText");
+  assert_equals(input_event.data, "a");
+  assert_false(input_event.cancelable, "input is not cancelable");
+  assert_true(input_event.bubbles && input_event.composed);
+}, "The keyboard and input events carry key, code, keyCode, charCode, inputType and data");
+
+promise_test(async t => {
+  const input = fresh("text");
+  const events = record(input);
+  await test_driver.send_keys(input, "A");
+  assert_equals(input.value, "A");
+  assert_array_equals(events.filter(e => e.type.startsWith("key")).map(e => `${e.type}:${e.key}:${e.shiftKey}`),
+    ["keydown:Shift:true", "keydown:A:true", "keypress:A:true", "keyup:A:true", "keyup:Shift:false"]);
+}, "A shifted character is typed with the Shift key held");
+
+promise_test(async t => {
+  const input = fresh("text");
+  input.addEventListener("keydown", e => e.preventDefault());
+  const events = record(input);
+  await test_driver.send_keys(input, "x");
+  assert_equals(input.value, "", "a cancelled keydown inserts nothing");
+  assert_array_equals(events.map(e => e.type), ["focus", "focusin", "keydown", "keyup"]);
+}, "A cancelled keydown suppresses keypress and the edit");
+
+promise_test(async t => {
+  const input = fresh("text");
+  input.addEventListener("beforeinput", e => e.preventDefault());
+  const events = record(input);
+  await test_driver.send_keys(input, "x");
+  assert_equals(input.value, "", "a cancelled beforeinput inserts nothing");
+  assert_false(events.some(e => e.type == "input"), "and fires no input");
+}, "A cancelled beforeinput suppresses the edit");
+
+promise_test(async t => {
+  const input = fresh("text", "abc");
+  await test_driver.send_keys(input, "d");
+  assert_equals(input.value, "abcd", "the caret was put at the end of an unfocused control");
+  input.setSelectionRange(0, 0);
+  await test_driver.send_keys(input, "z");
+  assert_equals(input.value, "zabcd", "a focused control keeps its caret");
+  input.setSelectionRange(1, 3);
+  await test_driver.send_keys(input, "\uE003");
+  assert_equals(input.value, "zcd", "Backspace deletes the selection");
+  const events = record(input);
+  await test_driver.send_keys(input, "\uE003");
+  assert_equals(input.value, "cd", "Backspace deletes the character before the caret");
+  assert_equals(events.find(e => e.type == "input").inputType, "deleteContentBackward");
+  assert_equals(events.find(e => e.type == "keydown").key, "Backspace");
+  input.setSelectionRange(0, 0);
+  await test_driver.send_keys(input, "\uE017");
+  assert_equals(input.value, "d", "Delete deletes the character after the caret");
+}, "The caret, selection deletion, Backspace and Delete");
+
+promise_test(async t => {
+  const area = fresh("area");
+  await test_driver.send_keys(area, "a\uE007b");
+  assert_equals(area.value, "a\nb", "Enter inserts a line break in a textarea");
+}, "Typing into a textarea");
+
+promise_test(async t => {
+  const input = fresh("text");
+  const events = record(input);
+  await test_driver.send_keys(input, "q");
+  input.blur();
+  assert_array_equals(events.map(e => e.type).slice(-3), ["change", "blur", "focusout"],
+                      "the user's edit is committed when the control loses focus");
+  assert_true(events.find(e => e.type == "change").isTrusted);
+  assert_true(events.find(e => e.type == "change").bubbles);
+}, "A user edit fires change when the control loses focus, before blur");
+
+promise_test(async t => {
+  const button = document.getElementById("button");
+  button.focus();
+  let clicks = 0;
+  button.addEventListener("click", () => clicks++);
+  await test_driver.send_keys(button, " ");
+  assert_equals(clicks, 1, "Space activates a button");
+  const cancel = e => e.preventDefault();
+  document.addEventListener("keydown", cancel);
+  await test_driver.send_keys(button, " ");
+  document.removeEventListener("keydown", cancel);
+  assert_equals(clicks, 1, "a cancelled Space keydown does not activate");
+  await test_driver.send_keys(button, "\uE007");
+  assert_equals(clicks, 2, "Enter activates a button");
+}, "Space and Enter activate a focused button");
+
+promise_test(async t => {
+  const t1 = document.getElementById("t1");
+  t1.focus();
+  await test_driver.send_keys(t1, "\uE004");
+  assert_equals(document.activeElement.id, "t2");
+  await test_driver.send_keys(document.activeElement, "\uE004");
+  assert_equals(document.activeElement.id, "t3");
+}, "Tab moves the focus in tabindex order");
+
+promise_test(async t => {
+  const [r1, r3] = [document.getElementById("r1"), document.getElementById("r3")];
+  r1.checked = true;
+  r1.focus();
+  const changes = [];
+  r3.addEventListener("change", e => changes.push(e.isTrusted));
+  await test_driver.send_keys(r1, "\uE015");
+  assert_equals(document.activeElement, r3, "ArrowDown skips the disabled radio button");
+  assert_true(r3.checked, "and checks the one it moves to");
+  assert_false(r1.checked);
+  assert_array_equals(changes, [true], "which fires a trusted change");
+  await test_driver.send_keys(r3, "\uE015");
+  assert_equals(document.activeElement, r1, "the group wraps around");
+  assert_true(r1.checked);
+  await test_driver.send_keys(r1, "\uE012");
+  assert_equals(document.activeElement, r3, "ArrowLeft goes back, wrapping");
+}, "The arrow keys move through a radio button group");
+
+promise_test(async t => {
+  await assert_command_rejects(test_driver.send_keys(document.getElementById("plain"), "x"), "element not interactable", "a div");
+}, "Sending keys to an element that is not keyboard-interactable is rejected");
+</script>

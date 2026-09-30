@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<button id="button">in the frame</button>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+// A frame or popup that loads testdriver itself drives its own document.
+window.onload = async () => {
+  const target = parent !== window ? parent : opener;
+  const button = document.getElementById("button");
+  let clicked = false;
+  button.addEventListener("click", e => clicked = e.isTrusted);
+  try {
+    await test_driver.click(button);
+    target.postMessage({clicked, active: navigator.userActivation.isActive}, "*");
+  } catch (e) {
+    target.postMessage({error: String(e)}, "*");
+  }
+};
+</script>

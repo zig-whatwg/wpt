@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>test_driver.minimize_window hides the top-level traversable; set_window_rect restores it</title>
+<link rel="help" href="https://w3c.github.io/webdriver/#minimize-window">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#update-the-visibility-state">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<iframe id="frame" srcdoc="child"></iframe>
+<script>
+promise_test(async t => {
+  // The window's load waits for the frame's.
+  if (document.readyState != "complete") {
+    await new Promise(resolve => window.addEventListener("load", resolve));
+  }
+  assert_equals(document.visibilityState, "visible");
+  const frameDocument = document.getElementById("frame").contentDocument;
+  const events = [];
+  document.addEventListener("visibilitychange", e => events.push(e));
+  frameDocument.addEventListener("visibilitychange", e => events.push(e));
+
+  const rect = await test_driver.minimize_window();
+  assert_equals(typeof rect, "object", "the previous window rect");
+  assert_equals(document.visibilityState, "hidden");
+  assert_true(document.hidden);
+  assert_equals(frameDocument.visibilityState, "hidden", "descendant documents are hidden too");
+  assert_equals(events.length, 2, "visibilitychange at each document");
+  assert_true(events.every(e => e.isTrusted && e.bubbles));
+
+  await test_driver.set_window_rect({x: 0, y: 0, width: 800, height: 600});
+  assert_equals(document.visibilityState, "visible", "set_window_rect restores the window");
+  assert_false(document.hidden);
+  assert_equals(frameDocument.visibilityState, "visible");
+}, "minimize_window and set_window_rect");
+</script>

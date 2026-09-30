@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>:focus, :focus-within and :focus-visible follow the focus, through every matcher</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics-other.html#selector-focus">
+<link rel="help" href="https://drafts.csswg.org/selectors/#the-focus-within-pseudo">
+<link rel="help" href="https://drafts.csswg.org/selectors/#the-focus-visible-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<div id="outer"><p id="inner"><input id="text"><button id="button">button</button></p></div>
+<div id="host"></div>
+<script>
+// Element.matches, querySelector and closest are separate matchers in Crane:
+// each must agree.
+function matchers(element, selector) {
+  return [
+    element.matches(selector),
+    document.querySelector(selector) === element || [...document.querySelectorAll(selector)].includes(element),
+    element.closest(selector) === element,
+  ];
+}
+
+test(() => {
+  const text = document.getElementById("text");
+  text.focus();
+  assert_array_equals(matchers(text, ":focus"), [true, true, true], ":focus");
+  assert_array_equals(matchers(document.getElementById("outer"), ":focus-within"), [true, true, true], ":focus-within on an ancestor");
+  assert_false(document.getElementById("outer").matches(":focus"), "an ancestor is not :focus");
+  assert_equals(document.querySelector(":focus"), text, "querySelector(':focus') is the focused element");
+  text.blur();
+  assert_array_equals(matchers(text, ":focus"), [false, false, false], "not after blur()");
+  assert_equals(document.querySelector(":focus-within"), null, "nothing is :focus-within after blur()");
+}, ":focus and :focus-within follow focus() and blur()");
+
+test(() => {
+  const host = document.getElementById("host");
+  const root = host.attachShadow({mode: "open"});
+  const shadowed = document.createElement("input");
+  root.appendChild(shadowed);
+  shadowed.focus();
+  assert_true(host.matches(":focus"), "a shadow host whose shadow tree has the focus matches :focus");
+  assert_true(shadowed.matches(":focus"), "and so does the focused element");
+  shadowed.blur();
+  assert_false(host.matches(":focus"));
+}, ":focus on a shadow host");
+
+promise_test(async t => {
+  const text = document.getElementById("text");
+  const button = document.getElementById("button");
+  text.focus();
+  assert_true(text.matches(":focus-visible"), "a text control always shows its focus");
+  button.focus();
+  assert_true(button.matches(":focus-visible"), "script focus with no pointer interaction shows it");
+  await test_driver.click(button);
+  assert_true(button.matches(":focus"), "the click focused the button");
+  assert_false(button.matches(":focus-visible"), "a pointer's focus on a button is not shown");
+  await test_driver.send_keys(text, "x");
+  assert_true(text.matches(":focus-visible"));
+  text.blur();
+}, ":focus-visible follows the input modality (Blink's heuristic)");
+</script>

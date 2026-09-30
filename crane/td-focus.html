@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>focus() and blur() run HTML's focusing and unfocusing steps</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focusing-steps">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focus-update-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<input id="a"><input id="b">
+<div id="plain">plain</div>
+<div id="negative" tabindex="-1">negative tabindex</div>
+<input id="disabled" disabled>
+<script>
+const kTypes = ["focus", "focusin", "blur", "focusout"];
+
+function record(...targets) {
+  const events = [];
+  for (const target of targets) {
+    for (const type of kTypes) {
+      target.addEventListener(type, e => events.push(`${e.type}@${e.target.id}<${e.relatedTarget ? e.relatedTarget.id : "null"}`));
+    }
+  }
+  return events;
+}
+
+test(() => {
+  document.activeElement.blur();
+  assert_equals(document.activeElement, document.body, "nothing focused: the body");
+  const a = document.getElementById("a");
+  const events = record(a);
+  a.focus();
+  assert_equals(document.activeElement, a);
+  assert_array_equals(events, ["focus@a<null", "focusin@a<null"]);
+  a.blur();
+}, "focus() fires focus, then focusin");
+
+test(() => {
+  const a = document.getElementById("a"), b = document.getElementById("b");
+  a.focus();
+  const events = record(a, b);
+  b.focus();
+  assert_array_equals(events, ["blur@a<b", "focusout@a<b", "focus@b<a", "focusin@b<a"]);
+  const trusted = [];
+  b.addEventListener("blur", e => trusted.push(e.isTrusted, e instanceof FocusEvent, e.bubbles, e.composed), {once: true});
+  b.blur();
+  assert_array_equals(trusted, [true, true, false, true], "blur is a trusted, composed, non-bubbling FocusEvent");
+}, "Moving the focus fires blur and focusout at the old element, then focus and focusin at the new");
+
+test(() => {
+  const a = document.getElementById("a");
+  a.focus();
+  const events = record(a);
+  a.blur();
+  assert_equals(document.activeElement, document.body);
+  assert_array_equals(events, ["blur@a<null", "focusout@a<null"]);
+}, "blur() unfocuses: the body becomes the active element");
+
+test(() => {
+  const a = document.getElementById("a");
+  a.focus();
+  const events = record(a);
+  a.focus();
+  assert_array_equals(events, [], "focusing the focused element does nothing");
+  document.getElementById("plain").focus();
+  assert_equals(document.activeElement, a, "a div without tabindex is not focusable");
+  document.getElementById("disabled").focus();
+  assert_equals(document.activeElement, a, "a disabled control is not focusable");
+  document.getElementById("negative").focus();
+  assert_equals(document.activeElement.id, "negative", "tabindex=-1 is focusable");
+  document.activeElement.blur();
+}, "Only focusable areas take the focus");
+
+test(() => {
+  const a = document.getElementById("a");
+  a.focus();
+  a.remove();
+  assert_equals(document.activeElement, document.body, "removing the focused element unfocuses");
+  document.body.prepend(a);
+}, "The focused element leaves with its tree");
+</script>
