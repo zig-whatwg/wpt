@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>ProcessingInstruction and Attr nodes are torn down whole</title>
+<!--
+  ProcessingInstruction's and Attr's deinit freed their own state and did not
+  go on to CharacterData's and Node's, so every PI and Attr node torn down -
+  with its tree, or when its wrapper was collected - left its NodeBase, its
+  registry entries and its data behind (leak-traced to Node.init <-
+  CharacterData.init <- ProcessingInstruction.init; Range-surroundContents,
+  which clones PIs and Attrs, left 1,639 blocks at exit). Read the leak count
+  under CRANE_LEAK_TRACES=1.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+test(() => {
+  for (let i = 0; i < 16; i++) {
+    document.body.appendChild(document.createProcessingInstruction("crane", "in the tree " + i));
+  }
+  for (let i = 0; i < 16; i++) {
+    const attr = document.createAttribute("data-crane-" + i);
+    attr.value = "value " + i;
+    document.body.setAttributeNode(attr);
+  }
+  assert_equals(document.body.attributes.length >= 16, true);
+}, "PIs in the tree and Attr nodes on an element, torn down with the page");
+
+promise_test(async () => {
+  let dropped = [];
+  for (let i = 0; i < 64; i++) {
+    dropped.push(document.createProcessingInstruction("crane", "detached " + i));
+    dropped.push(document.createAttribute("detached-" + i));
+  }
+  dropped = null;
+  if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+}, "detached PIs and Attrs whose wrappers are collected");
+</script>

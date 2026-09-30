@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>An SVG script element's own teardown runs when its tree is torn down</title>
+<!--
+  An SVG script element shares HTML's local name "script" but not its
+  interface. The tree teardown dispatched every element named "script" to
+  HTMLScriptElement's deinit, so SVGScriptElement's never ran and its script
+  element state leaked with every page that had one. The cases below make SVG
+  scripts through the parser and through createElementNS, in the tree and
+  detached; the leak count is read under CRANE_LEAK_TRACES=1 once the page is
+  torn down (7 of 7 leaked allocations over crane/script-*.html were
+  SVGScriptElement.init before the fix).
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<div id=log></div>
+<svg id=parsed-svg><script>window.parsedSvgScriptRan = true;</script></svg>
+<script>
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+test(() => {
+  const script = document.querySelector("#parsed-svg script");
+  assert_true(script instanceof SVGScriptElement, "the parser makes an SVGScriptElement");
+  assert_true(window.parsedSvgScriptRan, "and runs it");
+}, "an SVG script made by the parser");
+
+test(() => {
+  for (let i = 0; i < 8; i++) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    const script = document.createElementNS(SVG_NS, "script");
+    assert_true(script instanceof SVGScriptElement);
+    svg.appendChild(script);
+    document.body.appendChild(svg);
+  }
+  assert_equals(document.querySelectorAll("svg script").length, 9);
+}, "SVG scripts made by createElementNS and left in the tree");
+
+test(() => {
+  const holder = document.createElementNS(SVG_NS, "svg");
+  for (let i = 0; i < 4; i++) holder.appendChild(document.createElementNS(SVG_NS, "script"));
+  document.body.appendChild(holder);
+  holder.remove();
+  assert_equals(holder.childNodes.length, 4);
+}, "SVG scripts in a subtree removed from the document");
+</script>

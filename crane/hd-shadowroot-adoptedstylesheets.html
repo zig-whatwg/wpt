@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A shadow root keeps its own hold on adoptedStyleSheets</title>
+<!--
+  set_adoptedStyleSheets stored the value as the setter's argument - the
+  binding's handle, or the binding's string bytes - with no hold of its own,
+  and its teardown freed that string. The value it is given must be its own:
+  held, released when replaced, and when the shadow root goes.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+test(() => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = host.attachShadow({ mode: "open" });
+  const first = [];
+  root.adoptedStyleSheets = first;
+  for (let i = 0; i < 1000; i++) ({ churn: i });
+  const read = root.adoptedStyleSheets;
+  assert_true(read !== undefined && read !== null, "the value set reads back");
+  root.adoptedStyleSheets = [];
+  host.remove();
+}, "adoptedStyleSheets set, read back and replaced");
+
+test(() => {
+  const host = document.createElement("div");
+  const root = host.attachShadow({ mode: "open" });
+  try {
+    root.adoptedStyleSheets = "crane-sheets";
+  } catch (e) {
+    // What the spec asks (an ObservableArray converts a string to a
+    // sequence: TypeError); nothing was kept, so nothing to check.
+    assert_equals(e.name, "TypeError");
+    return;
+  }
+  for (let i = 0; i < 1000; i++) ("churn-" + i).repeat(2);
+  // An implementation that keeps the value must keep its own copy.
+  assert_equals(root.adoptedStyleSheets, "crane-sheets");
+}, "a value that is not a sequence is thrown, or kept as the root's own");
+
+test(() => {
+  for (let i = 0; i < 16; i++) {
+    const host = document.createElement("div");
+    const root = host.attachShadow({ mode: "open" });
+    root.adoptedStyleSheets = [];
+  }
+}, "shadow roots dropped with adoptedStyleSheets set");
+</script>

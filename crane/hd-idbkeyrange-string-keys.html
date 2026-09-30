@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>IDBKeyRange keeps its own copy of a string key</title>
+<!--
+  IDBKeyRange.only / bound / lowerBound / upperBound stored a string key's
+  bytes as the binding handed them over - the argument's, freed when the call
+  returned - so .lower and .upper read freed memory (0xAA in a Debug build).
+  Allocations between making the range and reading it make the stale read
+  show whatever the freed bytes became.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+function churn() {
+  const kept = [];
+  for (let i = 0; i < 2000; i++) kept.push("churn-" + i + "-" + "x".repeat(i % 40));
+  return kept.length;
+}
+
+test(() => {
+  const range = IDBKeyRange.only("crane-only-key");
+  churn();
+  assert_equals(range.lower, "crane-only-key");
+  assert_equals(range.upper, "crane-only-key");
+}, "IDBKeyRange.only(string)");
+
+test(() => {
+  const range = IDBKeyRange.bound("crane-a", "crane-z");
+  churn();
+  assert_equals(range.lower, "crane-a");
+  assert_equals(range.upper, "crane-z");
+  assert_true(range.includes("crane-m"));
+}, "IDBKeyRange.bound(string, string)");
+
+test(() => {
+  const lower = IDBKeyRange.lowerBound("crane-lower", true);
+  const upper = IDBKeyRange.upperBound("crane-upper");
+  churn();
+  assert_equals(lower.lower, "crane-lower");
+  assert_equals(upper.upper, "crane-upper");
+}, "IDBKeyRange.lowerBound / upperBound(string)");
+
+test(() => {
+  const range = IDBKeyRange.bound(1, 2);
+  churn();
+  assert_equals(range.lower, 1);
+  assert_equals(range.upper, 2);
+}, "a number key needs no copy, and still reads back");
+</script>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>XSLTProcessor keeps its own parameters</title>
+<!--
+  setParameter stored the local name - also the map's key - and the
+  namespace as the binding's argument bytes, freed when the call returned,
+  and the value as the argument's own handle, with no hold of its own. The
+  processor must copy the names and hold the value (released when it is
+  replaced, removed, cleared, or the processor goes).
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const processor = new XSLTProcessor();
+  const value = { crane: true };
+  processor.setParameter(null, "crane-param", value);
+  processor.setParameter(null, "second-param", {});
+  assert_equals(processor.getParameter(null, "crane-param"), value);
+  processor.removeParameter(null, "crane-param");
+  assert_equals(processor.getParameter(null, "crane-param"), undefined);
+}, "an object parameter is kept under its name until removed");
+
+test(() => {
+  const processor = new XSLTProcessor();
+  const first = {}, second = {};
+  processor.setParameter(null, "replaced", first);
+  processor.setParameter(null, "replaced", second);
+  assert_equals(processor.getParameter(null, "replaced"), second);
+  processor.clearParameters();
+  assert_equals(processor.getParameter(null, "replaced"), undefined);
+}, "a parameter set again is replaced; clearParameters removes all");
+
+test(() => {
+  const processor = new XSLTProcessor();
+  processor.setParameter(null, "number", 5);
+  processor.setParameter(null, "string", "crane");
+  assert_equals(processor.getParameter(null, "number"), 5);
+  assert_equals(processor.getParameter(null, "string"), "crane");
+}, "a primitive parameter is kept too");
+</script>

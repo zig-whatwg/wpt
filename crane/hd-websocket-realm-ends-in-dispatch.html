@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A WebSocket whose realm ends inside its own event dispatch</title>
+<!--
+  A WebSocket's events are fired by its pump, a timer that runs one turn of
+  the connection as a task of the socket's realm. An event listener runs
+  script, and script can end that realm there and then: removing the iframe
+  whose realm made the socket ends the realm synchronously, and the realm's
+  end frees the socket - its state, its connection and its instance - while
+  the pump is still inside the dispatch.
+
+  Before the fix the pump went on reading the freed socket after the
+  dispatch returned, and when the listener had called close() first (which
+  schedules the next turn) the pump's token was freed while that turn was
+  still scheduled: the turn then ran on freed memory. Each case below ends
+  the realm from a listener; the test passes if the page survives to report.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/websockets/constants.sub.js></script>
+<body>
+<script>
+function frameWithSocket() {
+  const iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  const ws = new iframe.contentWindow.WebSocket(SCHEME_DOMAIN_PORT + "/echo");
+  return { iframe, ws };
+}
+
+// Long enough for any turn scheduled before the realm ended to fire.
+const SETTLE_MS = 300;
+
+async_test(t => {
+  const { iframe, ws } = frameWithSocket();
+  ws.onopen = t.step_func(() => {
+    ws.close();
+    iframe.remove();
+    t.step_timeout(() => t.done(), SETTLE_MS);
+  });
+  ws.onerror = t.unreached_func("no error event before the realm ends");
+}, "close() and then the end of the socket's realm, from its open event");
+
+async_test(t => {
+  const { iframe, ws } = frameWithSocket();
+  ws.onopen = t.step_func(() => ws.send("hd"));
+  ws.onmessage = t.step_func(() => {
+    ws.close();
+    iframe.remove();
+    t.step_timeout(() => t.done(), SETTLE_MS);
+  });
+  ws.onerror = t.unreached_func("no error event before the realm ends");
+}, "close() and then the end of the socket's realm, from a message event");
+
+async_test(t => {
+  const { iframe, ws } = frameWithSocket();
+  ws.onopen = t.step_func(() => {
+    iframe.remove();
+    t.step_timeout(() => t.done(), SETTLE_MS);
+  });
+  ws.onerror = t.unreached_func("no error event before the realm ends");
+}, "the end of the socket's realm, from its open event");
+</script>

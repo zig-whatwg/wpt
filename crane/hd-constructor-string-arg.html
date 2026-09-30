@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A constructor's lone string argument is converted and freed like any other</title>
+<!--
+  BroadcastChannel(DOMString name) is a single-parameter constructor whose
+  parameter type is a union in Zig (DOMString is a union of its storage). The
+  binding took any union for an overloaded constructor's ConstructorArgs and
+  built the name through the overload resolver, which marked the copy as
+  interned: nothing freed it. Run under CRANE_LEAK_TRACES=1 and count the
+  leaked allocations: 64 names leaked before the fix.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  for (let i = 0; i < 64; i++) {
+    const name = "hd-channel-" + i;
+    const channel = new BroadcastChannel(name);
+    assert_equals(channel.name, name, "the channel keeps its own copy of the name");
+    channel.close();
+  }
+}, "new BroadcastChannel(name) 64 times");
+
+test(() => {
+  const channel = new BroadcastChannel({ toString() { return "from-toString"; } });
+  assert_equals(channel.name, "from-toString");
+  channel.close();
+}, "the name is converted with ToString, as a DOMString argument is");
+</script>
