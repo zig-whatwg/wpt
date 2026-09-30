@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a cross-document navigation of a frame fires its navigate event only for a same origin-domain source</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+"use strict";
+// HTML navigate step 21: the navigate event fires when "navigable's active
+// document's origin is same origin-domain with sourceDocument's origin".
+// The frame is same site, another origin; it sets document.domain. The page
+// navigates it to a new document of the same origin.
+async function navigateFrame(t) {
+  const url = new URL("/crane/resources/nav-xo-frame-events.html?domain", location.href);
+  url.hostname = get_host_info().REMOTE_HOST;
+  const iframe = document.createElement("iframe");
+  iframe.src = url;
+  const loaded = new Promise(r => window.addEventListener("message", function once(e) {
+    if (e.data === "load") { window.removeEventListener("message", once); r(); }
+  }));
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  await loaded;
+  // Everything the frame reports until its next document has loaded.
+  const seen = new Promise(resolve => {
+    const log = [];
+    window.addEventListener("message", function listener(e) {
+      log.push(e.data);
+      if (e.data === "load") { window.removeEventListener("message", listener); resolve(log); }
+    });
+  });
+  const next = new URL("/crane/resources/nav-xo-frame-events.html?next", url);
+  iframe.contentWindow.location.href = next.href;
+  return seen;
+}
+
+promise_test(async t => {
+  assert_array_equals(await navigateFrame(t), ["load"]);
+}, "only the frame set document.domain: not same origin-domain, no navigate event");
+
+promise_test(async t => {
+  document.domain = location.hostname;
+  assert_array_equals(await navigateFrame(t), ["navigate push  false", "load"]);
+}, "both set document.domain to the same domain: same origin-domain, a navigate event");
+</script>

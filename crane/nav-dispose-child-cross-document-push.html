@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a frame's cross-document push disposes the parent's forward entries it truncated</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#clear-the-forward-session-history">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The same-document form is navigation-api/per-entry-events/
+// dispose-for-navigation-in-child.html; this is the frame navigating to a
+// new document instead.
+promise_test(async t => {
+  await new Promise(r => window.onload = () => t.step_timeout(r, 0));
+  const start = navigation.entries().length;
+  const iframe = document.createElement("iframe");
+  iframe.src = "/common/blank.html";
+  document.body.appendChild(iframe);
+  await new Promise(r => iframe.onload = () => t.step_timeout(r, 0));
+
+  await navigation.navigate("#forward").finished;
+  const forward = navigation.currentEntry;
+  await navigation.back().finished;
+  assert_equals(navigation.entries().length, start + 1, "the forward entry is still there");
+
+  const disposed = new Promise(r => forward.ondispose = r);
+  navigation.currentEntry.ondispose = t.unreached_func("the current entry must not be disposed");
+  iframe.contentWindow.location.href = "/common/blank.html?pushed";
+  await new Promise(r => iframe.onload = () => t.step_timeout(r, 0));
+  await disposed;
+  assert_equals(navigation.entries().length, start, "the forward entry is gone");
+  assert_equals(forward.index, -1, "the disposed entry is out of the list");
+  assert_equals(iframe.contentWindow.navigation.entries().length, 2, "the frame pushed an entry");
+}, "a frame's cross-document push disposes the parent's truncated forward entry");
+</script>

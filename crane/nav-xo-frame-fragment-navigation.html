@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: the top-level page fragment-navigates a cross-origin frame, which sees navigate and hashchange</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-fragid">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+"use strict";
+// Every way the page can navigate a cross-origin frame to a fragment: the
+// frame's navigation API must see its own document as fully active, whoever
+// runs the navigation.
+async function frameOf(t, name) {
+  const url = new URL("/crane/resources/nav-xo-frame-events.html", location.href);
+  url.hostname = get_host_info().REMOTE_HOST;
+  const iframe = document.createElement("iframe");
+  iframe.src = url;
+  iframe.name = name;
+  const loaded = new Promise(r => window.addEventListener("message", function onload(e) {
+    if (e.data === "load") { window.removeEventListener("message", onload); r(); }
+  }));
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  await loaded;
+  return { iframe, url };
+}
+
+function messages(count) {
+  const seen = [];
+  return new Promise(resolve => {
+    window.addEventListener("message", function listener(e) {
+      seen.push(e.data);
+      if (seen.length === count) { window.removeEventListener("message", listener); resolve(seen); }
+    });
+  });
+}
+
+const expected = ["navigate push #foo true", "hashchange #foo"];
+
+promise_test(async t => {
+  const { iframe, url } = await frameOf(t, "by-open");
+  const seen = messages(2);
+  assert_equals(window.open(url + "#foo", "by-open"), iframe.contentWindow, "window.open() finds the frame");
+  assert_array_equals(await seen, expected);
+}, "window.open() to a fragment of a cross-origin frame");
+
+promise_test(async t => {
+  const { iframe, url } = await frameOf(t, "by-location");
+  const seen = messages(2);
+  iframe.contentWindow.location.href = url + "#foo";
+  assert_array_equals(await seen, expected);
+}, "setting a cross-origin frame's location.href to a fragment");
+
+promise_test(async t => {
+  const { url } = await frameOf(t, "by-link");
+  const seen = messages(2);
+  const a = document.createElement("a");
+  a.href = url + "#foo";
+  a.target = "by-link";
+  document.body.append(a);
+  t.add_cleanup(() => a.remove());
+  a.click();
+  assert_array_equals(await seen, expected);
+}, "a link targeting a cross-origin frame, to a fragment");
+</script>

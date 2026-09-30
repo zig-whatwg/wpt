@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<script>
+// Reports its navigate and hashchange events to the top-level page. With
+// ?domain, it first sets document.domain to its parent domain.
+if (location.search.includes("domain")) document.domain = location.hostname.split(".").slice(1).join(".");
+function report(message) { top.postMessage(message, "*"); }
+navigation.onnavigate = e => report("navigate " + e.navigationType + " " + new URL(e.destination.url).hash + " " + e.destination.sameDocument);
+onhashchange = () => report("hashchange " + location.hash);
+onload = () => report("load");
+</script>

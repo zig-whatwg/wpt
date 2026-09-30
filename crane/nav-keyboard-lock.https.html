@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: navigator.keyboard is one Keyboard for the Navigator's life; lock() and unlock() settle from the keyboard lock task queue</title>
+<link rel="help" href="https://wicg.github.io/keyboard-lock/#keyboard-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+test(() => {
+  assert_true(navigator.keyboard instanceof Keyboard, "a Keyboard");
+  assert_true(navigator.keyboard instanceof EventTarget, "an EventTarget");
+  assert_equals(navigator.keyboard, navigator.keyboard, "[SameObject]");
+}, "navigator.keyboard is one Keyboard");
+
+promise_test(async t => {
+  // Only a WeakRef and an expando on the wrapper refer to it once this job
+  // ends: a collection that freed it would give a new object, without the
+  // expando.
+  navigator.keyboard.craneMarker = 42;
+  const ref = new WeakRef(navigator.keyboard);
+  await nextTask(t);
+  await TestUtils.gc();
+  await nextTask(t);
+  assert_equals(ref.deref(), navigator.keyboard, "the same object after a collection");
+  assert_equals(navigator.keyboard.craneMarker, 42, "the same wrapper after a collection");
+}, "navigator.keyboard survives a garbage collection with no script reference");
+
+promise_test(async t => {
+  // The request is enqueued before the collection and settled after it.
+  const p = navigator.keyboard.lock(["KeyA"]);
+  await TestUtils.gc();
+  assert_equals(await p, undefined);
+}, "a lock() enqueued before a collection still resolves");
+
+promise_test(async t => {
+  const first = navigator.keyboard.lock();
+  assert_true(first instanceof Promise, "lock() returns a promise");
+  assert_equals(await first, undefined, "lock() with no key codes");
+  assert_equals(await navigator.keyboard.lock(["KeyA", "ShiftLeft", "Escape"]), undefined);
+  assert_equals(navigator.keyboard.unlock(), undefined, "unlock() returns undefined");
+  assert_equals(await navigator.keyboard.lock([]), undefined, "lock() after unlock()");
+  navigator.keyboard.unlock();
+}, "lock() resolves; unlock() returns undefined");
+
+promise_test(async t => {
+  await promise_rejects_dom(t, "InvalidAccessError", navigator.keyboard.lock(["KeyA", "keya"]));
+  await promise_rejects_dom(t, "InvalidAccessError", navigator.keyboard.lock(["A"]));
+}, "lock() rejects a key that is not a UI Events code value");
+
+promise_test(async t => {
+  const first = navigator.keyboard.lock(["KeyA"]);
+  const second = navigator.keyboard.lock(["KeyB"]);
+  await promise_rejects_dom(t, "AbortError", first);
+  assert_equals(await second, undefined);
+}, "a lock() with another pending rejects with AbortError");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  const loaded = new Promise(r => frame.onload = r);
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const keyboard = frame.contentWindow.navigator.keyboard;
+  assert_not_equals(keyboard, navigator.keyboard, "each Navigator has its own");
+  await promise_rejects_dom(t, "InvalidStateError", frame.contentWindow.DOMException, keyboard.lock());
+}, "lock() from a document that is not top-level rejects with InvalidStateError");
+</script>
