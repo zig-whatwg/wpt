@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame or a popup that loads testdriver.js itself gets Crane's vendor implementation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function nextMessage() {
+  return new Promise(resolve => window.addEventListener("message", e => resolve(e.data), {once: true}));
+}
+
+promise_test(async t => {
+  const message = nextMessage();
+  const frame = document.createElement("iframe");
+  frame.src = "resources/td-frame-vendor-child.html";
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const data = await message;
+  assert_equals(data.error, undefined, "test_driver.click resolved in the frame");
+  assert_true(data.clicked, "a trusted click reached the frame's button");
+  assert_true(data.active, "the frame has transient activation");
+}, "An iframe's own test_driver.click");
+
+promise_test(async t => {
+  const message = nextMessage();
+  const popup = window.open("resources/td-frame-vendor-child.html");
+  t.add_cleanup(() => popup.close());
+  const data = await message;
+  assert_equals(data.error, undefined, "test_driver.click resolved in the popup");
+  assert_true(data.clicked, "a trusted click reached the popup's button");
+}, "A popup's own test_driver.click");
+</script>

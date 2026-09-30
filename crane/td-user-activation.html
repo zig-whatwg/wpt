@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>User activation: activation-triggering input events and navigator.userActivation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#tracking-user-activation">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#the-useractivation-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<button id="button">button</button>
+<input id="text">
+<iframe id="frame" srcdoc="<button id=inner>inner</button>"></iframe>
+<script>
+promise_test(async t => {
+  assert_true(navigator.userActivation instanceof UserActivation);
+  assert_equals(navigator.userActivation, navigator.userActivation, "[SameObject]");
+  assert_false(navigator.userActivation.hasBeenActive, "no sticky activation before any input");
+  assert_false(navigator.userActivation.isActive, "no transient activation before any input");
+
+  const button = document.getElementById("button");
+  let activeDuringMousedown = null, activeDuringPointerdown = null;
+  button.addEventListener("pointerdown", () => activeDuringPointerdown = navigator.userActivation.isActive, {once: true});
+  button.addEventListener("mousedown", () => activeDuringMousedown = navigator.userActivation.isActive, {once: true});
+  await test_driver.click(button);
+  assert_true(activeDuringPointerdown, "the activation notification runs before pointerdown is dispatched");
+  assert_true(activeDuringMousedown, "and is still active at mousedown");
+  assert_true(navigator.userActivation.isActive, "transient activation after the click");
+  assert_true(navigator.userActivation.hasBeenActive, "sticky activation after the click");
+}, "A click is an activation-triggering input event");
+
+promise_test(async t => {
+  // The window's load waits for the frame's.
+  if (document.readyState != "complete") {
+    await new Promise(resolve => window.addEventListener("load", resolve));
+  }
+  const frameWindow = document.getElementById("frame").contentWindow;
+  const inner = frameWindow.document.getElementById("inner");
+  await test_driver.click(inner);
+  assert_true(frameWindow.navigator.userActivation.isActive, "the frame got the activation");
+  assert_true(navigator.userActivation.isActive, "and so did its ancestor");
+}, "An activation notification reaches the document's window and its ancestors");
+
+promise_test(async t => {
+  const input = document.getElementById("text");
+  await test_driver.send_keys(input, "x");
+  assert_true(navigator.userActivation.isActive, "a keydown activates");
+}, "A key press is an activation-triggering input event");
+</script>
