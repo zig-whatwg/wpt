@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>link rel=stylesheet: load and error events, refetching, and the document's load event</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#link-type-stylesheet">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#fetching-and-processing-a-resource-from-a-link-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+const RESOURCES = "/html/semantics/document-metadata/the-link-element/resources/";
+const unique = path => `${path}${path.includes("?") ? "&" : "?"}r=${Math.random()}`;
+// A slow sheet the parser meets: the window's load event waits for it.
+var parsedSheetLoaded = false;
+const windowLoad = new Promise(resolve => addEventListener("load", () => resolve(parsedSheetLoaded)));
+</script>
+<link rel="stylesheet" href="/html/semantics/document-metadata/the-link-element/resources/good.css?pipe=trickle(d1)"
+      onload="parsedSheetLoaded = true">
+<body>
+<script>
+"use strict";
+// Which event fires at a link element, "load" or "error"; "none" when
+// neither has fired within `wait` ms.
+function outcome(t, link, wait = 3000) {
+  return new Promise(resolve => {
+    link.onload = () => resolve("load");
+    link.onerror = () => resolve("error");
+    t.step_timeout(() => resolve("none"), wait);
+  });
+}
+
+function stylesheet(t, href, attrs = {}) {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  for (const [name, value] of Object.entries(attrs)) link.setAttribute(name, value);
+  link.href = href;
+  t.add_cleanup(() => link.remove());
+  return link;
+}
+
+promise_test(async () => {
+  assert_true(await windowLoad, "the parsed sheet's load event fired before the window's");
+}, "a parser-inserted stylesheet delays the window's load event");
+
+promise_test(async t => {
+  const link = stylesheet(t, unique(RESOURCES + "good.css"));
+  let event = null;
+  link.addEventListener("load", e => event = e);
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(event, null, "not fired synchronously");
+  assert_equals(await result, "load");
+  assert_true(event.isTrusted, "trusted");
+  assert_false(event.bubbles, "does not bubble");
+}, "a text/css sheet fires load, from a task");
+
+promise_test(async t => {
+  const link = stylesheet(t, unique(RESOURCES + "nonexistent.css"));
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "error");
+}, "a 404 fires error");
+
+promise_test(async t => {
+  const link = stylesheet(t, unique(RESOURCES + "stylesheet-bad-mime-type.css"));
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "error");
+}, "a text/html response fires error in no-quirks mode");
+
+promise_test(async t => {
+  const link = stylesheet(t, "data:text/css,p{}");
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "load");
+}, "a data: text/css sheet fires load");
+
+promise_test(async t => {
+  const link = stylesheet(t, `data:text/css,@import url("${new URL(unique(RESOURCES + "nonexistent.css"), location)}");`);
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "error");
+}, "an @import that fails fires error at the link");
+
+promise_test(async t => {
+  const good = new URL(unique(RESOURCES + "good.css"), location);
+  const link = stylesheet(t, `data:text/css,@import url("data:text/css,@import url('${good}')");`);
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "load");
+}, "nested @imports that succeed fire load");
+
+promise_test(async t => {
+  const link = stylesheet(t, unique(RESOURCES + "good.css"), { type: "text/plain" });
+  const result = outcome(t, link, 700);
+  document.head.append(link);
+  assert_equals(await result, "none");
+}, "an unsupported type attribute fetches nothing, and fires nothing");
+
+promise_test(async t => {
+  const link = stylesheet(t, new URL(unique(RESOURCES + "good.css"), location).href);
+  document.head.append(link);
+  assert_equals(await outcome(t, link), "load");
+  // Setting href to the value it has is no change: nothing is fetched again.
+  link.href = link.href;
+  link.rel = link.rel;
+  assert_equals(await outcome(t, link, 700), "none");
+  // A different href is.
+  link.href = unique(RESOURCES + "good.css");
+  assert_equals(await outcome(t, link), "load");
+}, "only a changed href fetches again, and fires again");
+
+promise_test(async t => {
+  const link = stylesheet(t, unique(RESOURCES + "good.css?pipe=trickle(d1)"));
+  const result = outcome(t, link, 2500);
+  document.head.append(link);
+  link.remove();
+  assert_equals(await result, "none");
+}, "a link removed while its sheet loads fires nothing");
+
+promise_test(async t => {
+  const link = stylesheet(t, unique(RESOURCES + "good.css?pipe=trickle(d1)"));
+  const result = outcome(t, link, 2500);
+  document.head.append(link);
+  link.rel = "author";
+  assert_equals(await result, "none");
+}, "a link that stops being a stylesheet while it loads fires nothing");
+
+promise_test(async t => {
+  const link = stylesheet(t, unique(RESOURCES + "good.css"), { disabled: "" });
+  const result = outcome(t, link, 700);
+  document.head.append(link);
+  assert_equals(await result, "none", "disabled: not fetched");
+  const second = outcome(t, link);
+  link.removeAttribute("disabled");
+  assert_equals(await second, "load", "enabled: fetched");
+}, "a disabled link fetches nothing until it is enabled");
+
+function preload(t, href, as) {
+  const link = document.createElement("link");
+  link.rel = "preload";
+  if (as !== null) link.as = as;
+  link.href = href;
+  t.add_cleanup(() => link.remove());
+  return link;
+}
+
+promise_test(async t => {
+  const link = preload(t, unique(RESOURCES + "good.css"), "style");
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "load");
+}, "a preload fires load");
+
+promise_test(async t => {
+  const link = preload(t, unique(RESOURCES + "nonexistent.css"), "style");
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "load", "a 404 is a response, not a network error");
+}, "a preload fires error only for a network error");
+
+promise_test(async t => {
+  const link = preload(t, unique(RESOURCES + "good.css"), null);
+  const result = outcome(t, link, 700);
+  document.head.append(link);
+  assert_equals(await result, "none", "no as: no destination, no fetch");
+  const second = outcome(t, link);
+  link.as = "style";
+  assert_equals(await second, "load", "setting as fetches");
+}, "a preload with no destination fetches nothing until as is set");
+
+function modulepreload(t, href, as = null) {
+  const link = document.createElement("link");
+  link.rel = "modulepreload";
+  if (as !== null) link.as = as;
+  link.href = href;
+  t.add_cleanup(() => link.remove());
+  return link;
+}
+
+promise_test(async t => {
+  const link = modulepreload(t, unique("/resources/testharness.js"));
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "load");
+}, "a modulepreload of a JavaScript resource fires load");
+
+promise_test(async t => {
+  const link = modulepreload(t, unique(RESOURCES + "good.css"));
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "error");
+}, "a modulepreload of a resource that is not JavaScript fires error");
+
+promise_test(async t => {
+  const link = modulepreload(t, unique(RESOURCES + "nonexistent.js"));
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_equals(await result, "error");
+}, "a modulepreload of a 404 fires error");
+
+promise_test(async t => {
+  const link = modulepreload(t, unique("/resources/testharness.js"), "style");
+  let fired = false;
+  link.addEventListener("error", () => fired = true);
+  const result = outcome(t, link);
+  document.head.append(link);
+  assert_false(fired, "not synchronously");
+  assert_equals(await result, "error");
+}, "a modulepreload whose destination is not script-like fires error, from a task");
+
+test(() => {
+  const link = document.createElement("link");
+  assert_equals(link.crossOrigin, null);
+  link.crossOrigin = "";
+  assert_equals(link.crossOrigin, "anonymous");
+  link.setAttribute("crossorigin", "USE-CREDENTIALS");
+  assert_equals(link.crossOrigin, "use-credentials");
+  assert_equals(link.as, "");
+  link.as = "STYLE";
+  assert_equals(link.as, "style");
+  link.as = "bogus";
+  assert_equals(link.as, "");
+  assert_equals(link.fetchPriority, "auto");
+  link.referrerPolicy = "No-Referrer";
+  assert_equals(link.referrerPolicy, "no-referrer");
+}, "crossOrigin, as, fetchPriority and referrerPolicy reflect, limited to only known values");
+</script>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>style: one load per style sheet, error for a failed @import, and the document's load event</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+const RESOURCES = "/html/semantics/document-metadata/the-link-element/resources/";
+var parsedLoads = 0;
+var slowImportLoaded = false;
+const windowLoad = new Promise(resolve => addEventListener("load", resolve));
+</script>
+<!-- The parser pops this element once: one style sheet, one load event. -->
+<style onload="parsedLoads++">
+  p { color: green; }
+</style>
+<!-- A slow import: the window's load event waits for it. -->
+<style onload="slowImportLoaded = true">
+  @import url("/html/semantics/document-metadata/the-link-element/resources/good.css?pipe=trickle(d1)");
+</style>
+<body>
+<script>
+"use strict";
+function outcome(t, style, wait = 3000) {
+  return new Promise(resolve => {
+    style.onload = () => resolve("load");
+    style.onerror = () => resolve("error");
+    t.step_timeout(() => resolve("none"), wait);
+  });
+}
+
+function nextTasks(t, ms = 200) {
+  return new Promise(resolve => t.step_timeout(resolve, ms));
+}
+
+promise_test(async t => {
+  await windowLoad;
+  await nextTasks(t);
+  assert_equals(parsedLoads, 1);
+}, "a parsed style element fires load once");
+
+promise_test(async () => {
+  await windowLoad;
+  assert_true(slowImportLoaded, "the style's load event fired before the window's");
+}, "a parsed style element's @import delays the window's load event");
+
+promise_test(async t => {
+  const style = document.createElement("style");
+  style.textContent = "p { color: green; }";
+  let fired = 0;
+  style.onload = () => fired++;
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  assert_equals(fired, 0, "not fired synchronously");
+  await nextTasks(t);
+  assert_equals(fired, 1);
+}, "a style element made by script fires load, from a task");
+
+promise_test(async t => {
+  const style = document.createElement("style");
+  style.textContent = `@import url("${RESOURCES}nonexistent.css?r=${Math.random()}");`;
+  const result = outcome(t, style);
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  assert_equals(await result, "error");
+}, "an @import that fails fires error");
+
+promise_test(async t => {
+  const style = document.createElement("style");
+  style.textContent = `@import "${RESOURCES}good.css?r=${Math.random()}"; p { color: green; }`;
+  const result = outcome(t, style);
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  assert_equals(await result, "load");
+}, "an @import that succeeds fires load");
+
+promise_test(async t => {
+  const style = document.createElement("style");
+  style.type = "text/plain";
+  style.textContent = "p {}";
+  const result = outcome(t, style, 500);
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  assert_equals(await result, "none");
+}, "a style element whose type is not text/css makes no style sheet, and fires nothing");
+
+promise_test(async t => {
+  const style = document.createElement("style");
+  let loads = 0;
+  style.onload = () => loads++;
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  await nextTasks(t);
+  assert_equals(loads, 1, "the first style sheet");
+  style.textContent = "p { color: green; }";
+  await nextTasks(t);
+  assert_equals(loads, 2, "a new style sheet for new text");
+}, "each update of the style block fires load again");
+
+promise_test(async t => {
+  const style = document.createElement("style");
+  style.textContent = `@import url("${RESOURCES}good.css?pipe=trickle(d1)&r=${Math.random()}");`;
+  const result = outcome(t, style, 2500);
+  document.head.append(style);
+  style.remove();
+  assert_equals(await result, "none");
+}, "a style element removed while its @import loads fires nothing");
+</script>

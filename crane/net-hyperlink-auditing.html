@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Hyperlink auditing: a ping is a POST of "PING" as text/ping, with Ping-From and Ping-To</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#hyperlink-auditing">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+"use strict";
+// Following a hyperlink with a ping attribute POSTs to each ping URL. The
+// server stashes one request header per id (inspect-header.py), and the test
+// polls for it: the ping is sent in parallel with the navigation.
+const INSPECT = "/html/semantics/links/downloading-resources/resources/inspect-header.py";
+
+function pingUrl(origin, header, id) {
+  return `${origin}${INSPECT}?header=${header}&cmd=put&id=${id}`;
+}
+
+async function stashed(t, header, id, { wait = 3000 } = {}) {
+  const deadline = performance.now() + wait;
+  while (performance.now() < deadline) {
+    const response = await fetch(`${INSPECT}?header=${header}&cmd=get&id=${id}`);
+    const value = response.headers.get(`x-request-${header}`);
+    if (value !== null) return value;
+    await new Promise(resolve => t.step_timeout(resolve, 100));
+  }
+  return null;
+}
+
+function link(element, ping, href = "#followed") {
+  const a = document.createElement(element);
+  if (href !== null) a.href = href;
+  a.setAttribute("ping", ping);
+  document.body.append(a);
+  return a;
+}
+
+promise_test(async t => {
+  const id = token();
+  const a = link("a", pingUrl("", "content-type", id));
+  t.add_cleanup(() => a.remove());
+  a.click();
+  assert_equals(await stashed(t, "content-type", id), "text/ping");
+}, "the ping's Content-Type is text/ping");
+
+promise_test(async t => {
+  const from = token(), to = token();
+  const a = link("a", `${pingUrl("", "ping-from", from)} ${pingUrl("", "ping-to", to)}`);
+  t.add_cleanup(() => a.remove());
+  const documentUrl = document.URL;
+  const target = new URL("#followed", document.baseURI).href;
+  a.click();
+  assert_equals(await stashed(t, "ping-from", from), documentUrl,
+    "same origin: Ping-From is the document's URL");
+  assert_equals(await stashed(t, "ping-to", to), target, "Ping-To is the target URL");
+}, "a same-origin ping carries Ping-From and Ping-To; the attribute's URLs are split on whitespace");
+
+promise_test(async t => {
+  const from = token(), to = token();
+  const remote = get_host_info().HTTP_REMOTE_ORIGIN;
+  const a = link("a", `  ${pingUrl(remote, "ping-from", from)}\n\t${pingUrl(remote, "ping-to", to)}  `, "#cross");
+  t.add_cleanup(() => a.remove());
+  const documentUrl = document.URL;
+  const target = new URL("#cross", document.baseURI).href;
+  a.click();
+  assert_equals(await stashed(t, "ping-from", from), documentUrl,
+    "cross-origin from an http: document: Ping-From is still sent");
+  assert_equals(await stashed(t, "ping-to", to), target);
+}, "a cross-origin ping from an http: document carries Ping-From and Ping-To");
+
+promise_test(async t => {
+  const id = token();
+  const area = link("area", pingUrl("", "referer", id));
+  t.add_cleanup(() => area.remove());
+  area.click();
+  assert_equals(await stashed(t, "referer", id), "", "the referrer is no-referrer");
+}, "an area element's ping is sent too, with no Referer");
+
+promise_test(async t => {
+  const id = token();
+  const a = link("a", pingUrl("", "content-type", id), null);
+  t.add_cleanup(() => a.remove());
+  a.click();
+  assert_equals(await stashed(t, "content-type", id, { wait: 700 }), null);
+}, "a hyperlink with no href is not followed, and sends no ping");
+
+promise_test(async t => {
+  const id = token();
+  const a = link("a", pingUrl("", "content-type", id), "http://[bad");
+  t.add_cleanup(() => a.remove());
+  a.click();
+  assert_equals(await stashed(t, "content-type", id, { wait: 700 }), null);
+}, "an href that does not parse sends no ping");
+</script>
