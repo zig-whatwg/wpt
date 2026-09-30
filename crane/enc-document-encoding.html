@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A navigated frame's bytes are decoded with the encoding HTML's sniffing algorithm determines</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#determining-the-character-encoding">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#changing-the-encoding-while-parsing">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/urls-and-fetching.html#encoding-parsing-a-url">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Each resource is raw bytes (see resources/enc-*.html); its <p id=t> holds
+// one non-ASCII character whose byte means something different in each
+// encoding.
+function loadFrame(t, src) {
+  return new Promise((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    frame.onload = () => {
+      if (frame.contentWindow.location.href === "about:blank") return;
+      resolve(frame.contentDocument);
+    };
+    t.step_timeout(() => reject(new Error("the frame never loaded")), 5000);
+    frame.src = src;
+    document.body.appendChild(frame);
+  });
+}
+
+promise_test(async t => {
+  const doc = await loadFrame(t, "resources/enc-no-declaration.html");
+  assert_equals(doc.characterSet, "UTF-8");
+  assert_equals(doc.getElementById("t").textContent, "é");
+}, "with no declaration, a same-origin frame takes its parent's encoding (step 6)");
+
+promise_test(async t => {
+  const doc = await loadFrame(t, "resources/enc-meta-1251.html");
+  assert_equals(doc.characterSet, "windows-1251");
+  assert_equals(doc.getElementById("t").textContent, "й");
+}, "<meta charset> is found by the prescan (step 5)");
+
+promise_test(async t => {
+  const doc = await loadFrame(t, "resources/enc-http-equiv-koi8r.html");
+  assert_equals(doc.characterSet, "KOI8-R");
+  assert_equals(doc.getElementById("t").textContent, "а");
+}, "<meta http-equiv=content-type> with a charset is found by the prescan");
+
+promise_test(async t => {
+  const doc = await loadFrame(t, "resources/enc-meta-1251.html?pipe=header(Content-Type,text/html;charset=koi8-r)");
+  assert_equals(doc.characterSet, "KOI8-R");
+  assert_equals(doc.getElementById("t").textContent, "И");
+}, "the Content-Type's charset is certain and wins over the meta (step 4)");
+
+promise_test(async t => {
+  const doc = await loadFrame(t, "resources/enc-late-meta-1253.html");
+  assert_equals(doc.characterSet, "windows-1253");
+  assert_equals(doc.getElementById("t").textContent, "α");
+}, "a meta past the prescan changes the encoding while parsing, after ASCII only");
+
+promise_test(async t => {
+  const doc = await loadFrame(t, "resources/enc-gbk-links.html");
+  assert_equals(doc.characterSet, "GBK");
+  const a = doc.getElementById("a");
+  assert_equals(a.search, "?%A8%A6", "the parsed href attribute");
+  a.href = "https://example.com/?éあ";
+  assert_equals(a.search, "?%A8%A6%A4%A2", "a set href");
+  a.href = "https://example.com/é?#é";
+  assert_equals(a.pathname, "/%C3%A9", "the path is UTF-8");
+  assert_equals(a.hash, "#%C3%A9", "the fragment is UTF-8");
+}, "a link's URL is encoding-parsed with its document's encoding: the query only");
+</script>
