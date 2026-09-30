@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>input.value and textarea.value: setting them keeps nothing past the element</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#dom-input-value">
+<script src="/resources/testharness.js">
+test(() => {
+  const a = document.querySelector("textarea");
+  a.value = "dirty";
+  assert_equals(a.value, "dirty");
+}, "a textarea's dirty value");
+</script>
+<script src="/resources/testharnessreport.js">
+test(() => {
+  const a = document.querySelector("textarea");
+  a.value = "dirty";
+  assert_equals(a.value, "dirty");
+}, "a textarea's dirty value");
+</script>
+<body>
+<form><input type=hidden name=h><input type=text name=t><input type=checkbox name=c><textarea name=a></textarea></form>
+<script>
+// Run under CRANE_LEAK_TRACES=1: the process must report no leak from
+// HTMLInputElement.set_value or HTMLTextAreaElement.set_value - the elements
+// are still in the document when the browser ends. The cases pin the value
+// modes' behaviour.
+test(() => {
+  const h = document.querySelector("input[type=hidden]");
+  h.value = "channel";
+  assert_equals(h.value, "channel");
+  assert_equals(h.getAttribute("value"), "channel", "default mode sets the value content attribute");
+}, "a hidden input's value is its value attribute");
+
+test(() => {
+  const t = document.querySelector("input[type=text]");
+  t.value = "one";
+  t.value = "two";
+  assert_equals(t.value, "two");
+  assert_equals(t.getAttribute("value"), null, "value mode leaves the attribute alone");
+}, "a text input's value is its own");
+
+test(() => {
+  const c = document.querySelector("input[type=checkbox]");
+  assert_equals(c.value, "on", "default/on mode: 'on' without a value attribute");
+  c.value = "yes";
+  assert_equals(c.getAttribute("value"), "yes");
+  assert_equals(c.value, "yes");
+}, "a checkbox's value is its value attribute, or 'on'");
+
+test(() => {
+  const made = document.createElement("input");
+  made.value = "detached";
+  assert_equals(made.value, "detached");
+}, "a detached text input's value");
+
+test(() => {
+  const a = document.querySelector("textarea");
+  a.value = "dirty";
+  assert_equals(a.value, "dirty");
+}, "a textarea's dirty value");
+</script>

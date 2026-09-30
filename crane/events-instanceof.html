@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>instanceof Event: events made by constructors and events the engine dispatches, in every realm</title>
+<link rel="help" href="https://tc39.es/ecma262/#sec-ordinaryhasinstance">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-interfaces">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<form id="f"><button id="b">b</button><input id="c" type="checkbox"></form>
+<details id="d"><summary>s</summary>x</details>
+<script>
+// An interface object's [[Prototype]] chain is the IDL inheritance chain, and
+// instanceof is OrdinaryHasInstance over it: every Event subclass instance is
+// an instance of Event - of ITS realm's Event, not another realm's.
+
+function assertEvent(e, ...interfaces) {
+  assert_true(e instanceof Event, "instanceof Event");
+  for (const I of interfaces) assert_true(e instanceof I, "instanceof " + I.name);
+}
+
+test(() => {
+  assertEvent(new Event("x"));
+  assertEvent(new UIEvent("x"), UIEvent);
+  assertEvent(new FocusEvent("x"), UIEvent, FocusEvent);
+  assertEvent(new SubmitEvent("x"), SubmitEvent);
+  assertEvent(new ToggleEvent("x"), ToggleEvent);
+  assertEvent(new CustomEvent("x"), CustomEvent);
+  assert_false({} instanceof Event, "a plain object is not an Event");
+  assert_false(document.body instanceof Event, "a node is not an Event");
+}, "events made by constructors are instances of Event");
+
+test(() => {
+  const seen = [];
+  // method=dialog: the submission constructs its entry list (formdata) and
+  // then stops, as the form has no dialog ancestor - nothing navigates.
+  f.method = "dialog";
+  f.addEventListener("submit", e => seen.push(e), { once: true });
+  f.addEventListener("formdata", e => seen.push(e), { once: true });
+  b.addEventListener("click", e => seen.push(e), { once: true });
+  b.click();
+  assert_equals(seen.length, 3, "click, submit, formdata");
+  const [click, submit, formdata] = [seen[0], seen.find(e => e.type === "submit"), seen.find(e => e.type === "formdata")];
+  assertEvent(click, MouseEvent, UIEvent);
+  assertEvent(submit, SubmitEvent);
+  assertEvent(formdata, FormDataEvent);
+  assert_true(submit.isTrusted, "the submit event is the engine's");
+}, "events the engine dispatches are instances of Event");
+
+test(() => {
+  const seen = [];
+  c.addEventListener("change", e => seen.push(e), { once: true });
+  c.click();
+  assert_equals(seen.length, 1);
+  assertEvent(seen[0]);
+}, "a change event the engine dispatches is an instance of Event");
+
+promise_test(async () => {
+  const event = await new Promise(resolve => {
+    d.addEventListener("toggle", resolve, { once: true });
+    d.open = true;
+  });
+  assertEvent(event, ToggleEvent);
+}, "a toggle event from a queued task is an instance of Event");
+
+promise_test(async () => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  const fe = new w.Event("x");
+  assert_true(fe instanceof w.Event, "a frame's event is its realm's Event");
+  assert_false(fe instanceof Event, "and not the top realm's Event");
+  const button = w.document.createElement("button");
+  w.document.body.appendChild(button);
+  let click = null;
+  button.addEventListener("click", e => click = e);
+  button.click();
+  assert_true(click instanceof w.MouseEvent, "the frame's dispatched click is its MouseEvent");
+  assert_true(click instanceof w.Event, "and its Event");
+  assert_false(click instanceof Event, "and not the top realm's Event");
+  frame.remove();
+}, "a frame's events are instances of its realm's Event, not the top's");
+
+promise_test(async () => {
+  const worker = new Worker("resources/events-instanceof-worker.js");
+  const results = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = reject;
+    worker.postMessage("go");
+  });
+  assert_true(results.ctorEvent, "new Event in a worker");
+  assert_true(results.ctorCustomEvent, "new CustomEvent in a worker");
+  assert_true(results.messageIsMessageEvent, "the worker's message event is a MessageEvent");
+  assert_true(results.messageIsEvent, "and an Event");
+  worker.terminate();
+}, "a dedicated worker's events are instances of its Event");
+
+</script>

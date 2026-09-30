@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>instanceof Window and Document: each realm's own interfaces</title>
+<link rel="help" href="https://tc39.es/ecma262/#sec-ordinaryhasinstance">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-interfaces">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A frame's Window and Document are instances of the frame realm's Window
+// and Document, and not of the top realm's: instanceof is
+// OrdinaryHasInstance over the prototype chain, and each realm has its own
+// interface objects. Red on the snapshot path while v8_PatchWindowInstanceOf
+// and v8_PatchDocumentInstanceOf answer from type info alone (green on the
+// no-snapshot path, which does not patch).
+
+test(() => {
+  assert_true(window instanceof Window, "window instanceof Window");
+  assert_true(document instanceof Document, "document instanceof Document");
+  assert_true(document instanceof Node, "document instanceof Node");
+}, "the top realm's window and document");
+
+test(() => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  assert_true(w instanceof w.Window, "a frame's window is its Window");
+  assert_true(frame.contentDocument instanceof w.Document, "a frame's document is its Document");
+  assert_false(w instanceof Window, "and not the top's Window");
+  assert_false(frame.contentDocument instanceof Document, "and not the top's Document");
+  frame.remove();
+}, "a frame's window and document are its realm's, not the top's");
+</script>

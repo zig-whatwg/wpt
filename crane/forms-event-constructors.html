@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>UIEvent family, SubmitEvent and FormDataEvent constructors run the event constructing steps</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-constructor">
+<link rel="help" href="https://w3c.github.io/uievents/#events-uievents">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#the-submitevent-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<form id="f"><button id="b">b</button></form>
+<script>
+// DOM: an event made by a constructor has its initialized flag set, so it can
+// be dispatched; each dictionary member initializes its attribute.
+
+function dispatches(e) {
+  const target = new EventTarget();
+  let heard = null;
+  target.addEventListener(e.type, ev => heard = ev);
+  assert_true(target.dispatchEvent(e), "dispatchEvent returns true");
+  assert_equals(heard, e, "the listener heard the event");
+  assert_false(e.isTrusted, "script-made");
+}
+
+test(() => {
+  const e = new UIEvent("x", { bubbles: true, view: window, detail: 7 });
+  assert_equals(e.type, "x");
+  assert_true(e.bubbles);
+  assert_false(e.cancelable);
+  assert_equals(e.view, window);
+  assert_equals(e.detail, 7);
+  assert_equals(e.which, 0);
+  dispatches(e);
+  const d = new UIEvent("y");
+  assert_equals(d.view, null);
+  assert_equals(d.detail, 0);
+}, "UIEvent");
+
+test(() => {
+  const b = document.getElementById("b");
+  const e = new FocusEvent("focus", { relatedTarget: b, detail: 2 });
+  assert_equals(e.relatedTarget, b);
+  assert_equals(e.detail, 2);
+  assert_true(e instanceof UIEvent);
+  dispatches(e);
+  assert_equals(new FocusEvent("blur").relatedTarget, null);
+}, "FocusEvent");
+
+test(() => {
+  const e = new KeyboardEvent("keydown", {
+    key: "Enter", code: "Enter", location: 3, ctrlKey: true, shiftKey: true,
+    repeat: true, isComposing: true, keyCode: 13, charCode: 5, modifierCapsLock: true,
+    cancelable: true
+  });
+  assert_equals(e.key, "Enter");
+  assert_equals(e.code, "Enter");
+  assert_equals(e.location, 3);
+  assert_true(e.ctrlKey);
+  assert_true(e.shiftKey);
+  assert_false(e.altKey);
+  assert_false(e.metaKey);
+  assert_true(e.repeat);
+  assert_true(e.isComposing);
+  assert_equals(e.keyCode, 13);
+  assert_equals(e.charCode, 5);
+  assert_true(e.cancelable);
+  assert_true(e.getModifierState("Control"));
+  assert_true(e.getModifierState("CapsLock"));
+  assert_false(e.getModifierState("Alt"));
+  assert_false(e.getModifierState("control"), "case-sensitive");
+  dispatches(e);
+  const d = new KeyboardEvent("keyup");
+  assert_equals(d.key, "");
+  assert_equals(d.code, "");
+  assert_equals(d.location, 0);
+  assert_equals(d.keyCode, 0);
+}, "KeyboardEvent");
+
+test(() => {
+  const e = new KeyboardEvent("keydown", { key: "a" });
+  e.initKeyboardEvent("keyup", true, true, window, "b", 1, false, true, false, true);
+  assert_equals(e.type, "keyup");
+  assert_true(e.bubbles);
+  assert_true(e.cancelable);
+  assert_equals(e.key, "b");
+  assert_equals(e.location, 1);
+  assert_true(e.altKey);
+  assert_true(e.metaKey);
+  assert_false(e.ctrlKey);
+}, "KeyboardEvent.initKeyboardEvent");
+
+test(() => {
+  const e = new InputEvent("input", { data: "abc", inputType: "insertText", isComposing: true });
+  assert_equals(e.data, "abc");
+  assert_equals(e.inputType, "insertText");
+  assert_true(e.isComposing);
+  assert_equals(e.dataTransfer, null);
+  assert_array_equals(e.getTargetRanges(), []);
+  dispatches(e);
+  const d = new InputEvent("beforeinput");
+  assert_equals(d.data, null);
+  assert_equals(d.inputType, "");
+  assert_false(d.isComposing);
+}, "InputEvent");
+
+test(() => {
+  const e = new CompositionEvent("compositionstart", { data: "xyz" });
+  assert_equals(e.data, "xyz");
+  dispatches(e);
+  assert_equals(new CompositionEvent("compositionend").data, "");
+  e.initCompositionEvent("compositionupdate", true, false, window, "q");
+  assert_equals(e.type, "compositionupdate");
+  assert_equals(e.data, "q");
+  assert_equals(e.view, window);
+}, "CompositionEvent");
+
+test(() => {
+  const b = document.getElementById("b");
+  const e = new SubmitEvent("submit", { submitter: b, cancelable: true });
+  assert_equals(e.submitter, b);
+  assert_true(e.cancelable);
+  dispatches(e);
+  assert_equals(new SubmitEvent("submit").submitter, null);
+}, "SubmitEvent");
+
+test(() => {
+  const fd = new FormData();
+  const e = new FormDataEvent("formdata", { formData: fd, bubbles: true });
+  assert_equals(e.formData, fd);
+  assert_equals(e.formData, e.formData);
+  dispatches(e);
+  assert_throws_js(TypeError, () => new FormDataEvent("formdata"));
+}, "FormDataEvent");
+
+test(() => {
+  const e = new UIEvent("x");
+  e.initUIEvent("y", true, true, window, 4);
+  assert_equals(e.type, "y");
+  assert_true(e.bubbles);
+  assert_true(e.cancelable);
+  assert_equals(e.view, window);
+  assert_equals(e.detail, 4);
+}, "UIEvent.initUIEvent");
+</script>
