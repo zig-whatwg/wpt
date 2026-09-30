@@ -23,6 +23,14 @@
         }
     }
 
+    function assertTestIsTentative(){
+        const testPath = location.pathname;
+        const tentative = testPath.includes('.tentative.') || testPath.includes('/tentative/');
+        if (!tentative) {
+            throw new Error("Method in testdriver.js intended for tentative tests used in non-tentative test");
+        }
+    }
+
     function getInViewCenterPoint(rect) {
         var left = Math.max(0, rect.left);
         var right = Math.min(window.innerWidth, rect.right);
@@ -954,6 +962,61 @@
                     return window.test_driver_internal.bidi.emulation.set_screen_orientation_override(
                         params);
                 },
+                /**
+                 * Overrides the touch configuration for the specified browsing
+                 * contexts.
+                 * Matches the `emulation.setTouchOverride
+                 * <https://w3c.github.io/webdriver-bidi/#command-emulation-setTouchOverride>`_
+                 * WebDriver BiDi command.
+                 *
+                 * @example
+                 * await test_driver.bidi.emulation.set_touch_override({
+                 *     maxTouchPoints: 5
+                 * });
+                 *
+                 * @param {object} params - Parameters for the command.
+                 * @param {null|number} params.maxTouchPoints - The
+                 * maximum number of simultaneous touch points to support.
+                 * If null or omitted, the override will be removed.
+                 * @param {null|Array.<(Context)>} [params.contexts] The
+                 * optional contexts parameter specifies which browsing contexts
+                 * to set the touch override on. It should be either an array of
+                 * Context objects (window or browsing context id), or null. If
+                 * null or omitted, the override will be set on the current
+                 * browsing context.
+                 * @returns {Promise<void>} Resolves when the touch
+                 * override is successfully set.
+                 */
+                set_touch_override: function (params) {
+                    assertBidiIsEnabled();
+                    return window.test_driver_internal.bidi.emulation.set_touch_override(
+                        params);
+                },
+            },
+            /**
+             * `user_agent_client_hints <https://wicg.github.io/ua-client-hints/#automation>`_ module.
+             */
+            user_agent_client_hints: {
+                /**
+                 * Overrides the user agent client hints configuration for the specified browsing
+                 * contexts. Matches the `userAgentClientHints.setClientHintsOverride
+                 * <https://wicg.github.io/ua-client-hints/#emulation-setclienthintsoverride>`_
+                 * WebDriver BiDi command.
+                 *
+                 * @param {object} params - Parameters for the command.
+                 * @param {null|object} params.clientHints - The client hints to override.
+                 * Matches the `userAgentClientHints.ClientHints` type.
+                 * If null or omitted, the override will be removed.
+                 * @param {null|Array.<(Context)>} [params.contexts] The
+                 * optional contexts parameter specifies which browsing contexts
+                 * to set the override on.
+                 * @returns {Promise<void>} Resolves when the override is successfully set.
+                 */
+                set_client_hints_override: function (params) {
+                    assertBidiIsEnabled();
+                    return window.test_driver_internal.bidi.user_agent_client_hints.set_client_hints_override(
+                        params);
+                }
             },
             /**
              * `log <https://www.w3.org/TR/webdriver-bidi/#module-log>`_ module.
@@ -1267,6 +1330,34 @@
         },
 
         /**
+         * Get accessibility properties for a DOM element.
+         *
+         * @param {Element} element
+         * @returns {Promise} fulfilled after the accessibility properties are
+         *                    returned, or rejected in the cases the WebDriver
+         *                    command errors
+         */
+        get_accessibility_properties_for_element: async function(element) {
+            assertTestIsTentative();
+            let acc = await window.test_driver_internal.get_accessibility_properties_for_element(element);
+            return acc;
+        },
+
+        /**
+         * Get properties for an accessibility node.
+         *
+         * @param {String} accId
+         * @returns {Promise} fulfilled after the accessibility properties are
+         *                    returned, or rejected in the cases the WebDriver
+         *                    command errors
+         */
+        get_accessibility_properties_for_accessibility_node: async function(accId) {
+            assertTestIsTentative();
+            let acc = await window.test_driver_internal.get_accessibility_properties_for_accessibility_node(accId);
+            return acc;
+        },
+
+        /**
          * Send keys to an element.
          *
          * If ``element`` isn't inside the
@@ -1332,6 +1423,33 @@
         },
 
         /**
+         * Creates a new top-level browsing context, as if the user requested
+         * a new tab or window from the browser.
+         *
+         * Matches the behaviour of the `New Window
+         * <https://www.w3.org/TR/webdriver/#new-window>`_
+         * WebDriver command.
+         *
+         * The new window is opened with `about:blank`,
+         * the test does not get a ``WindowProxy`` for it,
+         * and the returned WebDriver window handle is its only identifier.
+         *
+         * @param {String} type - Type hint for the new browsing context,
+         *                        either "tab" or "window" or null for the
+         *                        implementation default.
+         * @param {WindowProxy} context - Browsing context in which
+         *                                to run the call, or null to use the current
+         *                                browsing context.
+         *
+         * @returns {Promise} fulfilled with the WebDriver window handle
+         *                    (a string) of the new browsing context, or
+         *                    rejected if the WebDriver command errors.
+         */
+        create_window: function(type=null, context=null) {
+            return window.test_driver_internal.create_window(type, context);
+        },
+
+        /**
          * Minimizes the browser window.
          *
          * Matches the behaviour of the `Minimize
@@ -1386,6 +1504,33 @@
          */
         get_window_rect: function(context=null) {
             return window.test_driver_internal.get_window_rect(context);
+        },
+
+        /**
+         * Navigates the top-level browsing context to the given absolute URL.
+         *
+         * Matches the behaviour of the `Navigate To
+         * <https://www.w3.org/TR/webdriver/#navigate-to>`_
+         * WebDriver command.
+         *
+         * Navigating the browsing context in which the
+         * test is running will unload the test.
+         *
+         * @param {String} url - The URL to navigate to. This must be absolute.
+         * @param {(String|WindowProxy)} context - Browsing context in which
+         *                                         to run the call: a
+         *                                         ``WindowProxy``, a WebDriver
+         *                                         window handle as returned by
+         *                                         :js:func:`create_window`, or
+         *                                         null to use the current
+         *                                         browsing context.
+         *
+         * @returns {Promise} fulfilled when the WebDriver command returns, which
+         *                    depends on the session's page load strategy, or
+         *                    rejected if the WebDriver command errors.
+         */
+        navigate: function(url, context=null) {
+            return window.test_driver_internal.navigate(url, context);
         },
 
         /**
@@ -1642,6 +1787,24 @@
         },
 
         /**
+         * Sets credential properties on an authenticator.
+         *
+         * Matches the `Set Credential Properties
+         * <https://w3c.github.io/webauthn/#sctn-automation-set-credential-properties>`_
+         * WebDriver command.
+         *
+         * @param {String} authenticator_id - the ID of the authenticator
+         * @param {String} credential_id - the ID of the credential (base64url encoded)
+         * @param {Object} props - the credential properties to set
+         * @param {WindowProxy} context - Browsing context in which
+         *                                to run the call, or null for the current
+         *                                browsing context.
+         */
+        set_credential_properties: function(authenticator_id, credential_id, props, context=null) {
+            return window.test_driver_internal.set_credential_properties(authenticator_id, credential_id, props, context);
+        },
+
+        /**
          * Sets the storage access rule for an origin when embedded
          * in a third-party context.
          *
@@ -1893,6 +2056,25 @@
         reset_fedcm_cooldown: function(context=null) {
           return window.test_driver_internal.reset_fedcm_cooldown(context);
         },
+
+        /**
+         * Sets the behavior for the virtual wallet.
+         *
+         * Matches the `Set Virtual Wallet Behavior
+         * <https://w3c-fedid.github.io/digital-credentials/#automated-testing>`_
+         * WebDriver command.
+         *
+         * @param {String} action - The action to take ("decline", "respond", "wait", "clear").
+         * @param {String} [protocol=null] - The protocol requested (required for "respond").
+         * @param {Object} [response=null] - The response data (optional for "respond").
+         * @param {WindowProxy} [context=null] - Browsing context in which to run the call.
+         *
+         * @returns {Promise} Fulfilled after the behavior has been set.
+         */
+        set_virtual_wallet_behavior: function(action, protocol=null, response=null, context=null) {
+          return window.test_driver_internal.set_virtual_wallet_behavior(action, protocol, response, context);
+        },
+
 
         /**
          * Creates a virtual sensor for use with the Generic Sensors APIs.
@@ -2249,6 +2431,10 @@
         /**
          * Gets the current globally-applied privacy control status
          *
+         * Matches the `Get Global Privacy Control
+         * <https://www.w3.org/TR/gpc/#get-global-privacy-control>`_
+         * WebDriver command.
+         *
          * @returns {Promise} Fulfils with an object with boolean property `gpc`
          *                    that encodes the current "do not sell or share"
          *                    signal the browser is configured to convey.
@@ -2258,11 +2444,15 @@
         },
 
         /**
-         * Gets the current globally-applied privacy control status
+         * Sets and then gets the current globally-applied privacy control status
          *
-         * @param {bool} newValue - The a boolean that is true if the browers
-         *                          should convey a "do not sell or share" signal
-         *                          and false otherwise
+         * Matches the `Set Global Privacy Control
+         * <https://www.w3.org/TR/gpc/#set-global-privacy-control>`_
+         * WebDriver command.
+         *
+         * @param {boolean} newValue - A boolean that is true if the browser
+         *                             should convey a "do not sell or share" signal
+         *                             and false otherwise
          *
          * @returns {Promise} Fulfils with an object with boolean property `gpc`
          *                    that encodes the new "do not sell or share"
@@ -2390,6 +2580,16 @@
                 set_screen_orientation_override: function (params) {
                     throw new Error(
                         "bidi.emulation.set_screen_orientation_override is not implemented by testdriver-vendor.js");
+                },
+                set_touch_override: function (params) {
+                    throw new Error(
+                        "bidi.emulation.set_touch_override is not implemented by testdriver-vendor.js");
+                }
+            },
+            user_agent_client_hints: {
+                set_client_hints_override: function (params) {
+                    throw new Error(
+                        "bidi.user_agent_client_hints.set_client_hints_override is not implemented by testdriver-vendor.js");
                 }
             },
             log: {
@@ -2454,6 +2654,14 @@
             throw new Error("get_computed_name is a testdriver.js function which cannot be run in this context.");
         },
 
+        async get_accessibility_properties_for_element(element) {
+            throw new Error("get_accessibility_properties_for_element is a testdriver.js function which cannot be run in this context.");
+        },
+
+        async get_accessibility_properties_for_accessibility_node(accId) {
+            throw new Error("get_accessibility_properties_for_accessibility_node is a testdriver.js function which cannot be run in this context.");
+        },
+
         async send_keys(element, keys) {
             if (this.in_automation) {
                 throw new Error("send_keys() is not implemented by testdriver-vendor.js");
@@ -2488,6 +2696,14 @@
 
         async freeze(context=null) {
             throw new Error("freeze() is not implemented by testdriver-vendor.js");
+        },
+
+        async create_window(type=null, context=null) {
+            throw new Error("create_window() is not implemented by testdriver-vendor.js");
+        },
+
+        async navigate(url, context=null) {
+            throw new Error("navigate() is not implemented by testdriver-vendor.js");
         },
 
         async minimize_window(context=null) {
@@ -2542,6 +2758,10 @@
             throw new Error("set_user_verified() is not implemented by testdriver-vendor.js");
         },
 
+        async set_credential_properties(authenticator_id, credential_id, props, context=null) {
+            throw new Error("set_credential_properties() is not implemented by testdriver-vendor.js");
+        },
+
         async set_storage_access(origin, embedding_origin, blocked, context=null) {
             throw new Error("set_storage_access() is not implemented by testdriver-vendor.js");
         },
@@ -2585,6 +2805,11 @@
         async reset_fedcm_cooldown(context=null) {
             throw new Error("reset_fedcm_cooldown() is not implemented by testdriver-vendor.js");
         },
+
+        async set_virtual_wallet_behavior(action, protocol=null, response=null, context=null) {
+            throw new Error("set_virtual_wallet_behavior() is not implemented by testdriver-vendor.js");
+        },
+
 
         async create_virtual_sensor(sensor_type, sensor_params, context=null) {
             throw new Error("create_virtual_sensor() is not implemented by testdriver-vendor.js");

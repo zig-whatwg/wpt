@@ -1,3 +1,7 @@
+# META: timeout=long
+
+# Longer timeout required due to creating and managing multiple isolated user contexts.
+
 import pytest
 
 from . import OFFLINE_NETWORK_CONDITIONS
@@ -118,3 +122,7 @@ async def test_restores_to_global_when_removed(bidi_session,
         user_contexts=[affected_user_context])
 
     assert not await get_navigator_online(affected_context)
+
+    await bidi_session.emulation.set_network_conditions(network_conditions=None)
+
+    assert await get_navigator_online(affected_context)

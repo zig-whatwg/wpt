@@ -1,3 +1,7 @@
+# META: timeout=long
+
+# Longer timeout required due to a large number of input action and event dispatch subtests.
+
 import pytest
 
 from webdriver.error import (
@@ -31,7 +35,7 @@ def test_no_browsing_context(session, closed_frame, pen_chain):
 
 
 def test_pointer_down_closes_browsing_context(
-    session, configuration, http_new_tab, inline, pen_chain
+    session, configuration, new_tab_classic, inline, pen_chain
 ):
     session.url = inline(
         """<input onpointerdown="window.close()">close</input>""")

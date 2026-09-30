@@ -1,3 +1,7 @@
+# META: timeout=long
+
+# Longer timeout required due to a large number of script evaluation and serialization subtests.
+
 import pytest
 
 from webdriver.bidi.modules.script import ContextTarget, SerializationOptions
@@ -41,7 +45,6 @@ async def test_remote_value_promise(bidi_session, top_context, await_promise):
         assert result == {"type": "promise"}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("await_promise", [True, False])
 async def test_window_context_top_level(bidi_session, top_context,
                                         await_promise):
@@ -64,15 +67,14 @@ async def test_window_context_top_level(bidi_session, top_context,
         }, result)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("domain", ["", "alt"],
                          ids=["same_origin", "cross_origin"])
 @pytest.mark.parametrize("await_promise", [True, False])
 async def test_window_context_iframe_window(bidi_session, top_context,
-                                            inline, domain, await_promise):
+                                            inline, domain, await_promise, iframe):
 
-    frame_url = inline("<div>foo</div>")
-    url = inline(f"<iframe src='{frame_url}'></iframe>", domain=domain)
+    frame_html = "<div>foo</div>"
+    url = inline(iframe(frame_html), domain=domain)
     await bidi_session.browsing_context.navigate(
         context=top_context["context"],
         url=url,
@@ -101,15 +103,14 @@ async def test_window_context_iframe_window(bidi_session, top_context,
         }, result)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("domain", ["", "alt"],
                          ids=["same_origin", "cross_origin"])
 @pytest.mark.parametrize("await_promise", [True, False])
 async def test_window_context_iframe_content_window(
-        bidi_session, top_context, inline, domain, await_promise):
+        bidi_session, top_context, inline, domain, await_promise, iframe):
 
-    frame_url = inline("<div>foo</div>")
-    url = inline(f"<iframe src='{frame_url}'></iframe>", domain=domain)
+    frame_html = "<div>foo</div>"
+    url = inline(iframe(frame_html), domain=domain)
     await bidi_session.browsing_context.navigate(
         context=top_context["context"],
         url=url,
@@ -139,7 +140,6 @@ async def test_window_context_iframe_content_window(
         }, result)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("await_promise", [True, False])
 @pytest.mark.parametrize("domain", ["", "alt"],
                          ids=["same_origin", "cross_origin"])

@@ -1,9 +1,13 @@
+# META: timeout=long
+
+# Longer timeout required due to a large number of input action and event dispatch subtests.
+
 import pytest
 
 from webdriver.error import NoSuchElementException
 
-from tests.support.asserts import assert_success
-from tests.support.helpers import wait_for_new_handle
+from tests.support.classic.asserts import assert_success
+from tests.support.classic.helpers import wait_for_new_handle
 from tests.support.sync import Poll
 
 

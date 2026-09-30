@@ -1,4 +1,8 @@
-from tests.support.asserts import assert_error, assert_success
+# META: timeout=long
+
+# Longer timeout required due to a large number of input action and event dispatch subtests.
+
+from tests.support.classic.asserts import assert_error, assert_success
 from . import perform_actions
 
 

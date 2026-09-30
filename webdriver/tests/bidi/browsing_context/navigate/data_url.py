@@ -1,8 +1,12 @@
+# META: timeout=long
+
+# Longer timeout required due to a large number of navigation, frame, or browser lifecycle subtests.
+
 from urllib.parse import quote
 
 import pytest
 
-from . import navigate_and_assert
+from .. import navigate_and_assert
 
 pytestmark = pytest.mark.asyncio
 

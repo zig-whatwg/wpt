@@ -1,8 +1,12 @@
+# META: timeout=long
+
+# Longer timeout required due to a large number of element lookup and DOM inspection subtests.
+
 import pytest
 
 from webdriver.transport import Response
 
-from tests.support.asserts import assert_error, assert_same_element, assert_success
+from tests.support.classic.asserts import assert_error, assert_same_element, assert_success
 
 
 def find_element(session, using, value):
@@ -121,7 +125,8 @@ def test_htmldocument(session, inline, using, value):
     assert_success(response)
 
 
-def test_implicit_wait(session, inline):
+@pytest.mark.parametrize("value", [None, 1])
+def test_implicit_wait(session, inline, value):
     session.url = inline("""
         <script>
             setTimeout(() => {
@@ -129,7 +134,7 @@ def test_implicit_wait(session, inline):
             }, 300);
         </script>
     """)
-    session.timeouts.implicit = 1
+    session.timeouts.implicit = value
 
     response = find_element(session, "css selector", "#delayed")
     value = assert_success(response)
