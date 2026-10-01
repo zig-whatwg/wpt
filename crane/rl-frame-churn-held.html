@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: removed frames whose WindowProxies the page keeps, with every kind of kept child</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A page-retention probe (tmp/plans/frame-realm-tracing-design.md, section 5),
+// run many times in one process under CRANE_HEAP_GC=1: the runner journals
+// native_contexts and heap_used_kb after each file, and both must stay flat.
+//
+// Each frame is given one of every child its Window and Document keep for
+// their whole life - getSelection() and a range in it, document.all, fonts and
+// styleSheets, localStorage, sessionStorage, navigator, customElements, a
+// shadow root on a connected host - plus a listener and an XHR in flight, then
+// removed. The page keeps the removed frames' WindowProxies in a global until
+// it ends; nothing of them may outlive the page.
+const FRAMES = 5;
+
+function giveEveryChild(w, i) {
+  const d = w.document;
+  d.body.textContent = "text to select " + i;
+  const selection = d.getSelection();
+  selection.rlExpando = i;
+  const range = d.createRange();
+  range.selectNodeContents(d.body);
+  selection.addRange(range);
+  d.all.rlExpando = i;
+  d.fonts.rlExpando = i;
+  d.styleSheets.rlExpando = i;
+  w.localStorage.getItem("rl-frame-churn");
+  w.sessionStorage.getItem("rl-frame-churn");
+  w.navigator.rlExpando = i;
+  w.customElements.rlExpando = i;
+  w.addEventListener("message", () => {});
+  const host = d.createElement("div");
+  d.body.appendChild(host);
+  host.attachShadow({ mode: "open" }).appendChild(d.createElement("span"));
+  const xhr = new w.XMLHttpRequest();
+  xhr.open("GET", location.origin + "/common/blank.html");
+  xhr.send();
+}
+
+promise_test(async t => {
+  const held = [];
+  for (let i = 0; i < FRAMES; i++) {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    const w = frame.contentWindow;
+    giveEveryChild(w, i);
+    assert_equals(w.document.getSelection().rlExpando, i, "the frame's selection is the one given an expando");
+    frame.remove();
+    held.push(w);
+  }
+  // The removed frames' WindowProxies live as long as the page.
+  window.rlHeld = held;
+  await new Promise(r => t.step_timeout(r, 20));
+  for (const w of held) assert_equals(w.self, w, "a held WindowProxy answers self after its frame's realm ended");
+}, "removed frames with every kind of kept child, their WindowProxies held by the page");
+</script>

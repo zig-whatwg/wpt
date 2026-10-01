@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: shadow roots and hosts dropped in every combination leave nothing behind</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-element-shadow-root">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A page-retention probe, run many times in one process under
+// CRANE_HEAP_GC=1: the runner journals heap_used_kb after each file, which
+// must stay flat. A host and its shadow root keep each other while script
+// holds either (Blink: ElementRareData traces the shadow root, ShadowRoot
+// traces its host), and both go once script holds neither.
+const PAIRS = 200;
+
+function pair(i) {
+  const host = document.createElement("div");
+  const root = host.attachShadow({ mode: "open" });
+  root.appendChild(document.createElement("span")).textContent = "shadow " + i;
+  return [host, root];
+}
+
+promise_test(async () => {
+  const keptRoots = [];
+  const keptHosts = [];
+  for (let i = 0; i < PAIRS; i++) {
+    const [host, root] = pair(i);
+    if (i % 3 === 0) keptRoots.push(root);       // the host is dropped
+    else if (i % 3 === 1) keptHosts.push(host);  // the shadow root is dropped
+    // else: both dropped
+  }
+  if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  for (const root of keptRoots) {
+    root.appendChild(document.createElement("b"));
+    assert_equals(root.childNodes.length, 2, "a kept shadow root still works");
+  }
+  for (const host of keptHosts)
+    assert_equals(host.shadowRoot.firstChild.localName, "span", "a kept host's shadow root is whole");
+}, "host and shadow root pairs, each dropped in turn");
+</script>

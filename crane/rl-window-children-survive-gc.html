@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a Window keeps its navigator, navigation, BarProps, Storage and CustomElementRegistry through collections</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/system-state.html#dom-navigator">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-navigation">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-locationbar">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Each of these is one object for the Window's whole life ([SameObject]), and
+// the Window keeps it in its own state. Blink traces each from the window
+// (LocalDOMWindow::Trace, DOMWindowStorage::Trace); Crane draws the same edge
+// from the Window's global object. Script keeps nothing but an expando, so
+// only the Window can keep the object: after two collections the getter must
+// answer the same object, expando and all - not a new one, and not one read
+// out of freed memory. A frame's Window makes its own navigator, so the frame
+// cases cover the getters that make the object on first use.
+const MEMBERS = ["navigator", "navigation", "localStorage", "sessionStorage", "customElements",
+                 "locationbar", "menubar", "personalbar", "scrollbars", "statusbar", "toolbar"];
+
+async function collectTwice(t) {
+  await TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  await TestUtils.gc();
+}
+
+function churn(d) {
+  const keep = [];
+  for (let i = 0; i < 2000; i++) {
+    keep.push(d.createTextNode("t" + i));
+    keep.push(new AbortController());
+  }
+  return keep;
+}
+
+promise_test(async t => {
+  for (const name of MEMBERS) window[name].rlExpando = name;
+  await collectTwice(t);
+  const keep = churn(document);
+  for (const name of MEMBERS)
+    assert_equals(window[name].rlExpando, name, `window.${name} is the same object`);
+  assert_true(keep.length > 0);
+}, "the page's Window keeps every one of its children through two collections");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  for (const name of MEMBERS) w[name].rlExpando = name;
+  await collectTwice(t);
+  const keep = churn(document);
+  for (const name of MEMBERS)
+    assert_equals(w[name].rlExpando, name, `the frame's ${name} is the same object`);
+  assert_equals(typeof w.navigator.userAgent, "string", "the frame's navigator is whole");
+  assert_true(keep.length > 0);
+}, "a frame's Window keeps every one of its children through two collections");
+</script>

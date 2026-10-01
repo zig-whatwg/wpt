@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: removed frames whose WindowProxies the page drops, with every kind of kept child</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A page-retention probe (tmp/plans/frame-realm-tracing-design.md, section 5),
+// run many times in one process under CRANE_HEAP_GC=1: the runner journals
+// native_contexts and heap_used_kb after each file, and both must stay flat.
+// The companion of rl-frame-churn-held.html: the same frames and children, but
+// nothing of a frame is kept once it is removed, so nothing of it may outlive
+// even the page's own collection.
+const FRAMES = 5;
+
+function giveEveryChild(w, i) {
+  const d = w.document;
+  d.body.textContent = "text to select " + i;
+  const selection = d.getSelection();
+  selection.rlExpando = i;
+  const range = d.createRange();
+  range.selectNodeContents(d.body);
+  selection.addRange(range);
+  d.all.rlExpando = i;
+  d.fonts.rlExpando = i;
+  d.styleSheets.rlExpando = i;
+  w.localStorage.getItem("rl-frame-churn");
+  w.sessionStorage.getItem("rl-frame-churn");
+  w.navigator.rlExpando = i;
+  w.customElements.rlExpando = i;
+  w.addEventListener("message", () => {});
+  const host = d.createElement("div");
+  d.body.appendChild(host);
+  host.attachShadow({ mode: "open" }).appendChild(d.createElement("span"));
+  const xhr = new w.XMLHttpRequest();
+  xhr.open("GET", location.origin + "/common/blank.html");
+  xhr.send();
+}
+
+promise_test(async t => {
+  for (let i = 0; i < FRAMES; i++) {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    giveEveryChild(frame.contentWindow, i);
+    assert_equals(frame.contentDocument.getSelection().rlExpando, i, "the frame's selection is the one given an expando");
+    frame.remove();
+  }
+  await new Promise(r => t.step_timeout(r, 20));
+  if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+}, "removed frames with every kind of kept child, nothing of them kept");
+</script>

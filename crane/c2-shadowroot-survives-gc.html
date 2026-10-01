@@ -118,12 +118,11 @@ promise_test(async () => {
 }, "a parser-created host's shadow root survives two collections");
 
 promise_test(async () => {
-  // The idiom: nothing keeps the host, only its shadow root. A full
-  // collection then frees the host (a shadow root does not keep its host
-  // alive until wrappers are traced - Crane's stated deviation), and the
-  // shadow root must go on working as a DocumentFragment. Its host is then
-  // either still the element (the spec's answer, once traced) or an
-  // InvalidStateError - never freed memory.
+  // The idiom: nothing keeps the host, only its shadow root. The shadow root
+  // keeps its host - "the host getter steps are to return this's host", for
+  // the shadow root's whole life (Blink and WebKit keep it; Crane traces the
+  // edge since the realms lane) - and it goes on working as a
+  // DocumentFragment through the collections.
   const root = document.createElement("div").attachShadow({ mode: "open" });
   root.appendChild(document.createElement("span"));
   await collectTwice();
@@ -133,18 +132,11 @@ promise_test(async () => {
   assert_equals(root.lastChild.localName, "b");
   root.firstChild.remove();
   assert_equals(root.firstChild.localName, "b", "remove still works");
-  let host = null;
-  try {
-    host = root.host;
-  } catch (e) {
-    assert_equals(e.name, "InvalidStateError", "a shadow root whose host was collected throws InvalidStateError");
-  }
-  if (host !== null) {
-    assert_true(host instanceof HTMLDivElement, "or its host is still the element");
-    assert_equals(host.shadowRoot, root);
-  }
+  const host = root.host;
+  assert_true(host instanceof HTMLDivElement, "its host is still the element");
+  assert_equals(host.shadowRoot, root, "whose shadow root is this one");
   assert_true(keep.length > 0);
-}, "a shadow root keeps working after script drops its host and a collection runs");
+}, "a shadow root keeps its host, and keeps working, after script drops the host and a collection runs");
 
 test(() => {
   for (const name of ["article", "aside", "blockquote", "body", "div", "footer", "h1", "h2", "h3",

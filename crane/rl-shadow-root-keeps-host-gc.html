@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a shadow root script holds keeps its host through collections</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-shadowroot-host">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-documentfragment-host">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// "The host getter steps are to return this's host": a shadow root's host is
+// its host for the shadow root's whole life. Script routinely keeps only the
+// shadow root - `document.createElement("div").attachShadow({mode: "open"})`
+// - so the shadow root must keep its host alive (Blink traces it, WebKit's
+// shadow root holds it), as the host keeps its shadow root.
+async function collectTwice(t) {
+  await TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  await TestUtils.gc();
+}
+
+function churn() {
+  const keep = [];
+  for (let i = 0; i < 2000; i++) {
+    keep.push(document.createElement("div"));
+    keep.push(document.createComment("c" + i));
+    keep.push(new AbortController());
+  }
+  return keep;
+}
+
+for (const mode of ["open", "closed"]) {
+  promise_test(async t => {
+    const root = (() => {
+      const host = document.createElement("div");
+      host.rlExpando = "the host";
+      return host.attachShadow({ mode });
+    })();
+    root.appendChild(document.createElement("span"));
+    await collectTwice(t);
+    const keep = churn();
+    const host = root.host;
+    assert_true(host instanceof HTMLDivElement, "host is still the element");
+    assert_equals(host.rlExpando, "the host", "it is the same element");
+    if (mode === "open") assert_equals(host.shadowRoot, root, "and its shadow root is this one");
+    assert_equals(root.firstChild.localName, "span");
+    assert_true(keep.length > 0);
+  }, `a ${mode} shadow root held alone keeps its host through two collections`);
+}
+
+promise_test(async t => {
+  // Many pairs, every other one held only by its shadow root: each must still
+  // answer its own host - a host freed and its slot reissued would answer
+  // another element, or nothing.
+  const roots = [];
+  for (let i = 0; i < 200; i++) {
+    const host = document.createElement("div");
+    host.id = "host" + i;
+    roots.push(host.attachShadow({ mode: "open" }));
+  }
+  await collectTwice(t);
+  const keep = churn();
+  roots.forEach((root, i) => assert_equals(root.host.id, "host" + i, `shadow root ${i}'s host`));
+  assert_true(keep.length > 0);
+}, "two hundred shadow roots held alone each keep their own host");
+
+promise_test(async t => {
+  // DEVIATION, pinned: a node does not keep its tree's root alive in Crane,
+  // so a host whose detached parent is collected is freed with that parent's
+  // subtree even while script holds its shadow root. The shadow root then
+  // forgets it: `host` throws InvalidStateError instead of answering the
+  // element (whose parent the spec keeps too). Never freed memory.
+  const root = (() => {
+    const parent = document.createElement("section");
+    const host = parent.appendChild(document.createElement("div"));
+    return host.attachShadow({ mode: "open" });
+  })();
+  await collectTwice(t);
+  const keep = churn();
+  root.appendChild(document.createElement("b"));
+  assert_equals(root.firstChild.localName, "b", "the shadow root still works");
+  let host = null;
+  try {
+    host = root.host;
+  } catch (e) {
+    assert_equals(e.name, "InvalidStateError", "a forgotten host throws InvalidStateError");
+  }
+  if (host !== null) {
+    assert_true(host instanceof HTMLDivElement, "or its host is still the element");
+    assert_equals(host.parentNode.localName, "section", "with its parent");
+  }
+  assert_true(keep.length > 0);
+}, "a shadow root whose host sat in a collected detached subtree (DEVIATION: host may throw InvalidStateError)");
+</script>
