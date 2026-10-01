@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A page's unrevoked blob URLs go with the page</title>
+<link rel=help href="https://w3c.github.io/FileAPI/#lifeTime">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// File API: a blob URL entry holds its Blob, and the unloading document
+// cleanup steps remove a document's entries from the blob URL store when the
+// document goes. This page makes 64 blob URLs of 256 KiB each (16 MiB) and
+// never revokes them. Run many times in one process (a --from-file list
+// repeating it), the process's memory must stay flat: the entries go with
+// each page. Before they did, every page's 16 MiB stayed for the life of the
+// process (the entries held the data and nothing removed them).
+const chunkLength = 256 * 1024;
+const chunk = "x".repeat(chunkLength);
+const urls = [];
+for (let i = 0; i < 64; i++) urls.push(URL.createObjectURL(new Blob([chunk, String(i).padStart(2, "0")])));
+
+promise_test(async () => {
+  const response = await fetch(urls[63]);
+  const text = await response.text();
+  assert_equals(text.length, chunkLength + 2);
+  assert_true(text.endsWith("63"), "the last URL's own blob");
+}, "a page's 64 unrevoked blob URLs resolve while the page lives");
+</script>

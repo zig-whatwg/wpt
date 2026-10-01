@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's unrevoked blob URLs go with the worker</title>
+<link rel=help href="https://w3c.github.io/FileAPI/#lifeTime">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The File API removes a document's blob URL entries when the document goes,
+// and notes "This needs a similar hook when a worker is unloaded"; Blink
+// removes a worker's when the worker's global scope ends. The worker makes
+// 64 blob URLs (16 MiB) and never revokes them; the page then terminates it.
+// Run many times in one process, memory must stay flat.
+promise_test(async () => {
+  const worker = new Worker("resources/c3-blob-url-churn-worker.js");
+  const length = await new Promise(resolve => worker.onmessage = e => resolve(e.data));
+  worker.terminate();
+  assert_equals(length, 256 * 1024 + 2);
+}, "a worker's 64 unrevoked blob URLs resolve while the worker lives");
+</script>
