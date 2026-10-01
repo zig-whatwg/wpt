@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>localStorage in an opaque-origin document throws, and frees nothing twice</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/webstorage.html#dom-localstorage">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "If this's relevant settings object's origin is an opaque origin, then
+// throw a SecurityError DOMException." Window.get_localStorage made its
+// backend, and on that error freed it in the catch AND in the errdefer above
+// it: a double free per read in every sandboxed frame without
+// allow-same-origin (html/semantics/embedded-content/the-iframe-element/
+// sandbox_0xx.htm in sweeps).
+promise_test(async () => {
+  const names = [];
+  for (let i = 0; i < 4; i++) {
+    const frame = document.createElement("iframe");
+    frame.sandbox = "allow-scripts";
+    frame.srcdoc = `<script>
+      const names = [];
+      for (let j = 0; j < 4; j++) {
+        try { localStorage; names.push("no exception"); } catch (e) { names.push(e.name); }
+      }
+      parent.postMessage(names.join(), "*");
+    <\/script>`;
+    const message = new Promise(resolve => {
+      window.addEventListener("message", e => resolve(e.data), { once: true });
+    });
+    document.body.appendChild(frame);
+    names.push(await message);
+    frame.remove();
+  }
+  for (const each of names) {
+    assert_equals(each, "SecurityError,SecurityError,SecurityError,SecurityError");
+  }
+}, "every read of localStorage in a sandboxed frame throws a SecurityError");
+</script>
