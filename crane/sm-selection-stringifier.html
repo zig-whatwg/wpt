@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Selection stringifies to its range's text</title>
+<link rel=help href="https://w3c.github.io/selection-api/#dom-selection-stringifier">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><p id=p>hello <b>world</b></p>
+<script>
+// Selection's stringifier is bound as the operation toString(), and the
+// binding frees the string an operation returns: a literal returned there
+// ended the page with a bus error in Allocator.free.
+test(() => {
+  const s = getSelection();
+  s.removeAllRanges();
+  for (let i = 0; i < 4; i++) assert_equals(String(s), "", "call " + i);
+}, "an empty selection stringifies to the empty string, every time");
+
+test(() => {
+  const s = getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById("p"));
+  s.removeAllRanges();
+  s.addRange(range);
+  for (let i = 0; i < 4; i++) {
+    assert_equals(String(s), "hello world", "String(), call " + i);
+    assert_equals(s.toString(), "hello world", "toString(), call " + i);
+  }
+  s.removeAllRanges();
+}, "a selection stringifies to its range's text, every time");
+</script>

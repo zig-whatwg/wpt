@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>MessageEvent keeps its own type and lastEventId</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-initmessageevent">
+<link rel=help href="https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-lasteventid">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The binding frees an operation's and a constructor's converted arguments
+// when the call returns - a string, and a dictionary's string members. An
+// event that stores the argument itself instead of a copy reads freed bytes
+// on the next read of the attribute, and its teardown frees the string a
+// second time: initMessageEvent stored its `type` (four "Double free
+// detected" per run of messageevent-constructor.https.html), and both the
+// constructor and initMessageEvent stored `lastEventId`.
+const long = (tag) => tag + "-" + "x".repeat(120);
+
+test(() => {
+  const type = long("type");
+  const id = long("id");
+  const ev = document.createEvent("messageevent");
+  ev.initMessageEvent(type, true, false, "data", "origin", id, null);
+  for (let i = 0; i < 4; i++) {
+    assert_equals(ev.type, type, "type, read " + i);
+    assert_equals(ev.lastEventId, id, "lastEventId, read " + i);
+  }
+  assert_true(ev.bubbles, "bubbles");
+  assert_false(ev.cancelable, "cancelable");
+}, "initMessageEvent's type and lastEventId survive the call");
+
+test(() => {
+  const id = long("ctor-id");
+  const ev = new MessageEvent("message", { lastEventId: id });
+  for (let i = 0; i < 4; i++) {
+    assert_equals(ev.lastEventId, id, "read " + i);
+  }
+}, "the constructor's lastEventId survives the call");
+
+test(() => {
+  const ev = document.createEvent("messageevent");
+  for (let i = 0; i < 16; i++) {
+    ev.initMessageEvent(long("t" + i), false, false, null, "", long("id" + i), null);
+    assert_equals(ev.type, long("t" + i), "type after init " + i);
+    assert_equals(ev.lastEventId, long("id" + i), "lastEventId after init " + i);
+  }
+}, "initMessageEvent called again replaces the strings it keeps");
+
+test(() => {
+  const ev = new MessageEvent("first", { lastEventId: long("first-id") });
+  let seen = null;
+  ev.initMessageEvent("second");
+  assert_equals(ev.type, "second", "type");
+  assert_equals(ev.lastEventId, "", "lastEventId defaults to the empty string");
+  document.addEventListener("second", (e) => { seen = e.type; }, { once: true });
+  document.dispatchEvent(ev);
+  assert_equals(seen, "second", "a listener for the new type saw it");
+}, "an event re-initialized with initMessageEvent dispatches under its new type");
+
+test(() => {
+  const ev = document.createEvent("messageevent");
+  let inner = null;
+  document.addEventListener("outer", () => {
+    // DOM "initialize" runs only when the dispatch flag is unset.
+    ev.initMessageEvent("inner", false, false, null, "", "changed", null);
+    inner = [ev.type, ev.lastEventId];
+  }, { once: true });
+  ev.initMessageEvent("outer", false, false, null, "", "kept", null);
+  document.dispatchEvent(ev);
+  assert_array_equals(inner, ["outer", "kept"], "initMessageEvent during dispatch does nothing");
+}, "initMessageEvent during dispatch does nothing");
+</script>

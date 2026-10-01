@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>PointerEvent keeps its own pointerType</title>
+<link rel=help href="https://w3c.github.io/pointerevents/#dom-pointerevent-pointertype">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The binding frees a constructor's dictionary strings when the constructor
+// returns, and frees the DOMString a getter returns once it has converted it.
+// A PointerEvent that stores PointerEventInit's pointerType itself reads freed
+// bytes on every read of pointerType, and each read frees it again.
+const long = (tag) => tag + "-" + "x".repeat(120);
+
+test(() => {
+  const type = long("pen");
+  const ev = new PointerEvent("pointerdown", { pointerType: type });
+  for (let i = 0; i < 4; i++) {
+    assert_equals(ev.pointerType, type, "read " + i);
+  }
+}, "pointerType from the init dictionary survives the constructor and every read");
+
+test(() => {
+  const events = [];
+  for (let i = 0; i < 16; i++) {
+    events.push(new PointerEvent("pointermove", { pointerType: long("touch" + i) }));
+  }
+  events.forEach((ev, i) => {
+    assert_equals(ev.pointerType, long("touch" + i), "event " + i);
+    assert_equals(ev.pointerType, long("touch" + i), "event " + i + ", again");
+  });
+}, "many events each keep their own pointerType");
+
+test(() => {
+  const ev = new PointerEvent("pointerup");
+  assert_equals(ev.pointerType, "", "the default");
+  assert_equals(ev.pointerType, "", "the default, again");
+}, "pointerType defaults to the empty string");
+</script>

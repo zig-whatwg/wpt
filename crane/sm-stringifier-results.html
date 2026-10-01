@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Stringifiers return strings the binding may free</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#es-stringifier">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A stringifier is bound as the operation toString(), and the binding frees
+// the non-empty string an operation returns once it has converted it. A
+// stringifier that returns a string literal hands the allocator memory it
+// never allocated: `String(new DOMMatrix())` died with a bus error in
+// Allocator.free's memset, writing to the literal's read-only page.
+const cases = [
+  ["DOMMatrixReadOnly", () => new DOMMatrixReadOnly()],
+  ["DOMMatrix", () => new DOMMatrix()],
+  ["CSSParserBlock", () => new CSSParserBlock("[", [])],
+  ["CSSParserFunction", () => new CSSParserFunction("f", [])],
+  ["CSSParserDeclaration", () => new CSSParserDeclaration("d")],
+  ["CSSParserAtRule", () => new CSSParserAtRule("a", [])],
+  ["CSSParserQualifiedRule", () => new CSSParserQualifiedRule([])],
+];
+for (const [name, make] of cases) {
+  test(() => {
+    assert_true(name in self, name + " is exposed");
+    const object = make();
+    const first = String(object);
+    assert_equals(typeof first, "string", "String()");
+    for (let i = 0; i < 4; i++) {
+      assert_equals(object.toString(), first, "toString(), call " + i);
+      assert_equals(`${object}`, first, "a template literal, " + i);
+    }
+  }, name + " stringifies, again and again");
+}
+</script>
