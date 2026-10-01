@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A host's shadow root survives a collection of its wrapper</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-element-shadow-root">
+<link rel=help href="https://dom.spec.whatwg.org/#dom-element-shadowroot">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="parsed-host"></div>
+<script>
+// An element's shadow root is the element's own: "an element has an
+// associated shadow root", and the shadowRoot getter returns it for as long as
+// the host lives. A shadow root has no parent, so nothing in the tree points
+// at it - only its host does. If the host keeps a bare pointer, a collection of
+// the shadow root's wrapper frees it under the host, and the next
+// host.shadowRoot reads freed memory (custom-elements/registries/
+// scoped-registry-effective-global-registry.html died in ShadowRoot.get_mode
+// once enough of its subtests had run for the collector to reach one).
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+// Allocate objects of many shapes, so a freed slot is likely to be reissued.
+function churn() {
+  const keep = [];
+  for (let i = 0; i < 2000; i++) {
+    keep.push(document.createTextNode("t" + i));
+    keep.push(document.createComment("c" + i));
+    keep.push(document.createDocumentFragment());
+    keep.push(new AbortController());
+  }
+  return keep;
+}
+
+async function collectTwice() {
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+}
+
+promise_test(async () => {
+  const host = document.createElement("div");
+  // Nothing in script keeps the shadow root: only an expando of it.
+  host.attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
+  host.shadowRoot.c2Expando = "kept";
+  await collectTwice();
+  const keep = churn();
+  const root = host.shadowRoot;
+  assert_true(root instanceof ShadowRoot, "shadowRoot is a ShadowRoot");
+  assert_equals(root.host, host, "its host is the element");
+  assert_equals(root.mode, "open");
+  assert_equals(root.firstChild.localName, "span", "its children are kept");
+  assert_equals(root.c2Expando, "kept", "it is the same ShadowRoot object");
+  assert_true(keep.length > 0);
+}, "a disconnected host's open shadow root survives two collections");
+
+promise_test(async () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  host.attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
+  host.shadowRoot.c2Expando = "kept";
+  await collectTwice();
+  const keep = churn();
+  const root = host.shadowRoot;
+  assert_true(root instanceof ShadowRoot, "shadowRoot is a ShadowRoot");
+  assert_equals(root.host, host);
+  assert_equals(root.firstChild.localName, "span");
+  assert_equals(root.c2Expando, "kept", "it is the same ShadowRoot object");
+  host.remove();
+  assert_true(keep.length > 0);
+}, "a connected host's open shadow root survives two collections");
+
+promise_test(async () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  // A closed shadow root: shadowRoot answers null, and attachShadow() again
+  // must still see that the host has one.
+  host.attachShadow({ mode: "closed" });
+  await collectTwice();
+  const keep = churn();
+  assert_equals(host.shadowRoot, null, "a closed shadow root is not exposed");
+  assert_throws_dom("NotSupportedError", () => host.attachShadow({ mode: "open" }),
+                    "the host still has its shadow root");
+  host.remove();
+  assert_true(keep.length > 0);
+}, "a closed shadow root survives two collections");
+
+promise_test(async () => {
+  const iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  const host = document.createElement("div");
+  host.attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
+  host.shadowRoot.c2Expando = "kept";
+  iframe.contentDocument.body.appendChild(host);
+  await collectTwice();
+  const keep = churn();
+  const root = host.shadowRoot;
+  assert_true(root instanceof ShadowRoot, "shadowRoot is a ShadowRoot");
+  assert_equals(root.firstChild.localName, "span");
+  assert_equals(root.c2Expando, "kept", "it is the same ShadowRoot object");
+  iframe.remove();
+  assert_true(keep.length > 0);
+}, "a shadow root adopted into another document with its host survives two collections");
+
+promise_test(async () => {
+  const host = document.getElementById("parsed-host");
+  host.attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
+  host.shadowRoot.c2Expando = "kept";
+  await collectTwice();
+  const keep = churn();
+  assert_equals(host.shadowRoot.c2Expando, "kept", "it is the same ShadowRoot object");
+  assert_equals(host.shadowRoot.firstChild.localName, "span");
+  assert_true(keep.length > 0);
+}, "a parser-created host's shadow root survives two collections");
+
+promise_test(async () => {
+  // The idiom: nothing keeps the host, only its shadow root. A full
+  // collection then frees the host (a shadow root does not keep its host
+  // alive until wrappers are traced - Crane's stated deviation), and the
+  // shadow root must go on working as a DocumentFragment. Its host is then
+  // either still the element (the spec's answer, once traced) or an
+  // InvalidStateError - never freed memory.
+  const root = document.createElement("div").attachShadow({ mode: "open" });
+  root.appendChild(document.createElement("span"));
+  await collectTwice();
+  const keep = churn();
+  root.appendChild(document.createElement("b"));
+  assert_equals(root.childNodes.length, 2, "appendChild still works");
+  assert_equals(root.lastChild.localName, "b");
+  root.firstChild.remove();
+  assert_equals(root.firstChild.localName, "b", "remove still works");
+  let host = null;
+  try {
+    host = root.host;
+  } catch (e) {
+    assert_equals(e.name, "InvalidStateError", "a shadow root whose host was collected throws InvalidStateError");
+  }
+  if (host !== null) {
+    assert_true(host instanceof HTMLDivElement, "or its host is still the element");
+    assert_equals(host.shadowRoot, root);
+  }
+  assert_true(keep.length > 0);
+}, "a shadow root keeps working after script drops its host and a collection runs");
+
+test(() => {
+  for (const name of ["article", "aside", "blockquote", "body", "div", "footer", "h1", "h2", "h3",
+                      "h4", "h5", "h6", "header", "main", "nav", "p", "section", "span", "x-custom"]) {
+    const root = document.createElement(name).attachShadow({ mode: "open" });
+    assert_true(root instanceof ShadowRoot, name + " is a valid shadow host");
+  }
+}, "attach a shadow root step 2: every valid shadow host name is accepted");
+
+test(() => {
+  for (const name of ["a", "img", "input", "iframe", "button", "template", "unknown"]) {
+    assert_throws_dom("NotSupportedError", () => document.createElement(name).attachShadow({ mode: "open" }),
+                      name + " is not a valid shadow host name");
+  }
+}, "attach a shadow root step 2: other local names throw NotSupportedError");
+
+test(() => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "div");
+  assert_throws_dom("NotSupportedError", () => svg.attachShadow({ mode: "open" }));
+  const none = document.createElementNS(null, "div");
+  assert_throws_dom("NotSupportedError", () => none.attachShadow({ mode: "open" }));
+}, "attach a shadow root step 1: an element outside the HTML namespace throws NotSupportedError");
+
+test(() => {
+  const host = document.createElement("div");
+  host.attachShadow({ mode: "open" });
+  assert_throws_dom("NotSupportedError", () => host.attachShadow({ mode: "open" }));
+  assert_throws_dom("NotSupportedError", () => host.attachShadow({ mode: "closed" }));
+}, "attach a shadow root step 4: a host whose shadow root is not declarative throws NotSupportedError");
+</script>

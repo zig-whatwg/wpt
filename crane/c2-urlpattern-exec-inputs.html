@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>URLPattern exec() returns its inputs after the call's arguments are gone</title>
+<link rel=help href="https://urlpattern.spec.whatwg.org/#dom-urlpattern-exec">
+<link rel=help href="https://urlpattern.spec.whatwg.org/#urlpattern-match">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "match" step 5: "Let inputs be an empty list", then append input (and
+// baseURLString): the result's inputs are copies of what the caller passed.
+// The binding releases a call's converted arguments when the operation
+// returns, before it converts the return value - so a result that borrows the
+// argument's string reads freed memory. A string larger than the allocator's
+// largest bucket is returned to the OS on free, so there the read is a SIGSEGV
+// (urlpattern/urlpattern.https.any.js crashed in hasSurrogateCodePoint under
+// URLPatternResult conversion); a small one reads back poisoned bytes.
+const long = "https://example.com/" + "a".repeat(300000);
+
+test(() => {
+  const pattern = new URLPattern({ pathname: "/*" });
+  const result = pattern.exec(long);
+  assert_not_equals(result, null, "the pattern matches");
+  assert_equals(result.inputs.length, 1);
+  assert_equals(result.inputs[0], long, "inputs[0] is the string passed");
+  assert_equals(result.pathname.input, "/" + "a".repeat(300000));
+}, "exec() with a long string input");
+
+test(() => {
+  const pattern = new URLPattern({ pathname: "/:first/*" });
+  const result = pattern.exec("https://example.com/alpha/beta", "https://example.org/");
+  assert_not_equals(result, null, "the pattern matches");
+  assert_equals(result.inputs[0], "https://example.com/alpha/beta");
+  assert_equals(result.pathname.groups.first, "alpha");
+}, "exec() with a short string input");
+
+test(() => {
+  const pattern = new URLPattern({ pathname: "/:first/*" });
+  const result = pattern.exec("/alpha/beta", "https://example.org/");
+  assert_not_equals(result, null, "the pattern matches");
+  assert_array_equals(result.inputs, ["/alpha/beta", "https://example.org/"],
+                      "inputs holds the input and the base URL string");
+}, "exec() with a relative string input and a base URL");
+
+test(() => {
+  const pattern = new URLPattern({ pathname: "/*" });
+  const init = { pathname: "/" + "b".repeat(300000), hostname: "example.com" };
+  const result = pattern.exec(init);
+  assert_not_equals(result, null, "the pattern matches");
+  assert_equals(result.inputs.length, 1);
+  assert_equals(result.inputs[0].pathname, init.pathname, "inputs[0] is the dictionary passed");
+  assert_equals(result.inputs[0].hostname, "example.com");
+}, "exec() with a URLPatternInit input");
+</script>

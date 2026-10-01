@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>valueAsNumber setter with numbers outside the range of a 64-bit millisecond count</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/input.html#dom-input-valueasnumber">
+<link rel=help href="https://html.spec.whatwg.org/multipage/input.html#time-state-(type=time)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The setter runs the type's "convert a number to a string" on any finite
+// number. A time is "input milliseconds after midnight": only the value modulo
+// one day matters, however large the number (the WPT expects
+// 2.7343337071894478e26 -> "10:54:10.944"). A date, month, week or local date
+// and time far outside the range a Date can hold has no valid string, and the
+// value becomes the empty string. None of these may crash: converting such a
+// number to a 64-bit integer first was a safety panic
+// (html/semantics/forms/the-input-element/input-valueasnumber.html, SIGABRT).
+function input(type) {
+  const el = document.createElement("input");
+  el.type = type;
+  return el;
+}
+
+const huge = 2.7343337071894478e26;
+
+test(() => {
+  const el = input("time");
+  el.valueAsNumber = huge;
+  assert_equals(el.value, "10:54:10.944");
+}, "time: a number beyond 2^63 milliseconds wraps to its time of day");
+
+test(() => {
+  const el = input("time");
+  el.valueAsNumber = -huge;
+  assert_equals(el.value, "13:05:49.056");
+}, "time: a negative number beyond -2^63 milliseconds wraps to its time of day");
+
+test(() => {
+  const el = input("time");
+  el.valueAsNumber = -3600 * 1000;
+  assert_equals(el.value, "23:00");
+}, "time: minus one hour is 23:00");
+
+for (const type of ["date", "month", "week", "datetime-local"]) {
+  for (const n of [huge, -huge, 1e300, -1e300]) {
+    test(() => {
+      const el = input(type);
+      el.value = "";
+      el.valueAsNumber = n;
+      assert_equals(el.value, "", "no valid string represents it");
+    }, `${type}: valueAsNumber = ${n} sets the value to the empty string`);
+  }
+}
+
+test(() => {
+  const el = input("datetime-local");
+  el.valueAsNumber = 8.64e15;
+  assert_equals(el.value, "275760-09-13T00:00");
+}, "datetime-local: the largest time value a Date holds still converts");
+
+test(() => {
+  const el = input("date");
+  el.valueAsNumber = 1575936000000;
+  assert_equals(el.value, "2019-12-10");
+}, "date: an ordinary number still converts");
+
+test(() => {
+  const el = input("number");
+  el.valueAsNumber = huge;
+  assert_equals(el.value, String(huge));
+}, "number: a huge number is its shortest JavaScript string");
+</script>

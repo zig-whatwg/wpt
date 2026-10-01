@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>WebSocket url answers the same string on every read</title>
+<link rel=help href="https://websockets.spec.whatwg.org/#dom-websocket-url">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "The url getter steps are to return this's url, serialized." The binding
+// releases the string a getter returns once it has converted it, so a getter
+// that returns the socket's own copy has the socket's url freed on the first
+// read: every later read returned freed bytes, and the socket's teardown
+// freed the string a second time - a double free whose poisoning wrote into
+// whatever owned that memory by then (websockets/Create-http-urls.any.js
+// reads ws.url, and died in WebSocket.InternalState.deinit in sweeps).
+test(() => {
+  const url = "ws://" + location.host + "/c2-no-such-endpoint?" + "x".repeat(200);
+  const ws = new WebSocket(url);
+  const first = ws.url;
+  assert_equals(first, url, "the first read");
+  for (let i = 1; i < 8; i++) {
+    assert_equals(ws.url, url, "read " + i);
+  }
+  ws.close();
+  assert_equals(ws.url, url, "after close()");
+}, "ws.url is the same string on every read");
+
+test(() => {
+  const sockets = [];
+  for (let i = 0; i < 16; i++) {
+    const url = "ws://" + location.host + "/c2-no-such-endpoint-" + i;
+    const ws = new WebSocket(url);
+    assert_equals(ws.url, url);
+    sockets.push([ws, url]);
+  }
+  for (const [ws, url] of sockets) {
+    assert_equals(ws.url, url, "each socket keeps its own url");
+    ws.close();
+  }
+}, "many sockets each keep their url across reads");
+</script>

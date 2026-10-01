@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>URLSearchParams sort() compares names by UTF-16 code units, stably</title>
+<link rel=help href="https://url.spec.whatwg.org/#dom-urlsearchparams-sort">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Sort all tuples in this's list, if any, by their names. Sorting must be
+// done by comparison of code units. The relative order between tuples with
+// equal names must be preserved." A name outside the BMP starts with a high
+// surrogate (0xD800-0xDBFF), so it sorts BEFORE a BMP name at or above
+// U+E000 - the opposite of code point order. Read through toString(), so the
+// check does not depend on iteration.
+function sorted(input) {
+  const params = new URLSearchParams(input);
+  params.sort();
+  return params.toString();
+}
+
+test(() => {
+  // U+FB03 against U+1F308 (high surrogate 0xD83C).
+  assert_equals(sorted("ﬃ&\u{1F308}"), new URLSearchParams([["\u{1F308}", ""], ["ﬃ", ""]]).toString());
+}, "a name outside the BMP sorts before U+FB03");
+
+test(() => {
+  // U+E000 (private use) against U+1F308.
+  assert_equals(sorted("=1&\u{1F308}=2"), new URLSearchParams([["\u{1F308}", "2"], ["", "1"]]).toString());
+}, "a name outside the BMP sorts before U+E000");
+
+test(() => {
+  // Below the surrogates the orders agree: U+D7FF before U+1F308.
+  assert_equals(sorted("\u{1F308}&퟿"), new URLSearchParams([["퟿", ""], ["\u{1F308}", ""]]).toString());
+}, "a name below the surrogate range still sorts first");
+
+test(() => {
+  assert_equals(sorted("z=b&a=b&z=a&a=a"), "a=b&a=a&z=b&z=a");
+}, "equal names keep their relative order");
+
+test(() => {
+  assert_equals(sorted("a\u{1F308}=1&aﬃ=2&a=3&a\u{1F308}=4"),
+                new URLSearchParams([["a", "3"], ["a\u{1F308}", "1"], ["a\u{1F308}", "4"], ["aﬃ", "2"]]).toString());
+}, "code units decide past a shared prefix, and ties stay stable");
+</script>
