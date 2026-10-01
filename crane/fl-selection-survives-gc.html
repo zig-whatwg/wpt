@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>getSelection() returns the document's one Selection after its wrapper is collected</title>
+<link rel=help href="https://w3c.github.io/selection-api/#dom-document-getselection">
+<link rel=help href="https://w3c.github.io/selection-api/#dfn-selection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="host">Some text to select</div>
+<script>
+// "Each document ... has a unique selection associated with it", and
+// getSelection() returns it. Script routinely drops it after one call -
+// dom/ranges/Range-mutations.js runs getSelection().removeAllRanges() in every
+// "with selected" subtest - so nothing in script holds its wrapper. If the
+// document keeps only a bare pointer, a collection frees the Selection under
+// it, and the next getSelection() wraps whatever took the slot: a different
+// object ("removeAllRanges is not a function"), or undefined. Which subtests
+// fail then depends on when the collector runs - on the files a sweep ran
+// before - and Range-mutations-deleteData.html read 236 to 339 passing.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+// Allocate objects of many shapes, so a freed slot is likely to be reissued.
+function churn() {
+  const keep = [];
+  for (let i = 0; i < 2000; i++) {
+    keep.push(document.createTextNode("t" + i));
+    keep.push(document.createComment("c" + i));
+    keep.push(document.createRange());
+    keep.push(new AbortController());
+  }
+  return keep;
+}
+
+promise_test(async () => {
+  getSelection().removeAllRanges();
+  getSelection().flExpando = "kept";
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  const keep = churn();
+
+  const selection = getSelection();
+  assert_true(selection instanceof Selection, "getSelection() is a Selection");
+  assert_equals(selection, document.getSelection(), "window and document agree");
+  assert_equals(selection.flExpando, "kept", "it is the same Selection object");
+
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById("host"));
+  selection.addRange(range);
+  assert_equals(selection.rangeCount, 1, "the selection holds the added range");
+  assert_equals(selection.getRangeAt(0), range);
+  selection.removeAllRanges();
+  assert_equals(selection.rangeCount, 0);
+  assert_true(keep.length > 0);
+}, "window.getSelection() survives two collections with no script reference");
+
+promise_test(async () => {
+  // addRange step 3: "Set this's range to range by a strong reference (not
+  // by making a copy)". The selection holds the range; script need not.
+  getSelection().removeAllRanges();
+  (() => {
+    const range = document.createRange();
+    range.setStart(document.getElementById("host").firstChild, 1);
+    range.setEnd(document.getElementById("host").firstChild, 4);
+    range.flExpando = "kept";
+    getSelection().addRange(range);
+  })();
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  const keep = churn();
+
+  const range = getSelection().getRangeAt(0);
+  assert_true(range instanceof Range, "getRangeAt(0) is a Range");
+  assert_equals(range.flExpando, "kept", "it is the range addRange() was given");
+  assert_equals(range.startContainer, document.getElementById("host").firstChild);
+  assert_equals(range.startOffset, 1);
+  assert_equals(range.endOffset, 4);
+  getSelection().removeAllRanges();
+  assert_true(keep.length > 0);
+}, "the selection's range survives two collections with no script reference");
+
+promise_test(async () => {
+  const doc = document.implementation.createHTMLDocument("");
+  // Nothing but an expando is kept of the first answer: a local would hold it
+  // across the awaits below.
+  if (doc.getSelection() === null) return;  // a document without a browsing context may answer null
+  doc.getSelection().flExpando = "kept";
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  const keep = churn();
+  const again = doc.getSelection();
+  assert_true(again instanceof Selection, "getSelection() is a Selection");
+  assert_equals(again.flExpando, "kept", "it is the same Selection object");
+  assert_true(keep.length > 0);
+}, "Document.getSelection() of a created document survives a collection");
+</script>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A removed iframe's and a closed popup's WindowProxy keep answering, whatever the collector does</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-self">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// html/browsers/the-window-object/self-et-al.window.js reads w.frames,
+// w.globalThis, w.self and w.window on a WindowProxy whose browsing context
+// is gone, two timer turns after the removal. Nothing but that WindowProxy
+// is held by script: the iframe element is garbage once the test function
+// returns. The answers must not depend on whether a collection ran in
+// between - in a sweep they did, and the file read anything from 0 to 7 of
+// its 8 subtests passing, because the removed frame's realm ended (and its
+// WindowProxy was detached: "no access") when the collector freed the
+// removed <iframe>. Chrome, Edge and Firefox pass all 8.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+async function collectTwice() {
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+}
+function assertSelfReferences(w, when) {
+  for (const name of ["frames", "globalThis", "self", "window"])
+    assert_equals(w[name], w, `${name} ${when}`);
+}
+function removedFrameWindow() {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  const w = frame.contentWindow;
+  assertSelfReferences(w, "before removal");
+  frame.remove();
+  assertSelfReferences(w, "right after removal");
+  assert_true(w.closed, "closed right after removal");
+  return w;
+}
+
+promise_test(async () => {
+  const w = removedFrameWindow();
+  await collectTwice();
+  assertSelfReferences(w, "after the removed iframe element was collected");
+}, "a removed iframe's WindowProxy answers its self-references after its element is collected");
+
+// The removed frame's realm ends at a task queued by the removal (HTML
+// "destroy a child navigable"; Blink's LocalWindowProxy::DisposeContext with
+// kFrameIsDetached), not whenever the collector frees the removed element.
+//
+// DEVIATION, pinned here so the full model can flip it: once that task has
+// run, the ended realm's Window is gone, and its members other than the
+// self-references throw a TypeError. The spec keeps the Window: closed reads
+// true for a discarded browsing context, document still answers - as Chrome,
+// Edge and Firefox do.
+promise_test(async t => {
+  const w = removedFrameWindow();
+  await new Promise(r => t.step_timeout(r, 20));
+  assertSelfReferences(w, "after the removal's task");
+  // The getter is the frame's, so its TypeError is the frame realm's.
+  assert_throws_js(w.TypeError, () => w.closed, "closed, once the realm has ended (spec: true)");
+  await collectTwice();
+  assertSelfReferences(w, "after a collection");
+}, "a removed iframe's realm ends at the removal's task, not at a collection (closed: DEVIATION, spec says true)");
+
+promise_test(async t => {
+  const w = window.open();
+  assertSelfReferences(w, "before closing");
+  const pagehide = new Promise(r => w.onpagehide = r);
+  w.close();
+  assertSelfReferences(w, "right after close()");
+  await pagehide;
+  await new Promise(r => t.step_timeout(r, 0));
+  assert_equals(w.opener, null, "the browsing context was discarded");
+  await collectTwice();
+  assertSelfReferences(w, "after discarding and a collection");
+  assert_true(w.closed, "closed after the collection");
+}, "a closed popup's WindowProxy after discarding and a collection");
+</script>

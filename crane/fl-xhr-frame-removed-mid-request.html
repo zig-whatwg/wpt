@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An XHR of a removed frame fires nothing more: its fetch is canceled with its document</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#abort-a-document">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<link rel=help href="https://fetch.spec.whatwg.org/#concept-fetch-group-terminate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "destroy a child navigable" destroys the frame's document: "abort a
+// document" step 2 cancels every fetch in its context, "discarding any tasks
+// queued for them, and discarding any further data received from the network
+// for them", and "destroy a document" step 7 removes the document's queued
+// tasks without running them. So an XMLHttpRequest made by the frame, in
+// flight when the frame is removed, fires no further event at all - not
+// readystatechange, not error, not loadend - and keeps the state it had.
+// (Only read right after the removal here: Crane ends a removed frame's
+// realm at the removal's task and its objects with it - a stated deviation,
+// crane/fl-removed-frame-window-survives-gc.html.)
+// (xhr/open-url-multi-window-4.htm expects error and loadend, after an XHR
+// proposal that was never adopted - its own comment says so; Edge times out
+// on it, as the spec says it must.)
+const eventTypes = ["readystatechange", "loadstart", "progress", "abort", "error",
+                    "load", "timeout", "loadend"];
+
+function frameXHR(url) {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  const client = new frame.contentWindow.XMLHttpRequest();
+  const seen = [];
+  for (const type of eventTypes)
+    client.addEventListener(type, () => seen.push(`${type}(${client.readyState})`));
+  // Absolute: the frame's about:blank document resolves against its own URL.
+  client.open("GET", new URL(url, location.href).href);
+  return { frame, client, seen };
+}
+
+promise_test(async t => {
+  const { frame, client, seen } = frameXHR("/xhr/resources/delay.py?ms=200");
+  client.send();
+  assert_array_equals(seen, ["readystatechange(1)", "loadstart(1)"], "open() and send()");
+  frame.remove();
+  assert_equals(client.readyState, XMLHttpRequest.OPENED, "readyState is left as it was");
+  // Well past the response's arrival.
+  await new Promise(r => t.step_timeout(r, 600));
+  assert_array_equals(seen, ["readystatechange(1)", "loadstart(1)"], "nothing after the frame's removal");
+}, "an XHR in flight when its frame is removed fires no further events");
+
+promise_test(async t => {
+  const { frame, client, seen } = frameXHR("/xhr/resources/delay.py?ms=10");
+  client.send();
+  // A long task while the response arrives: its task is ready to be queued
+  // the moment this one ends, and the removal comes first.
+  const start = performance.now();
+  while (performance.now() - start < 150) { }
+  frame.remove();
+  assert_equals(client.readyState, XMLHttpRequest.OPENED, "readyState is left as it was");
+  await new Promise(r => t.step_timeout(r, 300));
+  assert_array_equals(seen, ["readystatechange(1)", "loadstart(1)"], "nothing after the frame's removal");
+}, "an XHR whose response came in during the task that removed its frame fires nothing");
+
+promise_test(async t => {
+  const { frame, client, seen } = frameXHR("/xhr/resources/delay.py?ms=10");
+  client.send();
+  // The removal runs from a task queued BEFORE the one that carries the
+  // response: that task belongs to the destroyed document now, and "destroy
+  // a document" step 7 removes it without running it.
+  const channel = new MessageChannel();
+  let stateAtRemoval;
+  channel.port1.onmessage = () => {
+    frame.remove();
+    stateAtRemoval = client.readyState;
+  };
+  channel.port2.postMessage("remove the frame");
+  const start = performance.now();
+  while (performance.now() - start < 150) { }
+  await new Promise(r => t.step_timeout(r, 300));
+  assert_array_equals(seen, ["readystatechange(1)", "loadstart(1)"], "nothing after the frame's removal");
+  assert_equals(stateAtRemoval, XMLHttpRequest.OPENED, "readyState is left as it was");
+}, "an XHR whose response task was queued behind its frame's removal fires nothing");
+
+promise_test(async t => {
+  const { frame, client, seen } = frameXHR("/xhr/resources/delay.py?ms=10");
+  // The frame goes from inside the request's own task, at its headers: the
+  // task may not go on to deliver the body, and nothing it queued may run.
+  client.addEventListener("readystatechange", () => {
+    if (client.readyState === XMLHttpRequest.HEADERS_RECEIVED) frame.remove();
+  });
+  client.send();
+  await new Promise(r => t.step_timeout(r, 300));
+  assert_array_equals(seen, ["readystatechange(1)", "loadstart(1)", "readystatechange(2)"],
+                      "nothing after the frame's removal");
+}, "an XHR whose frame is removed by its own readystatechange handler fires nothing more");
+</script>

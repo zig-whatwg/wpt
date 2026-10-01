@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>document.all, document.fonts and document.styleSheets survive the collection of their wrappers</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/obsolete.html#dom-document-all">
+<link rel=help href="https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts">
+<link rel=help href="https://drafts.csswg.org/cssom/#dom-documentorshadowroot-stylesheets">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each of these is one object for the document's whole life, and Document
+// keeps it in its own state. Kept there as a bare pointer, a collection of the
+// object's wrapper frees it under the document: the next read wraps whatever
+// took the slot, and the document's teardown deinits a block the arena may
+// have handed to someone else (the Selection held by getSelection() did
+// exactly that - crane/fl-selection-survives-gc.html). Script here keeps
+// nothing but an expando on each.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+async function collectTwice() {
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+}
+// Allocate objects of many shapes, so a freed slot is likely to be reissued.
+function churn() {
+  const keep = [];
+  for (let i = 0; i < 2000; i++) {
+    keep.push(document.createTextNode("t" + i));
+    keep.push(document.createElement("span").childNodes);
+    keep.push(document.createRange());
+    keep.push(new AbortController());
+  }
+  return keep;
+}
+
+promise_test(async () => {
+  document.all.flExpando = "kept";
+  await collectTwice();
+  const keep = churn();
+  const all = document.all;
+  assert_true(all instanceof HTMLAllCollection, "document.all is an HTMLAllCollection");
+  assert_equals(all.flExpando, "kept", "it is the same object");
+  assert_true(keep.length > 0);
+}, "document.all survives two collections with no script reference");
+
+promise_test(async () => {
+  document.fonts.flExpando = "kept";
+  await collectTwice();
+  const keep = churn();
+  const fonts = document.fonts;
+  assert_true(fonts instanceof FontFaceSet, "document.fonts is a FontFaceSet");
+  assert_equals(fonts.flExpando, "kept", "it is the same object");
+  assert_equals(fonts, document.fonts);
+  assert_true(keep.length > 0);
+}, "document.fonts survives two collections with no script reference");
+
+promise_test(async () => {
+  document.styleSheets.flExpando = "kept";
+  await collectTwice();
+  const keep = churn();
+  const sheets = document.styleSheets;
+  assert_true(sheets instanceof StyleSheetList, "document.styleSheets is a StyleSheetList");
+  assert_equals(sheets.flExpando, "kept", "it is the same object");
+  assert_true(keep.length > 0);
+}, "document.styleSheets survives two collections with no script reference");
+
+// A frame's document is kept by its browsing context, not by script, so its
+// wrapper - and any edge the binding draws from that wrapper to a child - can
+// be collected while the document lives on.
+for (const [name, type] of [["all", "HTMLAllCollection"], ["fonts", "FontFaceSet"], ["styleSheets", "StyleSheetList"]]) {
+  promise_test(async t => {
+    const frame = document.createElement("iframe");
+    document.documentElement.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+    frame.contentDocument[name].flExpando = "kept";
+    await collectTwice();
+    const keep = churn();
+    const child = frame.contentDocument[name];
+    assert_true(child instanceof frame.contentWindow[type], `${name} is a ${type}`);
+    assert_equals(child.flExpando, "kept", `the same document.${name}`);
+    assert_true(keep.length > 0);
+  }, `a frame document's ${name} survives two collections with no script reference`);
+}
+</script>

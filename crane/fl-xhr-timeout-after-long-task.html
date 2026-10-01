@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>An XHR whose response arrived during a long task is not timed out, twenty times over</title>
+<link rel=help href="https://xhr.spec.whatwg.org/#the-send()-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// xhr/xhr-timeout-longtask.any.js, twenty times in one page. The response
+// (/xhr/resources/delay.py, 100 ms) is complete long before the 150 ms
+// timeout; the 200 ms long task only keeps the page from hearing it. The
+// fetch runs in parallel, so it ends first and there is no timeout - in
+// every run. Crane read nothing while the task ran, and wptserve writes its
+// header block a line at a time, so the rest of it came out only after
+// Crane's first read, one round trip after the timer's single network step:
+// the file passed or failed by where the peer's delayed-ACK tick fell.
+function oneRun(i) {
+  return new Promise((resolve, reject) => {
+    const client = new XMLHttpRequest();
+    client.open("GET", "/xhr/resources/delay.py?ms=100", true);
+    client.timeout = 150;
+    client.ontimeout = () => reject(new Error(`run ${i}: timeout fired`));
+    client.onloadend = () => resolve(client.status);
+    client.send();
+    const start = performance.now();
+    while (performance.now() - start < 200) { }
+  });
+}
+
+promise_test(async () => {
+  for (let i = 0; i < 20; i++) {
+    const status = await oneRun(i);
+    assert_equals(status, 200, `run ${i}: status`);
+  }
+}, "twenty long tasks, no load timeout");
+</script>
