@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An EventTarget's listeners die with it, even when its impl is a stub</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-listener">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#unloading-document-cleanup-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// OffscreenCanvas stands for the EventTarget descendants whose impls never
+// chain to EventTarget's init and deinit (235 of them on 2026-10-01): their
+// first addEventListener makes the listener state lazily, and nothing
+// removed it when the object went.
+//
+// 1. Its listeners stayed under the object's address, and the next such
+//    object the allocator put there inherited them: an event dispatched at a
+//    new OffscreenCanvas ran a collected one's listener.
+// 2. A worker's listener stayed after the worker's agent - the isolate its
+//    handle lives in - was disposed, and the browser's end released it into
+//    the freed isolate. That shows as the runner's exit status (0 when this
+//    file is run alone), not as a case.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+promise_test(async () => {
+  let inherited = 0;
+  for (let round = 0; round < 5; round++) {
+    (() => {
+      for (let i = 0; i < 64; i++) {
+        new OffscreenCanvas(1, 1).addEventListener("c4", () => { inherited++; });
+      }
+    })();
+    await collect();
+    await new Promise(r => setTimeout(r, 0));
+    const fresh = [];
+    for (let i = 0; i < 256; i++) fresh.push(new OffscreenCanvas(1, 1));
+    const event = new Event("c4");
+    for (const target of fresh) target.dispatchEvent(event);
+  }
+  assert_equals(inherited, 0, "listeners of collected OffscreenCanvases ran for new ones");
+}, "a new OffscreenCanvas never runs the listeners of a collected one");
+
+promise_test(async () => {
+  let ran = 0;
+  const target = new OffscreenCanvas(1, 1);
+  target.addEventListener("c4", () => { ran++; });
+  await collect();
+  target.dispatchEvent(new Event("c4"));
+  assert_equals(ran, 1, "a live object keeps its listener");
+}, "an OffscreenCanvas keeps its listener while it lives");
+
+function runWorker(kind) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("resources/c4-worker-listener-on-stub.js?kind=" + kind);
+    worker.onmessage = e => { worker.terminate(); resolve(e.data); };
+    worker.onerror = e => { worker.terminate(); reject(new Error(e.message)); };
+  });
+}
+
+promise_test(async () => {
+  assert_equals(await runWorker("offscreencanvas"), "ready");
+}, "a worker's OffscreenCanvas listener, then the worker ends");
+
+promise_test(async t => {
+  // The worker's end runs from timers on this page's loop: let them run.
+  await new Promise(r => t.step_timeout(r, 100));
+}, "the worker's end has run");
+</script>

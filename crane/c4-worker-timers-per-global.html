@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Each worker global has its own map of setTimeout and setInterval IDs</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#map-of-settimeout-and-setinterval-ids">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML: every WindowOrWorkerGlobalScope has its own map of setTimeout and
+// setInterval IDs, and clearTimeout(id) / clearInterval(id) remove
+// this's map[id] - this global's entry, and nothing in any other global. A
+// worker that clears an id it never armed (another worker's, or every id up to
+// some number - the "clear all timers" idiom) must leave the other worker's
+// timer to run.
+
+function next(worker, op) {
+  return new Promise((resolve, reject) => {
+    worker.addEventListener("message", function listener(e) {
+      if (e.data.op !== op) return;
+      worker.removeEventListener("message", listener);
+      resolve(e.data);
+    });
+    worker.addEventListener("error", e => reject(new Error(e.message)), { once: true });
+  });
+}
+
+function startWorker(t) {
+  const worker = new Worker("resources/c4-timer-worker.js");
+  t.add_cleanup(() => worker.terminate());
+  return worker;
+}
+
+async function arm(worker, delay) {
+  const armed = next(worker, "armed");
+  worker.postMessage({ op: "arm", delay });
+  return (await armed).id;
+}
+
+async function clear(worker, ids, op = "clear") {
+  const cleared = next(worker, "cleared");
+  worker.postMessage({ op, ids });
+  await cleared;
+}
+
+// Resolves with the timer's "fired" message, or rejects once `ms` pass first.
+function firesWithin(t, worker, ms, what) {
+  return Promise.race([
+    next(worker, "fired"),
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error(what + " never ran")), ms)),
+  ]);
+}
+
+promise_test(async t => {
+  const a = startWorker(t), b = startWorker(t);
+  const idA = await arm(a, 200);
+  const idB = await arm(b, 200);
+  const firedA = next(a, "fired");
+  let aRan = false;
+  firedA.then(() => { aRan = true; });
+  await clear(a, [idA]);
+  const fired = await firesWithin(t, b, 1500, "the other worker's timer");
+  assert_equals(fired.id, idB, "the other worker's timer ran under its own id");
+  assert_false(aRan, "the cleared timer did not run");
+}, "a worker clearing its own timer leaves another worker's timer to run");
+
+promise_test(async t => {
+  const a = startWorker(t), b = startWorker(t);
+  const idB = await arm(b, 200);
+  await clear(a, [idB]);
+  const fired = await firesWithin(t, b, 1500, "the other worker's timer");
+  assert_equals(fired.id, idB);
+}, "clearTimeout of an id another worker armed does nothing");
+
+promise_test(async t => {
+  const a = startWorker(t), b = startWorker(t);
+  const idB = await arm(b, 200);
+  await clear(a, [idB], "clear-interval");
+  const fired = await firesWithin(t, b, 1500, "the other worker's timer");
+  assert_equals(fired.id, idB);
+}, "clearInterval of an id another worker armed does nothing");
+
+promise_test(async t => {
+  const a = startWorker(t), b = startWorker(t);
+  const idB = await arm(b, 200);
+  const every = [];
+  for (let id = 1; id <= Math.max(1000, idB + 100); id++) every.push(id);
+  await clear(a, every);
+  const fired = await firesWithin(t, b, 1500, "the other worker's timer");
+  assert_equals(fired.id, idB);
+}, "a worker clearing every id up to a large number leaves another worker's timer to run");
+
+promise_test(async t => {
+  const b = startWorker(t);
+  const idB = await arm(b, 200);
+  clearTimeout(idB);
+  const fired = await firesWithin(t, b, 1500, "the worker's timer");
+  assert_equals(fired.id, idB);
+}, "the page's clearTimeout of a worker's timer id does nothing to the worker's timer");
+</script>

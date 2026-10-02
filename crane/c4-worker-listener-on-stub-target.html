@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A listener a worker added to an EventSource does not outlive the worker's agent</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-listener">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// eventsource/format-bom.any.js, its worker half, then the end of the
+// process: the EventSource (a stub that never ran EventTarget's init or
+// deinit) took its listener into EventTarget's process-wide registry on
+// addEventListener, and nothing took it out when the worker's realm freed
+// the EventSource. The worker's agent - and with it the isolate the
+// listener's handle lives in - was disposed; the browser's end then released
+// that handle into the freed isolate (SIGSEGV in NodeSpace::Release; under
+// MallocScribble=1 at 0x555555555555556d, every run). The cases pass either
+// way: the defect shows as the runner's exit status, which must be 0 when
+// this file is run alone.
+function runWorker(kind) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("resources/c4-worker-listener-on-stub.js?kind=" + kind);
+    worker.onmessage = e => { worker.terminate(); resolve(e.data); };
+    worker.onerror = e => { worker.terminate(); reject(new Error(e.message)); };
+  });
+}
+
+promise_test(async () => {
+  assert_equals(await runWorker("eventsource"), "ready");
+}, "a worker's EventSource listener, then the worker ends");
+
+promise_test(async t => {
+  // The worker's end runs from timers on this page's loop: let them run.
+  await new Promise(r => t.step_timeout(r, 100));
+}, "the workers' ends have run");
+</script>
