@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A removed iframe whose navigable replaced its Window is collected cleanly</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// fetch/origin/assorted.window.js, its form POST navigations: an iframe
+// loads a page, the parent submits a form in it - a new document, so a new
+// Window and realm, and the old realm is retired - and the parent removes the
+// iframe once the new page has loaded. Nothing keeps the element, and the
+// collector frees it. On main-815bc4793 that ended the retired realm from
+// inside the collection's weak callbacks, where the engine forbids touching
+// any other handle: a wrapper of the retired realm that died in the same
+// collection had been zapped, and the realm's end read it (SIGSEGV at 0xca10
+// in v8::Value::IsProxy - the engine's phantom zap 0xca11, minus the tag).
+const origins = get_host_info();
+
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+function postNavigateAndRemove(postOrigin) {
+  const postUrl = postOrigin + "/fetch/origin/resources/redirect-and-stash.py?stash=" + token();
+  return new Promise(resolve => {
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    frame.src = origins.HTTP_ORIGIN + "/fetch/origin/resources/referrer-policy.py?referrerPolicy=no-referrer";
+    self.addEventListener("message", function listener(e) {
+      if (e.data === "loaded") {
+        resolve();
+        frame.remove();
+        self.removeEventListener("message", listener);
+      } else if (e.data === "action") {
+        const doc = frame.contentDocument,
+              form = doc.body.appendChild(doc.createElement("form")),
+              submit = form.appendChild(doc.createElement("input"));
+        form.action = postUrl;
+        form.method = "POST";
+        submit.type = "submit";
+        submit.click();
+      }
+    });
+  });
+}
+
+promise_test(async () => {
+  for (let i = 0; i < 3; i++) {
+    await postNavigateAndRemove(origins.HTTP_ORIGIN);
+    await new Promise(r => setTimeout(r, 0));
+    await collect();
+  }
+}, "an iframe navigated by a same-origin form POST, removed and collected");
+
+promise_test(async () => {
+  for (let i = 0; i < 3; i++) {
+    await postNavigateAndRemove(origins.HTTP_REMOTE_ORIGIN);
+    await new Promise(r => setTimeout(r, 0));
+    await collect();
+  }
+}, "an iframe navigated by a cross-origin form POST, removed and collected");
+</script>

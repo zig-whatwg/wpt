@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: removed frames with activity in flight, nothing of them kept</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The companion of r2-frame-churn-activity-held.sub.html: the same frames and
+// activity, but nothing of a frame is kept once it is removed. "Destroy a
+// child navigable" ends the frame's activity - the fetches are canceled, the
+// socket closes, the reader stops - so nothing holds the frame's realm, and a
+// collection takes it within the page: a WeakRef to its WindowProxy is
+// cleared. Run many times in one process under CRANE_HEAP_GC=1, the runner's
+// native_contexts and heap_used_kb must stay flat.
+const FRAMES = 5;
+const WS_URL = "ws://{{host}}:{{ports[ws][0]}}/echo";
+
+function giveActivity(w, i) {
+  const xhr = new w.XMLHttpRequest();
+  xhr.open("GET", location.origin + "/common/slow.py?delay=1500&r2=" + i);
+  xhr.onload = () => {};
+  xhr.upload.onprogress = () => {};
+  xhr.send();
+  const ws = new w.WebSocket(WS_URL);
+  ws.onopen = () => ws.send("r2 " + i);
+  ws.onmessage = () => {};
+  const controller = new w.AbortController();
+  controller.signal.onabort = () => {};
+  const fetched = w.fetch(location.origin + "/fetch/api/resources/trickle.py?count=20&ms=100&r2=" + i, { signal: controller.signal })
+    .then(r => r.body.getReader().read()).catch(() => {});
+  const request = new w.Request(location.origin + "/common/blank.html", { method: "POST", body: "r2 " + i });
+  const response = new w.Response("r2 " + i);
+  const reader = new w.FileReader();
+  reader.onload = () => {};
+  reader.readAsArrayBuffer(new w.Blob([new w.Uint8Array(1 << 20)]));
+  const channel = new w.MessageChannel();
+  channel.port1.onmessage = () => {};
+  channel.port2.postMessage("r2 " + i);
+  const storageEvent = new w.StorageEvent("storage", { storageArea: w.localStorage });
+  const formDataEvent = new w.FormDataEvent("formdata", { formData: new w.FormData() });
+  const pageSwap = new w.PageSwapEvent("pageswap");
+  const pageReveal = new w.PageRevealEvent("pagereveal");
+  // The reader is not kept: a finished read's result is a value the reader
+  // holds strongly (engine.retainValue), which still keeps its realm - a
+  // retained value, not activity (tmp/plans/lane-realms2-handoff.md queue).
+  w.r2 = { xhr, ws, controller, fetched, request, requestBody: request.body, responseBody: response.body,
+           requestHeaders: request.headers, response, channel, storageEvent, formDataEvent, pageSwap, pageReveal };
+}
+
+async function collect(t) {
+  await new Promise(r => t.step_timeout(r, 0));
+  if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+promise_test(async t => {
+  const weak = [];
+  for (let i = 0; i < FRAMES; i++) {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    giveActivity(frame.contentWindow, i);
+    weak.push(new WeakRef(frame.contentWindow));
+    frame.remove();
+  }
+  await new Promise(r => t.step_timeout(r, 20));
+  for (let round = 0; round < 3; round++) await collect(t);
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const kept = weak.filter(ref => ref.deref() !== undefined).length;
+  assert_equals(kept, 0, "removed frames whose WindowProxies script dropped are collected");
+}, "removed frames with activity in flight, nothing of them kept");
+</script>

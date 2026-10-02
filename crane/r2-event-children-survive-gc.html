@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: the objects an event's attributes name live as long as the event</title>
+<link rel=help href="https://xhr.spec.whatwg.org/#formdataevent">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webstorage.html#the-storageevent-interface">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-navigateevent-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Each event below names an object that nothing but the event keeps: script
+// made it for the event's dictionary and dropped it, or the user agent made
+// it for an event it fired. "The x attribute must return the value it was
+// initialized to" - the same object, with what script put on it - after any
+// number of collections. The event keeps it through its wrapper (an edge the
+// collector traces, as Blink traces each Member<> from the event), drawn on
+// the wrapper the constructor's `new` makes - or, for an event the user
+// agent made, on the wrapper its dispatch makes.
+async function collect() {
+  for (let i = 0; i < 2; i++) {
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+    await new Promise(r => setTimeout(r, 0));
+  }
+}
+
+function formDataWith(key, value) {
+  const formData = new FormData();
+  formData.append(key, value);
+  formData.r2Expando = key;
+  return formData;
+}
+
+promise_test(async () => {
+  const events = [];
+  for (let i = 0; i < 8; i++) {
+    events.push(new FormDataEvent("formdata", { formData: formDataWith("k" + i, "v" + i) }));
+  }
+  await collect();
+  events.forEach((e, i) => {
+    assert_equals(e.formData.get("k" + i), "v" + i, "entry " + i);
+    assert_equals(e.formData.r2Expando, "k" + i, "expando " + i);
+    assert_equals(e.formData, e.formData, "the same object " + i);
+  });
+}, "a constructed FormDataEvent keeps its formData");
+
+promise_test(async () => {
+  const form = document.body.appendChild(document.createElement("form"));
+  const input = form.appendChild(document.createElement("input"));
+  input.name = "r2";
+  input.value = "fired";
+  let fired = null;
+  form.addEventListener("formdata", e => { fired = e; e.formData.r2Expando = "from the listener"; });
+  void new FormData(form);
+  form.remove();
+  assert_not_equals(fired, null, "formdata fired");
+  await collect();
+  assert_equals(fired.formData.get("r2"), "fired", "the entry list");
+  assert_equals(fired.formData.r2Expando, "from the listener", "the expando");
+}, "a FormDataEvent the user agent fired keeps its formData");
+
+promise_test(async () => {
+  const events = [];
+  for (let i = 0; i < 4; i++) {
+    const e = new StorageEvent("storage", { key: "k" + i, storageArea: sessionStorage });
+    events.push(e);
+  }
+  sessionStorage.r2Expando = undefined;
+  await collect();
+  for (const e of events) assert_equals(e.storageArea, sessionStorage, "storageArea");
+}, "a constructed StorageEvent keeps its storageArea");
+
+promise_test(async () => {
+  assert_true("navigation" in self, "the navigation API");
+  let saved = null;
+  navigation.addEventListener("navigate", e => { saved = e; }, { once: true });
+  location.hash = "#r2-" + Math.random().toString(36).slice(2);
+  assert_not_equals(saved, null, "navigate fired");
+  saved.destination.r2Expando = "destination";
+  saved.signal.r2Expando = "signal";
+  const made = [];
+  for (let i = 0; i < 4; i++) {
+    const controller = new AbortController();
+    controller.signal.r2Expando = "made " + i;
+    made.push(new NavigateEvent("navigate", { destination: saved.destination, signal: controller.signal }));
+  }
+  await collect();
+  assert_equals(saved.destination.r2Expando, "destination", "the fired event's destination");
+  assert_equals(saved.signal.r2Expando, "signal", "the fired event's signal");
+  assert_true(saved.destination.url.includes("#r2-"), "the destination's url");
+  made.forEach((e, i) => {
+    assert_equals(e.destination, saved.destination, "destination " + i);
+    assert_equals(e.signal.r2Expando, "made " + i, "signal " + i);
+    assert_false(e.signal.aborted, "signal " + i + " is not aborted");
+  });
+}, "NavigateEvents keep their destination and signal");
+
+promise_test(async () => {
+  assert_true("navigation" in self && !!navigation.currentEntry, "a current entry");
+  const entry = navigation.currentEntry;
+  const e = new NavigationCurrentEntryChangeEvent("currententrychange", { from: entry });
+  await collect();
+  assert_equals(e.from, entry, "from");
+}, "a constructed NavigationCurrentEntryChangeEvent keeps its from entry");
+
+promise_test(async () => {
+  const swaps = [];
+  for (let i = 0; i < 4; i++) swaps.push(new PageSwapEvent("pageswap"));
+  const reveal = new PageRevealEvent("pagereveal");
+  await collect();
+  for (const e of swaps) {
+    assert_equals(e.activation, null, "activation");
+    assert_equals(e.viewTransition, null, "viewTransition");
+  }
+  assert_equals(reveal.viewTransition, null, "pagereveal's viewTransition");
+}, "PageSwapEvent and PageRevealEvent made without their objects answer null");
+</script>

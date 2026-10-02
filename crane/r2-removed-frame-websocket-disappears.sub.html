@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a removed frame's WebSocket is made to disappear</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#unloading-document-cleanup-steps">
+<link rel=help href="https://websockets.spec.whatwg.org/#make-disappear">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML's unloading document cleanup steps, step 2: "For each WebSocket object
+// webSocket whose relevant global object is window, make disappear
+// webSocket" - an open connection starts its closing handshake (1001), and
+// its document being gone, nothing more is fired at it. Script that holds the
+// removed frame's socket still reads it: its readyState is no longer OPEN.
+const WS_URL = "ws://{{host}}:{{ports[ws][0]}}/echo";
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  const w = frame.contentWindow;
+  const ws = new w.WebSocket(WS_URL);
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    ws.onerror = () => reject(new Error("the socket did not open"));
+  });
+  assert_equals(ws.readyState, w.WebSocket.OPEN, "open before the removal");
+  const fired = [];
+  ws.onmessage = ws.onclose = ws.onerror = e => fired.push(e.type);
+  ws.send("before the removal");
+  frame.remove();
+  await new Promise(r => t.step_timeout(r, 200));
+  assert_greater_than_equal(ws.readyState, w.WebSocket.CLOSING, "readyState once the frame's document is gone");
+  assert_array_equals(fired, [], "nothing is fired at a socket whose document is gone");
+}, "an open WebSocket of a removed frame starts closing, and hears nothing more");
+</script>

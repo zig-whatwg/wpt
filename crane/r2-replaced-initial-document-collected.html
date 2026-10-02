@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an iframe's initial about:blank document, replaced by its navigation, is collected once script drops it</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A navigation from an iframe's initial about:blank document to a
+// same-origin URL keeps the Window ("create and initialize a Document
+// object" reuses it) and replaces the document. The replaced document is
+// destroyed - its browsing context set to null - so its defaultView answers
+// null, and once script drops it nothing keeps it: Blink detaches it and the
+// collector takes it. Crane kept it for the frame's whole life.
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => t.step_timeout(r, 0));
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  }
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+// Made in a function of its own, so no register of the async test function
+// still holds the replaced document.
+function navigateAway(frame) {
+  const initial = frame.contentDocument;
+  initial.r2Expando = "initial";
+  const ref = new WeakRef(initial);
+  const loaded = new Promise(r => frame.onload = r);
+  frame.src = "/common/blank.html";
+  return { ref, loaded };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const { ref, loaded } = navigateAway(frame);
+  await loaded;
+  assert_not_equals(frame.contentDocument, ref.deref(), "the frame has a new document");
+  await collect(t);
+  assert_equals(ref.deref(), undefined, "the replaced initial document is collected");
+  assert_equals(frame.contentWindow.document, frame.contentDocument, "the frame's current document is intact");
+}, "a replaced initial about:blank document goes once script drops it");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const initial = frame.contentDocument;
+  const loaded = new Promise(r => frame.onload = r);
+  frame.src = "/common/blank.html";
+  await loaded;
+  await collect(t);
+  assert_not_equals(frame.contentDocument, initial, "the frame has a new document");
+  assert_equals(initial.defaultView, null, "a destroyed document has no browsing context, so no defaultView");
+  assert_equals(initial.body.localName, "body", "script that holds it still reads it");
+  const made = initial.createElement("p");
+  made.id = "r2";
+  initial.body.appendChild(made);
+  assert_equals(initial.querySelector("#r2"), made, "it is still a working node tree");
+}, "a replaced initial about:blank document script holds answers, with no defaultView");
+</script>

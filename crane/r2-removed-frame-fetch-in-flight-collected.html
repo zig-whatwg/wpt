@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a removed frame's fetch in flight is canceled, and does not keep the frame</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#abort-a-document">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Destroy a document" step 2 aborts the document: "cancel any instances of
+// the fetch algorithm in the context of document, discarding any tasks queued
+// for them". A fetch() whose response has not arrived holds its promise's
+// resolving functions - made in the frame's realm - until it settles, so a
+// fetch left running keeps the removed frame's whole realm until the server
+// answers. Canceled at the removal, nothing of the frame is left once script
+// drops it: a WeakRef to its WindowProxy is cleared by a collection, long
+// before the server's answer would have come.
+const DELAY_MS = 4000;
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => t.step_timeout(r, 0));
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  }
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+function frameWith(start) {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  const w = frame.contentWindow;
+  start(w);
+  const ref = new WeakRef(w);
+  frame.remove();
+  return ref;
+}
+
+const slowUrl = i => location.origin + "/common/slow.py?delay=" + DELAY_MS + "&r2=" + i + "-" + Math.random();
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const started = performance.now();
+  const refs = [];
+  for (let i = 0; i < 3; i++) {
+    refs.push(frameWith(w => {
+      w.r2Pending = w.fetch(slowUrl(i)).then(() => { w.r2Settled = true; }, () => { w.r2Settled = true; });
+    }));
+  }
+  await new Promise(r => t.step_timeout(r, 20));
+  await collect(t);
+  assert_less_than(performance.now() - started, DELAY_MS, "collected before the responses could arrive");
+  assert_equals(refs.filter(ref => ref.deref() !== undefined).length, 0, "removed frames with a fetch() in flight are collected");
+}, "a removed frame's fetch() in flight is canceled, and the frame is collected");
+
+promise_test(async t => {
+  const refs = [];
+  for (let i = 0; i < 3; i++) {
+    refs.push(frameWith(w => {
+      const xhr = new w.XMLHttpRequest();
+      xhr.open("GET", slowUrl("xhr" + i));
+      xhr.onloadend = () => { w.r2Settled = true; };
+      xhr.send();
+      w.r2Xhr = xhr;
+    }));
+  }
+  await new Promise(r => t.step_timeout(r, 20));
+  await collect(t);
+  assert_equals(refs.filter(ref => ref.deref() !== undefined).length, 0, "removed frames with an XHR in flight are collected");
+}, "a removed frame's XHR in flight is canceled, and the frame is collected");
+</script>

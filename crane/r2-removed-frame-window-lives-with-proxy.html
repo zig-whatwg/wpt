@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a removed frame's Window, and everything it keeps, lives exactly as long as script holds its WindowProxy</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Even after destruction, the Document object itself might still be
+// accessible to script, in the case where we are destroying a child
+// navigable" (HTML 7.5.10). Script that holds a removed frame's WindowProxy
+// reaches its Window, its Document and every object they keep - the same
+// objects, with what script put on them - across collections. Once script
+// drops the WindowProxy, nothing of the frame is left: Blink traces the
+// window and its document from the window's wrapper, and so the whole frame
+// goes with it.
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => t.step_timeout(r, 0));
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  }
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+function removedFrame() {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  const w = frame.contentWindow;
+  const d = w.document;
+  d.body.textContent = "kept";
+  const kept = {
+    document: d,
+    body: d.body,
+    selection: d.getSelection(),
+    storage: w.localStorage,
+    navigator: w.navigator,
+    all: d.all,
+  };
+  for (const [name, object] of Object.entries(kept)) object.r2Expando = name;
+  frame.remove();
+  return { w, kept };
+}
+
+promise_test(async t => {
+  const { w, kept } = removedFrame();
+  await new Promise(r => t.step_timeout(r, 20));
+  await collect(t);
+  assert_true(w.closed, "closed");
+  assert_equals(w.document, kept.document, "document");
+  assert_equals(w.document.body, kept.body, "document.body");
+  assert_equals(w.document.getSelection(), kept.selection, "getSelection()");
+  assert_equals(w.localStorage, kept.storage, "localStorage");
+  assert_equals(w.navigator, kept.navigator, "navigator");
+  assert_equals(w.document.all, kept.all, "document.all");
+  for (const [name, object] of Object.entries(kept)) assert_equals(object.r2Expando, name, name + "'s expando");
+  assert_equals(w.document.body.textContent, "kept", "the document's content");
+}, "a removed frame's Window, Document and their objects answer while script holds its WindowProxy");
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  // Made in a function of their own, so no register of this suspended async
+  // function still holds one.
+  const refs = (() => {
+    const made = [];
+    for (let i = 0; i < 4; i++) {
+      const { w, kept } = removedFrame();
+      made.push(new WeakRef(w), new WeakRef(kept.document), new WeakRef(kept.selection));
+    }
+    return made;
+  })();
+  await new Promise(r => t.step_timeout(r, 20));
+  await collect(t);
+  assert_equals(refs.filter(ref => ref.deref() !== undefined).length, 0, "nothing of the removed frames is left");
+}, "once script drops a removed frame's WindowProxy, the frame is collected");
+</script>

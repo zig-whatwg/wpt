@@ -48,24 +48,26 @@ promise_test(async () => {
   assertSelfReferences(w, "after the removed iframe element was collected");
 }, "a removed iframe's WindowProxy answers its self-references after its element is collected");
 
-// The removed frame's realm ends at a task queued by the removal (HTML
-// "destroy a child navigable"; Blink's LocalWindowProxy::DisposeContext with
-// kFrameIsDetached), not whenever the collector frees the removed element.
-//
-// DEVIATION, pinned here so the full model can flip it: once that task has
-// run, the ended realm's Window is gone, and its members other than the
-// self-references throw a TypeError. The spec keeps the Window: closed reads
-// true for a discarded browsing context, document still answers - as Chrome,
-// Edge and Firefox do.
+// The removed frame's navigable is destroyed at a task queued by the
+// removal (HTML "destroy a child navigable"; Blink's
+// LocalWindowProxy::DisposeContext with kFrameIsDetached), not whenever the
+// collector frees the removed element. Its Window lives on for as long as
+// script holds its WindowProxy: closed reads true (its browsing context is
+// discarded), document still answers - as Chrome, Edge and Firefox do.
 promise_test(async t => {
   const w = removedFrameWindow();
+  const d = w.document;
+  w.flExpando = "kept";
   await new Promise(r => t.step_timeout(r, 20));
   assertSelfReferences(w, "after the removal's task");
-  // The getter is the frame's, so its TypeError is the frame realm's.
-  assert_throws_js(w.TypeError, () => w.closed, "closed, once the realm has ended (spec: true)");
+  assert_true(w.closed, "closed, once the navigable was destroyed");
+  assert_equals(w.document, d, "document, once the navigable was destroyed");
+  assert_equals(w.flExpando, "kept", "what script kept on the window");
   await collectTwice();
   assertSelfReferences(w, "after a collection");
-}, "a removed iframe's realm ends at the removal's task, not at a collection (closed: DEVIATION, spec says true)");
+  assert_true(w.closed, "closed after a collection");
+  assert_equals(w.document, d, "document after a collection");
+}, "a removed iframe's Window lives as long as its WindowProxy: closed is true, document answers");
 
 promise_test(async t => {
   const w = window.open();

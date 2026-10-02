@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: no object a removed frame keeps for its own objects keeps the frame</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Each frame below is given one object that keeps another object of the
+// frame for as long as it lives - a [SameObject] child, an attribute's Attr
+// node, a rule object, an observer kept by the nodes it observes - and keeps
+// it in its own global. Then the frame is removed and script drops it. An
+// object that keeps its child by a strong root (a Pin) keeps the child's
+// wrapper, the wrapper its realm, the realm the global that keeps the owner:
+// the frame can never be collected. Kept by an edge the collector traces -
+// as Blink traces each from its owner - the frame goes once script drops it.
+const KINDS = {
+  "AbortController.signal": w => { const c = new w.AbortController(); c.signal.r2 = 1; w.r2 = c; },
+  "XMLHttpRequest.upload": w => { const x = new w.XMLHttpRequest(); x.upload.r2 = 1; w.r2 = x; },
+  "MessageChannel ports": w => { const c = new w.MessageChannel(); c.port1.r2 = 1; c.port2.r2 = 1; w.r2 = c; },
+  "Request signal and body": w => { const r = new w.Request(location.origin + "/", { method: "POST", body: "x" }); r.signal.r2 = 1; void r.body; w.r2 = r; },
+  "Request headers": w => { const r = new w.Request(location.origin + "/"); r.headers.r2 = 1; w.r2 = r.headers; },
+  "Response body": w => { const r = new w.Response("x"); void r.body; w.r2 = r; },
+  "Attr node": w => { const b = w.document.body; b.setAttribute("data-r2", "1"); b.getAttributeNode("data-r2").r2 = 1; },
+  "CSSRule": w => { const sheet = new w.CSSStyleSheet(); sheet.replaceSync("p { color: red }"); sheet.cssRules[0].r2 = 1; w.r2 = sheet; },
+  "MutationObserver": w => { new w.MutationObserver(new w.Function("records", "")).observe(w.document.body, { childList: true }); },
+  "navigation entries": w => { if (w.navigation) { if (w.navigation.currentEntry) w.navigation.currentEntry.r2 = 1; w.r2 = w.navigation.entries(); } },
+};
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => t.step_timeout(r, 0));
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  }
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+// Made in a function of their own, so no register of the async test function
+// still holds a frame.
+function removedFrames(failed) {
+  const refs = {};
+  for (const [kind, give] of Object.entries(KINDS)) {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    try {
+      give(frame.contentWindow);
+    } catch (e) {
+      failed.push(kind + ": " + e);
+    }
+    refs[kind] = new WeakRef(frame.contentWindow);
+    frame.remove();
+  }
+  return refs;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const failed = [];
+  const refs = removedFrames(failed);
+  await new Promise(r => t.step_timeout(r, 20));
+  await collect(t);
+  const kept = Object.keys(refs).filter(kind => refs[kind].deref() !== undefined);
+  assert_array_equals(kept, [], "the removed frames still alive");
+  assert_array_equals(failed, [], "kinds whose objects could not be made");
+}, "objects a removed frame keeps for its own objects do not keep the frame");
+
+promise_test(async t => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync("p { color: blue } div { color: green }");
+  const list = sheet.cssRules;
+  list[0].r2 = "first";
+  list[1].r2 = "second";
+  await collect(t);
+  assert_equals(list[0].r2, "first", "the first rule object, kept by its list");
+  assert_equals(list[1].r2, "second", "the second rule object, kept by its list");
+  assert_equals(list[0], list[0], "the same object");
+}, "a CSSRuleList keeps the rule objects it handed out while script holds the list");
+</script>

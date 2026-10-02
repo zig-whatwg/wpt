@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: removed frames with activity in flight, their WindowProxies held by the page</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A page-retention probe (tmp/plans/frame-realm-tracing-design.md, section 5),
+// run many times in one process under CRANE_HEAP_GC=1: the runner journals
+// native_contexts and heap_used_kb after each file, and both must stay flat.
+//
+// Each frame starts one of every kind of activity that holds its object while
+// it is pending - an XHR and a fetch() whose responses are still coming, an
+// open WebSocket, a FileReader reading, a MessageChannel with a listener, an
+// AbortController - and keeps every one of them, and a constructed event of
+// each kind that keeps the objects it names, in its OWN global (so a strong
+// hold from any of them is a cycle through the frame's realm). Then the frame
+// is removed: "destroy a child navigable" ends that activity. The page keeps
+// the removed frames' WindowProxies until it ends.
+const FRAMES = 5;
+const WS_URL = "ws://{{host}}:{{ports[ws][0]}}/echo";
+
+function giveActivity(w, i) {
+  const xhr = new w.XMLHttpRequest();
+  xhr.open("GET", location.origin + "/common/slow.py?delay=1500&r2=" + i);
+  xhr.onload = () => {};
+  xhr.upload.onprogress = () => {};
+  xhr.send();
+  const ws = new w.WebSocket(WS_URL);
+  ws.onopen = () => ws.send("r2 " + i);
+  ws.onmessage = () => {};
+  const controller = new w.AbortController();
+  controller.signal.onabort = () => {};
+  const fetched = w.fetch(location.origin + "/fetch/api/resources/trickle.py?count=20&ms=100&r2=" + i, { signal: controller.signal })
+    .then(r => r.body.getReader().read()).catch(() => {});
+  const request = new w.Request(location.origin + "/common/blank.html", { method: "POST", body: "r2 " + i });
+  const response = new w.Response("r2 " + i);
+  const reader = new w.FileReader();
+  reader.onload = () => {};
+  reader.readAsArrayBuffer(new w.Blob([new w.Uint8Array(1 << 20)]));
+  const channel = new w.MessageChannel();
+  channel.port1.onmessage = () => {};
+  channel.port2.postMessage("r2 " + i);
+  const storageEvent = new w.StorageEvent("storage", { storageArea: w.localStorage });
+  const formDataEvent = new w.FormDataEvent("formdata", { formData: new w.FormData() });
+  const pageSwap = new w.PageSwapEvent("pageswap");
+  const pageReveal = new w.PageRevealEvent("pagereveal");
+  // The reader is not kept: a finished read's result is a value the reader
+  // holds strongly (engine.retainValue), which still keeps its realm - a
+  // retained value, not activity (tmp/plans/lane-realms2-handoff.md queue).
+  w.r2 = { xhr, ws, controller, fetched, request, requestBody: request.body, responseBody: response.body,
+           requestHeaders: request.headers, response, channel, storageEvent, formDataEvent, pageSwap, pageReveal };
+}
+
+promise_test(async t => {
+  const held = [];
+  for (let i = 0; i < FRAMES; i++) {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    const w = frame.contentWindow;
+    giveActivity(w, i);
+    assert_equals(w.r2.storageEvent.storageArea, w.localStorage, "the frame's StorageEvent names its storage");
+    frame.remove();
+    held.push(w);
+  }
+  // The removed frames' WindowProxies live as long as the page.
+  window.r2Held = held;
+  await new Promise(r => t.step_timeout(r, 20));
+  for (const w of held) assert_equals(w.self, w, "a held WindowProxy answers self after its frame's realm ended");
+}, "removed frames with activity in flight, their WindowProxies held by the page");
+</script>
