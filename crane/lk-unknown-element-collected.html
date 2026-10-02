@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an unknown element the GC collects frees its node state</title>
+<!--
+  leaks lane (2026-10-02). HTMLUnknownElement's deinit was the codegen stub's
+  no-op while its init chained to HTMLElement's, so an unknown element whose
+  wrapper V8 collected kept its NodeBase, local name and namespace until a node
+  made at the reused address overwrote them: three leaked allocations per
+  collected element (dom/nodes/name-validation.html, 13,702 alone).
+  The leak is not observable from script. The measurement is the runner's own
+  DebugAllocator report count for this file: main-50ede13e5 7,201, fixed 0.
+  The cases check that elements made after a collection, at reused addresses,
+  carry their own names.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function makeUnknown(round, count) {
+  for (let i = 0; i < count; i++) document.createElement(`x${round}y${i}`);
+}
+
+test(() => {
+  const probe = document.createElement('x0y0');
+  assert_equals(Object.getPrototypeOf(probe), HTMLUnknownElement.prototype);
+}, 'a name with no hyphen and no definition makes an HTMLUnknownElement');
+
+test(() => {
+  for (let round = 0; round < 6; round++) {
+    makeUnknown(round, 400);
+    TestUtils.gc();
+  }
+  const kept = [];
+  for (let i = 0; i < 400; i++) kept.push(document.createElement(`k${i}z`));
+  for (let i = 0; i < 400; i++) {
+    assert_equals(kept[i].localName, `k${i}z`);
+    assert_equals(kept[i].namespaceURI, 'http://www.w3.org/1999/xhtml');
+  }
+}, 'unknown elements made after collections of unknown elements keep their own names');
+</script>

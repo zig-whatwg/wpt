@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a frame nested in a sandboxed document frees its copy of the opaque origin</title>
+<!--
+  leaks lane (2026-10-02). A frame's window keeps a copy of the origin it is
+  created with (Window.setOrigin). Whether the copy was allocated was decided
+  by its contents - anything but "null" - so the copy of "null" a frame nested
+  in a sandboxed document gets leaked, once when the frame was made and once
+  per navigation (2 per cookies/samesite/sandbox-iframe-nested.https.html run
+  alone). Not observable from script: the measurement is the runner's
+  DebugAllocator report count for this file.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async () => {
+  const frame = document.createElement('iframe');
+  frame.sandbox = 'allow-scripts';
+  frame.srcdoc = "<iframe srcdoc='inner'></iframe><script>parent.postMessage(String(frames.length), '*')<\/script>";
+  const got = new Promise(resolve => addEventListener('message', e => resolve(e.data), { once: true }));
+  document.body.appendChild(frame);
+  assert_equals(await got, '1');
+}, 'a sandboxed document can hold a frame of its own');
+</script>

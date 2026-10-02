@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a port's close task the browser's end never runs is freed with its document</title>
+<!--
+  leaks lane (2026-10-02). When a worker ends, its ports are disentangled and
+  each peer is sent a close event from a task of the peer's realm
+  (MessagePort's scheduleClose). At the browser's end the workers end first
+  (Browser.deinit, endWorkersOn), so the close tasks are queued on the page's
+  loop, which never runs again: each PortTask leaked (6 per
+  content-security-policy/gen/.../sharedworker-import*.html run alone).
+  HTML "destroy a document" removes the document's tasks from the task queues
+  without running them; the page's unloading cleanup does that for its port
+  tasks. Not observable from script: the measurement is the runner's
+  DebugAllocator report count for this file.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const shared = new SharedWorker('resources/lk-port-shared-worker.js');
+  const got = await new Promise(resolve => { shared.port.onmessage = e => resolve(e.data); });
+  assert_equals(got, 'connected');
+}, 'a shared worker keeps the port its connect event gave it');
+
+promise_test(async () => {
+  const worker = new Worker('resources/lk-port-worker.js');
+  const channel = new MessageChannel();
+  worker.postMessage(null, [channel.port2]);
+  const got = await new Promise(resolve => { channel.port1.onmessage = e => resolve(e.data); });
+  assert_equals(got, 'kept');
+  // Keep both ends alive to the page's end.
+  self.keptWorker = worker;
+  self.keptPort = channel.port1;
+}, 'a dedicated worker keeps a port the page transferred to it');
+</script>
