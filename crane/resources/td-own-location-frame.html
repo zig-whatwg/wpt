@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<script>
+// A cross-origin frame reads its OWN Location from each kind of callback:
+// the entry settings object is the frame's then, so none may throw.
+const results = {};
+function read(kind) {
+  try { results[kind] = location.href.length > 0 ? "ok" : "empty"; }
+  catch (e) { results[kind] = e.name; }
+}
+read("script");
+Promise.resolve().then(() => read("microtask"));
+setTimeout(() => {
+  read("timer");
+  const target = new EventTarget();
+  target.addEventListener("x", () => read("listener"));
+  target.dispatchEvent(new Event("x"));
+  window.onmessage = () => {
+    read("message");
+    parent.postMessage(results, "*");
+  };
+  window.postMessage("go", "*");
+}, 0);
+</script>

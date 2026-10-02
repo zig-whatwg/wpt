@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An iframe navigated to about:blank many times</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A probe, not a conformance test: 200 navigations of one iframe to
+// about:blank, each started from the previous one's load event (the shape of
+// html/webappapis/scripting/events/compile-event-handler-settings-objects.html's
+// third subtest). The runner's journal records the heap and native contexts
+// left at the end; each navigation's previous realm should be collectible.
+promise_test(async () => {
+  const iframe = document.createElement("iframe");
+  let loads = 0;
+  await new Promise(resolve => {
+    iframe.onload = () => {
+      loads++;
+      if (loads >= 200) return resolve();
+      iframe.src = "about:blank?" + loads;
+    };
+    iframe.src = "about:blank";
+    document.body.appendChild(iframe);
+  });
+  assert_equals(loads, 200);
+}, "200 navigations to about:blank");
+</script>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A cross-origin frame reads its own Location from every kind of callback</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-location-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// Location's members compare their relevant Document's origin with the
+// ENTRY settings object's. A frame's own script - run as a classic script,
+// a microtask, a timer, an event listener, a message handler - has the frame
+// as its entry settings object, so reading its own location never throws,
+// even while the cross-origin page that embeds it is the agent's top realm.
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  t.add_cleanup(() => iframe.remove());
+  const results = await new Promise(resolve => {
+    window.addEventListener("message", e => resolve(e.data), { once: true });
+    iframe.src = get_host_info().HTTP_REMOTE_ORIGIN + "/crane/resources/td-own-location-frame.html";
+    document.body.appendChild(iframe);
+  });
+  assert_object_equals(results, { script: "ok", microtask: "ok", timer: "ok", listener: "ok", message: "ok" });
+}, "a cross-origin frame's own Location is readable from its scripts and callbacks");
+</script>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A cross-origin frame's Location members throw a SecurityError</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-location-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// HTML, the Location interface: the href, origin, protocol, host, hostname,
+// port, pathname, search and hash getters, the setters other than href's,
+// assign(), reload() and ancestorOrigins each begin "If this's relevant
+// Document is non-null and its origin is not same origin-domain with the
+// entry settings object's origin, then throw a "SecurityError" DOMException."
+// The href setter and replace() have no such step.
+//
+// Crane had none of these checks, so a cross-origin frame's URL was readable,
+// and WPT's frame-ancestors tests - which treat a SecurityError from
+// contentWindow.location.href as "cross-origin" - passed or failed by which
+// of their poll and the frame's load event looked first.
+
+function loadedFrame(t, url) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    iframe.addEventListener("load", () => resolve(iframe), { once: true });
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+  });
+}
+
+const getters = ["href", "origin", "protocol", "host", "hostname", "port", "pathname", "search", "hash"];
+
+promise_test(async t => {
+  const iframe = await loadedFrame(t, get_host_info().HTTP_REMOTE_ORIGIN + "/common/blank.html");
+  const location = iframe.contentWindow.location;
+  for (const name of getters) {
+    assert_throws_dom("SecurityError", () => location[name], name);
+  }
+  assert_throws_dom("SecurityError", () => String(location), "toString");
+  assert_throws_dom("SecurityError", () => location.ancestorOrigins, "ancestorOrigins");
+}, "a cross-origin frame's Location getters throw at its load event");
+
+promise_test(async t => {
+  const iframe = await loadedFrame(t, get_host_info().HTTP_REMOTE_ORIGIN + "/common/blank.html");
+  const location = iframe.contentWindow.location;
+  for (const name of ["protocol", "host", "hostname", "port", "pathname", "search", "hash"]) {
+    assert_throws_dom("SecurityError", () => { location[name] = "x"; }, name + " setter");
+  }
+  assert_throws_dom("SecurityError", () => location.assign("/common/blank.html"), "assign");
+  assert_throws_dom("SecurityError", () => location.reload(), "reload");
+}, "a cross-origin frame's Location setters, assign() and reload() throw");
+
+promise_test(async t => {
+  const iframe = await loadedFrame(t, get_host_info().HTTP_ORIGIN + "/common/blank.html");
+  const location = iframe.contentWindow.location;
+  assert_equals(location.href, get_host_info().HTTP_ORIGIN + "/common/blank.html");
+  assert_equals(location.origin, get_host_info().HTTP_ORIGIN);
+  assert_equals(location.pathname, "/common/blank.html");
+  assert_equals(String(location), location.href);
+}, "a same-origin frame's Location stays readable");
+</script>

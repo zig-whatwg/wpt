@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Callback-function arguments reach the function they were given</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-callback-function">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL: an ECMAScript value converted to a callback function type is a
+// reference to that function, and invoking the callback calls it. Each case
+// hands a function to a different binding that takes a callback-function
+// argument - an event handler IDL attribute (EventHandler), a constructor
+// (MutationCallback), an operation (VoidFunction, TimerHandler) - and checks
+// that the same function comes back and runs.
+//
+// Crane converts a callback-function argument to a Zig function-pointer type
+// that holds the converted function's handle. A handle stored there must
+// satisfy the type's alignment: a tagged (misaligned) one is illegal behaviour,
+// which an optimized build is entitled to read with its low bits cleared - and
+// a ReleaseSafe runner then crashed in the first handler it ran
+// (v8_Global_Clone's alignment trap under EventTarget.innerInvoke).
+
+promise_test(async () => {
+  const reader = new FileReader();
+  let calls = 0;
+  const onload = () => { calls++; };
+  reader.onload = onload;
+  assert_equals(reader.onload, onload, "the getter returns the function the setter was given");
+  const loaded = new Promise(resolve => reader.addEventListener("loadend", resolve));
+  reader.readAsText(new Blob(["x"]));
+  await loaded;
+  assert_equals(calls, 1, "the handler ran once");
+}, "an event handler IDL attribute: FileReader.onload");
+
+test(() => {
+  const target = document.createElement("div");
+  let seen = null;
+  const onclick = function (event) { seen = [this, event.type]; };
+  target.onclick = onclick;
+  assert_equals(target.onclick, onclick);
+  target.dispatchEvent(new Event("click"));
+  assert_array_equals(seen, [target, "click"]);
+  target.onclick = null;
+  assert_equals(target.onclick, null);
+  seen = null;
+  target.dispatchEvent(new Event("click"));
+  assert_equals(seen, null, "a cleared handler does not run");
+}, "an event handler IDL attribute set, read, run and cleared: HTMLElement.onclick");
+
+test(() => {
+  const target = document.createElement("div");
+  const order = [];
+  target.onclick = () => order.push("first");
+  target.onclick = () => order.push("second");
+  target.dispatchEvent(new Event("click"));
+  assert_array_equals(order, ["second"], "only the replacing handler runs");
+}, "an event handler replaced by another");
+
+promise_test(async () => {
+  const target = document.createElement("div");
+  const records = await new Promise(resolve => {
+    const observer = new MutationObserver(resolve);
+    observer.observe(target, { attributes: true });
+    target.setAttribute("data-x", "1");
+  });
+  assert_equals(records.length, 1);
+  assert_equals(records[0].attributeName, "data-x");
+}, "a constructor's callback-function argument: MutationObserver");
+
+promise_test(async () => {
+  const value = await new Promise(resolve => queueMicrotask(() => resolve("microtask")));
+  assert_equals(value, "microtask");
+}, "an operation's callback-function argument: queueMicrotask");
+
+promise_test(async () => {
+  const value = await new Promise(resolve => setTimeout(() => resolve("timeout"), 0));
+  assert_equals(value, "timeout");
+}, "a union's callback-function arm: setTimeout");
+
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(["postMessage('ready')"], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  const data = await new Promise((resolve, reject) => {
+    const onmessage = event => resolve(event.data);
+    worker.onmessage = onmessage;
+    assert_equals(worker.onmessage, onmessage);
+    worker.onerror = event => reject(new Error("worker error: " + event.message));
+  });
+  assert_equals(data, "ready");
+}, "an event handler on a Worker: onmessage");
+</script>

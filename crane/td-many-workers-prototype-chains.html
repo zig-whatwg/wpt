@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's interface objects keep their prototype chains while many other workers are alive</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#interface-prototype-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL: an interface prototype object's [[Prototype]] is its inherited
+// interface's prototype object in the same realm. Each worker is a realm of
+// its own agent, and every agent makes its own template for every interface.
+//
+// Crane kept those templates in one process-wide table of 8,192 entries;
+// each agent registers ~1,260, so a page with many shared workers alive
+// filled it and every later registration was dropped. A dedicated worker made
+// then found no template for EventTarget or Event, made a second one, and its
+// XMLHttpRequestEventTarget.prototype's [[Prototype]] was not its
+// EventTarget.prototype (xhr/idlharness.any.worker.html after
+// workers/modules/shared-worker-options-credentials.html).
+
+promise_test(async t => {
+  const ports = [];
+  for (let i = 0; i < 32; i++) {
+    const worker = new SharedWorker("resources/td-shared-idle.js", "td-idle-" + i);
+    ports.push(worker.port);
+    worker.port.start();
+    await new Promise((resolve, reject) => {
+      worker.port.onmessage = resolve;
+      worker.onerror = () => reject(new Error("shared worker " + i + " failed"));
+      worker.port.postMessage("hello");
+    });
+  }
+  t.add_cleanup(() => ports.forEach(port => port.close()));
+
+  const worker = new Worker("resources/td-prototype-chains-worker.js");
+  t.add_cleanup(() => worker.terminate());
+  const broken = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error("worker failed: " + e.message));
+  });
+  assert_array_equals(broken, [], "prototype chains that are not the realm's own");
+}, "a dedicated worker made while 32 shared workers are alive");
+</script>

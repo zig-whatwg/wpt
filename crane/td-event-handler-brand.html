@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Special error event handling takes only an ErrorEvent at a global</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#the-event-handler-processing-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML, the event handler processing algorithm, step 3: "special error event
+// handling" is true only when the event is an ErrorEvent, its type is
+// "error", and its currentTarget implements WindowOrWorkerGlobalScope. Then
+// (and only then) the handler is called with message, filename, lineno,
+// colno and error; otherwise with the event alone.
+//
+// Crane decides both conditions with brand checks on the instances' state
+// (Instance.stateAs). Those compare per-type identities, which were the
+// addresses of equal constants: a ReleaseSafe build merged them into one, so
+// every brand check passed - an XMLHttpRequest "was" a Window and its
+// ProgressEvent "was" an ErrorEvent, and the runner read the ProgressEvent's
+// state as an ErrorEvent's (a segfault in ErrorEvent.get_filename).
+
+test(() => {
+  const target = document.createElement("div");
+  let args = null;
+  target.onerror = function () { args = Array.from(arguments); };
+  const event = new ErrorEvent("error", { message: "m", filename: "f", lineno: 1, colno: 2, error: 3 });
+  target.dispatchEvent(event);
+  assert_equals(args.length, 1, "an element is not a global: the event alone");
+  assert_equals(args[0], event);
+}, "an ErrorEvent named error at an element reaches onerror as the event");
+
+test(() => {
+  const xhr = new XMLHttpRequest();
+  let args = null;
+  xhr.onerror = function () { args = Array.from(arguments); };
+  const event = new ProgressEvent("error");
+  xhr.dispatchEvent(event);
+  assert_equals(args.length, 1, "a ProgressEvent is not an ErrorEvent: the event alone");
+  assert_equals(args[0], event);
+}, "a ProgressEvent named error at an XMLHttpRequest reaches onerror as the event");
+
+promise_test(async () => {
+  const xhr = new XMLHttpRequest();
+  const args = await new Promise(resolve => {
+    xhr.onerror = function () { resolve(Array.from(arguments)); };
+    // Nothing listens on port 1: a network error, fired as a ProgressEvent.
+    xhr.open("GET", "http://" + location.hostname + ":1/");
+    xhr.send();
+  });
+  assert_equals(args.length, 1);
+  assert_true(args[0] instanceof ProgressEvent);
+  assert_equals(args[0].type, "error");
+}, "an XMLHttpRequest's network error reaches onerror as a ProgressEvent");
+
+test(() => {
+  const target = document.createElement("div");
+  // A brand check refusing the wrong object: Element's getter on a Text node.
+  const getter = Object.getOwnPropertyDescriptor(Element.prototype, "localName").get;
+  assert_throws_js(TypeError, () => getter.call(document.createTextNode("x")));
+  assert_equals(getter.call(target), "div");
+}, "an attribute getter refuses an object of another interface");
+</script>
