@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node script holds keeps its whole tree, root included</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-tree">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A detached tree whose root script dropped: script holds only a node inside
+// it. The tree is still the node's - parentNode, its siblings and its root
+// answer, with their expandos - however many collections run. Blink traces a
+// node's parent (Node::Trace), WebKit keeps the opaque root of every
+// reachable wrapper; Crane once collected the root whose last use was done
+// and its teardown freed the subtree under the held node
+// (docs/lessons/debugging-a-node-whose-root-is-collected-mid-statement-is-
+// torn-down-under-its-caller.md).
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => t.step_timeout(r, 0));
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  }
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+// The tree is made here: nothing of it but the returned node outlives this
+// function's frame.
+function heldChild() {
+  const root = document.createElement("section");
+  root.r3 = "root";
+  const middle = root.appendChild(document.createElement("div"));
+  const child = middle.appendChild(document.createElement("span"));
+  child.appendChild(document.createElement("b")).id = "r3-leaf";
+  root.appendChild(document.createElement("p")).r3 = "sibling";
+  return child;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const child = heldChild();
+  await collect(t);
+  const root = child.parentNode.parentNode;
+  assert_equals(root.localName, "section", "the root is still the child's");
+  assert_equals(root.r3, "root", "with its expando");
+  assert_equals(root.lastChild.r3, "sibling", "a sibling's expando too");
+  assert_equals(child.firstChild.id, "r3-leaf", "the child's own subtree");
+  // The tree still works: a shadow root on the held node, a new node in it.
+  const shadow = child.attachShadow({ mode: "open" });
+  assert_equals(shadow.host, child);
+  root.appendChild(document.createElement("i"));
+  assert_equals(root.lastChild.localName, "i");
+}, "a node inside a detached tree keeps the tree's root");
+
+// A deep clone is made without wrappers: script reaches only its deepest
+// node, after the clone's root was let go.
+function heldDeepInClone() {
+  const source = document.createElement("div");
+  let at = source;
+  for (const name of ["ul", "li", "a", "b"]) at = at.appendChild(document.createElement(name));
+  at.id = "r3-deep";
+  source.appendChild(document.createElement("p")).id = "r3-sibling";
+  return source.cloneNode(true).querySelector("#r3-deep");
+}
+
+promise_test(async t => {
+  const held = heldDeepInClone();
+  await collect(t);
+  const root = held.parentNode.parentNode.parentNode.parentNode;
+  assert_equals(root.localName, "div", "the clone's root is still the node's");
+  assert_equals(root.lastChild.id, "r3-sibling", "with the rest of its tree");
+}, "a node first reached deep inside a tree script never saw keeps that tree");
+
+promise_test(async t => {
+  // gc_bench's shape: the root's last use is done while a call on the child
+  // is still to run.
+  const made = [];
+  for (let i = 0; i < 200; i++) {
+    const section = document.createElement("section");
+    const host = section.appendChild(document.createElement("div"));
+    made.push(host);
+  }
+  await collect(t);
+  for (const host of made) {
+    assert_equals(host.parentNode.localName, "section");
+    host.attachShadow({ mode: "open" });
+  }
+}, "200 nodes held without their roots all keep them");
+
+promise_test(async t => {
+  // A dropped detached tree goes: nothing of it is kept.
+  const refs = (() => {
+    const root = document.createElement("section");
+    const child = root.appendChild(document.createElement("div"));
+    child.appendChild(document.createElement("span"));
+    return [new WeakRef(root), new WeakRef(child)];
+  })();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), [true, true], "the dropped tree's wrappers are collected");
+}, "a detached tree script dropped is collected");
+</script>

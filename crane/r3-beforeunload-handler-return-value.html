@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an onbeforeunload handler's return value is converted to DOMString?</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#the-event-handler-processing-algorithm">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#onbeforeunloadeventhandler">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// OnBeforeUnloadEventHandlerNonNull returns DOMString?, so invoking it
+// converts the handler's return value: an object's toString runs (the shape
+// of html/webappapis/scripting/events/compile-event-handler-settings-
+// objects.html, whose iframe's <body onbeforeunload> returns
+// { toString: parent.postMessage.bind(parent, 'PASS', '*') }). A non-null
+// result sets the event's canceled flag and, while it is empty, its
+// returnValue (the event handler processing algorithm, step 5).
+
+function navigate(frame, url) {
+  return new Promise(resolve => {
+    frame.onload = () => { frame.onload = null; resolve(); };
+    frame.src = url;
+  });
+}
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await navigate(frame, "/common/blank.html?r3bu=1");
+  const w = frame.contentWindow;
+  const seen = [];
+  w.addEventListener("beforeunload", () => seen.push("listener"));
+  await navigate(frame, "/common/blank.html?r3bu=2");
+  assert_array_equals(seen, ["listener"]);
+}, "a navigation fires beforeunload at the frame's window");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await navigate(frame, "/common/blank.html?r3bu=3");
+  const w = frame.contentWindow;
+  const seen = [];
+  let event = null;
+  w.onbeforeunload = e => { event = e; return { toString() { seen.push("toString"); return "leave?"; } }; };
+  w.addEventListener("beforeunload", e => seen.push("after: " + e.returnValue + " " + e.defaultPrevented));
+  await navigate(frame, "/common/blank.html?r3bu=4");
+  assert_array_equals(seen, ["toString", "after: leave? true"]);
+}, "the handler's return value is converted with ToString, cancels, and sets returnValue");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await navigate(frame, "/common/blank.html?r3bu=5");
+  const doc = frame.contentDocument;
+  const seen = [];
+  frame.contentWindow.r3seen = seen;
+  doc.body.setAttribute("onbeforeunload", "return { toString() { r3seen.push('toString'); return 'x'; } };");
+  await navigate(frame, "/common/blank.html?r3bu=6");
+  assert_array_equals(seen, ["toString"]);
+}, "a body element's onbeforeunload content attribute handler's return value is converted");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await navigate(frame, "/common/blank.html?r3bu=7");
+  const w = frame.contentWindow;
+  const seen = [];
+  w.onbeforeunload = () => undefined;
+  w.addEventListener("beforeunload", e => seen.push(e.returnValue + " " + e.defaultPrevented));
+  await navigate(frame, "/common/blank.html?r3bu=8");
+  assert_array_equals(seen, [" false"]);
+}, "undefined converts to null: nothing is canceled");
+</script>

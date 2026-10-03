@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a value a removed frame's object keeps for script does not keep the frame</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Each frame below gives one of its objects a JavaScript value of its own
+// realm to keep for script - a CustomEvent's detail, a FileReader's result,
+// an XHR's response, a signal's reason, history.state - and keeps that
+// object in its own global. Then the frame is removed and script drops it.
+// An object that keeps its value by a strong root keeps the value, the value
+// its realm, the realm the global that keeps the object: the frame can never
+// be collected. Kept by an edge from the object's wrapper - as Blink keeps
+// each with a TraceWrapperV8Reference - the frame goes once script drops it.
+
+// Kinds whose value is there as soon as `give` returns.
+const KINDS = {
+  // initCustomEvent, not the constructor: an object an `any` dictionary
+  // member arrives in is still held by its conversion (a separate leak).
+  "CustomEvent.detail": w => { const e = new w.CustomEvent("x"); e.initCustomEvent("x", false, false, new w.Object()); w.r3 = e; },
+  "AbortSignal.reason": w => { w.r3 = w.AbortSignal.abort(new w.Object()); },
+  "aborted controller's signal.reason": w => { const c = new w.AbortController(); c.abort(new w.Object()); w.r3 = c; },
+  "IntersectionObserver.thresholds": w => { const o = new w.IntersectionObserver(() => {}); void o.thresholds; w.r3 = o; },
+  "CookieChangeEvent.changed": w => { const e = new w.CookieChangeEvent("change", { changed: [{ name: "a", value: "b" }] }); void e.changed; w.r3 = e; },
+  "history.state": w => { w.history.replaceState({ r3: 1 }, ""); void w.history.state; },
+};
+
+// Kinds whose value comes from a task: `start` begins it and resolves
+// `w.r3done` when the value is there.
+const ASYNC_KINDS = {
+  // "Report an exception": the ErrorEvent the frame's own error makes, with
+  // the frame's object as its error.
+  "ErrorEvent.error": w => {
+    w.r3done = new w.Promise(resolve => {
+      w.addEventListener("error", e => { e.preventDefault(); w.r3 = e; void e.error; resolve(); });
+    });
+    w.eval("setTimeout(() => { throw new Object(); })");
+  },
+  "FileReader.result": w => {
+    const r = new w.FileReader();
+    w.r3 = r;
+    w.r3done = new w.Promise(resolve => { r.onload = () => { void r.result; resolve(); }; });
+    r.readAsArrayBuffer(new w.Blob(["r3"]));
+  },
+  "XMLHttpRequest.response": w => {
+    const x = new w.XMLHttpRequest();
+    w.r3 = x;
+    w.r3done = new w.Promise(resolve => { x.onloadend = () => { void x.response; resolve(); }; });
+    x.responseType = "arraybuffer";
+    x.open("GET", location.origin + "/common/blank.html?r3");
+    x.send();
+  },
+};
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => t.step_timeout(r, 0));
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  }
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+// Made in functions of their own, so no register of the async test function
+// still holds a frame.
+function makeFrames(kinds, failed) {
+  const frames = {};
+  for (const [kind, give] of Object.entries(kinds)) {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    try {
+      give(frame.contentWindow);
+    } catch (e) {
+      failed.push(kind + ": " + e);
+    }
+    frames[kind] = frame;
+  }
+  return frames;
+}
+
+function waitAll(frames) {
+  return Promise.all(Object.values(frames).map(f => f.contentWindow.r3done || null));
+}
+
+function removeAll(frames) {
+  const refs = {};
+  for (const [kind, frame] of Object.entries(frames)) {
+    refs[kind] = new WeakRef(frame.contentWindow);
+    frame.remove();
+  }
+  return refs;
+}
+
+function kept(refs) {
+  return Object.keys(refs).filter(kind => refs[kind].deref() !== undefined);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const failed = [];
+  const refs = removeAll(makeFrames(KINDS, failed));
+  await new Promise(r => t.step_timeout(r, 20));
+  await collect(t);
+  assert_array_equals(kept(refs), [], "the removed frames still alive");
+  assert_array_equals(failed, [], "kinds whose objects could not be made");
+}, "a value a removed frame's object keeps does not keep the frame");
+
+promise_test(async t => {
+  const failed = [];
+  let frames = makeFrames(ASYNC_KINDS, failed);
+  await waitAll(frames);
+  const refs = removeAll(frames);
+  frames = null;
+  await new Promise(r => t.step_timeout(r, 20));
+  await collect(t);
+  assert_array_equals(kept(refs), [], "the removed frames still alive");
+  assert_array_equals(failed, [], "kinds whose objects could not be made");
+}, "a value a removed frame's object made in a task keeps does not keep the frame");
+
+promise_test(async t => {
+  // What the objects keep is still theirs to hand out while script holds
+  // them, after collections: the same value, every read.
+  const e = new CustomEvent("x", { detail: { d: 1 } });
+  const err = new ErrorEvent("x", { error: { e: 2 } });
+  const s = AbortSignal.abort({ r: 3 });
+  const o = new IntersectionObserver(() => {});
+  const c = new CookieChangeEvent("change", { changed: [{ name: "a", value: "b" }] });
+  history.replaceState({ h: 4 }, "");
+  const first = [e.detail, err.error, s.reason, o.thresholds, c.changed, history.state];
+  await collect(t);
+  const again = [e.detail, err.error, s.reason, o.thresholds, c.changed, history.state];
+  assert_array_equals(again, first, "each read returns the object it returned before");
+  assert_equals(e.detail.d, 1);
+  assert_equals(err.error.e, 2);
+  assert_equals(s.reason.r, 3);
+  assert_equals(history.state.h, 4);
+}, "the values are the objects' own for as long as script holds the objects");
+</script>

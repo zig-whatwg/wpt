@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a realm a navigation replaced is collected once nothing holds it</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#unloading-documents">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A navigation that gives an iframe's navigable a new Window (HTML "create
+// and initialize a Document object" step 7) unloads and destroys the old
+// document; the old Window and its realm stay for as long as script holds
+// something of them, and no longer. Each case navigates a frame away and
+// keeps only WeakRefs to objects of the old realm - its Object constructor
+// (which only its native context keeps), its document, an object on its
+// global - then collects.
+//
+// What the old realm's objects keep (a document held, a function held) must
+// still answer after collections: the realm ends only when nothing reaches it.
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => t.step_timeout(r, 0));
+    if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  }
+  await new Promise(r => t.step_timeout(r, 0));
+}
+
+function navigate(frame, url) {
+  return new Promise(resolve => {
+    frame.onload = () => { frame.onload = null; resolve(); };
+    frame.src = url;
+  });
+}
+
+// WeakRefs to objects of `frame`'s current realm, made in a function of their
+// own so that no register of the async test function holds one.
+function realmRefs(frame) {
+  const w = frame.contentWindow;
+  const kept = new w.Object();
+  w.r3Kept = kept;
+  return {
+    "Object constructor": new WeakRef(w.Object),
+    "document": new WeakRef(frame.contentDocument),
+    "object on its global": new WeakRef(kept),
+    "body element": new WeakRef(frame.contentDocument.body),
+  };
+}
+
+function alive(refs) {
+  return Object.keys(refs).filter(k => refs[k].deref() !== undefined);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await navigate(frame, "/common/blank.html?r3=1");
+  const refs = realmRefs(frame);
+  await navigate(frame, "/common/blank.html?r3=2");
+  await collect(t);
+  assert_array_equals(alive(refs), [], "objects of the replaced realm still alive");
+}, "a realm a navigation replaced is collected once script holds nothing of it");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await navigate(frame, "/common/blank.html?r3=3");
+  const refs = [];
+  for (let i = 0; i < 5; i++) {
+    refs.push(realmRefs(frame));
+    await navigate(frame, "/common/blank.html?r3=4&i=" + i);
+  }
+  await collect(t);
+  const kept = refs.map((r, i) => alive(r).map(k => i + ": " + k)).flat();
+  assert_array_equals(kept, [], "objects of replaced realms still alive");
+}, "each of a frame's replaced realms is collected");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await navigate(frame, "/common/blank.html?r3=5");
+  const oldDocument = frame.contentDocument;
+  const oldFunction = frame.contentWindow.Function("a", "return a + 1");
+  oldDocument.body.appendChild(oldDocument.createElement("p")).id = "r3";
+  await navigate(frame, "/common/blank.html?r3=6");
+  await collect(t);
+  assert_not_equals(frame.contentDocument, oldDocument, "a new document");
+  assert_equals(oldFunction(41), 42, "a function of the replaced realm still runs");
+  assert_equals(oldDocument.getElementById("r3").localName, "p", "the replaced realm's document answers");
+  assert_equals(oldDocument.createElement("span").localName, "span", "and makes nodes");
+}, "a replaced realm that script still reaches is not ended");
+</script>
