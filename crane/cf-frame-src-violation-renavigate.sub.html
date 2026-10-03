@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="frame-src data:">
+<title>A frame navigation frame-src blocks is reported to its source document</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#create-violation-for-request">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#create-navigation-params-by-fetching">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "create navigation params by fetching" gives the navigation request
+// the source document's settings object as its client, so CSP 2.4.2 makes a
+// frame-src violation that document's global's: securitypolicyviolation fires
+// at the document (CSP 5.5 step 3.2) and bubbles to the window.
+//
+// The frames re-navigate from their load event, as the third test of
+// content-security-policy/frame-src/frame-src-blocked-path-matching.sub.html
+// does: a blocked navigation's error document still fires load (HTML
+// "populate a session history entry"), so each frame navigates again until
+// the page ends. While no violation was reported, nothing ended this page
+// before its timeout, and the navigations' Windows ran V8 out of memory
+// (CRASH, FatalProcessOutOfMemory in createWindowRealm). They are made after
+// this page's load event: a frame navigated again while its load event is
+// handled delays its container document's load event further (HTML, the
+// iframe element), and the harness waits for that event.
+const blocked = location.origin + "/common/blank.html?cf-frame-src";
+
+promise_test(async t => {
+  if (document.readyState !== "complete") await new Promise(resolve => window.addEventListener("load", resolve, { once: true }));
+  const windowSaw = new Promise(resolve => window.addEventListener("securitypolicyviolation", resolve, { once: true }));
+  const seen = new Promise(resolve => document.addEventListener("securitypolicyviolation", e => {
+    if (e.effectiveDirective === "frame-src") resolve(e);
+  }));
+  for (let i = 0; i < 3; i++) {
+    const frame = document.createElement("iframe");
+    frame.src = "data:text/html,<p>start";
+    frame.onload = () => { frame.src = blocked + "&frame=" + i; };
+    document.body.append(frame);
+  }
+  const e = await seen;
+  assert_true(e instanceof SecurityPolicyViolationEvent);
+  assert_equals(e.target, document, "a navigation request's violation is its source document's");
+  assert_equals(e.blockedURI.split("&frame=")[0], blocked, "the request's URL");
+  assert_equals(e.violatedDirective, "frame-src");
+  assert_equals(e.disposition, "enforce");
+  assert_equals(e.documentURI, location.href.split("#")[0]);
+  assert_true(e.isTrusted && e.bubbles && e.composed);
+  assert_equals(await windowSaw, e, "it bubbles to the window");
+}, "a frame navigation blocked by frame-src fires securitypolicyviolation at the source document");
+</script>

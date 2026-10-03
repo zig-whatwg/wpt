@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A document opened during its iframe's load event fires no second load at the iframe</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#iframe-load-event-steps">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The document open steps, step 14: a document opened while its iframe's
+// load event is being fired ("iframe load in progress", iframe load event
+// steps 5-7) gets its "mute iframe load" flag, and the iframe load event
+// steps return at step 3 for a muted document. Without the flags, the
+// write()'s implicit open and close() complete the document again, load
+// fires at the iframe again, and a load handler that writes runs without
+// end - content-security-policy/generic/
+// policy-inherited-correctly-by-plznavigate.html looped until its timeout
+// that way, leaking each pass's removed frame.
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  let loads = 0;
+  const written = new Promise(resolve => {
+    frame.onload = () => {
+      loads++;
+      // Bounded, so a second load fails the test rather than looping.
+      if (loads > 1) return;
+      frame.contentDocument.write("<p id=written>written</p><iframe></iframe>");
+      frame.contentDocument.close();
+      resolve();
+    };
+  });
+  frame.srcdoc = "<p>first</p>";
+  document.body.append(frame);
+  await written;
+  // A second load event would come from tasks close() queued: give them
+  // several turns of the event loop.
+  for (let i = 0; i < 5; i++) await new Promise(resolve => t.step_timeout(resolve, 20));
+  assert_equals(loads, 1, "load fired at the iframe once");
+  assert_equals(frame.contentDocument.getElementById("written").textContent, "written");
+}, "an iframe whose load handler writes and closes its document fires load once");
+</script>
