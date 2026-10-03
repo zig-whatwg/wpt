@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An img element's fetch runs in parallel, as a no-cors request of its document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#update-the-image-data">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "update the image data": after a stable state, the image request is
+// fetched "in parallel" - the page keeps running while it arrives - as a
+// potential-CORS request (No CORS without a crossorigin attribute) whose
+// client is the element's node document's settings object.
+
+promise_test(async t => {
+  const img = document.createElement("img");
+  const loaded = new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error("error")); });
+  const start = performance.now();
+  img.src = "/images/smiley.png?sf-slow&pipe=trickle(d2)";
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_less_than(performance.now() - start, 1500, "a timer fired while the image was still arriving");
+  await loaded;
+}, "the image's fetch does not block the event loop");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  const result = new Promise(resolve => { img.onload = () => resolve("load"); img.onerror = () => resolve("error"); });
+  img.src = "http://{{hosts[alt][]}}:{{ports[http][0]}}/images/green.png?sf-cross-origin";
+  assert_equals(await result, "load");
+}, "a cross-origin image without crossorigin loads (a no-cors request)");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  img.setAttribute("crossorigin", "anonymous");
+  const result = new Promise(resolve => { img.onload = () => resolve("load"); img.onerror = () => resolve("error"); });
+  img.src = "http://{{hosts[alt][]}}:{{ports[http][0]}}/images/green.png?sf-cors-no-acao";
+  assert_equals(await result, "error");
+}, "a crossorigin=anonymous image the server does not allow fails (a cors request)");
+</script>

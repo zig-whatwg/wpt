@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A top-level document served with Referrer-Policy: no-referrer sends no Referer</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#creating-policy-containers-from-a-fetch-response">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "create a policy container from a fetch response" step 5: the page's
+// own response carries `Referrer-Policy: no-referrer` (the .headers file), so
+// its policy container's referrer policy is no-referrer, and Fetch's main
+// fetch step 8 hands it to every request the page makes without one of its
+// own.
+const echo = "/common/security-features/subresource/xhr.py";
+
+promise_test(async () => {
+  const headers = (await (await fetch(echo)).json()).headers;
+  assert_equals(headers.referer, undefined);
+}, "fetch() sends no Referer");
+
+promise_test(async () => {
+  const headers = (await (await fetch(echo, { referrerPolicy: "unsafe-url" })).json()).headers;
+  assert_equals(headers.referer, location.href.split("#")[0]);
+}, "a request's own referrer policy still wins over the document's");
+
+promise_test(() => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", echo);
+  xhr.responseType = "json";
+  xhr.onload = () => {
+    try {
+      assert_equals(xhr.response.headers.referer, undefined);
+      resolve();
+    } catch (e) { reject(e); }
+  };
+  xhr.onerror = () => reject(new Error("network error"));
+  xhr.send();
+}), "XMLHttpRequest sends no Referer");
+</script>

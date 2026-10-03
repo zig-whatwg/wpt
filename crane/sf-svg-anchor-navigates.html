@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A synthetic click on an SVG a element follows its hyperlink into the frame it targets</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/linking.html#AElement">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#following-hyperlinks-2">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<body>
+<iframe name="parsed-target"></iframe>
+<svg><a id="parsed-anchor" href="/common/blank.html?parsed-svg-anchor" target="parsed-target"><text y="20">x</text></a></svg>
+<script>
+// common/security-features' requestViaSVGAnchor - what every svg-a-tag file
+// in the */gen/ trees does - in its parts: a MouseEvent whose view is the
+// window, dispatched at an SVG a whose target names a frame, which loads the
+// page and hears from it.
+const svgNS = "http://www.w3.org/2000/svg";
+
+test(() => {
+  const event = new MouseEvent("click", { view: window, bubbles: true, cancelable: true });
+  assert_equals(event.view, window);
+}, "a MouseEvent takes the window as its view");
+
+promise_test(async () => {
+  const name = "frame-" + Math.random().toString(36).slice(2);
+  const iframe = document.createElement("iframe");
+  iframe.name = name;
+  document.body.appendChild(iframe);
+  const svg = document.createElementNS(svgNS, "svg");
+  const anchor = document.createElementNS(svgNS, "a");
+  anchor.setAttribute("href", "/common/blank.html?svg-anchor");
+  anchor.setAttribute("target", name);
+  svg.appendChild(anchor);
+  document.body.appendChild(svg);
+  const loaded = new Promise(resolve => iframe.addEventListener("load", resolve, { once: true }));
+  anchor.dispatchEvent(new MouseEvent("click", { view: window, bubbles: true, cancelable: true }));
+  await loaded;
+  assert_true(iframe.contentWindow.location.href.endsWith("/common/blank.html?svg-anchor"));
+}, "the click navigates the frame the SVG a targets");
+
+test(() => {
+  const anchor = document.getElementById("parsed-anchor");
+  assert_equals(anchor.namespaceURI, svgNS);
+  assert_true(anchor instanceof SVGAElement, "the parser makes an SVG a an SVGAElement");
+  assert_true(document.createElementNS(svgNS, "a") instanceof SVGAElement, "and so does createElementNS");
+}, "an SVG a is an SVGAElement, parsed or created");
+
+promise_test(async () => {
+  const iframe = document.querySelector("iframe[name=parsed-target]");
+  const anchor = document.getElementById("parsed-anchor");
+  const loaded = new Promise(resolve => iframe.addEventListener("load", resolve, { once: true }));
+  anchor.dispatchEvent(new MouseEvent("click", { view: window, bubbles: true, cancelable: true }));
+  await loaded;
+  assert_true(iframe.contentWindow.location.href.endsWith("/common/blank.html?parsed-svg-anchor"));
+}, "a click on a parsed SVG a navigates the frame it targets");
+
+promise_test(async () => {
+  const result = await requestViaSVGAnchor("/common/security-features/subresource/document.py");
+  assert_equals(typeof result.headers, "object", "the page's report carries its request headers");
+  assert_true(result.location.endsWith("/common/security-features/subresource/document.py"));
+}, "requestViaSVGAnchor hears back from the page it navigated to");
+
+promise_test(async () => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  // The initial about:blank document is there as the frame is inserted.
+  const view = frame.contentWindow;
+  const event = new view.MouseEvent("click", { view, bubbles: true, cancelable: true });
+  assert_equals(event.view, view);
+}, "a frame's MouseEvent takes the frame's window as its view");
+
+promise_test(async () => {
+  const result = await invokeRequest(
+      { subresourceType: "svg-a-tag", url: "/common/security-features/subresource/document.py", policyDeliveries: [] },
+      [{ sourceContextType: "iframe", policyDeliveries: [] }]);
+  assert_equals(typeof result.headers, "object", "the page's report carries its request headers");
+}, "requestViaSVGAnchor from inside a frame hears back too");
+</script>

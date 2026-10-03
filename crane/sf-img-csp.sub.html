@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="img-src 'self'">
+<title>An img element's request is checked against its document's img-src</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#directive-img-src">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async () => {
+  const img = document.createElement("img");
+  const url = "http://{{hosts[alt][]}}:{{ports[http][0]}}/images/green.png?sf-img-csp";
+  const violation = new Promise(resolve => document.addEventListener("securitypolicyviolation", e => {
+    if (e.blockedURI === url) resolve(e);
+  }));
+  const result = new Promise(resolve => { img.onload = () => resolve("load"); img.onerror = () => resolve("error"); });
+  img.src = url;
+  assert_equals(await result, "error");
+  const e = await violation;
+  assert_equals(e.effectiveDirective, "img-src");
+}, "img-src 'self' blocks a cross-origin image: error, and a violation");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  const result = new Promise(resolve => { img.onload = () => resolve("load"); img.onerror = () => resolve("error"); });
+  img.src = "/images/green.png?sf-img-csp-self";
+  assert_equals(await result, "load");
+}, "img-src 'self' allows a same-origin image");
+</script>

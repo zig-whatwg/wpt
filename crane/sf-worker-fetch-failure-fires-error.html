@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A Worker whose script cannot be fetched fires error at the Worker, once</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "run a worker", onComplete step 1: "If script is null ..., queue a
+// global task on the DOM manipulation task source given worker's relevant
+// global object to fire an event named error at worker" - one event. A 404,
+// a network error and a request Content Security Policy blocks all leave the
+// script null.
+
+async function errorsOf(worker) {
+  let errors = 0;
+  worker.addEventListener("error", () => { errors++; });
+  let ran = false;
+  worker.onmessage = () => { ran = true; };
+  // The first error, then long enough for a second one to show.
+  await new Promise(resolve => worker.addEventListener("error", resolve, { once: true }));
+  await new Promise(resolve => step_timeout(resolve, 200));
+  return { errors, ran };
+}
+
+promise_test(async () => {
+  const result = await errorsOf(new Worker("resources/sf-no-such-worker-script.js"));
+  assert_equals(result.errors, 1, "one error event");
+  assert_false(result.ran);
+}, "a 404 script fires error at the Worker once");
+
+promise_test(async () => {
+  const result = await errorsOf(new Worker("http://" + location.hostname + ":1/worker.js"));
+  assert_equals(result.errors, 1, "one error event");
+}, "a script that cannot be fetched at all fires error at the Worker once");
+</script>

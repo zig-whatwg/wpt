@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A document's and a worker's referrer policy come from their Referrer-Policy header and meta referrer</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#policy-containers">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#meta-referrer">
+<link rel="help" href="https://fetch.spec.whatwg.org/#main-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<body>
+<script>
+// HTML "create a policy container from a fetch response" step 5 sets a
+// navigated document's (and a worker's) referrer policy from its
+// `Referrer-Policy` header; a meta element named "referrer" sets its node
+// document's (the legacy keyword "never" is "no-referrer"). Fetch's main fetch
+// step 8 then gives every request whose own referrer policy is the empty
+// string the policy of its client's policy container. Each case runs a
+// same-origin fetch() from a nested context and reads the Referer it sent.
+
+const echo = "/common/security-features/subresource/xhr.py";
+
+function refererFrom(sourceContextType, deliveries) {
+  return invokeRequest(
+      { subresourceType: "fetch", url: echo, policyDeliveries: [] },
+      [{ sourceContextType, policyDeliveries: deliveries }]);
+}
+
+function delivery(deliveryType, value) {
+  return { deliveryType, key: "referrerPolicy", value };
+}
+
+promise_test(async () => {
+  const result = await refererFrom("iframe", []);
+  // The default policy, strict-origin-when-cross-origin, sends a same-origin
+  // request the whole URL.
+  assert_equals(result.referrer, result.sourceContextUrl.split("#")[0]);
+}, "a frame with no policy sends its full URL to its own origin");
+
+promise_test(async () => {
+  const result = await refererFrom("iframe", [delivery("http-rp", "no-referrer")]);
+  assert_equals(result.referrer, undefined);
+}, "a frame served with Referrer-Policy: no-referrer sends no Referer");
+
+promise_test(async () => {
+  const result = await refererFrom("iframe", [delivery("meta", "no-referrer")]);
+  assert_equals(result.referrer, undefined);
+}, "a frame with <meta name=referrer content=no-referrer> sends no Referer");
+
+promise_test(async () => {
+  const result = await refererFrom("iframe", [delivery("meta", "never")]);
+  assert_equals(result.referrer, undefined);
+}, "the legacy meta keyword never is no-referrer");
+
+promise_test(async () => {
+  const result = await refererFrom("iframe", [delivery("meta", "origin")]);
+  assert_equals(result.referrer, new URL(result.sourceContextUrl).origin + "/");
+}, "a frame with <meta name=referrer content=origin> sends its origin");
+
+promise_test(async () => {
+  const result = await refererFrom("iframe", [delivery("http-rp", "origin")]);
+  assert_equals(result.referrer, new URL(result.sourceContextUrl).origin + "/");
+}, "a frame served with Referrer-Policy: origin sends its origin");
+
+promise_test(async () => {
+  const result = await refererFrom("worker-classic", [delivery("http-rp", "no-referrer")]);
+  assert_equals(result.referrer, undefined);
+}, "a worker served with Referrer-Policy: no-referrer sends no Referer");
+
+promise_test(async () => {
+  const result = await refererFrom("worker-module", [delivery("http-rp", "origin")]);
+  assert_equals(result.referrer, new URL(result.sourceContextUrl).origin + "/");
+}, "a module worker served with Referrer-Policy: origin sends its origin");
+</script>

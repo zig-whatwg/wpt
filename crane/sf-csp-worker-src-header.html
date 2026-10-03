@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A header-delivered worker-src 'none' blocks every worker</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#parse-response-csp">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "create a policy container from a fetch response" step 3: the page's
+// Content-Security-Policy header (the .headers file) is its CSP list, each
+// policy's self-origin the response URL's origin.
+promise_test(async () => {
+  const worker = new Worker("resources/sf-echo-worker.js");
+  worker.postMessage("ran");
+  const result = await new Promise(resolve => {
+    worker.onerror = () => resolve("error");
+    worker.onmessage = event => resolve(event.data);
+  });
+  assert_equals(result, "error");
+}, "a same-origin worker is blocked by worker-src 'none'");
+
+promise_test(async () => {
+  const response = await fetch("/common/security-features/subresource/xhr.py");
+  assert_equals(response.status, 200);
+}, "a fetch() is not a worker: connect-src governs it, and there is none");
+</script>

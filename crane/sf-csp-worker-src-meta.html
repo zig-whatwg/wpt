@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="worker-src 'self'; script-src 'self' 'unsafe-inline'">
+<title>A meta-delivered worker-src blocks a worker whose script it does not allow</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-content-security-policy">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-request">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The meta element's Content Security Policy state enforces the policy on its
+// document: it joins the document's policy container's CSP list, which every
+// request the document makes carries a clone of. Fetch's main fetch step 7 -
+// "should request be blocked by Content Security Policy?" - then makes a
+// worker script request worker-src does not match a network error, and "run
+// a worker" fires error at the Worker. 'self' matches the page's origin, not
+// a data: URL.
+
+function outcome(worker) {
+  return new Promise(resolve => {
+    worker.onerror = () => resolve("error");
+    worker.onmessage = event => resolve(event.data);
+  });
+}
+
+promise_test(async () => {
+  const worker = new Worker("data:text/javascript,postMessage('ran')");
+  assert_equals(await outcome(worker), "error");
+}, "a data: worker is blocked by worker-src 'self'");
+
+promise_test(async () => {
+  const worker = new Worker("resources/sf-echo-worker.js");
+  worker.postMessage("ran");
+  assert_equals(await outcome(worker), "ran");
+}, "a same-origin worker is allowed by worker-src 'self'");
+
+promise_test(async () => {
+  const worker = new SharedWorker("data:text/javascript,onconnect = e => e.ports[0].postMessage('ran')");
+  const result = await new Promise(resolve => {
+    worker.onerror = () => resolve("error");
+    worker.port.onmessage = event => resolve(event.data);
+  });
+  assert_equals(result, "error");
+}, "a data: shared worker is blocked by worker-src 'self'");
+</script>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An img element's src set by setAttribute, by the parser or by the IDL attribute loads, and fires load or error</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#relevant-mutations">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<img id="parsed" src="/images/green.png" onload="window.parsedLoaded = true">
+<script>
+// HTML 4.8.4.3.2: an img element's relevant mutations - its src attribute
+// set, changed or removed, however that happens - run "update the image
+// data", which fetches the image and fires load or error at the element.
+// common/security-features' requestViaImage sets src with setAttribute
+// after appending the element.
+
+function outcome(img) {
+  return new Promise(resolve => {
+    img.addEventListener("load", () => resolve("load"), { once: true });
+    img.addEventListener("error", () => resolve("error"), { once: true });
+  });
+}
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  document.body.appendChild(img);
+  const result = outcome(img);
+  img.setAttribute("src", "/images/green.png");
+  assert_equals(await result, "load");
+}, "setAttribute('src') loads the image");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  const result = outcome(img);
+  img.setAttribute("src", "/images/no-such-image-sf.png");
+  assert_equals(await result, "error");
+}, "setAttribute('src') of a missing image fires error");
+
+promise_test(async () => {
+  const img = new Image();
+  const result = outcome(img);
+  img.src = "../images/green.png";
+  assert_equals(await result, "load");
+}, "a relative src resolves against the document's base URL");
+
+promise_test(async t => {
+  const img = document.createElement("img");
+  const fired = [];
+  img.onload = e => fired.push("onload:" + e.bubbles + ":" + e.cancelable + ":" + e.isTrusted);
+  img.addEventListener("load", () => fired.push("listener"));
+  const result = outcome(img);
+  img.setAttribute("src", "/images/green.png");
+  assert_equals(await result, "load");
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_array_equals(fired, ["onload:false:false:true", "listener"]);
+}, "load fires once, not bubbling, not cancelable, trusted, to the handler and the listener");
+
+promise_test(async () => {
+  const img = document.getElementById("parsed");
+  if (window.parsedLoaded) return;
+  assert_equals(await outcome(img), "load");
+}, "a parsed img loads");
+</script>

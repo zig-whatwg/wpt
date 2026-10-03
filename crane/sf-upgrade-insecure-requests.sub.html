@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+<title>upgrade-insecure-requests upgrades a page's, a frame's and a worker's http requests to https</title>
+<link rel="help" href="https://w3c.github.io/webappsec-upgrade-insecure-requests/#upgrade-request">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Upgrade Insecure Requests 4.1, run by main fetch step 5: a request from a
+// client whose insecure requests policy is Upgrade, to an http: URL, is made
+// to the https: URL - with the same port. http://<host>:<https port>/ only
+// answers once upgraded, as the WPT security-features tests rely on.
+const insecure = "http://{{host}}:{{ports[https][0]}}/common/security-features/subresource/xhr.py";
+
+promise_test(async () => {
+  const response = await fetch(insecure);
+  assert_equals(response.url.split(":")[0], "https");
+  assert_equals(response.status, 200);
+}, "fetch() to http: is upgraded");
+
+promise_test(async () => {
+  const worker = new Worker("data:text/javascript," + encodeURIComponent(
+      "fetch('" + insecure + "').then(r => postMessage(r.url.split(':')[0]), e => postMessage('failed: ' + e))"));
+  const result = await new Promise(resolve => {
+    worker.onmessage = event => resolve(event.data);
+    worker.onerror = () => resolve("error");
+  });
+  assert_equals(result, "https");
+}, "a data: worker inherits its creator's policy");
+
+promise_test(async () => {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = "<script>fetch('" + insecure + "').then(r => parent.postMessage(r.url.split(':')[0], '*'), e => parent.postMessage('failed', '*'))<\/script>";
+  const result = new Promise(resolve => addEventListener("message", e => resolve(e.data), { once: true }));
+  document.body.appendChild(frame);
+  assert_equals(await result, "https");
+}, "a srcdoc frame inherits its parent's policy");
+</script>

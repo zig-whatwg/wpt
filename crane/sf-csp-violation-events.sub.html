@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self'; script-src 'self' 'nonce-t' 'sha256-D2MaxkqUJEWBfIUlxRTpMa3IGBdVqyV9tNLcIhjg4DE=' 'sha256-gs_BVBj87XS_G1-z4NG9T-7HfEIJwokxR1pqfC8ZW_4=' 'report-sample'">
+<title>CSP violations fire securitypolicyviolation; inline scripts match by nonce and hash</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#report-violation">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-inline">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script nonce="t">
+// CSP 5.5: a violation fires securitypolicyviolation in a queued task - at
+// the element that caused it while it is connected, else at the document -
+// bubbling and composed, so the window hears it too.
+window.documentEvents = [];
+window.windowEvents = [];
+document.addEventListener("securitypolicyviolation", e => documentEvents.push(e));
+window.addEventListener("securitypolicyviolation", e => windowEvents.push(e));
+</script>
+<script id="blocked">window.blockedRan = true; // neither nonce nor hash: blocked, sampled</script>
+<script>
+  window.hashedRan = true;
+</script>
+<script>
+  window.hashedUrlRan = true;
+</script>
+<body>
+<script nonce="t">
+const policy = document.querySelector("meta[http-equiv]").content;
+
+test(() => {
+  assert_true(window.hashedRan, "base64 sha256");
+  assert_true(window.hashedUrlRan, "base64url sha256");
+  assert_equals(window.blockedRan, undefined);
+}, "an inline script runs when its sha256 matches, base64 or base64url, and is blocked otherwise");
+
+promise_test(async () => {
+  await new Promise(resolve => step_timeout(resolve, 0));
+  const blocked = document.getElementById("blocked");
+  const inline = documentEvents.filter(e => e.blockedURI === "inline");
+  assert_equals(inline.length, 1, "one violation, for the blocked script only");
+  const e = inline[0];
+  assert_true(e instanceof SecurityPolicyViolationEvent);
+  assert_equals(e.target, blocked, "the connected element is the target");
+  assert_equals(e.effectiveDirective, "script-src-elem");
+  assert_equals(e.violatedDirective, "script-src-elem");
+  assert_equals(e.disposition, "enforce");
+  assert_equals(e.sample, "window.blockedRan = true; // neither non", "'report-sample': the first 40 characters");
+  assert_true(e.isTrusted && e.bubbles && e.composed && !e.cancelable);
+  assert_equals(e.documentURI, location.href.split("#")[0]);
+  assert_true(windowEvents.includes(e), "it bubbles to the window");
+}, "a blocked inline script fires securitypolicyviolation at itself");
+
+promise_test(async t => {
+  const url = "http://{{hosts[alt][]}}:{{ports[http][0]}}/common/blank.html?sf-violation";
+  const seen = new Promise(resolve => document.addEventListener("securitypolicyviolation", e => {
+    if (e.blockedURI === url) resolve(e);
+  }));
+  await promise_rejects_js(t, TypeError, fetch(url));
+  const e = await seen;
+  assert_equals(e.target, document, "a request's violation is the document's");
+  assert_equals(e.effectiveDirective, "connect-src");
+  assert_equals(e.violatedDirective, "connect-src");
+  assert_equals(e.originalPolicy, policy);
+  assert_equals(e.disposition, "enforce");
+  assert_equals(e.sample, "");
+  assert_equals(e.statusCode, 200);
+}, "a request connect-src blocks fires securitypolicyviolation at the document, blockedURI its URL");
+
+test(() => {
+  const e = new SecurityPolicyViolationEvent("securitypolicyviolation", {
+    blockedURI: "https://a.test/x", documentURI: "https://a.test/", referrer: "r",
+    violatedDirective: "img-src", effectiveDirective: "img-src", originalPolicy: "img-src 'none'",
+    sourceFile: "s.js", sample: "abc", disposition: "report", statusCode: 404, lineNumber: 3, columnNumber: 4,
+  });
+  assert_false(e.isTrusted);
+  assert_equals(e.blockedURI, "https://a.test/x");
+  assert_equals(e.documentURI, "https://a.test/");
+  assert_equals(e.referrer, "r");
+  assert_equals(e.effectiveDirective, "img-src");
+  assert_equals(e.originalPolicy, "img-src 'none'");
+  assert_equals(e.sourceFile, "s.js");
+  assert_equals(e.sample, "abc");
+  assert_equals(e.disposition, "report");
+  assert_equals(e.statusCode, 404);
+  assert_equals(e.lineNumber, 3);
+  assert_equals(e.columnNumber, 4);
+  const d = new SecurityPolicyViolationEvent("x");
+  assert_equals(d.disposition, "enforce");
+  assert_equals(d.blockedURI, "");
+  assert_equals(d.statusCode, 0);
+}, "the constructor initializes each attribute from its dictionary member");
+</script>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="referrer" content="origin">
+<title>A meta referrer in a top-level document sets its referrer policy, and the latest one wins</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#meta-referrer">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML 4.2.5.1, the "referrer" metadata name: when a meta element named
+// referrer is inserted into the document, or its name or content changes, its
+// content (ASCII lowercased, legacy keywords mapped) becomes its node
+// document's policy container's referrer policy. Only the most recently
+// inserted or modified one has an effect; removing it changes nothing.
+const echo = "/common/security-features/subresource/xhr.py";
+
+async function referer() {
+  return (await (await fetch(echo)).json()).headers.referer;
+}
+
+promise_test(async () => {
+  assert_equals(await referer(), location.origin + "/");
+}, "the parsed meta (origin) applies");
+
+promise_test(async () => {
+  const meta = document.createElement("meta");
+  meta.name = "referrer";
+  meta.content = "NO-REFERRER";
+  document.head.appendChild(meta);
+  assert_equals(await referer(), undefined, "an inserted meta applies, its content ASCII lowercased");
+  meta.remove();
+  assert_equals(await referer(), undefined, "removing it changes nothing");
+  meta.content = "unsafe-url";
+  assert_equals(await referer(), undefined, "a meta that is not in the document does nothing");
+  document.head.appendChild(meta);
+  assert_equals(await referer(), location.href.split("#")[0], "re-inserted with new content");
+  meta.content = "bogus";
+  assert_equals(await referer(), location.href.split("#")[0], "an unknown value is ignored");
+  meta.content = "default";
+  assert_equals(await referer(), location.href.split("#")[0], "default is strict-origin-when-cross-origin");
+  meta.content = "origin";
+  assert_equals(await referer(), location.origin + "/", "a content change applies");
+}, "an inserted or changed meta referrer applies, and the latest wins");
+</script>
