@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>ArrayBufferView arguments and results across many BYOB reads and collections</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#js-buffer-source-types">
+<link rel=help href="https://streams.spec.whatwg.org/#rs-byob-request-class">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// An ArrayBufferView argument is a reference to the object (WebIDL 3.2.26),
+// which the binding hands the operation for the call and releases once it
+// returns; a view an operation or a getter returns is the binding's to
+// release once it is the result. The BYOB reader's read(view), the byte
+// controller's enqueue(chunk), the request's respondWithNewView(view) and its
+// view getter all cross that boundary. Each ran here many times, with
+// collections in between, must keep answering with the same objects: a
+// reference released twice, or released under the request that keeps it,
+// reads freed memory.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 200000; i++) junk.push({ i });
+  junk = null;
+  return Promise.resolve();
+}
+
+promise_test(async () => {
+  let controller;
+  const stream = new ReadableStream({
+    type: "bytes",
+    start(c) { controller = c; },
+  });
+  const reader = stream.getReader({ mode: "byob" });
+  for (let round = 0; round < 40; round++) {
+    const pending = reader.read(new Uint8Array(8));
+    const request = controller.byobRequest;
+    assert_not_equals(request, null, `round ${round}: a byobRequest`);
+    // The getter, read again and again: the same object each time.
+    const view = request.view;
+    for (let i = 0; i < 16; i++) assert_equals(request.view, view, `round ${round}: request.view is the same object`);
+    if (round % 8 === 0) await collect();
+    assert_equals(request.view.byteLength, 8, `round ${round}: the view is still the request's`);
+    view[0] = round;
+    if (round % 2 === 0) {
+      request.respond(1);
+    } else {
+      const answer = new Uint8Array(view.buffer, view.byteOffset, 2);
+      answer[1] = 255;
+      request.respondWithNewView(answer);
+    }
+    const { value, done } = await pending;
+    assert_false(done, `round ${round}: not done`);
+    assert_equals(value[0], round, `round ${round}: the byte written through the view`);
+    assert_equals(value.byteLength, round % 2 === 0 ? 1 : 2, `round ${round}: the bytes filled`);
+  }
+}, "read(view), byobRequest.view and respondWithNewView(view), with collections between");
+
+promise_test(async () => {
+  let controller;
+  const stream = new ReadableStream({
+    type: "bytes",
+    start(c) { controller = c; },
+  });
+  const reader = stream.getReader();
+  for (let round = 0; round < 64; round++) {
+    const chunk = new Uint8Array([round, round + 1]);
+    controller.enqueue(chunk);
+    // enqueue transfers the chunk's buffer: the argument's object is detached.
+    assert_equals(chunk.byteLength, 0, `round ${round}: the chunk's buffer was transferred`);
+    if (round % 16 === 0) await collect();
+    const { value } = await reader.read();
+    assert_array_equals(Array.from(value), [round, round + 1], `round ${round}: the bytes enqueued`);
+  }
+}, "enqueue(chunk) many times, with collections between");
+</script>

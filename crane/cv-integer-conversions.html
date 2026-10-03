@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[EnforceRange] and [Clamp] are steps of the integer conversion</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#abstract-opdef-converttoint">
+<link rel=help href="https://webidl.spec.whatwg.org/#EnforceRange">
+<link rel=help href="https://webidl.spec.whatwg.org/#Clamp">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL 3.2.4 ConvertToInt: [EnforceRange] makes NaN, the infinities and a
+// value outside the type's range (for a 64-bit type, outside the safe
+// integers) a TypeError (step 6); [Clamp] clamps and rounds (step 7). Both act
+// on the number, before the default conversion wraps it, and an optional
+// argument left out is simply not passed.
+test(() => {
+  for (const bad of [-1, 2 ** 53, 2 ** 64, NaN, Infinity, -Infinity]) {
+    assert_throws_js(TypeError, () => AbortSignal.timeout(bad), `timeout(${bad})`);
+  }
+  assert_true(AbortSignal.timeout(0) instanceof AbortSignal);
+  assert_true(AbortSignal.timeout(2 ** 53 - 1) instanceof AbortSignal);
+  assert_true(AbortSignal.timeout(1.9) instanceof AbortSignal);
+}, "AbortSignal.timeout([EnforceRange] unsigned long long)");
+
+test(() => {
+  const request = indexedDB.open("cv-integer-conversions-omitted");
+  assert_true(request instanceof IDBOpenDBRequest);
+  for (const bad of [-1, 2 ** 53, NaN, Infinity]) {
+    assert_throws_js(TypeError, () => indexedDB.open("cv-integer-conversions", bad), `open(name, ${bad})`);
+  }
+}, "indexedDB.open(name, optional [EnforceRange] unsigned long long version): omitted is not a TypeError");
+
+test(() => {
+  const blob = new Blob(["abcdef"]);
+  // Clamped to 2^53 - 1, not wrapped modulo 2^64 to 0.
+  assert_equals(blob.slice(2 ** 64).size, 0, "slice(2^64)");
+  assert_equals(blob.slice(-(2 ** 64)).size, 6, "slice(-2^64)");
+  assert_equals(blob.slice(0, 2 ** 64).size, 6, "slice(0, 2^64)");
+  assert_equals(blob.slice(1.5, 3.5).size, 2, "1.5 rounds to 2, 3.5 to 4");
+  assert_equals(blob.slice(NaN).size, 6, "NaN is 0");
+}, "Blob.slice(optional [Clamp] long long start, optional [Clamp] long long end)");
+</script>
