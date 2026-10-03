@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane WebCrypto dictionary property order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/WebCryptoAPI/util/rsa_key_fixtures.js"></script>
+<script>
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-GCM", true, ["encrypt"]);
+  const exported = await crypto.subtle.exportKey("jwk", key);
+  assert_array_equals(Object.keys(exported), ["alg", "ext", "k", "key_ops", "kty"]);
+}, "Exported JsonWebKey properties follow WebIDL dictionary member order");
+
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("spki", getRsaKeyFixtures().spki,
+    {name: "RSA-PSS", hash: "SHA-256"}, true, ["verify"]);
+  assert_array_equals(Object.keys(key.algorithm), ["name", "modulusLength", "publicExponent", "hash"]);
+  assert_array_equals(Object.keys(key.algorithm.hash), ["name"]);
+}, "RSA algorithm properties follow inherited dictionaries before derived members");
+</script>

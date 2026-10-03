@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebCrypto normalization observes WebIDL dictionary order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const reads = [];
+  const algorithm = {get name() { reads.push("name"); return "sHa-256"; }};
+  const result = await crypto.subtle.digest(algorithm, new Uint8Array());
+  assert_equals(result.byteLength, 32);
+  assert_array_equals(reads, ["name", "name"]);
+}, "digest converts Algorithm and the registered dictionary separately");
+
+promise_test(async t => {
+  const sentinel = new Error("second name getter");
+  let count = 0;
+  const algorithm = {get name() {
+    if (++count === 2) throw sentinel;
+    return "SHA-256";
+  }};
+  await promise_rejects_exactly(t, sentinel,
+    crypto.subtle.digest(algorithm, new Uint8Array()));
+}, "an exception in the registered dictionary conversion is preserved");
+
+promise_test(async t => {
+  const reads = [];
+  const sentinel = new Error("length conversion");
+  const algorithm = {
+    get name() { reads.push("name"); return "HMAC"; },
+    get hash() {
+      reads.push("hash");
+      return {get name() { reads.push("hash.name"); return "SHA-256"; }};
+    },
+    get length() { reads.push("length"); throw sentinel; }
+  };
+  await promise_rejects_exactly(t, sentinel,
+    crypto.subtle.generateKey(algorithm, true, ["sign"]));
+  assert_array_equals(reads, ["name", "name", "hash", "length"]);
+}, "dictionary conversion completes before recursively normalizing hash");
+
+promise_test(async t => {
+  const reads = [];
+  const sentinel = new Error("counter length");
+  const algorithm = {
+    get name() { reads.push("name"); return "AES-CTR"; },
+    get counter() { reads.push("counter"); return new Uint8Array(16); },
+    get length() { reads.push("length"); throw sentinel; }
+  };
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-CTR", false, ["encrypt"]);
+  await promise_rejects_exactly(t, sentinel,
+    crypto.subtle.encrypt(algorithm, key, new Uint8Array()));
+  assert_array_equals(reads, ["name", "name", "counter", "length"]);
+}, "AES-CTR converts inherited members first then own members lexicographically");
+
+for (const bad of [NaN, Infinity, -Infinity, -1, 65536]) {
+  promise_test(t => promise_rejects_js(t, TypeError,
+    crypto.subtle.generateKey({name: "AES-GCM", length: bad}, false, ["encrypt"])),
+    `AES key length EnforceRange rejects ${bad}`);
+}
+
+promise_test(async () => {
+  const key = await crypto.subtle.generateKey({name: "AES-GCM", length: 128.9}, false, ["encrypt"]);
+  assert_equals(key.algorithm.length, 128);
+}, "EnforceRange truncates before testing the requested AES key size");
+</script>

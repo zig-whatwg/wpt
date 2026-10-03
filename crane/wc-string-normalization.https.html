@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane WebCrypto string normalization uses an ordinary dictionary</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/WebCryptoAPI/util/rsa_key_fixtures.js"></script>
+<script>
+function withInheritedMember(name, descriptor, operation) {
+  const previous = Object.getOwnPropertyDescriptor(Object.prototype, name);
+  Object.defineProperty(Object.prototype, name, {configurable: true, ...descriptor});
+  try {
+    // Normalization runs synchronously; restore before any promise settles.
+    return operation();
+  } finally {
+    if (previous) Object.defineProperty(Object.prototype, name, previous);
+    else delete Object.prototype[name];
+  }
+}
+
+promise_test(async () => {
+  let reads = 0;
+  const key = await withInheritedMember("length", {get() { ++reads; return 128; }},
+    () => crypto.subtle.generateKey("AES-GCM", true, ["encrypt"]));
+  assert_equals(reads, 1);
+  assert_equals(key.algorithm.length, 128);
+}, "A string algorithm's new dictionary reads inherited required members");
+
+promise_test(async () => {
+  let reads = 0;
+  const key = await withInheritedMember("hash", {get() { ++reads; return "SHA-256"; }},
+    () => crypto.subtle.importKey("raw", new Uint8Array([1, 2, 3]), "HMAC", true, ["sign"]));
+  assert_equals(reads, 1);
+  assert_equals(key.algorithm.hash.name, "SHA-256");
+  assert_array_equals(Object.keys(key.algorithm), ["name", "hash", "length"]);
+}, "String HMAC normalization converts an inherited hash after dictionary conversion");
+
+promise_test(async () => {
+  const key = await withInheritedMember("hash", {value: "SHA-256"},
+    () => crypto.subtle.importKey("spki", getRsaKeyFixtures().spki, "RSA-PSS", true, ["verify"]));
+  assert_array_equals(Object.keys(key.algorithm), ["name", "modulusLength", "publicExponent", "hash"]);
+}, "RSA algorithm output orders inherited members before its hash member");
+
+promise_test(async t => {
+  const sentinel = {};
+  const promise = withInheritedMember("length", {get() { throw sentinel; }},
+    () => crypto.subtle.generateKey("AES-GCM", true, ["encrypt"]));
+  await promise_rejects_exactly(t, sentinel, promise);
+}, "String normalization preserves an exception from an inherited member getter");
+</script>

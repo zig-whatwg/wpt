@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebCrypto parses an unwrapped JWK in a fresh global</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-CBC", false, ["encrypt", "unwrapKey"]);
+  const algorithm = {name: "AES-CBC", iv: new Uint8Array(16)};
+  const ciphertext = await crypto.subtle.encrypt(algorithm, key,
+    new TextEncoder().encode('{"k":"AAAAAAAAAAAAAAAAAAAAAA"}'));
+  let error;
+  Object.defineProperty(Object.prototype, "kty", {configurable: true, value: "oct"});
+  try {
+    error = await crypto.subtle.unwrapKey("jwk", ciphertext, key, algorithm, "AES-GCM", true, ["encrypt"])
+      .then(() => null, reason => reason);
+  } finally {
+    delete Object.prototype.kty;
+  }
+  assert_true(error instanceof DOMException);
+  assert_equals(error.name, "DataError");
+}, "An unwrapped JWK cannot inherit kty from the caller's Object.prototype");
+
+promise_test(async t => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-CBC", false, ["encrypt", "unwrapKey"]);
+  const algorithm = {name: "AES-CBC", iv: new Uint8Array(16)};
+  const ciphertext = await crypto.subtle.encrypt(algorithm, key, new TextEncoder().encode("{"));
+  await promise_rejects_js(t, SyntaxError,
+    crypto.subtle.unwrapKey("jwk", ciphertext, key, algorithm, "AES-GCM", true, ["encrypt"]));
+}, "Unwrapped malformed JSON preserves JSON.parse's SyntaxError");
+</script>

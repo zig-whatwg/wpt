@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crypto is exposed by its owning global</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const first = self.crypto;
+  assert_true(first instanceof Crypto);
+  assert_equals(self.crypto, first);
+}, "A global exposes the same Crypto object on repeated reads");
+</script>

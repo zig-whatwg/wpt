@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane WebCrypto curve keys and native operations</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const hex = s => Uint8Array.from(s.match(/../g) || [], v => parseInt(v, 16));
+const bytes = buffer => Array.from(new Uint8Array(buffer));
+for (const namedCurve of ["P-256", "P-384", "P-521"]) {
+  promise_test(async t => {
+    const pair = await crypto.subtle.generateKey({name: "ECDSA", namedCurve}, false, ["verify", "sign"]);
+    assert_true(pair.publicKey.extractable);
+    assert_false(pair.privateKey.extractable);
+    assert_array_equals(pair.publicKey.usages, ["verify"]);
+    assert_array_equals(pair.privateKey.usages, ["sign"]);
+    const data = new TextEncoder().encode("curve signature");
+    for (const hash of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"]) {
+      const signature = await crypto.subtle.sign({name: "ECDSA", hash}, pair.privateKey, data);
+      assert_true(await crypto.subtle.verify({name: "ECDSA", hash}, pair.publicKey, signature, data));
+      assert_false(await crypto.subtle.verify({name: "ECDSA", hash}, pair.publicKey, signature, new Uint8Array()));
+    }
+  }, `${namedCurve} ECDSA supports every registered hash and splits usages`);
+  promise_test(async t => {
+    const a = await crypto.subtle.generateKey({name: "ECDH", namedCurve}, true, ["deriveBits"]);
+    const b = await crypto.subtle.generateKey({name: "ECDH", namedCurve}, true, ["deriveBits"]);
+    const first = await crypto.subtle.deriveBits({name: "ECDH", public: b.publicKey}, a.privateKey, null);
+    const second = await crypto.subtle.deriveBits({name: "ECDH", public: a.publicKey}, b.privateKey, null);
+    assert_array_equals(bytes(first), bytes(second));
+    for (const [format, key, usages] of [["pkcs8", a.privateKey, ["deriveBits"]], ["spki", a.publicKey, []], ["raw", a.publicKey, []]]) {
+      const exported = await crypto.subtle.exportKey(format, key);
+      const imported = await crypto.subtle.importKey(format, exported, {name: "ECDH", namedCurve}, true, usages);
+      assert_array_equals(bytes(await crypto.subtle.exportKey(format, imported)), bytes(exported));
+    }
+    const jwk = await crypto.subtle.exportKey("jwk", a.privateKey);
+    const imported = await crypto.subtle.importKey("jwk", jwk, {name: "ECDH", namedCurve}, true, ["deriveBits"]);
+    assert_array_equals(bytes(await crypto.subtle.deriveBits({name: "ECDH", public: b.publicKey}, imported, null)), bytes(first));
+  }, `${namedCurve} ECDH agrees and roundtrips every key format`);
+}
+promise_test(async t => {
+  const pkcs8 = hex("302e020100300506032b6570042204209d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+  const raw = hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+  const signature = hex("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+  const privateKey = await crypto.subtle.importKey("pkcs8", pkcs8, "Ed25519", true, ["sign"]);
+  const publicKey = await crypto.subtle.importKey("raw", raw, "Ed25519", true, ["verify"]);
+  assert_array_equals(bytes(await crypto.subtle.sign("Ed25519", privateKey, new Uint8Array())), Array.from(signature));
+  assert_true(await crypto.subtle.verify("Ed25519", publicKey, signature, new Uint8Array()));
+  assert_false(await crypto.subtle.verify("Ed25519", publicKey, signature, new Uint8Array([1])));
+  await promise_rejects_dom(t, "InvalidAccessError", crypto.subtle.exportKey("raw", privateKey));
+}, "Ed25519 matches RFC 8032 test 1 through PKCS8 and raw imports");
+promise_test(async t => {
+  const a = await crypto.subtle.generateKey("X25519", true, ["deriveBits"]);
+  const b = await crypto.subtle.generateKey("X25519", true, ["deriveBits"]);
+  const full = bytes(await crypto.subtle.deriveBits({name: "X25519", public: b.publicKey}, a.privateKey, null));
+  const truncated = bytes(await crypto.subtle.deriveBits({name: "X25519", public: b.publicKey}, a.privateKey, 9));
+  assert_array_equals(truncated, [full[0], full[1] & 128]);
+  const zero = await crypto.subtle.importKey("raw", new Uint8Array(32), "X25519", false, []);
+  await promise_rejects_dom(t, "OperationError", crypto.subtle.deriveBits({name: "X25519", public: zero}, a.privateKey, 0));
+}, "X25519 truncates bits and rejects zero agreement before truncation");
+</script>

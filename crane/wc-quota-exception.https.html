@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>QuotaExceededError constructor and Crypto quota</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const error = new QuotaExceededError("full");
+  assert_true(error instanceof QuotaExceededError);
+  assert_true(error instanceof DOMException);
+  assert_equals(error.name, "QuotaExceededError");
+  assert_equals(error.message, "full");
+  assert_equals(error.code, 22);
+  assert_equals(error.quota, null);
+  assert_equals(error.requested, null);
+}, "QuotaExceededError initializes the DOMException base and nullable amounts");
+for (const options of [{quota: -1}, {requested: -1}, {quota: 2, requested: 1}]) {
+  test(() => assert_throws_js(RangeError, () => new QuotaExceededError("", options)),
+       `QuotaExceededError rejects ${JSON.stringify(options)}`);
+}
+for (const options of [{}, {quota: 0}, {requested: 0}, {quota: 2, requested: 2}, {quota: 2, requested: 3}]) {
+  test(() => {
+    const error = new QuotaExceededError("", options);
+    assert_equals(error.quota, options.quota ?? null);
+    assert_equals(error.requested, options.requested ?? null);
+  }, `QuotaExceededError accepts ${JSON.stringify(options)}`);
+}
+test(() => {
+  const bytes = new Uint8Array(65537).fill(42);
+  assert_throws_quotaexceedederror(() => crypto.getRandomValues(bytes), null, null);
+  assert_true(bytes.every(value => value === 42));
+}, "getRandomValues throws the derived exception without writing the destination");
+</script>

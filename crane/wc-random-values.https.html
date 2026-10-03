@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebCrypto random values and per-object SubtleCrypto</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const Type of [Int8Array, Uint8Array, Uint8ClampedArray, Int16Array,
+                   Uint16Array, Int32Array, Uint32Array, BigInt64Array, BigUint64Array]) {
+  test(() => {
+    const bytes = new Uint8Array(256).fill(0x55);
+    const view = new Type(bytes.buffer, 16, 128 / Type.BYTES_PER_ELEMENT);
+    assert_equals(crypto.getRandomValues(view), view);
+    assert_array_equals(bytes.slice(0, 16), new Uint8Array(16).fill(0x55));
+    assert_array_equals(bytes.slice(144), new Uint8Array(112).fill(0x55));
+    assert_true(bytes.slice(16, 144).some(x => x !== 0x55));
+  }, `${Type.name}: fills only the view and returns the same object`);
+}
+for (const Type of [Float32Array, Float64Array, DataView]) {
+  test(() => {
+    assert_throws_dom("TypeMismatchError", () => crypto.getRandomValues(new Type(new ArrayBuffer(65544))));
+  }, `${Type.name}: type check precedes byte quota`);
+}
+test(() => {
+  const allowed = new Uint8Array(65536);
+  assert_equals(crypto.getRandomValues(allowed), allowed);
+  const excessive = new Uint8Array(65537).fill(0x55);
+  assert_throws_quotaexceedederror(() => crypto.getRandomValues(excessive), null, null);
+  assert_true(excessive.every(x => x === 0x55));
+  const empty = new Uint8Array(0);
+  assert_equals(crypto.getRandomValues(empty), empty);
+}, "The quota is inclusive, failed calls do not write, and empty views work");
+test(() => {
+  assert_regexp_match(crypto.randomUUID(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+}, "randomUUID sets version and variant in a lowercase UUID");
+test(() => {
+  const subtle = crypto.subtle;
+  assert_true(subtle instanceof SubtleCrypto);
+  assert_equals(crypto.subtle, subtle);
+}, "Crypto keeps one SubtleCrypto object");
+</script>

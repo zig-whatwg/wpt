@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebCrypto observes synchronous conversion and copy order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const data = new Uint8Array(3);
+  const algorithm = {get name() { data.set([97, 98, 99]); return "SHA-256"; }};
+  const result = await crypto.subtle.digest(algorithm, data);
+  const hex = Array.from(new Uint8Array(result), b => b.toString(16).padStart(2, "0")).join("");
+  assert_equals(hex, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}, "digest copies input after normalize-an-algorithm getters run");
+promise_test(async t => {
+  const sentinel = {keyData: true};
+  const keyData = {get alg() { throw sentinel; }};
+  await promise_rejects_exactly(t, sentinel, crypto.subtle.importKey("jwk", keyData, Symbol("algorithm"), false, ["sign"]));
+}, "importKey converts its keyData dictionary before its AlgorithmIdentifier argument");
+</script>

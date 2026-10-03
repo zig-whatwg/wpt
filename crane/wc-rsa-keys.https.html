@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane WebCrypto RSA key formats and exact PSS salt length</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/WebCryptoAPI/util/rsa_key_fixtures.js"></script>
+<script>
+const data = new TextEncoder().encode("RSA operation");
+const fixtures = getRsaKeyFixtures();
+for (const name of ["RSASSA-PKCS1-v1_5", "RSA-PSS"]) {
+  promise_test(async t => {
+    const algorithm = {name, hash: "SHA-256"};
+    const privateKey = await crypto.subtle.importKey("pkcs8", fixtures.pkcs8, algorithm, true, ["sign"]);
+    const publicKey = await crypto.subtle.importKey("spki", fixtures.spki, algorithm, true, ["verify"]);
+    assert_equals(publicKey.algorithm.modulusLength, 2048);
+    assert_array_equals(publicKey.algorithm.publicExponent, [1, 0, 1]);
+    for (const saltLength of name === "RSA-PSS" ? [0, 1, 32, 222] : [0]) {
+      const operation = {name, saltLength};
+      const signature = await crypto.subtle.sign(operation, privateKey, data);
+      assert_true(await crypto.subtle.verify(operation, publicKey, signature, data));
+      assert_false(await crypto.subtle.verify(operation, publicKey, signature, new Uint8Array()));
+      if (name === "RSA-PSS")
+        assert_false(await crypto.subtle.verify({name, saltLength: saltLength + 1}, publicKey, signature, data));
+    }
+    const jwk = await crypto.subtle.exportKey("jwk", privateKey);
+    const imported = await crypto.subtle.importKey("jwk", jwk, algorithm, true, ["sign"]);
+    const operation = {name, saltLength: 7};
+    const signature = await crypto.subtle.sign(operation, imported, data);
+    assert_true(await crypto.subtle.verify(operation, publicKey, signature, data));
+    await promise_rejects_dom(t, "NotSupportedError", crypto.subtle.exportKey("raw", privateKey));
+  }, `${name} imports DER, roundtrips JWK, and verifies signatures`);
+}
+promise_test(async t => {
+  const algorithm = {name: "RSA-OAEP", hash: "SHA-256"};
+  const privateKey = await crypto.subtle.importKey("pkcs8", fixtures.pkcs8, algorithm, false, ["decrypt"]);
+  const publicKey = await crypto.subtle.importKey("spki", fixtures.spki, algorithm, true, ["encrypt"]);
+  const label = new Uint8Array([1, 2, 3]);
+  const encrypted = await crypto.subtle.encrypt({name: "RSA-OAEP", label}, publicKey, data);
+  const decrypted = await crypto.subtle.decrypt({name: "RSA-OAEP", label}, privateKey, encrypted);
+  assert_array_equals(new Uint8Array(decrypted), data);
+  await promise_rejects_dom(t, "OperationError", crypto.subtle.decrypt("RSA-OAEP", privateKey, encrypted));
+  await promise_rejects_dom(t, "OperationError", crypto.subtle.encrypt("RSA-OAEP", publicKey, new Uint8Array(191)));
+}, "RSA-OAEP enforces labels and the modulus/hash message bound");
+promise_test(async t => {
+  const pair = await crypto.subtle.generateKey({name: "RSA-PSS", modulusLength: 1024, publicExponent: new Uint8Array([3]), hash: "SHA-256"}, false, ["verify", "sign"]);
+  assert_true(pair.publicKey.extractable);
+  assert_false(pair.privateKey.extractable);
+  assert_array_equals(pair.publicKey.algorithm.publicExponent, [3]);
+  assert_array_equals(pair.publicKey.usages, ["verify"]);
+  assert_array_equals(pair.privateKey.usages, ["sign"]);
+  const algorithm = {name: "RSA-PSS", saltLength: 5};
+  const signature = await crypto.subtle.sign(algorithm, pair.privateKey, data);
+  assert_true(await crypto.subtle.verify(algorithm, pair.publicKey, signature, data));
+}, "RSA generation accepts a custom exponent and splits public/private usages");
+</script>

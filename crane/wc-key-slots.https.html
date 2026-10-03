@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CryptoKey native slots and raw AES key ownership</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const bytes of [16, 24, 32]) {
+  promise_test(async () => {
+    const input = new Uint8Array(bytes).fill(0x5a);
+    const key = await crypto.subtle.importKey("raw", input, "aEs-GcM", true,
+      ["wrapKey", "decrypt", "encrypt", "decrypt"]);
+    assert_true(key instanceof CryptoKey);
+    assert_equals(key.type, "secret");
+    assert_true(key.extractable);
+    assert_equals(key.algorithm.name, "AES-GCM");
+    assert_equals(key.algorithm.length, bytes * 8);
+    assert_array_equals(key.usages, ["encrypt", "decrypt", "wrapKey"]);
+    input.fill(0);
+    const result = await crypto.subtle.exportKey("raw", key);
+    assert_array_equals(new Uint8Array(result), new Uint8Array(bytes).fill(0x5a));
+  }, `raw AES-${bytes * 8} import owns its bytes and exposes normalized key slots`);
+}
+
+promise_test(async () => {
+  const input = new Uint8Array(24).fill(0xcc);
+  input.fill(0x5a, 4, 20);
+  const key = await crypto.subtle.importKey("raw", new DataView(input.buffer, 4, 16), "AES-CBC", true, ["encrypt"]);
+  assert_array_equals(new Uint8Array(await crypto.subtle.exportKey("raw", key)), new Uint8Array(16).fill(0x5a));
+}, "raw key import copies only the provided DataView range");
+
+promise_test(async t => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-GCM", false, ["encrypt"]);
+  await promise_rejects_dom(t, "InvalidAccessError", crypto.subtle.exportKey("jwk", key));
+  await promise_rejects_dom(t, "InvalidAccessError", crypto.subtle.exportKey("spki", key));
+}, "export checks extractability before algorithm-specific format support");
+
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-GCM", true, ["encrypt"]);
+  key.algorithm.name = "HMAC";
+  key.algorithm.length = 256;
+  key.usages.push("sign");
+  const exported = await crypto.subtle.exportKey("jwk", key);
+  assert_equals(exported.alg, "A128GCM");
+  assert_array_equals(exported.key_ops, ["encrypt"]);
+}, "script mutations of key attributes cannot alter the immutable native slots");
+</script>

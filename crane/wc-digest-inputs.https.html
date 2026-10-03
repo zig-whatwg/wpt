@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebCrypto digest inputs survive IDL conversion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+function hex(buffer) {
+  return Array.from(new Uint8Array(buffer), b => b.toString(16).padStart(2, "0")).join("");
+}
+for (const algorithm of ["SHA-256", {name: "sha-256"}]) {
+  for (const kind of ["ArrayBuffer", "Uint8Array", "DataView"]) {
+    promise_test(async () => {
+      const bytes = new Uint8Array([0, 97, 98, 99, 0]);
+      const data = kind === "ArrayBuffer" ? bytes.buffer.slice(1, 4) :
+        kind === "DataView" ? new DataView(bytes.buffer, 1, 3) : bytes.subarray(1, 4);
+      const promise = crypto.subtle.digest(algorithm, data);
+      assert_true(promise instanceof Promise);
+      assert_equals(hex(await promise), expected);
+    }, `${typeof algorithm} algorithm with ${kind} input`);
+  }
+}
+promise_test(async t => {
+  const sentinel = {sentinel: true};
+  const algorithm = {get name() { throw sentinel; }};
+  await promise_rejects_exactly(t, sentinel, crypto.subtle.digest(algorithm, new Uint8Array()));
+}, "Algorithm getter exceptions reject with the original value");
+promise_test(async () => {
+  const bytes = new Uint8Array([97, 98, 99]);
+  const promise = crypto.subtle.digest("SHA-256", bytes);
+  bytes.fill(0);
+  assert_equals(hex(await promise), expected);
+}, "digest copies its input before returning");
+</script>

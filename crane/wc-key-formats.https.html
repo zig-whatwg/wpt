@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane WebCrypto key formats and task ordering</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const pair = await crypto.subtle.generateKey("Ed25519", false, ["verify", "sign", "verify"]);
+  assert_equals(pair.publicKey.type, "public");
+  assert_true(pair.publicKey.extractable);
+  assert_array_equals(pair.publicKey.usages, ["verify"]);
+  assert_equals(pair.privateKey.type, "private");
+  assert_false(pair.privateKey.extractable);
+  assert_array_equals(pair.privateKey.usages, ["sign"]);
+  assert_equals(pair.privateKey.algorithm.name, "Ed25519");
+}, "String AlgorithmIdentifier generates an Ed25519 pair with independent slots");
+
+for (const name of ["Ed25519", "X25519"]) {
+  promise_test(async () => {
+    const usages = name === "Ed25519" ? ["sign", "verify"] : ["deriveBits"];
+    const pair = await crypto.subtle.generateKey(name, true, usages);
+    for (const [format, original] of [["spki", pair.publicKey], ["pkcs8", pair.privateKey]]) {
+      const bytes = await crypto.subtle.exportKey(format, original);
+      const copy = await crypto.subtle.importKey(format, bytes, name, true, original.usages);
+      assert_equals(copy.type, original.type);
+      assert_equals(copy.algorithm.name, name);
+      assert_array_equals(new Uint8Array(await crypto.subtle.exportKey(format, copy)), new Uint8Array(bytes));
+      const jwk = await crypto.subtle.exportKey("jwk", copy);
+      const fromJwk = await crypto.subtle.importKey("jwk", jwk, name, true, original.usages);
+      assert_array_equals(new Uint8Array(await crypto.subtle.exportKey(format, fromJwk)), new Uint8Array(bytes));
+    }
+    const raw = await crypto.subtle.exportKey("raw", pair.publicKey);
+    assert_equals(raw.byteLength, 32);
+    const publicCopy = await crypto.subtle.importKey("raw", raw, name, true, pair.publicKey.usages);
+    assert_array_equals(new Uint8Array(await crypto.subtle.exportKey("raw", publicCopy)), new Uint8Array(raw));
+  }, name + " round-trips raw, SPKI, PKCS8 and JWK without typed operation arguments");
+}
+
+promise_test(async t => {
+  for (const name of ["HKDF", "PBKDF2"]) {
+    const key = await crypto.subtle.importKey("raw", new Uint8Array(), name, false, ["deriveBits"]);
+    assert_equals(key.type, "secret");
+    assert_false(key.extractable);
+    assert_equals(key.algorithm.name, name);
+    await promise_rejects_dom(t, "NotSupportedError", crypto.subtle.exportKey("raw", key));
+    await promise_rejects_dom(t, "SyntaxError", crypto.subtle.importKey("raw", new Uint8Array(), name, true, ["deriveBits"]));
+  }
+}, "Empty KDF base keys import; export support is checked before extractability");
+
+promise_test(async () => {
+  const observed = [];
+  const result = crypto.subtle.generateKey("Ed25519", true, ["sign"])
+    .then(() => observed.push("crypto"));
+  queueMicrotask(() => observed.push("microtask"));
+  await result;
+  assert_array_equals(observed, ["microtask", "crypto"]);
+}, "Native key generation settles after the caller's microtask checkpoint");
+</script>
