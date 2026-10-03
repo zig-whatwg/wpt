@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A platform object made by a subclass constructor keeps its prototype each time it is handed back to script</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#internally-create-a-new-object-implementing-the-interface">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL: an object a constructor makes takes its prototype from NewTarget
+// (GetPrototypeFromConstructor), and nothing resets it afterwards. Handing the
+// same object back to script - as a listener's argument, as `this`, through a
+// getter - returns the one wrapper the engine keeps for it. Crane's wrapper
+// lookup used to set the cached wrapper's prototype to the interface's own
+// (`globalThis.Event.prototype`) on every hand-back, so a subclass instance
+// stopped being an instance of its class the first time it reached a listener.
+class MyEvent extends Event {}
+class MyTarget extends EventTarget {}
+
+test(() => {
+  const target = new EventTarget();
+  const event = new MyEvent("c5");
+  let seen = null;
+  let protoInListener = null;
+  target.addEventListener("c5", e => { seen = e; protoInListener = Object.getPrototypeOf(e); });
+  target.dispatchEvent(event);
+  assert_equals(seen, event, "the listener got the event itself");
+  assert_equals(protoInListener, MyEvent.prototype, "its prototype in the listener");
+  assert_equals(Object.getPrototypeOf(event), MyEvent.prototype, "its prototype after dispatch");
+  assert_true(event instanceof MyEvent, "still a MyEvent");
+}, "an Event subclass instance keeps its prototype through dispatch");
+
+test(() => {
+  const target = new MyTarget();
+  let thisValue = null;
+  let currentTarget = null;
+  let eventTarget = null;
+  target.addEventListener("c5", function (e) {
+    thisValue = this;
+    currentTarget = e.currentTarget;
+    eventTarget = e.target;
+  });
+  target.dispatchEvent(new Event("c5"));
+  assert_equals(thisValue, target, "this");
+  assert_equals(Object.getPrototypeOf(thisValue), MyTarget.prototype, "this keeps its prototype");
+  assert_equals(Object.getPrototypeOf(currentTarget), MyTarget.prototype, "currentTarget keeps its prototype");
+  assert_equals(Object.getPrototypeOf(eventTarget), MyTarget.prototype, "target keeps its prototype");
+  assert_true(target instanceof MyTarget, "still a MyTarget after dispatch");
+}, "an EventTarget subclass instance keeps its prototype as this, currentTarget and target");
+
+test(() => {
+  const target = new MyTarget();
+  const event = new MyEvent("c5");
+  target.addEventListener("c5", () => {});
+  target.dispatchEvent(event);
+  const again = event.target;
+  assert_equals(again, target, "event.target is the target");
+  assert_equals(Object.getPrototypeOf(again), MyTarget.prototype, "read back through a getter");
+  assert_equals(Object.getPrototypeOf(event), MyEvent.prototype, "the event too");
+}, "a subclass instance read back through a getter keeps its prototype");
+</script>
