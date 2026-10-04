@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a module worker whose top-level await never settles is let go with its realm</title>
+<!--
+  leaks2 lane (2026-10-03). A worker's module script still waiting on
+  top-level await hands its evaluation promise to "run a module script"
+  step 8: the worker host reacts to it (worker_host.zig,
+  PendingModuleEvaluation). A promise that never settles kept that
+  reaction's record - c_allocator, so not in the runner's DebugAllocator
+  count - for the life of the process. The reaction is dropped when the
+  worker's realm ends (engine.PromiseReactionSteps.dropped).
+  Not observable from script: the measurement is `leaks --atExit` over a
+  runner process running this file.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const worker = new Worker('resources/lk2-tla-worker.js', { type: 'module' });
+  const first = await new Promise(resolve => { worker.onmessage = e => resolve(e.data); });
+  assert_equals(first, 'started');
+  let second = null;
+  worker.onmessage = e => { second = e.data; };
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert_equals(second, null, 'the module never got past its await');
+}, 'a module worker stays suspended on a top-level await that never settles');
+</script>

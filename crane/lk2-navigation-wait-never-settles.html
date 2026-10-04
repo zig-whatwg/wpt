@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a navigation whose handler promise never settles is let go with its page</title>
+<!--
+  leaks2 lane (2026-10-03). An intercepted navigation waits for all of its
+  handlers' promises (Navigation.zig, Wait): each promise's reaction holds
+  one reference to the wait, freed by the last reaction to run. A handler
+  promise that never settles kept the wait - c_allocator, so not in the
+  runner's DebugAllocator count - for the life of the process. The reaction
+  is dropped when the page's realm ends (engine.PromiseReactionSteps.dropped),
+  releasing its reference without delivering an outcome.
+  Not observable from script: the measurement is `leaks --atExit` over a
+  runner process running this file.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  let intercepted = false;
+  navigation.addEventListener('navigate', e => {
+    intercepted = true;
+    e.intercept({ handler: () => new Promise(() => {}) });
+  }, { once: true });
+  navigation.navigate('#never-settles');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert_true(intercepted, 'the navigation was intercepted');
+  assert_not_equals(navigation.transition, null, 'and is still in progress');
+}, 'an intercepted navigation stays in progress while its handler promise is pending');
+</script>
