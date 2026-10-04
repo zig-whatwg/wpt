@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB cursor iteration captures each method realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+for (const [method, args] of [
+  ['continue', []], ['advance', [1]], ['continuePrimaryKey', [0, 2]]
+]) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => { frame.remove(); });
+    const loaded = new Promise((resolve, reject) => {
+      frame.onload = resolve;
+      frame.onerror = () => reject(new Error('iframe failed to load'));
+    });
+    document.body.append(frame);
+    await loaded;
+    const foreign = frame.contentWindow;
+    const db = await createDatabase(t, db => {
+      const store = db.createObjectStore('records');
+      store.createIndex('by_bucket', 'bucket');
+      store.put({bucket: 0, number: 1}, 1);
+      store.put({bucket: 0, number: 2}, 2);
+    });
+    const tx = db.transaction('records');
+    const request = tx.objectStore('records').index('by_bucket').openCursor();
+    const watcher = new EventWatcher(t, request, ['success', 'error']);
+    const complete = promiseForTransaction(t, tx);
+    await watcher.wait_for('success');
+    const cursor = request.result;
+    assert_equals(Object.getPrototypeOf(cursor.value), Object.prototype);
+    const next = watcher.wait_for('success');
+    // ED4.9 passes the current Realm anew to each iteration while reusing
+    // the original request, whose own realm stays the parent's realm.
+    foreign.IDBCursor.prototype[method].call(cursor, ...args);
+    await Promise.all([next, complete]);
+    assert_equals(request.result, cursor);
+    assert_equals(cursor.request, request);
+    assert_equals(cursor.primaryKey, 2);
+    assert_equals(cursor.value.number, 2);
+    assert_equals(Object.getPrototypeOf(cursor.value), foreign.Object.prototype);
+  }, 'Cursor.' + method + ' uses its method realm while reusing the request');
+}
+</script>

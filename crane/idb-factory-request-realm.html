@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB factory request realms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+for (const operation of ['open', 'deleteDatabase']) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => { frame.remove(); });
+    const loaded = new Promise((resolve, reject) => {
+      frame.onload = resolve;
+      frame.onerror = () => reject(new Error('iframe failed to load'));
+    });
+    document.body.append(frame);
+    await loaded;
+    const foreign = frame.contentWindow;
+    const original = await createDatabase(t, () => {});
+    const name = original.name;
+    original.close();
+    const request = foreign.IDBFactory.prototype[operation].call(indexedDB, name);
+    const result = await promiseForRequest(t, request);
+    if (operation === 'open') result.close();
+    // Integrator Q37: ED 4.3 factory operations do not pass the current Realm.
+    // The new request uses the factory's relevant realm, as its storage does.
+    assert_equals(Object.getPrototypeOf(request), IDBOpenDBRequest.prototype,
+                  'new request uses the factory realm');
+    assert_equals(request.source, null);
+    assert_equals(request.transaction, null);
+  }, `A borrowed IDBFactory.${operation} creates its request in the factory realm`);
+}
+</script>

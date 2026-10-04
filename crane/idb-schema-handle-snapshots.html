@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB schema handles retain identity and roll back names</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function openDatabase(t, name, version, upgrade) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, version);
+    request.onupgradeneeded = t.step_func(() => upgrade(request.result, request.transaction));
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+promise_test(async t => {
+  const name = 'crane-idb-schema-abort-' + t.name;
+  t.add_cleanup(() => new Promise((resolve, reject) => {
+    const deletion = indexedDB.deleteDatabase(name);
+    deletion.onsuccess = resolve;
+    deletion.onerror = () => reject(deletion.error);
+  }));
+  const db = await openDatabase(t, name, 1, database => {
+    database.createObjectStore('old').createIndex('old-index', 'key');
+  });
+  db.close();
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, 2);
+    let store, index, replacement;
+    request.onupgradeneeded = t.step_func(() => {
+      const transaction = request.transaction;
+      store = transaction.objectStore('old');
+      index = store.index('old-index');
+      store.name = 'renamed';
+      index.name = 'renamed-index';
+      assert_equals(transaction.objectStore('renamed'), store);
+      assert_equals(store.index('renamed-index'), index);
+      request.result.deleteObjectStore('renamed');
+      replacement = request.result.createObjectStore('old');
+      replacement.createIndex('new-index', 'other');
+      transaction.abort();
+      assert_equals(store.name, 'old');
+      assert_equals(index.name, 'old-index');
+      assert_array_equals(Array.from(store.indexNames), ['old-index']);
+      assert_equals(replacement.name, 'old');
+      assert_array_equals(Array.from(replacement.indexNames), []);
+    });
+    request.onsuccess = () => reject(new Error('Aborted upgrade succeeded'));
+    request.onerror = t.step_func(event => {
+      event.preventDefault();
+      assert_equals(request.error.name, 'AbortError');
+      assert_equals(store.name, 'old');
+      assert_equals(index.name, 'old-index');
+      resolve();
+    });
+  });
+}, 'Aborting an upgrade restores old handles independently of replacement names');
+
+promise_test(async t => {
+  const name = 'crane-idb-schema-finished-' + t.name;
+  t.add_cleanup(() => new Promise((resolve, reject) => {
+    const deletion = indexedDB.deleteDatabase(name);
+    deletion.onsuccess = resolve;
+    deletion.onerror = () => reject(deletion.error);
+  }));
+  let oldStore, oldIndex;
+  const first = await openDatabase(t, name, 1, database => {
+    oldStore = database.createObjectStore('original');
+    oldIndex = oldStore.createIndex('original-index', 'key');
+  });
+  first.close();
+  const second = await openDatabase(t, name, 2, (database, transaction) => {
+    const store = transaction.objectStore('original');
+    store.name = 'later';
+    store.index('original-index').name = 'later-index';
+  });
+  t.add_cleanup(() => { second.close(); });
+  assert_equals(oldStore.name, 'original');
+  assert_equals(oldIndex.name, 'original-index');
+  assert_array_equals(Array.from(oldStore.indexNames), ['original-index']);
+  assert_array_equals(Array.from(first.objectStoreNames), ['original']);
+  assert_array_equals(Array.from(second.objectStoreNames), ['later']);
+}, 'Finished handles and a closed connection keep their own schema names');
+</script>

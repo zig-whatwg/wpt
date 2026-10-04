@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB on an actual dedicated worker global</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const worker = new Worker('idb-worker-factory-context.js');
+  t.add_cleanup(() => worker.terminate());
+  worker.onerror = t.unreached_func('Worker script must load');
+  worker.onmessage = t.step_func_done(({data}) => {
+    assert_equals(data.error, undefined);
+    assert_true(data.worker);
+    assert_equals(data.documentType, 'undefined');
+    assert_true(data.factory);
+    assert_true(data.same);
+    assert_equals(data.comparison, -1);
+  });
+}, 'A real worker global owns and reuses its IndexedDB factory');
+</script>

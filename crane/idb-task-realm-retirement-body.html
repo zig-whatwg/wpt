@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB task retirement during event dispatch</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  const retired = new Promise(resolve => {
+    window.idbRetireTaskFrame = t.step_func(() => {
+      frame.remove();
+      resolve();
+    });
+    window.idbTaskFrameError = t.unreached_func('deleteDatabase should succeed');
+  });
+  t.add_cleanup(() => {
+    frame.remove();
+    delete window.idbRetireTaskFrame;
+    delete window.idbTaskFrameError;
+  });
+  frame.srcdoc = `<script>
+    const request = indexedDB.deleteDatabase('idb-task-retirement');
+    request.onerror = () => parent.idbTaskFrameError();
+    request.onsuccess = () => parent.idbRetireTaskFrame();
+  <\/script>`;
+  document.body.appendChild(frame);
+  await retired;
+  // Let the child task return through event dispatch and its microtask checkpoint.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+}, 'Retiring the task realm during request success safely completes cleanup');
+</script>

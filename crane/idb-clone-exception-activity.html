@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB transaction activity after cloning throws</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+for (const method of ['add', 'put', 'update']) {
+  for (const failure of ['throwing getter', 'uncloneable value', 'abort in getter']) {
+    promise_test(async t => {
+      const database = await createDatabase(t, db => {
+        db.createObjectStore('records', {keyPath: 'id'}).put({id: 1});
+      });
+      const transaction = database.transaction('records', 'readwrite');
+      const completion = new EventWatcher(t, transaction, ['complete', 'abort', 'error'])
+          .wait_for(failure === 'abort in getter' ? 'abort' : 'complete');
+      const store = transaction.objectStore('records');
+      const target = method === 'update'
+          ? await promiseForRequest(t, store.openCursor()) : store;
+      const id = method === 'update' ? 1 : 2;
+      const marker = {from: 'clone getter'};
+      const value = {id};
+      if (failure === 'uncloneable value') {
+        value.payload = () => {};
+        assert_throws_dom('DataCloneError', () => target[method](value));
+      } else {
+        Object.defineProperty(value, 'payload', {enumerable: true, get() {
+          // Cloning must prohibit reentrant requests before restoring activity.
+          assert_throws_dom('TransactionInactiveError', () => store.get(1));
+          if (failure === 'abort in getter') transaction.abort();
+          throw marker;
+        }});
+        assert_throws_exactly(marker, () => target[method](value));
+      }
+      if (failure === 'abort in getter') {
+        assert_throws_dom('TransactionInactiveError', () => store.put({id: 3}));
+        await completion;
+        return;
+      }
+      const write = target[method]({id, payload: 'after failed clone'});
+      assert_equals(await promiseForRequest(t, write), id);
+      await completion;
+      const read = database.transaction('records').objectStore('records').get(id);
+      assert_equals((await promiseForRequest(t, read)).payload, 'after failed clone');
+    }, `${method}: ${failure} preserves the transaction's subsequent activity`);
+  }
+}
+</script>

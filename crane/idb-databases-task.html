@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB databases settles in a database task</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const order = [];
+  const result = indexedDB.databases();
+  assert_true(result instanceof Promise);
+  result.then(t.step_func(() => order.push('database-task')));
+  await Promise.resolve();
+  assert_array_equals(order, [], 'the result is still pending at a microtask checkpoint');
+  const databases = await result;
+  assert_true(Array.isArray(databases));
+  for (const entry of databases) {
+    assert_equals(typeof entry.name, 'string');
+    assert_equals(typeof entry.version, 'number');
+    assert_greater_than(entry.version, 0);
+  }
+  assert_array_equals(order, ['database-task']);
+}, 'databases returns an array snapshot from a database task');
+</script>

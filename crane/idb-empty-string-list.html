@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB empty names in DOMStringList</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+for (const kind of ['object store', 'index']) {
+  for (const check of ['empty item', 'out of bounds']) {
+    promise_test(async t => {
+      const db = await createDatabase(t, db => {
+        db.createObjectStore('').createIndex('', 'key');
+      });
+      const list = kind === 'object store' ? db.objectStoreNames :
+        db.transaction('').objectStore('').indexNames;
+      assert_equals(list.length, 1);
+      if (check === 'empty item') {
+        assert_equals(list.item(0), '', 'item returns an existing empty name');
+        assert_equals(list[0], '', 'indexed getter returns an existing empty name');
+      } else {
+        assert_equals(list[1], undefined, 'no indexed property outside the list');
+        assert_equals(list.item(1), null, 'item returns null outside the list');
+      }
+    }, `${kind} names: ${check}`);
+  }
+}
+</script>

@@ -1,0 +1,16 @@
+<!doctype html><meta charset=utf-8>
+<title>IndexedDB binary keys own copies</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+ const bytes = new Uint8Array([1, 2, 3]);
+ const range = IDBKeyRange.only(bytes.subarray(1));
+ bytes[1] = 9;
+ assert_true(range.lower instanceof ArrayBuffer);
+ assert_array_equals(Array.from(new Uint8Array(range.lower)), [2, 3]);
+ assert_array_equals(Array.from(new Uint8Array(range.upper)), [2, 3]);
+ assert_equals(indexedDB.cmp(new Uint8Array([2,3]), range.lower), 0);
+ assert_true(range.includes(new Uint8Array([2,3])));
+ assert_false(range.includes(new Uint8Array([2,4])));
+}, 'binary key ranges copy only the view and convert bounds to ArrayBuffer');
+</script>

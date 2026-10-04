@@ -1,0 +1,32 @@
+<!doctype html><meta charset=utf-8>
+<title>IndexedDB compares strings as UTF-16 code units</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+ assert_equals(indexedDB.cmp('\u{10000}', '\uE000'), -1);
+ assert_equals(indexedDB.cmp('\uFFFF', '\u{1F600}'), 1);
+ assert_equals(indexedDB.cmp('\uD800', '\uD801'), -1);
+}, 'string keys compare UTF-16 code units including surrogate halves');
+async_test(t => {
+ const r = indexedDB.open('crane-idb-code-unit-order-' + location.pathname);
+ r.onerror = t.unreached_func('open failed');
+ r.onupgradeneeded = t.step_func(() => {
+  const db = r.result;
+  const empty = db.objectStoreNames;
+  db.createObjectStore('\uE000');
+  const store = db.createObjectStore('\u{10000}');
+  assert_array_equals(Array.from(db.objectStoreNames), ['\u{10000}', '\uE000']);
+  assert_equals(empty.length, 0, 'earlier list remains a snapshot');
+  store.createIndex('\uE000', 'value');
+  store.createIndex('\u{10000}', 'other');
+  assert_array_equals(Array.from(store.indexNames), ['\u{10000}', '\uE000']);
+ });
+ r.onsuccess = t.step_func_done(() => {
+  const db = r.result;
+  const tx = db.transaction(['\uE000','\u{10000}']);
+  assert_array_equals(Array.from(tx.objectStoreNames), ['\u{10000}', '\uE000']);
+  db.close();
+  indexedDB.deleteDatabase(db.name);
+ });
+}, 'name-list snapshots sort by UTF-16 code units');
+</script>

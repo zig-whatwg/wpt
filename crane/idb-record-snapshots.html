@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB getAllRecords returns independent snapshots</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const open = indexedDB.open('idb-record-snapshots');
+  open.onerror = t.unreached_func('open failed');
+  open.onupgradeneeded = t.step_func(() => {
+    open.result.createObjectStore('records').put({name: 'original'}, 'key');
+  });
+  open.onsuccess = t.step_func(() => {
+    const db = open.result;
+    t.add_cleanup(() => db.close());
+    const transaction = db.transaction('records', 'readwrite');
+    const store = transaction.objectStore('records');
+    const request = store.getAllRecords();
+    request.onerror = t.unreached_func('getAllRecords failed');
+    request.onsuccess = t.step_func(() => {
+      assert_equals(request.result.length, 1);
+      const snapshot = request.result[0];
+      assert_true(snapshot instanceof IDBRecord);
+      assert_equals(snapshot.key, 'key');
+      assert_equals(snapshot.primaryKey, 'key');
+      assert_equals(snapshot.value.name, 'original');
+      assert_equals(snapshot.value, snapshot.value);
+      const overwrite = store.put({name: 'replacement'}, 'key');
+      overwrite.onsuccess = t.step_func(() => {
+        assert_equals(snapshot.value.name, 'original');
+        snapshot.value.name = 'local mutation';
+        assert_equals(snapshot.value.name, 'local mutation');
+      });
+    });
+    transaction.onabort = t.unreached_func('transaction aborted');
+    transaction.oncomplete = t.step_func_done(() => db.close());
+  });
+}, 'getAllRecords snapshots own data and retain their value identity');
+</script>

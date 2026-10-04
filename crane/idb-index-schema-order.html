@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB index schema operations preserve request order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const events = [];
+  const open = indexedDB.open('idb-index-schema-order-backfill', 1);
+  open.onupgradeneeded = t.step_func(() => {
+    const store = open.result.createObjectStore('records');
+    t.add_cleanup(() => open.result && open.result.close());
+    for (const key of [1, 2]) {
+      const write = store.put({name: 'duplicate'}, key);
+      write.onsuccess = t.step_func(() => events.push('write' + key));
+      write.onerror = t.unreached_func('Earlier writes must not see a later index');
+    }
+    const index = store.createIndex('unique-name', 'name', {unique: true});
+    assert_equals(index.name, 'unique-name');
+    assert_true(store.indexNames.contains('unique-name'));
+    open.transaction.onabort = t.step_func(() => {
+      events.push('abort');
+      assert_equals(open.transaction.error.name, 'ConstraintError');
+    });
+  });
+  open.onsuccess = t.unreached_func('Duplicate index backfill must abort the upgrade');
+  open.onerror = t.step_func_done(event => {
+    event.preventDefault();
+    assert_equals(open.error.name, 'AbortError');
+    assert_array_equals(events, ['write1', 'write2', 'abort']);
+  });
+}, 'Index backfill runs after previously accepted writes and aborts on duplicates');
+
+async_test(t => {
+  const events = [];
+  const open = indexedDB.open('idb-index-schema-order-delete', 1);
+  open.onupgradeneeded = t.step_func(() => {
+    const store = open.result.createObjectStore('records');
+    store.createIndex('unique-name', 'name', {unique: true});
+    const first = store.put({name: 'duplicate'}, 1);
+    const second = store.put({name: 'duplicate'}, 2);
+    first.onsuccess = t.step_func(() => events.push('first'));
+    first.onerror = t.unreached_func('First write must succeed');
+    second.onsuccess = t.unreached_func('Accepted second write retains its unique constraint');
+    second.onerror = t.step_func(event => {
+      event.preventDefault();
+      assert_equals(second.error.name, 'ConstraintError');
+      events.push('constraint');
+    });
+    store.deleteIndex('unique-name');
+    assert_false(store.indexNames.contains('unique-name'));
+  });
+  open.onerror = t.unreached_func('Preventing the request error permits commit');
+  open.onsuccess = t.step_func_done(() => {
+    open.result.close();
+    assert_array_equals(events, ['first', 'constraint']);
+  });
+}, 'Deleting an index does not change the constraints of already accepted writes');
+</script>

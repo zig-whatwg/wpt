@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worker IndexedDB uses platform request objects</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const worker = new Worker('idb-worker-request-brand.js');
+  t.add_cleanup(() => { worker.terminate(); });
+  worker.onerror = t.unreached_func('Worker request probe must execute');
+  worker.onmessage = t.step_func_done(({data}) => {
+    assert_equals(data.error, undefined);
+    assert_true(data.openRequest, 'open returns an IDBOpenDBRequest');
+    assert_true(data.eventTarget, 'the request inherits EventTarget');
+    assert_equals(data.listenerType, 'function');
+    assert_equals(data.initialState, 'pending');
+    assert_array_equals(data.events, ['upgrade', 'success']);
+  });
+}, 'Worker open returns a platform request and delivers upgrade then success');
+</script>

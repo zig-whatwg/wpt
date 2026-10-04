@@ -1,0 +1,34 @@
+<!doctype html><meta charset=utf-8>
+<title>IndexedDB rejects opaque-origin storage keys</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+async_test(t => {
+ const iframe = document.createElement('iframe');
+ iframe.sandbox = 'allow-scripts';
+ iframe.srcdoc = `<script>
+ (async () => {
+  const errors = {};
+  for (const [name, fn] of [['open', () => indexedDB.open('opaque')], ['delete', () => indexedDB.deleteDatabase('opaque')]]) {
+   try {fn(); errors[name] = 'did not throw';} catch (e) {errors[name] = e.name;}
+  }
+  try {
+   const p = indexedDB.databases();
+   errors.promise = p instanceof Promise;
+   try {await p; errors.databases = 'resolved';} catch (e) {errors.databases = e.name;}
+  } catch (e) {errors.databases = 'synchronous ' + e.name;}
+  parent.postMessage(errors, '*');
+ })();
+ <\/script>`;
+ window.addEventListener('message', t.step_func(e => {
+  if (e.source !== iframe.contentWindow) return;
+  assert_equals(e.data.open, 'SecurityError');
+  assert_equals(e.data.delete, 'SecurityError');
+  assert_true(e.data.promise, 'databases returns a promise');
+  assert_equals(e.data.databases, 'SecurityError');
+  t.done();
+ }));
+ t.add_cleanup(() => iframe.remove());
+ document.body.append(iframe);
+}, 'opaque origins throw for open/delete and return a rejected databases promise');
+</script>

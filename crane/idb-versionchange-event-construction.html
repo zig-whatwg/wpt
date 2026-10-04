@@ -1,0 +1,26 @@
+<!doctype html>
+<title>IDBVersionChangeEvent runs inherited Event construction</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const event = new IDBVersionChangeEvent('versionchange', {
+    bubbles: true, cancelable: true, composed: true, oldVersion: 2, newVersion: 3
+  });
+  assert_true(event.composed);
+  assert_true(event.bubbles);
+  assert_true(event.cancelable);
+  assert_false(event.isTrusted);
+  assert_equals(event.oldVersion, 2);
+  assert_equals(event.newVersion, 3);
+  const target = new EventTarget();
+  let seen = false;
+  target.addEventListener('versionchange', e => {
+    seen = true;
+    assert_equals(e, event);
+    e.preventDefault();
+  });
+  assert_false(target.dispatchEvent(event));
+  assert_true(seen);
+}, 'IDBVersionChangeEvent initializes all inherited EventInit members');
+</script>

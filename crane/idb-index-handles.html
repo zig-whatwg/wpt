@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB index handle identity and name snapshots</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const request = indexedDB.open('idb-index-handles');
+  request.onerror = t.unreached_func('open failed');
+  request.onupgradeneeded = t.step_func(() => {
+    const store = request.result.createObjectStore('records');
+    const index = store.createIndex('by-name', 'name', {unique: true});
+    assert_equals(store.index('by-name'), index);
+    assert_equals(index.objectStore, store);
+    assert_equals(index.name, 'by-name');
+    assert_equals(index.keyPath, 'name');
+    assert_true(index.unique);
+    assert_false(index.multiEntry);
+    const snapshot = store.indexNames;
+    store.createIndex('\ue000', 'name');
+    store.createIndex('\u{10000}', 'name');
+    assert_array_equals(Array.from(snapshot), ['by-name']);
+    assert_array_equals(Array.from(store.indexNames), ['by-name', '\u{10000}', '\ue000']);
+    store.deleteIndex('by-name');
+    assert_equals(index.name, 'by-name');
+    assert_throws_dom('NotFoundError', () => store.index('by-name'));
+    const recreated = store.createIndex('by-name', 'name');
+    assert_not_equals(recreated, index);
+    assert_equals(store.index('by-name'), recreated);
+  });
+  request.onsuccess = t.step_func_done(() => request.result.close());
+}, 'Index handles preserve identity, survive deletion, and expose sorted name snapshots');
+</script>

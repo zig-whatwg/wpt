@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB stores top-level primitive values</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+const primitiveCases = [
+  ['undefined', undefined],
+  ['null', null],
+  ['false', false],
+  ['true', true],
+  ['number', 42],
+  ['negative zero', -0],
+  ['NaN', NaN],
+  ['Infinity', Infinity],
+  ['empty string', ''],
+  ['string with NUL', 'storage\u0000value'],
+  ['BigInt', 12345678901234567890n],
+  ['ordinary object control', {content: 'stored object'}]
+];
+
+for (const [description, value] of primitiveCases) {
+  promise_test(async t => {
+    const db = await createDatabase(t, db => db.createObjectStore('records'));
+    const tx = db.transaction('records', 'readwrite');
+    const complete = promiseForTransaction(t, tx);
+    const store = tx.objectStore('records');
+    // HTML StructuredSerializeInternal step 4 accepts primitive values,
+    // including when invoked by StructuredSerializeForStorage.
+    const added = promiseForRequest(t, store.add(value, 1));
+    const put = promiseForRequest(t, store.put(value, 2));
+    const first = promiseForRequest(t, store.get(1));
+    const second = promiseForRequest(t, store.get(2));
+    const count = promiseForRequest(t, store.count());
+    const [addedKey, putKey, firstValue, secondValue, records] =
+      await Promise.all([added, put, first, second, count, complete]);
+    assert_equals(addedKey, 1);
+    assert_equals(putKey, 2);
+    assert_equals(records, 2, 'undefined is a stored value, not a missing record');
+    for (const result of [firstValue, secondValue]) {
+      if (value !== null && typeof value === 'object') {
+        assert_not_equals(result, value);
+        assert_object_equals(result, value);
+      } else {
+        assert_equals(result, value, 'preserves the primitive with SameValue');
+      }
+    }
+  }, 'add() and put() preserve ' + description + ' as a top-level value');
+}
+</script>

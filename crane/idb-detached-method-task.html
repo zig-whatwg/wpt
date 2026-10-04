@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB request tasks and detached method realms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const db = await createDatabase(t, db => {
+    const store = db.createObjectStore('records');
+    store.createIndex('by_number', 'number');
+    store.put({number: 7}, 1);
+  });
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => { frame.remove(); });
+  const loaded = new Promise((resolve, reject) => {
+    frame.onload = resolve;
+    frame.onerror = () => reject(new Error('iframe failed to load'));
+  });
+  document.body.append(frame);
+  await loaded;
+  const get = frame.contentWindow.IDBIndex.prototype.get;
+  const resultPrototype = frame.contentWindow.Object.prototype;
+  frame.remove();
+
+  // ED 4.6 get captures the current realm for retrieval. The connection
+  // and transaction still belong to this live parent document.
+  const tx = db.transaction('records');
+  const index = tx.objectStore('records').index('by_number');
+  const request = get.call(index, 7);
+  const result = promiseForRequest(t, request);
+  const complete = promiseForTransaction(t, tx);
+  const [value] = await Promise.all([result, complete]);
+  assert_equals(value.number, 7);
+  assert_equals(Object.getPrototypeOf(value), resultPrototype);
+}, 'A detached index method delivers its result through a live transaction task');
+</script>

@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB cursor request reuse and queued writes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function cursorDatabase(t, suffix) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('idb-cursor-queue-' + suffix, 1);
+    open.onupgradeneeded = t.step_func(() => {
+      const store = open.result.createObjectStore('records');
+      store.createIndex('group', 'group');
+      for (let key = 1; key <= 4; ++key) store.put({key, group: 1}, key);
+    });
+    open.onerror = t.step_func(() => reject(open.error));
+    open.onsuccess = t.step_func(() => {
+      t.add_cleanup(() => open.result.close());
+      resolve(open.result);
+    });
+  });
+}
+function transactionDone(t, transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = t.step_func(resolve);
+    transaction.onabort = t.step_func(() => reject(transaction.error));
+  });
+}
+promise_test(async t => {
+  const database = await cursorDatabase(t, 'iteration');
+  const transaction = database.transaction('records');
+  const completed = transactionDone(t, transaction);
+  const store = transaction.objectStore('records');
+  const request = store.openCursor();
+  const keys = [];
+  let first;
+  request.onsuccess = t.step_func(() => {
+    const cursor = request.result;
+    if (!cursor) return;
+    first ||= cursor;
+    assert_equals(cursor, first, 'continuation reuses the cursor');
+    assert_equals(cursor.request, request);
+    assert_equals(request.source, store);
+    assert_equals(cursor.source, store);
+    assert_equals(cursor.value, cursor.value, 'value identity is stable');
+    cursor.value.changed = true;
+    assert_true(cursor.value.changed);
+    keys.push(cursor.key);
+    assert_throws_dom('DataError', () => cursor.continue(cursor.key));
+    if (cursor.key === 1) cursor.advance(2);
+    else cursor.continue();
+    assert_equals(request.readyState, 'pending');
+    assert_throws_dom('InvalidStateError', () => request.result);
+    assert_throws_dom('InvalidStateError', () => cursor.continue());
+  });
+  await completed;
+  assert_array_equals(keys, [1, 3, 4]);
+  assert_equals(request.result, null);
+}, 'Cursor iteration reuses its request and rejects a second pending advance');
+
+promise_test(async t => {
+  const database = await cursorDatabase(t, 'writes');
+  const transaction = database.transaction('records', 'readwrite');
+  const completed = transactionDone(t, transaction);
+  const store = transaction.objectStore('records');
+  const request = store.openCursor();
+  let updated, deleted, read;
+  request.onsuccess = t.step_func(() => {
+    const cursor = request.result;
+    updated = cursor.update({key: 99, group: 2});
+    assert_equals(updated.source, cursor);
+    assert_equals(updated.transaction, transaction);
+    assert_equals(cursor.value.key, 1, 'update preserves the cursor snapshot');
+    deleted = cursor.delete();
+    assert_equals(deleted.source, cursor);
+    read = store.get(1);
+  });
+  await completed;
+  assert_equals(updated.result, 1);
+  assert_equals(deleted.result, undefined);
+  assert_equals(read.result, undefined);
+}, 'Cursor update and delete place ordered requests whose source is the cursor');
+
+promise_test(async t => {
+  const database = await cursorDatabase(t, 'primary');
+  const transaction = database.transaction('records');
+  const completed = transactionDone(t, transaction);
+  const request = transaction.objectStore('records').index('group').openCursor();
+  const keys = [];
+  request.onsuccess = t.step_func(() => {
+    const cursor = request.result;
+    if (!cursor) return;
+    keys.push(cursor.primaryKey);
+    if (cursor.primaryKey === 1) {
+      assert_throws_dom('DataError', () => cursor.continuePrimaryKey(1, 1));
+      cursor.continuePrimaryKey(1, 3);
+    } else cursor.continue();
+  });
+  await completed;
+  assert_array_equals(keys, [1, 3, 4]);
+}, 'Index cursors continue within duplicate keys using the primary key');
+</script>

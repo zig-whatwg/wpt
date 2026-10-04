@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worker Crypto and IndexedDB native prototypes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Inspect native values independently of global attribute placement, so an
+// absent own accessor does not hide a bootstrap object or constructor stub.
+const checks = [];
+for (const name of ['crypto', 'indexedDB']) {
+  for (const field of ['brand', 'prototype', 'method']) {
+    checks.push({name, field, test: async_test(name + ' has its native ' + field)});
+  }
+}
+const worker = new Worker('idb-worker-native-globals.js');
+add_completion_callback(() => { worker.terminate(); });
+worker.onerror = () => {
+  for (const check of checks) check.test.step_func_done(() => {
+    assert_unreached('The native worker value probe must execute');
+  })();
+};
+worker.onmessage = ({data}) => {
+  for (const {name, field, test} of checks) test.step_func_done(() => {
+    assert_equals(data.error, undefined);
+    assert_true(data[name][field], name + ' ' + field);
+  })();
+};
+</script>

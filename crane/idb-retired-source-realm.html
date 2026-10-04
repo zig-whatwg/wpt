@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB requests retain sources across realm retirement</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+async function makeSourceFrame(t) {
+  const frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html><body>';
+  document.body.appendChild(frame);
+  t.add_cleanup(() => { frame.remove(); });
+  await loaded;
+  return frame;
+}
+
+for (const method of ['update', 'delete']) {
+  promise_test(async t => {
+    const db = await createDatabase(t, db => {
+      db.createObjectStore('records').put({state: 'before'}, 1);
+    });
+    const frame = await makeSourceFrame(t);
+    const foreign = frame.contentWindow;
+    const tx = db.transaction('records', 'readwrite');
+    const complete = promiseForTransaction(t, tx);
+    const store = tx.objectStore('records');
+    const opened = foreign.IDBObjectStore.prototype.openCursor.call(store);
+    const cursor = await promiseForRequest(t, opened);
+    // The cursor belongs to the child. The mutation method and its new
+    // request belong to the parent; retiring the child must not discard
+    // an already accepted storage operation (ED 5.6).
+    const changed = method === 'update' ?
+      IDBCursor.prototype.update.call(cursor, {state: 'after'}) :
+      IDBCursor.prototype.delete.call(cursor);
+    const changedResult = promiseForRequest(t, changed);
+    const read = promiseForRequest(t, store.get(1));
+    frame.remove();
+    const [, result] = await Promise.all([changedResult, read, complete]);
+    if (method === 'update') {
+      assert_equals(result.state, 'after');
+    } else {
+      assert_equals(result, undefined);
+    }
+  }, 'Accepted cursor ' + method + ' survives retirement of the cursor realm');
+}
+
+promise_test(async t => {
+  const frame = await makeSourceFrame(t);
+  const foreign = frame.contentWindow;
+  const opened = foreign.indexedDB.open('idb-retired-source-associations');
+  opened.onupgradeneeded = t.step_func(() => {
+    opened.result.createObjectStore('records').put({state: 'stored'}, 1);
+  });
+  const db = await new Promise((resolve, reject) => {
+    opened.onsuccess = () => resolve(opened.result);
+    opened.onerror = () => reject(opened.error);
+  });
+  t.add_cleanup(() => { if (frame.isConnected) db.close(); });
+  const tx = db.transaction('records');
+  const store = tx.objectStore('records');
+  const request = IDBObjectStore.prototype.get.call(store, 1);
+  assert_equals(request.source, store);
+  assert_equals(request.transaction, tx);
+  frame.remove();
+  // ED 4.1: these getters expose the same associated objects, including
+  // while the request is pending. Reading them must never dereference
+  // an instance freed by the source realm's wrapper-cache teardown.
+  assert_equals(request.source, store);
+  assert_equals(request.transaction, tx);
+}, 'A live request retains its source and transaction associations after their realm retires');
+</script>

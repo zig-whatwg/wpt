@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB transaction store handles</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const request = indexedDB.open('idb-store-handles');
+  request.onerror = t.unreached_func('open failed');
+  request.onupgradeneeded = t.step_func(() => {
+    const transaction = request.transaction;
+    const store = request.result.createObjectStore('records', {autoIncrement: true});
+    assert_equals(transaction.objectStore('records'), store);
+    assert_equals(store.name, 'records');
+    assert_equals(store.transaction, transaction);
+    assert_true(store.autoIncrement);
+    assert_equals(store.keyPath, null);
+    assert_throws_dom('NotFoundError', () => transaction.objectStore('missing'));
+  });
+  request.onsuccess = t.step_func(() => {
+    const database = request.result;
+    t.add_cleanup(() => database.close());
+    const transaction = database.transaction('records');
+    const store = transaction.objectStore('records');
+    assert_equals(transaction.objectStore('records'), store);
+    assert_equals(store.transaction, transaction);
+    assert_true(store.autoIncrement);
+    assert_not_equals(store.indexNames, store.indexNames);
+    transaction.oncomplete = t.step_func_done(() => {
+      assert_equals(store.name, 'records');
+      assert_throws_dom('InvalidStateError', () => transaction.objectStore('records'));
+    });
+  });
+}, 'Store handles preserve identity within their transaction and expose backend metadata');
+</script>

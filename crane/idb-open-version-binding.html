@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB optional version EnforceRange reaches the implementation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const version of [undefined, 1, 2 ** 32]) {
+  test(t => {
+    const name = 'crane-idb-binding-' + String(version);
+    const request = version === undefined ? indexedDB.open(name) : indexedDB.open(name, version);
+    assert_true(request instanceof IDBOpenDBRequest);
+    request.addEventListener('success', () => {
+      request.result.close();
+      indexedDB.deleteDatabase(name);
+    });
+  }, 'open accepts ' + String(version) + ' as the optional version');
+}
+test(() => assert_throws_js(TypeError, () => indexedDB.open('crane-idb-zero', 0)),
+     'open rejects version zero');
+</script>

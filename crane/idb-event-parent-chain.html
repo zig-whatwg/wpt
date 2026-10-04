@@ -1,0 +1,50 @@
+<!doctype html><meta charset=utf-8>
+<title>IndexedDB event parent algorithms</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+async_test(t => {
+ const r = indexedDB.open('crane-idb-parent-chain-' + location.pathname);
+ let db, txn;
+ r.onerror = t.unreached_func('open failed');
+ r.onupgradeneeded = t.step_func(() => {
+  db = r.result;
+  txn = r.transaction;
+  const seen = [];
+  db.addEventListener('crane-open-parent', () => seen.push('db'));
+  txn.addEventListener('crane-open-parent', () => seen.push('txn'));
+  r.addEventListener('crane-open-parent', () => seen.push('open'));
+  r.dispatchEvent(new Event('crane-open-parent', {bubbles:true}));
+  assert_array_equals(seen, ['open'], 'open request has no parent during upgrade');
+  seen.length = 0;
+  db.addEventListener('crane-transaction-parent', () => seen.push('db'));
+  txn.addEventListener('crane-transaction-parent', () => seen.push('txn'));
+  txn.dispatchEvent(new Event('crane-transaction-parent', {bubbles:true}));
+  assert_array_equals(seen, ['txn','db']);
+  seen.length = 0;
+  db.addEventListener('crane-connection-parent', () => seen.push('db'));
+  window.addEventListener('crane-connection-parent', t.unreached_func('connection has no parent'), {once:true});
+  db.dispatchEvent(new Event('crane-connection-parent', {bubbles:true}));
+  assert_array_equals(seen, ['db']);
+  const store = db.createObjectStore('records');
+  const request = store.add('value', 1);
+  const chain = [];
+  request.addEventListener('crane-request-parent', () => chain.push('request'));
+  txn.addEventListener('crane-request-parent', () => chain.push('txn'));
+  db.addEventListener('crane-request-parent', () => chain.push('db'));
+  request.dispatchEvent(new Event('crane-request-parent', {bubbles:true}));
+  assert_array_equals(chain, ['request','txn','db']);
+  const duplicate = store.add('duplicate', 1);
+  const errors = [];
+  duplicate.addEventListener('error', t.step_func(e => { errors.push('request'); e.preventDefault(); }));
+  txn.addEventListener('error', t.step_func(() => errors.push('txn')));
+  db.addEventListener('error', t.step_func(() => errors.push('db')));
+  txn.oncomplete = t.step_func(() => assert_array_equals(errors, ['request','txn','db']));
+ });
+ r.onsuccess = t.step_func_done(() => {
+  assert_equals(r.transaction, null);
+  assert_equals(r.result, db);
+  db.close();
+  indexedDB.deleteDatabase(db.name);
+ });
+}, 'requests bubble to transactions and connections; open requests and connections stop');
+</script>

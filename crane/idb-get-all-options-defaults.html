@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB get-all options defaults</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+for (const source of ['store', 'index']) {
+  for (const method of ['getAll', 'getAllKeys']) {
+    for (const [description, options, expected] of [
+      ['empty dictionary', {}, [1, 2]],
+      ['undefined members', {query: undefined, count: undefined, direction: undefined}, [1, 2]],
+      ['null query', {query: null}, [1, 2]],
+      ['query only', {query: 1}, [1]],
+      ['count only', {count: 1}, [1]],
+      ['direction only', {direction: 'prev'}, [2, 1]],
+    ]) {
+      promise_test(async t => {
+        const database = await createDatabase(t, db => {
+          const store = db.createObjectStore('records');
+          store.createIndex('by_key', 'key');
+          store.put({key: 1}, 1);
+          store.put({key: 2}, 2);
+        });
+        const transaction = database.transaction('records');
+        const store = transaction.objectStore('records');
+        const target = source === 'store' ? store : store.index('by_key');
+        const [result] = await Promise.all([
+          promiseForRequest(t, target[method](options)),
+          promiseForTransaction(t, transaction),
+        ]);
+        const keys = method === 'getAllKeys' ? result : result.map(value => value.key);
+        assert_array_equals(keys, expected);
+      }, `${source}.${method} applies defaults for ${description}`);
+    }
+  }
+}
+</script>

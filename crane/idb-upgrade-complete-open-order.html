@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB upgrade completion and open success ordering</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const name = 'idb-upgrade-complete-open-order-' + t.name;
+  const events = [];
+  let database;
+  t.add_cleanup(() => {
+    if (database) database.close();
+    indexedDB.deleteDatabase(name);
+  });
+  const deletion = indexedDB.deleteDatabase(name);
+  deletion.onerror = t.unreached_func('initial deletion failed');
+  deletion.onsuccess = t.step_func(() => {
+    const open = indexedDB.open(name, 1);
+    open.onerror = t.unreached_func('open failed');
+    const finish = () => {
+      if (events.length !== 3) return;
+      assert_array_equals(events, ['complete', 'open', 'read']);
+      t.done();
+    };
+    open.onupgradeneeded = t.step_func(() => {
+      database = open.result;
+      database.createObjectStore('records').put({number: 1}, 1);
+      open.transaction.oncomplete = t.step_func(() => {
+        events.push('complete');
+        const read = database.transaction('records').objectStore('records').count();
+        read.onerror = t.unreached_func('read failed');
+        read.onsuccess = t.step_func(() => {
+          assert_equals(read.result, 1);
+          events.push('read');
+          finish();
+        });
+      });
+    });
+    open.onsuccess = t.step_func(() => {
+      events.push('open');
+      finish();
+    });
+  });
+}, 'Open success precedes requests created by the upgrade complete listener');
+</script>

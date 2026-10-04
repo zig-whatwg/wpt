@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB retrieval values use the method's current realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+function otherRealm(t) {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => { frame.remove(); });
+  return new Promise((resolve, reject) => {
+    frame.onload = () => resolve(frame.contentWindow);
+    frame.onerror = () => reject(new Error('iframe failed to load'));
+    document.body.append(frame);
+  });
+}
+
+for (const owner of ['IDBObjectStore', 'IDBIndex']) {
+  for (const method of ['get', 'getAll', 'getAllRecords', 'openCursor']) {
+    promise_test(async t => {
+      const foreign = await otherRealm(t);
+      const db = await createDatabase(t, db => {
+        const store = db.createObjectStore('records');
+        store.createIndex('by_name', 'name');
+        store.put({name: 'first', nested: {number: 1}}, 1);
+      });
+      const tx = db.transaction('records');
+      const store = tx.objectStore('records');
+      const source = owner === 'IDBObjectStore' ? store : store.index('by_name');
+      const query = owner === 'IDBObjectStore' ? 1 : 'first';
+      const argument = method === 'getAllRecords' ? {query} : query;
+      // ED4.5/4.6 pass the current Realm to the retrieval/iteration operation;
+      // the method belongs to the iframe even though the source belongs here.
+      const request = foreign[owner].prototype[method].call(source, argument);
+      const read = promiseForRequest(t, request);
+      const complete = promiseForTransaction(t, tx);
+      const [result] = await Promise.all([read, complete]);
+      const value = method === 'getAll' ? result[0] :
+                    method === 'getAllRecords' ? result[0].value :
+                    method === 'openCursor' ? result.value : result;
+      assert_equals(value.name, 'first');
+      assert_equals(Object.getPrototypeOf(value), foreign.Object.prototype);
+      assert_equals(Object.getPrototypeOf(value.nested), foreign.Object.prototype);
+    }, owner + '.' + method + ' deserializes values in the method realm');
+  }
+}
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>IndexedDB delete request completion is asynchronous and trusted</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+async_test(t => {
+  const r = indexedDB.deleteDatabase('crane-idb-delete-task-' + location.pathname);
+  assert_true(r instanceof IDBOpenDBRequest);
+  assert_equals(r.readyState, 'pending');
+  assert_throws_dom('InvalidStateError', () => r.result);
+  assert_throws_dom('InvalidStateError', () => r.error);
+  assert_equals(r.source, null);
+  assert_equals(r.transaction, null);
+  let microtask = false;
+  Promise.resolve().then(t.step_func(() => {
+    assert_equals(r.readyState, 'pending');
+    microtask = true;
+  }));
+  r.onerror = t.unreached_func('deleting a nonexistent database succeeds');
+  r.onsuccess = t.step_func_done(e => {
+    assert_true(microtask);
+    assert_true(e.isTrusted);
+    assert_true(e instanceof IDBVersionChangeEvent);
+    assert_equals(e.oldVersion, 0);
+    assert_equals(e.newVersion, null);
+    assert_equals(r.readyState, 'done');
+    assert_equals(r.result, undefined);
+    assert_equals(r.error, null);
+    assert_equals(e.target, r);
+  });
+}, 'deleteDatabase completes its request from a database task');
+</script>

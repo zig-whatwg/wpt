@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB databases uses the factory realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => { frame.remove(); });
+  const loaded = new Promise((resolve, reject) => {
+    frame.onload = resolve;
+    frame.onerror = () => reject(new Error('iframe failed to load'));
+  });
+  document.body.append(frame);
+  await loaded;
+  const foreign = frame.contentWindow;
+  const database = await createDatabase(t, () => {});
+  const name = database.name;
+  database.close();
+  const promise = foreign.IDBFactory.prototype.databases.call(indexedDB);
+  const rows = await promise;
+  const entry = rows.find(row => row.name === name);
+  assert_true(!!entry, 'snapshot includes the factory database');
+  // Integrator Q37: factory operations keep the relevant realm of the
+  // receiver; borrowing a method does not move the promise or snapshot.
+  assert_equals(Object.getPrototypeOf(promise), Promise.prototype, 'promise realm');
+  assert_equals(Object.getPrototypeOf(rows), Array.prototype, 'snapshot array realm');
+  assert_equals(Object.getPrototypeOf(entry), Object.prototype, 'snapshot entry realm');
+  assert_equals(entry.version, 1);
+}, 'A borrowed databases method makes its promise and snapshot in the factory realm');
+</script>

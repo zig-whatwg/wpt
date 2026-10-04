@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB shared binary key conversion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function sharedKey() {
+  assert_true(crossOriginIsolated);
+  const source = new SharedArrayBuffer(6);
+  new Uint8Array(source).set([9, 1, 2, 3, 4, 9]);
+  return source;
+}
+test(() => {
+  const shared = sharedKey();
+  assert_equals(indexedDB.cmp(shared, new Uint8Array([9, 1, 2, 3, 4, 9])), 0);
+  const range = IDBKeyRange.only(shared);
+  new Uint8Array(shared).fill(0);
+  assert_true(range.lower instanceof ArrayBuffer);
+  assert_array_equals(Array.from(new Uint8Array(range.lower)), [9, 1, 2, 3, 4, 9]);
+}, 'A SharedArrayBuffer key copies bytes and converts back to an ArrayBuffer');
+test(() => {
+  const shared = sharedKey();
+  const view = new Uint8Array(shared, 1, 4);
+  assert_equals(indexedDB.cmp(view, new Uint8Array([1, 2, 3, 4])), 0);
+  const range = IDBKeyRange.only(view);
+  view.fill(0);
+  assert_array_equals(Array.from(new Uint8Array(range.lower)), [1, 2, 3, 4]);
+}, 'A shared view key copies only its byte range');
+test(() => {
+  const shared = sharedKey();
+  assert_equals(indexedDB.cmp([shared], [new Uint8Array([9, 1, 2, 3, 4, 9])]), 0);
+}, 'Shared binary keys also convert within array keys');
+</script>

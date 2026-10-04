@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB cursor object and result realms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const db = await createDatabase(t, db => {
+    const store = db.createObjectStore('records');
+    store.createIndex('by_key', 'key');
+    store.put({key: [7], payload: {number: 1}}, [1]);
+  });
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => { frame.remove(); });
+  const loaded = new Promise((resolve, reject) => {
+    frame.onload = resolve;
+    frame.onerror = () => reject(new Error('iframe failed to load'));
+  });
+  document.body.append(frame);
+  await loaded;
+  const openCursor = frame.contentWindow.IDBIndex.prototype.openCursor;
+  const requestPrototype = frame.contentWindow.IDBRequest.prototype;
+  const valuePrototype = frame.contentWindow.Object.prototype;
+  const keyPrototype = Array.prototype;
+  frame.remove();
+
+  const transaction = db.transaction('records');
+  const index = transaction.objectStore('records').index('by_key');
+  const request = openCursor.call(index);
+  const completed = promiseForTransaction(t, transaction);
+  assert_equals(Object.getPrototypeOf(request), requestPrototype, 'request realm');
+  const cursor = await promiseForRequest(t, request);
+  assert_equals(Object.getPrototypeOf(cursor), IDBCursorWithValue.prototype,
+                'cursor belongs to its source realm');
+  assert_equals(Object.getPrototypeOf(cursor.value), valuePrototype, 'value realm');
+  assert_equals(Object.getPrototypeOf(cursor.value.payload), valuePrototype,
+                'nested value realm');
+  assert_equals(Object.getPrototypeOf(cursor.key), keyPrototype, 'key realm');
+  assert_equals(Object.getPrototypeOf(cursor.primaryKey), keyPrototype, 'primary key realm');
+  await completed;
+}, 'A borrowed cursor method separates the source object realm from the result realm');
+</script>

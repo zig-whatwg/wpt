@@ -1,0 +1,33 @@
+<!doctype html><meta charset=utf-8>
+<title>IndexedDB request results retain identity and isolate storage</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+async_test(t => {
+ const open = indexedDB.open('crane-idb-result-identity-' + location.pathname);
+ open.onerror = t.unreached_func('open failed');
+ open.onupgradeneeded = t.step_func(() => {open.result.createObjectStore('records');});
+ open.onsuccess = t.step_func(() => {
+  const db = open.result;
+  t.add_cleanup(() => {db.close(); indexedDB.deleteDatabase(db.name);});
+  const tx = db.transaction('records', 'readwrite');
+  tx.onabort = t.unreached_func('transaction aborted');
+  const store = tx.objectStore('records');
+  const put = store.put({value:1}, 1);
+  put.onerror = t.unreached_func('put failed');
+  put.onsuccess = t.step_func(() => {
+   const get = store.get(1);
+   get.onerror = t.unreached_func('get failed');
+   get.onsuccess = t.step_func(() => {
+    const value = get.result;
+    assert_equals(get.result, value, 'same object on every read');
+    value.value = 2;
+    assert_equals(get.result.value, 2, 'mutations persist in the request result');
+    const other = store.get(1);
+    other.onerror = t.unreached_func('second get failed');
+    other.onsuccess = t.step_func(() => assert_equals(other.result.value, 1, 'stored record remains unchanged'));
+   });
+  });
+  tx.oncomplete = t.step_func_done(() => {});
+ });
+}, 'a request result is stable, mutable, and separate from the serialized record');
+</script>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB iteration survives retirement of its result realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => { frame.remove(); });
+  const loaded = new Promise((resolve, reject) => {
+    frame.onload = resolve;
+    frame.onerror = () => reject(new Error('iframe failed to load'));
+  });
+  document.body.append(frame);
+  await loaded;
+  const continueInFrame = frame.contentWindow.IDBCursor.prototype.continue;
+  const expectedPrototype = frame.contentWindow.Object.prototype;
+  const db = await createDatabase(t, db => {
+    const store = db.createObjectStore('records');
+    store.put({number: 1}, 1);
+    store.put({number: 2}, 2);
+  });
+  const tx = db.transaction('records');
+  const request = tx.objectStore('records').openCursor();
+  const watcher = new EventWatcher(t, request, ['success', 'error']);
+  const complete = promiseForTransaction(t, tx);
+  await watcher.wait_for('success');
+  const cursor = request.result;
+  const next = watcher.wait_for('success');
+  continueInFrame.call(cursor);
+  frame.remove();
+  // ED6.7 uses ! StructuredDeserialize into the captured realm. The
+  // parent request stays live when the target frame is removed.
+  await Promise.all([next, complete]);
+  assert_equals(request.result, cursor);
+  assert_equals(cursor.value.number, 2);
+  assert_equals(Object.getPrototypeOf(cursor.value), expectedPrototype);
+}, 'A live request completes an iteration whose result realm was retired');
+</script>

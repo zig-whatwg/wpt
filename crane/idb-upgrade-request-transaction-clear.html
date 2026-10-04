@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB open request transaction after upgrade completion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const name = 'idb-upgrade-request-transaction-clear-' + t.name;
+  let database;
+  let checkedCheckpoint = false;
+  t.add_cleanup(() => {
+    if (database) database.close();
+    indexedDB.deleteDatabase(name);
+  });
+  const deletion = indexedDB.deleteDatabase(name);
+  deletion.onerror = t.unreached_func('initial deletion failed');
+  deletion.onsuccess = t.step_func(() => {
+    const request = indexedDB.open(name, 1);
+    request.onerror = t.unreached_func('open failed');
+    request.onupgradeneeded = t.step_func(() => {
+      database = request.result;
+      const transaction = request.transaction;
+      database.createObjectStore('records');
+      transaction.oncomplete = t.step_func(() => {
+        assert_equals(request.transaction, transaction, 'association during complete');
+        queueMicrotask(t.step_func(() => {
+          // HTML's callback checkpoint precedes ED 5.4 commit step 2.5.4.
+          assert_equals(request.transaction, transaction, 'association during the callback checkpoint');
+          checkedCheckpoint = true;
+        }));
+      });
+    });
+    request.onsuccess = t.step_func_done(() => {
+      assert_true(checkedCheckpoint);
+      assert_equals(request.transaction, null, 'association at open success');
+    });
+  });
+}, 'Upgrade completion retains the transaction through callback microtasks and clears it before open success');
+</script>

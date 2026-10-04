@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB Blob and File serialization</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+const cases = [
+  ['Blob', () => new Blob(['stored bytes'], {type: 'text/plain'})],
+  ['File', () => new File(['stored bytes'], 'record.txt', {
+    type: 'text/plain', lastModified: 123456789
+  })]
+];
+
+async function verifyCopy(original, copy, kind) {
+  assert_not_equals(copy, original);
+  assert_equals(Object.getPrototypeOf(copy), self[kind].prototype);
+  assert_equals(copy.size, original.size);
+  assert_equals(copy.type, original.type);
+  if (kind === 'File') {
+    assert_equals(copy.name, original.name);
+    assert_equals(copy.lastModified, original.lastModified);
+  }
+  assert_equals(await copy.text(), 'stored bytes');
+}
+
+for (const [kind, makeValue] of cases) {
+  // HTML 2.7.3 steps 19 and 26.3: serializable platform objects use their
+  // serialization steps. This control reaches the shared serializer without
+  // depending on IndexedDB.open() or its binding conversion.
+  promise_test(async () => {
+    const original = makeValue();
+    await verifyCopy(original, structuredClone(original), kind);
+  }, kind + ' shared serialization prerequisite');
+
+  promise_test(async t => {
+    const db = await createDatabase(t, db => db.createObjectStore('records'));
+    const original = makeValue();
+    const tx = db.transaction('records', 'readwrite');
+    const store = tx.objectStore('records');
+    store.put({value: original, alias: original}, 1);
+    const read = promiseForRequest(t, store.get(1));
+    const complete = promiseForTransaction(t, tx);
+    const [record] = await Promise.all([read, complete]);
+    // StructuredSerializeInternal step 2 preserves repeated object identity.
+    assert_equals(record.value, record.alias);
+    await verifyCopy(original, record.value, kind);
+  }, kind + ' survives an IndexedDB value round trip with repeated identity');
+}
+</script>

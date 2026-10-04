@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB platform values create requests synchronously</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+for (const method of ['put', 'add']) {
+  for (const kind of ['Blob', 'File']) {
+    promise_test(async t => {
+      const db = await createDatabase(t, db => { db.createObjectStore('records'); });
+      const tx = db.transaction('records', 'readwrite');
+      const store = tx.objectStore('records');
+      const value = kind === 'Blob' ? new Blob(['bytes']) : new File(['bytes'], 'record.txt');
+      let request;
+      try {
+        // ED 4.5 add-or-put clones a serializable platform value before
+        // creating its request. A shared-serializer failure is synchronous.
+        request = store[method](value, 1);
+      } catch (error) {
+        assert_unreached(kind + ' ' + method + ' threw synchronously before returning a request: ' + error.name);
+      }
+      assert_true(request instanceof IDBRequest);
+      const completion = promiseForTransaction(t, tx);
+      assert_equals(await promiseForRequest(t, request), 1);
+      await completion;
+    }, kind + ' ' + method + ' returns a request and stores its value');
+  }
+}
+</script>

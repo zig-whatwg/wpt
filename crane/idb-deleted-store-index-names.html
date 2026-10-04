@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deleted IndexedDB store handles keep an empty index set after commit</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const name = 'crane-idb-deleted-index-names-' + t.name;
+  let connection;
+  t.add_cleanup(async () => {
+    if (connection) connection.close();
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+    });
+  });
+  const open = (version, upgrade) => new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, version);
+    request.onupgradeneeded = t.step_func(() => upgrade(request.result, request.transaction));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  let previous;
+  connection = await open(1, database => {
+    previous = database.createObjectStore('records');
+    previous.createIndex('by-key', 'key');
+  });
+  connection.close();
+  let removed;
+  connection = await open(2, (database, transaction) => {
+    removed = transaction.objectStore('records');
+    database.deleteObjectStore('records');
+    assert_array_equals(Array.from(removed.indexNames), []);
+    assert_array_equals(Array.from(previous.indexNames), ['by-key']);
+  });
+  assert_array_equals(Array.from(removed.indexNames), []);
+  assert_array_equals(Array.from(previous.indexNames), ['by-key']);
+}, 'Deleting a store changes its current handle index set permanently on commit');
+</script>

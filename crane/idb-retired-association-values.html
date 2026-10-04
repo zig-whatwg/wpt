@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB association values after a foreign realm retires</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+async function associationFrame(t) {
+  const frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html><body>';
+  document.body.appendChild(frame);
+  t.add_cleanup(() => { frame.remove(); });
+  await loaded;
+  return frame;
+}
+
+promise_test(async t => {
+  const frame = await associationFrame(t);
+  const opened = frame.contentWindow.indexedDB.open('idb-retired-cursor-source');
+  opened.onupgradeneeded = t.step_func(() => {
+    opened.result.createObjectStore('records').put({value: 1}, 1);
+  });
+  const db = await new Promise((resolve, reject) => {
+    opened.onsuccess = () => resolve(opened.result);
+    opened.onerror = () => reject(opened.error);
+  });
+  t.add_cleanup(() => { if (frame.isConnected) db.close(); });
+  const store = db.transaction('records').objectStore('records');
+  const request = IDBObjectStore.prototype.openCursor.call(store);
+  const cursor = await promiseForRequest(t, request);
+  assert_equals(cursor.source, store);
+  frame.remove();
+  // ED 4.9 source getter: retain the object identity across realm teardown.
+  assert_equals(cursor.source, store);
+}, 'A live cursor returns the same source object after its realm retires');
+
+promise_test(async t => {
+  const db = await createDatabase(t, db => {
+    db.createObjectStore('records').put({value: 1}, 1);
+  });
+  const frame = await associationFrame(t);
+  const tx = db.transaction('records', 'readwrite');
+  const store = tx.objectStore('records');
+  const request = frame.contentWindow.IDBObjectStore.prototype.add.call(
+    store, {value: 2}, 1);
+  const aborted = new Promise((resolve, reject) => {
+    tx.oncomplete = t.step_func(() => reject(new Error('Expected abort')));
+    tx.onabort = t.step_func(resolve);
+  });
+  await aborted;
+  const error = request.error;
+  assert_equals(error.name, 'ConstraintError');
+  assert_equals(tx.error, error);
+  frame.remove();
+  // ED 4.10 error getter: the transaction exposes the request's exception.
+  assert_equals(tx.error, error);
+}, 'A transaction retains its request error after the error realm retires');
+</script>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB cursor key getter realms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+for (const attribute of ['key', 'primaryKey']) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => { frame.remove(); });
+    const loaded = new Promise((resolve, reject) => {
+      frame.onload = resolve;
+      frame.onerror = () => reject(new Error('iframe failed to load'));
+    });
+    document.body.append(frame);
+    await loaded;
+    const foreign = frame.contentWindow;
+    const getter = Object.getOwnPropertyDescriptor(foreign.IDBCursor.prototype, attribute).get;
+    const db = await createDatabase(t, db => {
+      const store = db.createObjectStore('records');
+      store.createIndex('by_key', 'key');
+      store.put({key: [7]}, [1]);
+    });
+    const transaction = db.transaction('records');
+    const request = transaction.objectStore('records').index('by_key').openCursor();
+    const [cursor] = await Promise.all([
+      promiseForRequest(t, request), promiseForTransaction(t, transaction)
+    ]);
+    // ED 4.9 invokes ED 7.3 from the getter, then preserves object identity
+    // until the cursor's key changes. The first getter's realm makes the Array.
+    const first = getter.call(cursor);
+    assert_array_equals(first, attribute === 'key' ? [7] : [1]);
+    assert_equals(Object.getPrototypeOf(first), foreign.Array.prototype, 'first getter realm');
+    assert_equals(cursor[attribute], first, 'normal getter reuses the cached object');
+    assert_equals(getter.call(cursor), first, 'foreign getter reuses the cached object');
+    assert_equals(Object.getPrototypeOf(cursor), IDBCursorWithValue.prototype, 'cursor object realm');
+  }, `Cursor.${attribute} uses the first getter's realm and preserves its cached identity`);
+}
+</script>

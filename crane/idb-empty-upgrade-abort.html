@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An empty IndexedDB upgrade still rolls back its connection version</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const name = 'crane-idb-empty-abort-' + t.name;
+  t.add_cleanup(async () => {
+    await new Promise((resolve, reject) => {
+      const deletion = indexedDB.deleteDatabase(name);
+      deletion.onsuccess = resolve;
+      deletion.onerror = () => reject(deletion.error);
+    });
+  });
+  let connection;
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, 2);
+    request.onupgradeneeded = t.step_func(() => {
+      connection = request.result;
+      request.transaction.abort();
+      assert_equals(connection.version, 0);
+      assert_array_equals(Array.from(connection.objectStoreNames), []);
+    });
+    request.onerror = t.step_func(event => {
+      event.preventDefault();
+      assert_equals(request.error.name, 'AbortError');
+      resolve();
+    });
+    request.onsuccess = () => reject(new Error('Aborted upgrade succeeded'));
+  });
+  assert_equals(connection.version, 0);
+  assert_false((await indexedDB.databases()).some(info => info.name === name));
+}, 'An empty aborted first upgrade restores version zero and is not listed');
+</script>

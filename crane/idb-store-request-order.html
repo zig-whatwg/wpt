@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB store requests, cloning, and auto-commit</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function openDatabase(t, name, upgrade) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, 1);
+    request.onupgradeneeded = t.step_func(() => upgrade(request.result, request.transaction));
+    request.onerror = t.step_func(() => reject(request.error));
+    request.onsuccess = t.step_func(() => {
+      const database = request.result;
+      t.add_cleanup(() => database.close());
+      resolve(database);
+    });
+  });
+}
+promise_test(async t => {
+  const database = await openDatabase(t, 'idb-store-request-order', db => db.createObjectStore('records'));
+  const transaction = database.transaction('records', 'readwrite');
+  const store = transaction.objectStore('records');
+  assert_equals(transaction.objectStore('records'), store);
+  const input = { answer: 42 };
+  const write = store.put(input, 1);
+  input.answer = 0;
+  const read = store.get(1);
+  const events = [];
+  write.onsuccess = t.step_func(() => {
+    events.push('write');
+    assert_equals(write.source, store);
+    assert_equals(write.transaction, transaction);
+    assert_equals(write.result, 1);
+  });
+  read.onsuccess = t.step_func(() => {
+    events.push('read');
+    assert_equals(read.result.answer, 42);
+  });
+  await new Promise((resolve, reject) => {
+    transaction.onabort = t.step_func(() => reject(transaction.error));
+    transaction.oncomplete = t.step_func(resolve);
+  });
+  assert_array_equals(events, ['write', 'read']);
+}, 'Accepted store requests execute in order, snapshot input values, and auto-commit');
+promise_test(async t => {
+  const database = await openDatabase(t, 'idb-store-request-handler-enqueue', db => db.createObjectStore('records'));
+  const transaction = database.transaction('records', 'readwrite');
+  const store = transaction.objectStore('records');
+  const write = store.put('first', 1);
+  let second;
+  write.onsuccess = t.step_func(() => {
+    second = store.put('second', 2);
+  });
+  await new Promise((resolve, reject) => {
+    transaction.onabort = t.step_func(() => reject(transaction.error));
+    transaction.oncomplete = t.step_func(resolve);
+  });
+  assert_equals(second.readyState, 'done');
+  assert_equals(second.result, 2);
+}, 'A request success handler can enqueue another request before auto-commit');
+</script>

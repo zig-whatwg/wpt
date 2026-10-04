@@ -1,0 +1,32 @@
+<!doctype html><meta charset=utf-8>
+<title>IndexedDB multiEntry ignores abrupt element access</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+async_test(t => {
+ const open = indexedDB.open('crane-idb-multientry-abrupt-' + location.pathname);
+ open.onerror = t.unreached_func('open failed');
+ t.add_cleanup(() => { delete Array.prototype[8192]; });
+ open.onupgradeneeded = t.step_func(() => {
+  const db = open.result;
+  const store = db.createObjectStore('records');
+  const index = store.createIndex('keys', 'keys', {multiEntry:true});
+  const keys = [];
+  keys[0] = 10;
+  keys[8193] = 20;
+  Object.defineProperty(Array.prototype, 8192, {configurable:true, get() {throw new Error('ignored multiEntry Get');}});
+  const put = store.put({keys}, 1);
+  put.onerror = t.unreached_func('multiEntry must ignore abrupt subkey conversion');
+  put.onsuccess = t.step_func(() => {
+   delete Array.prototype[8192];
+   const count = index.count();
+   count.onerror = t.unreached_func('count failed');
+   count.onsuccess = t.step_func(() => assert_equals(count.result, 2));
+  });
+ });
+ open.onsuccess = t.step_func_done(() => {
+  const db = open.result;
+  db.close();
+  indexedDB.deleteDatabase(db.name);
+ });
+}, 'throwing inherited Get in a sparse multiEntry array skips only that subkey');
+</script>

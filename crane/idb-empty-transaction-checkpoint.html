@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Empty IndexedDB transactions end at the task checkpoint</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+promise_test(async t => {
+  const db = await createDatabase(t, db => { db.createObjectStore('records'); });
+  await new Promise(resolve => {
+    t.step_timeout(() => {
+      const tx = db.transaction('records', 'readwrite');
+      const store = tx.objectStore('records');
+      // No request is made in this task. HTML's microtask checkpoint must
+      // still run IndexedDB's transaction cleanup before the next task.
+      t.step_timeout(() => {
+        assert_throws_dom('TransactionInactiveError', () => store.put({value: 1}, 1));
+        resolve();
+      }, 0);
+    }, 0);
+  });
+}, 'A window transaction with no requests is inactive after its task checkpoint');
+
+async_test(t => {
+  const worker = new Worker('idb-empty-transaction-checkpoint-worker.js');
+  t.add_cleanup(() => { worker.terminate(); });
+  worker.onerror = t.unreached_func('Worker must execute its checkpoint probe');
+  worker.onmessage = t.step_func_done(({data}) => {
+    assert_equals(data.setupError, undefined);
+    assert_true(data.worker);
+    assert_equals(data.errorName, 'TransactionInactiveError');
+  });
+}, 'A dedicated worker transaction with no requests is inactive after its task checkpoint');
+</script>

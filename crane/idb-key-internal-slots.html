@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB key conversion uses internal slots and own array indices</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const IntrinsicDate = Date;
+  const input = new IntrinsicDate(789);
+  const unexpected = () => { throw new Error('Date conversion ran script'); };
+  input.getTime = unexpected;
+  input.valueOf = unexpected;
+  Object.defineProperty(input, Symbol.toPrimitive, {value: unexpected});
+  assert_equals(indexedDB.cmp(input, new IntrinsicDate(789)), 0);
+  const range = IDBKeyRange.only(input);
+  try {
+    self.Date = unexpected;
+    const lower = range.lower;
+    assert_equals(Object.getPrototypeOf(lower), IntrinsicDate.prototype);
+    assert_equals(IntrinsicDate.prototype.getTime.call(lower), 789);
+  } finally {
+    self.Date = IntrinsicDate;
+  }
+}, 'Date keys read DateValue and reconstruct with the intrinsic constructor');
+
+test(() => {
+  const input = [7, ['nested']];
+  input[Symbol.iterator] = () => { throw new Error('Key conversion used an iterator'); };
+  assert_equals(indexedDB.cmp(input, [7, ['nested']]), 0);
+  const lower = IDBKeyRange.only(input).lower;
+  assert_equals(lower[0], 7);
+  assert_array_equals(lower[1], ['nested']);
+  assert_equals(indexedDB.cmp([], []), 0);
+}, 'Array keys read indices without iteration and permit the empty array key');
+
+test(() => {
+  for (const target of [[7], new Date(7)]) {
+    let calls = 0;
+    const unexpected = () => { ++calls; throw new Error('Invalid proxy key ran a trap'); };
+    const proxy = new Proxy(target, {
+      get: unexpected,
+      getOwnPropertyDescriptor: unexpected,
+      getPrototypeOf: unexpected
+    });
+    assert_throws_dom('DataError', () => IDBKeyRange.only(proxy));
+    assert_equals(calls, 0);
+  }
+}, 'Proxies of Arrays and Dates are invalid keys without invoking traps');
+
+test(() => {
+  let inheritedGets = 0;
+  const prototype = {};
+  Object.defineProperty(prototype, '0', {get() { ++inheritedGets; return 7; }});
+  const input = new Array(1);
+  Object.setPrototypeOf(input, prototype);
+  assert_throws_dom('DataError', () => IDBKeyRange.only(input));
+  assert_equals(inheritedGets, 0);
+}, 'An inherited index does not fill a hole in an array key');
+
+test(() => {
+  const repeated = [7];
+  assert_throws_dom('DataError', () => IDBKeyRange.only([repeated, repeated]));
+  const cyclic = [];
+  cyclic[0] = cyclic;
+  assert_throws_dom('DataError', () => IDBKeyRange.only(cyclic));
+}, 'The key conversion seen set rejects repeated and cyclic nested arrays');
+
+test(() => {
+  const sentinel = {reason: 'own index getter'};
+  const input = [];
+  Object.defineProperty(input, '0', {get() { throw sentinel; }});
+  assert_throws_exactly(sentinel, () => IDBKeyRange.only(input));
+}, 'An own array-index getter abrupt completion propagates unchanged');
+</script>

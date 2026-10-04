@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worker shutdown owns pending IndexedDB transaction requests</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const worker = new Worker('idb-worker-pending-requests.js');
+  t.add_cleanup(() => worker.terminate());
+  worker.onerror = t.unreached_func('the worker must queue its transaction requests');
+  worker.onmessage = t.step_func_done(({data}) => {
+    assert_equals(data.error, undefined);
+    assert_array_equals(data.states, ['pending', 'pending', 'pending', 'pending']);
+  });
+}, 'A worker can close with accepted transaction requests still pending');
+</script>

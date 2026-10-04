@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worker global attributes expose native Crypto and IndexedDB</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const name of ['crypto', 'indexedDB']) {
+  async_test(t => {
+    const worker = new Worker('idb-worker-native-globals.js');
+    t.add_cleanup(() => { worker.terminate(); });
+    worker.onerror = t.unreached_func('Native worker global probe must execute');
+    worker.onmessage = t.step_func_done(({data}) => {
+      assert_equals(data.error, undefined);
+      const result = data[name];
+      assert_false(result.hasOwnProperty, name + ' has no own bootstrap property');
+      assert_equals(result.getterType, 'function', name + ' is a WorkerGlobalScope prototype accessor');
+      assert_false(result.hasValue, name + ' is not a data property');
+      assert_true(result.brand, name + ' has its IDL brand');
+      assert_true(result.prototype, name + ' uses its native prototype');
+      assert_true(result.method, name + ' exposes its prototype method');
+    });
+  }, 'A dedicated worker exposes its native ' + name + ' accessor');
+}
+</script>

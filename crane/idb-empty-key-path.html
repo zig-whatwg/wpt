@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB rejects empty list key paths in the specified order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function duringUpgrade(t, check) {
+  const name = 'crane-idb-empty-key-path-' + t.name;
+  let connection;
+  t.add_cleanup(async () => {
+    if (connection) connection.close();
+    await new Promise((resolve, reject) => {
+      const deletion = indexedDB.deleteDatabase(name);
+      deletion.onsuccess = resolve;
+      deletion.onerror = () => reject(deletion.error);
+    });
+  });
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, 1);
+    request.onupgradeneeded = t.step_func(() => {
+      connection = request.result;
+      check(connection);
+    });
+    request.onsuccess = resolve;
+    request.onerror = () => reject(request.error);
+  });
+}
+
+promise_test(async t => {
+  await duringUpgrade(t, db => {
+    db.createObjectStore('existing');
+    assert_throws_dom('SyntaxError', () => db.createObjectStore('new', {keyPath: []}));
+    assert_throws_dom('SyntaxError', () => db.createObjectStore('existing', {keyPath: []}));
+    assert_throws_dom('SyntaxError', () => db.createObjectStore('generated', {
+      keyPath: [], autoIncrement: true
+    }));
+    assert_array_equals(Array.from(db.objectStoreNames), ['existing']);
+  });
+}, 'An invalid empty store key path precedes duplicate name and generator checks');
+
+promise_test(async t => {
+  await duringUpgrade(t, db => {
+    const store = db.createObjectStore('records');
+    store.createIndex('existing', 'id');
+    assert_throws_dom('SyntaxError', () => store.createIndex('new', []));
+    assert_throws_dom('ConstraintError', () => store.createIndex('existing', []));
+    assert_throws_dom('SyntaxError', () => store.createIndex('multi', [], {multiEntry: true}));
+    assert_array_equals(Array.from(store.indexNames), ['existing']);
+  });
+}, 'Index duplicate names precede invalid paths, which precede multiEntry checks');
+
+promise_test(async t => {
+  await duringUpgrade(t, db => {
+    const store = db.createObjectStore('records', {keyPath: ['']});
+    const index = store.createIndex('whole-value', ['']);
+    assert_array_equals(store.keyPath, ['']);
+    assert_array_equals(index.keyPath, ['']);
+  });
+}, 'A nonempty key-path list may contain an empty string');
+</script>
