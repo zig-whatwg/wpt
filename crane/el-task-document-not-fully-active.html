@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A task whose document is not fully active does not run</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#concept-task-runnable">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<link rel=help href="https://html.spec.whatwg.org/multipage/web-messaging.html#window-post-message-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "A task is runnable if its document is either null or fully active", and
+// "destroy a document" removes the document's tasks without running them.
+// postMessage queues a global task on the posted message task source given
+// the target window, so the task's document is that window's document: a
+// message posted to a frame that is removed before the task runs is never
+// delivered.
+const settle = t => new Promise(resolve => t.step_timeout(resolve, 50));
+
+function addFrame() {
+  const frame = document.createElement("iframe");
+  document.body.append(frame);
+  return frame;
+}
+
+promise_test(async t => {
+  const frame = addFrame();
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  const received = [];
+  w.addEventListener("message", e => received.push(e.data));
+  w.postMessage("live", "*");
+  await settle(t);
+  assert_array_equals(received, ["live"]);
+}, "a message posted to a frame that stays is delivered");
+
+promise_test(async t => {
+  const frame = addFrame();
+  const w = frame.contentWindow;
+  const received = [];
+  w.addEventListener("message", e => received.push(e.data));
+  w.postMessage("before removal", "*");
+  frame.remove();
+  await settle(t);
+  assert_array_equals(received, [], "the task's document was destroyed before it ran");
+}, "a message posted to a frame removed before its task runs is never delivered");
+
+promise_test(async t => {
+  const outer = addFrame();
+  const inner = outer.contentDocument.createElement("iframe");
+  outer.contentDocument.body.append(inner);
+  const w = inner.contentWindow;
+  const received = [];
+  w.addEventListener("message", e => received.push(e.data));
+  w.postMessage("nested", "*");
+  // Removing the outer frame destroys every document inside it.
+  outer.remove();
+  await settle(t);
+  assert_array_equals(received, []);
+}, "a message posted to a frame inside a removed frame is never delivered");
+
+promise_test(async t => {
+  const frame = addFrame();
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  const received = [];
+  addEventListener("message", function onMessage(e) {
+    if (e.data !== "to the parent") return;
+    removeEventListener("message", onMessage);
+    received.push(e.data);
+  });
+  // Reached through the frame, posted to this window: the task's document
+  // is this one, which stays fully active though the frame is removed.
+  w.parent.postMessage("to the parent", "*");
+  frame.remove();
+  await settle(t);
+  assert_array_equals(received, ["to the parent"]);
+}, "a message to a live window reached through a removed frame is delivered");
+promise_test(async t => {
+  // An opaque origin: no realm but the frame's own may read its document.
+  // Whether the task's document is fully active is the event loop's
+  // question, not script's, so no cross-origin check applies to it.
+  const frame = document.createElement("iframe");
+  frame.sandbox = "allow-scripts";
+  frame.srcdoc = "<script>onmessage = e => parent.postMessage('echo ' + e.data, '*');<\/script>";
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const reply = new Promise(resolve => addEventListener("message", function onMessage(e) {
+    if (typeof e.data !== "string" || !e.data.startsWith("echo ")) return;
+    removeEventListener("message", onMessage);
+    resolve(e.data);
+  }));
+  frame.contentWindow.postMessage("opaque", "*");
+  assert_equals(await reply, "echo opaque");
+}, "a message posted to a sandboxed frame with an opaque origin is delivered");
+promise_test(async t => {
+  // The frame's initial about:blank is replaced by the javascript: URL's
+  // document in the SAME Window, after the message is posted: the message
+  // follows the window, as in browsers (webmessaging/without-ports/018.html).
+  const frame = document.createElement("iframe");
+  frame.src = "javascript:''";
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  const received = new Promise(resolve => {
+    w.postMessage("to the reused window", "*");
+    w.onmessage = e => resolve(e.data);
+  });
+  assert_equals(await received, "to the reused window");
+}, "a message posted to a window whose initial about:blank is then replaced is delivered");
+</script>

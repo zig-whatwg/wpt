@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>requestIdleCallback: idle periods, the deadline, cancelIdleCallback and the timeout</title>
+<link rel=help href="https://w3c.github.io/requestidlecallback/">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#event-loop-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML's event loop starts an idle period when it has no runnable task
+// (8.1.7.3 step 5): each window's list of idle request callbacks moves to its
+// list of runnable idle callbacks, and a task on the idle-task task source
+// invokes them in order while the deadline has not passed. A callback posted
+// during an idle period waits for the next one.
+const idle = () => new Promise(resolve => requestIdleCallback(resolve));
+// One case throws from an idle callback on purpose: the exception is
+// reported at the window, which the harness would otherwise count.
+setup({ allow_uncaught_exception: true });
+
+promise_test(async () => {
+  const deadline = await new Promise(resolve => {
+    requestIdleCallback(function () {
+      assert_equals(arguments.length, 1, "one argument");
+      resolve(arguments[0]);
+    });
+  });
+  assert_true(deadline instanceof IdleDeadline, "an IdleDeadline");
+  assert_equals(Object.getPrototypeOf(deadline), IdleDeadline.prototype);
+  assert_false(deadline.didTimeout, "not invoked by its timeout");
+  const remaining = deadline.timeRemaining();
+  assert_equals(typeof remaining, "number");
+  assert_greater_than_equal(remaining, 0);
+  assert_less_than_equal(remaining, 50, "an idle period is at most 50 ms");
+}, "an idle callback runs, given an IdleDeadline");
+
+test(() => {
+  const first = requestIdleCallback(() => {});
+  const second = requestIdleCallback(() => {});
+  assert_true(Number.isInteger(first) && first > 0, "a positive integer");
+  assert_greater_than(second, first, "each handle is the window's idle callback identifier, incremented");
+  cancelIdleCallback(first);
+  cancelIdleCallback(second);
+  assert_equals(cancelIdleCallback(123456789), undefined, "an unknown handle is ignored");
+}, "requestIdleCallback returns increasing handles");
+
+promise_test(async () => {
+  const order = [];
+  await new Promise(resolve => {
+    requestIdleCallback(() => {
+      order.push("A");
+      // Posted during an idle period: it runs in the next one, after every
+      // callback that was already runnable.
+      requestIdleCallback(() => { order.push("B"); resolve(); });
+    });
+    requestIdleCallback(() => order.push("C"));
+  });
+  assert_array_equals(order, ["A", "C", "B"]);
+}, "idle callbacks run in posting order, and one posted from an idle callback waits for the next idle period");
+
+promise_test(async () => {
+  const ran = [];
+  const cancelled = requestIdleCallback(() => ran.push("cancelled before"));
+  cancelIdleCallback(cancelled);
+  let later;
+  await new Promise(resolve => {
+    requestIdleCallback(() => {
+      ran.push("first");
+      // Runnable already, in the same idle period: cancelling removes it from
+      // the list of runnable idle callbacks.
+      cancelIdleCallback(later);
+      requestIdleCallback(resolve);
+    });
+    later = requestIdleCallback(() => ran.push("cancelled from the first"));
+  });
+  assert_array_equals(ran, ["first"]);
+}, "cancelIdleCallback removes a callback from either list");
+
+promise_test(async () => {
+  // Keep the event loop busy with tasks for 300 ms: it never has an idle
+  // period, so the callback can only run through its timeout - in a task of
+  // its own, with didTimeout true and no time remaining.
+  const start = performance.now();
+  let busy = true;
+  const tag = "el-idle-callbacks-busy";
+  const pump = e => { if (e.data === tag && busy) postMessage(tag, "*"); };
+  addEventListener("message", pump);
+  postMessage(tag, "*");
+  const deadline = await new Promise(resolve => requestIdleCallback(resolve, { timeout: 40 }));
+  const elapsed = performance.now() - start;
+  busy = false;
+  removeEventListener("message", pump);
+  assert_true(deadline.didTimeout, "invoked by its timeout");
+  assert_equals(deadline.timeRemaining(), 0, "no time remains for a callback that timed out");
+  assert_greater_than_equal(elapsed, 39, "not before the timeout");
+}, "a callback the loop is too busy to run is invoked when its timeout passes");
+
+promise_test(async () => {
+  await idle();
+  const { before, after } = await new Promise(resolve => requestIdleCallback(deadline => {
+    const before = deadline.timeRemaining();
+    // A timer due in 10 ms is work the idle period must end before.
+    const id = setTimeout(() => {}, 10);
+    const after = deadline.timeRemaining();
+    clearTimeout(id);
+    resolve({ before, after });
+  }));
+  assert_less_than_equal(after, before);
+  assert_less_than_equal(after, 10, "the deadline moves to the new timer");
+}, "a timer set during an idle callback brings the deadline forward");
+
+promise_test(async t => {
+  const message = "el-idle-callbacks-throws";
+  let reported = null;
+  const onerror = e => {
+    if (e.error && e.error.message === message) {
+      reported = e;
+      e.preventDefault();
+    }
+  };
+  addEventListener("error", onerror);
+  t.add_cleanup(() => removeEventListener("error", onerror));
+  const order = [];
+  await new Promise(resolve => {
+    requestIdleCallback(() => { order.push("throws"); throw new Error(message); });
+    requestIdleCallback(() => { order.push("next"); resolve(); });
+  });
+  assert_array_equals(order, ["throws", "next"], "the next callback still runs");
+  assert_not_equals(reported, null, "the exception was reported at the window");
+}, "an exception in an idle callback is reported, and later callbacks still run");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  document.body.append(frame);
+  const w = frame.contentWindow;
+  let ran = false;
+  w.requestIdleCallback(() => { ran = true; });
+  w.requestIdleCallback(() => { ran = true; }, { timeout: 10 });
+  frame.remove();
+  // A removed frame's document is destroyed: its window has no idle periods
+  // and its timeouts never fire.
+  w.requestIdleCallback(() => { ran = true; });
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  await idle();
+  assert_false(ran);
+}, "a removed frame's idle callbacks never run");
+</script>
