@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A WebSocket's handshake request is checked against connect-src</title>
+<link rel=help href="https://websockets.spec.whatwg.org/#concept-websocket-establish">
+<link rel=help href="https://w3c.github.io/webappsec-csp/#should-block-request">
+<link rel=help href="https://w3c.github.io/webappsec-csp/#directive-connect-src">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'none'">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Establish a WebSocket connection" fetches its request (mode "websocket",
+// destination ""), and main fetch's "should request be blocked by Content
+// Security Policy?" applies connect-src to it: under connect-src 'none' the
+// fetch is a network error - the connection fails - and the violation is
+// reported to the WebSocket's relevant global. trusted-types/support/
+// csp-violations.js relies on exactly this to know that every violation an
+// earlier step queued has been delivered.
+promise_test(async t => {
+  const violation = new Promise(resolve => {
+    self.addEventListener("securitypolicyviolation", e => resolve(e), { once: true });
+  });
+  const ws = new WebSocket("ws:/common/blank.html");
+  assert_equals(ws.readyState, WebSocket.CONNECTING, "the constructor does not throw, and returns CONNECTING");
+  const closed = new Promise(resolve => {
+    const events = [];
+    ws.onerror = () => events.push("error");
+    ws.onopen = () => events.push("open");
+    ws.onclose = () => { events.push("close"); resolve(events); };
+  });
+  const e = await violation;
+  assert_equals(e.effectiveDirective, "connect-src");
+  assert_equals(e.violatedDirective, "connect-src");
+  assert_equals(e.disposition, "enforce");
+  assert_equals(e.originalPolicy, "connect-src 'none'");
+  assert_array_equals(await closed, ["error", "close"], "the connection fails");
+  assert_equals(ws.readyState, WebSocket.CLOSED);
+}, "connect-src 'none' blocks a WebSocket and reports a connect-src violation");
+
+promise_test(async t => {
+  // Violations queued earlier are delivered first: the helper's ordering.
+  const seen = [];
+  const done = new Promise(resolve => {
+    self.addEventListener("securitypolicyviolation", function handler(e) {
+      seen.push(e.effectiveDirective);
+      if (e.effectiveDirective === "connect-src" && seen.length >= 2) {
+        self.removeEventListener("securitypolicyviolation", handler);
+        resolve();
+      }
+    });
+  });
+  new WebSocket("ws:/common/blank.html?first");
+  new WebSocket("ws:/common/blank.html?second");
+  await done;
+  assert_array_equals(seen, ["connect-src", "connect-src"]);
+}, "each blocked WebSocket reports its own violation");
+</script>

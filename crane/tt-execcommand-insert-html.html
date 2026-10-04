@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Trusted Types: execCommand checks insertHTML's value once, as "Document execCommand", and no other command's</title>
+<link rel=help href="https://w3c.github.io/editing/docs/execCommand/#execcommand()">
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#get-trusted-type-compliant-string-algorithm">
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div contenteditable id=host></div>
+<script>
+// The editing spec declares execCommand's value as (TrustedHTML or DOMString).
+// Engines check it for the insertHTML command only (Gecko's
+// ConvertToInternalCommand): the default policy runs once, with the sink
+// "Document execCommand"; a TrustedHTML passes without it; other commands
+// take a string as it is.
+const calls = [];
+const pass = trustedTypes.createPolicy("pass", { createHTML: s => s });
+trustedTypes.createPolicy("default", {
+  createHTML: (s, type, sink) => {
+    calls.push([s, sink]);
+    return s;
+  },
+});
+
+test(() => {
+  calls.length = 0;
+  document.execCommand("insertHTML", false, "<b>one</b>");
+  assert_equals(calls.length, 1, "the default policy runs exactly once");
+  assert_array_equals(calls[0], ["<b>one</b>", "Document execCommand"]);
+}, "insertHTML with a string runs the default policy once, as 'Document execCommand'");
+
+test(() => {
+  calls.length = 0;
+  document.execCommand("InsertHTML", false, "<i>two</i>");
+  assert_equals(calls.length, 1);
+  assert_array_equals(calls[0], ["<i>two</i>", "Document execCommand"]);
+}, "the command name matches ASCII case-insensitively");
+
+test(() => {
+  calls.length = 0;
+  document.execCommand("insertHTML", false, pass.createHTML("<u>three</u>"));
+  assert_array_equals(calls, [], "a TrustedHTML needs no default policy");
+}, "insertHTML with a TrustedHTML does not run the default policy");
+
+test(() => {
+  calls.length = 0;
+  document.execCommand("paste", false, "<em>four</em>");
+  document.execCommand("insertText", false, "<em>five</em>");
+  document.execCommand("bold", false, "<em>six</em>");
+  assert_array_equals(calls, [], "only insertHTML is a Trusted Types sink");
+}, "other commands take a string without the default policy");
+</script>

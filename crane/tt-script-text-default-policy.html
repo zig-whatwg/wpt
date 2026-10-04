@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Trusted Types: prepare the script text runs the default policy's createScript</title>
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#prepare-script-text">
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#process-value-with-a-default-policy-algorithm">
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Prepare the script text": a script whose child text content is not its
+// script text goes through get Trusted Type compliant string - the default
+// policy's createScript with (text, "TrustedScript", sink) - and runs what
+// the policy returned. The new script text is kept: a second preparation of
+// the same text does not ask again.
+const calls = [];
+trustedTypes.createPolicy("default", {
+  createScript: (s, type, sink) => {
+    calls.push([type, sink, s]);
+    if (s.includes("reject")) return null;
+    if (s.includes("throw")) throw new Error("policy threw");
+    return s.replace("BEFORE", "AFTER");
+  },
+});
+
+promise_test(async () => {
+  window.ttValue = "";
+  calls.length = 0;
+  const script = document.createElement("script");
+  script.appendChild(document.createTextNode("window.ttValue = 'BEFORE';"));
+  document.body.appendChild(script);
+  assert_equals(window.ttValue, "AFTER", "the policy's value ran");
+  assert_array_equals(calls[0], ["TrustedScript", "HTMLScriptElement text", "window.ttValue = 'BEFORE';"]);
+  assert_equals(calls.length, 1);
+}, "the default policy's createScript value is the source");
+
+promise_test(async () => {
+  window.ttRejected = false;
+  const script = document.createElement("script");
+  script.appendChild(document.createTextNode("window.ttRejected = true; /* reject */"));
+  document.body.appendChild(script);
+  assert_false(window.ttRejected, "a null value blocks the script");
+}, "a default policy that returns null blocks the script");
+
+promise_test(async () => {
+  window.ttThrew = false;
+  const script = document.createElement("script");
+  script.appendChild(document.createTextNode("window.ttThrew = true; /* throw */"));
+  // The policy's exception goes no further than prepare: appendChild returns.
+  document.body.appendChild(script);
+  assert_false(window.ttThrew, "the script did not run");
+}, "a default policy that throws blocks the script, and appendChild does not throw");
+
+promise_test(async () => {
+  calls.length = 0;
+  const script = document.createElement("script");
+  // script.text is a sink itself (Trusted Types 4.1.2.4): the policy runs at
+  // the setter, and its null is a TypeError there.
+  assert_throws_js(TypeError, () => { script.text = "/* reject */"; });
+  assert_array_equals(calls[0], ["TrustedScript", "HTMLScriptElement text", "/* reject */"]);
+  assert_throws_js(Error, () => { script.text = "/* throw */"; }, "the policy's own exception");
+  script.text = "window.ttSetterValue = 'BEFORE';";
+  assert_equals(script.text, "window.ttSetterValue = 'AFTER';", "the setter keeps the policy's value");
+}, "HTMLScriptElement.text runs the default policy at the setter");
+
+promise_test(async () => {
+  calls.length = 0;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  document.body.appendChild(svg);
+  const script = document.createElementNS("http://www.w3.org/2000/svg", "script");
+  script.textContent = "window.ttSvgValue = 'BEFORE';";
+  svg.appendChild(script);
+  assert_equals(window.ttSvgValue, "AFTER");
+  assert_equals(calls[0][1], "SVGScriptElement text");
+}, "an SVG script's sink is SVGScriptElement text");
+</script>

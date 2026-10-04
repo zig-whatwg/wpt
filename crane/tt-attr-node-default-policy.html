@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Trusted Types: setting an Attr node runs the default policy first, and reads the Attr again after it</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-element-attributes-set">
+<link rel=help href="https://dom.spec.whatwg.org/#set-an-existing-attribute-value">
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#get-trusted-type-compliant-attribute-value">
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Set an attribute" step 1 and "set an existing attribute value" step 3 get
+// the value through the default policy - script - BEFORE the steps that read
+// the attribute's element: the policy can move the Attr to another element or
+// detach it, and the steps after it see where it is now.
+let onPolicy = null;
+const calls = [];
+trustedTypes.createPolicy("default", {
+  createScript: (s, type, sink) => {
+    calls.push(sink);
+    const hook = onPolicy;
+    onPolicy = null;
+    if (hook) hook();
+    return s + "/*checked*/";
+  },
+});
+
+test(() => {
+  calls.length = 0;
+  const el = document.createElement("div");
+  const attr = document.createAttribute("onclick");
+  attr.value = "1";
+  assert_equals(el.setAttributeNode(attr), null);
+  assert_equals(el.getAttribute("onclick"), "1/*checked*/", "the attribute takes the policy's value");
+  assert_equals(attr.value, "1/*checked*/", "and so does the Attr");
+  assert_array_equals(calls, ["Element onclick"]);
+}, "setAttributeNode runs the default policy on an event handler attribute");
+
+test(() => {
+  const el1 = document.createElement("div");
+  const el2 = document.createElement("div");
+  const attr = document.createAttribute("onclick");
+  attr.value = "2";
+  // The policy attaches the Attr elsewhere (its own nested call runs the
+  // policy too, with no hook left).
+  onPolicy = () => el2.setAttributeNode(attr);
+  assert_throws_dom("InUseAttributeError", () => el1.setAttributeNode(attr),
+                    "the in-use check runs after the policy");
+  assert_false(el1.hasAttribute("onclick"));
+  assert_equals(el2.getAttributeNode("onclick"), attr);
+}, "setAttributeNode: a policy that moves the Attr to another element makes it in use");
+
+test(() => {
+  const el = document.createElement("div");
+  el.setAttribute("onclick", "3");
+  const attr = el.getAttributeNode("onclick");
+  onPolicy = () => el.removeAttributeNode(attr);
+  attr.value = "4";
+  assert_false(el.hasAttribute("onclick"), "the element no longer has it");
+  assert_equals(attr.ownerElement, null);
+  assert_equals(attr.value, "4/*checked*/", "the detached Attr keeps the policy's value");
+}, "Attr.value: a policy that detaches the Attr sets the Attr's own value");
+
+test(() => {
+  const el1 = document.createElement("div");
+  const el2 = document.createElement("div");
+  el1.setAttribute("onclick", "5");
+  const attr = el1.getAttributeNode("onclick");
+  onPolicy = () => { el1.removeAttributeNode(attr); el2.setAttributeNode(attr); };
+  attr.value = "6";
+  assert_false(el1.hasAttribute("onclick"));
+  assert_equals(attr.ownerElement, el2);
+  assert_equals(el2.getAttribute("onclick"), "6/*checked*/", "the value is changed where the Attr is now");
+}, "Attr.value: a policy that moves the Attr changes it on its new element");
+
+test(() => {
+  calls.length = 0;
+  const el = document.createElement("div");
+  el.setAttribute("title", "x");
+  el.getAttributeNode("title").value = "y";
+  assert_equals(el.title, "y");
+  assert_array_equals(calls, [], "no policy for an attribute that is no sink");
+}, "an attribute that is no sink takes its value as given");
+</script>

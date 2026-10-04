@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An element in another namespace named like an HTML element runs no HTML attribute change steps</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-element-attributes-change-ext">
+<link rel=help href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-iframe-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// An iframe's src and srcdoc attribute change steps belong to HTMLIFrameElement,
+// a script's to HTMLScriptElement, and so on: an element whose namespace is
+// not the HTML namespace is a plain Element whatever its local name, and its
+// attributes are only attributes. trusted-types/support/attributes.js sets
+// srcdoc on createElementNS("https://example.com/namespace", "iframe"), which
+// ran the iframe's steps on a plain Element and read its state as an
+// iframe's - a wild pointer, and a crash once memory was dirty enough.
+const otherNamespace = "https://example.com/namespace";
+const names = ["iframe", "script", "details", "link", "input", "style", "meta"];
+
+test(() => {
+  for (let round = 0; round < 50; round++) {
+    for (const name of names) {
+      const element = document.createElementNS(otherNamespace, name);
+      element.setAttribute("srcdoc", "<p>x</p>");
+      element.setAttribute("src", "/common/blank.html");
+      element.setAttribute("open", "");
+      element.setAttribute("href", "x.css");
+      element.setAttributeNS(null, "type", "text/javascript");
+      const attr = document.createAttribute("srcdoc");
+      attr.value = "y";
+      element.setAttributeNode(attr);
+      assert_equals(element.getAttribute("srcdoc"), "y");
+      assert_false(element instanceof HTMLElement, name + " in another namespace is no HTML element");
+    }
+  }
+}, "setting attributes on foreign elements named like HTML elements");
+
+test(() => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  for (const name of names) {
+    const element = document.createElementNS(otherNamespace, name);
+    element.setAttribute("src", "/common/blank.html");
+    container.appendChild(element);
+    element.setAttribute("srcdoc", "<p>connected</p>");
+    element.remove();
+  }
+  container.remove();
+}, "inserting, changing and removing foreign elements named like HTML elements");
+
+test(() => {
+  // A subtree holding foreign "iframe" elements, inserted and removed whole:
+  // the post-connection and removing steps visit every descendant, and only
+  // an HTMLIFrameElement may reach the iframe's own state.
+  for (let round = 0; round < 20; round++) {
+    const root = document.createElement("div");
+    const inner = document.createElementNS(otherNamespace, "section");
+    inner.appendChild(document.createElementNS(otherNamespace, "iframe"));
+    inner.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "iframe"));
+    inner.appendChild(document.createElementNS(otherNamespace, "IFRAME"));
+    root.appendChild(inner);
+    document.body.appendChild(root);
+    assert_equals(root.querySelectorAll("*").length, 4);
+    root.remove();
+    document.body.appendChild(inner.firstChild);
+    document.body.lastChild.remove();
+  }
+}, "inserting and removing subtrees holding foreign elements named iframe");
+
+async_test(t => {
+  // An HTML iframe still navigates from its srcdoc.
+  // (Inserted with no src or srcdoc, an iframe fires load for its initial
+  // about:blank at once; the srcdoc set afterwards navigates it again.)
+  const iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  iframe.onload = t.step_func_done(() => {
+    assert_equals(iframe.contentDocument.body.textContent, "html");
+    iframe.remove();
+  });
+  iframe.setAttribute("srcdoc", "<body>html</body>");
+}, "an HTML iframe's srcdoc still navigates it");
+</script>

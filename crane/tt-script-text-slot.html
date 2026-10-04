@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Trusted Types: a script's script text slot decides whether its child text content runs</title>
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#slots-with-trusted-values">
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#prepare-script-text">
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#setting-slot-values-from-parser">
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<svg id="svg"><script type="unknown">window.ttSvgRan = true;</script></svg>
+<script>
+// No default policy: a script whose child text content differs from its
+// script text - one the parser did not set, or that DOM APIs changed after -
+// does not run, and reports a require-trusted-types-for violation whose
+// sample is "HTMLScriptElement text|" and the start of the text. The parser
+// sets the slot at the end tag, so every parser-inserted script runs (this
+// one included).
+function violationsDuring(fn) {
+  const violations = [];
+  const listener = e => violations.push(e);
+  self.addEventListener("securitypolicyviolation", listener);
+  fn();
+  return new Promise(resolve => step_timeout(() => {
+    self.removeEventListener("securitypolicyviolation", listener);
+    resolve(violations);
+  }, 100));
+}
+
+promise_test(async () => {
+  window.ttRan = false;
+  const violations = await violationsDuring(() => {
+    const script = document.createElement("script");
+    script.appendChild(document.createTextNode("window.ttRan = true;"));
+    document.body.appendChild(script);
+  });
+  assert_false(window.ttRan, "the script did not run");
+  assert_equals(violations.length, 1, "one violation");
+  assert_equals(violations[0].effectiveDirective, "require-trusted-types-for");
+  assert_equals(violations[0].sample, "HTMLScriptElement text|window.ttRan = true;");
+  assert_equals(violations[0].blockedURI, "trusted-types-sink");
+}, "a script whose text a DOM API set does not run, and reports");
+
+promise_test(async () => {
+  window.ttRan2 = false;
+  const violations = await violationsDuring(() => {
+    const script = document.createElement("script");
+    document.body.appendChild(script);
+    // Its children change while connected: prepare runs again.
+    script.appendChild(document.createTextNode("window.ttRan2 = true;"));
+  });
+  assert_false(window.ttRan2);
+  assert_equals(violations.length, 1);
+  assert_equals(violations[0].sample, "HTMLScriptElement text|window.ttRan2 = true;");
+}, "a connected empty script given a Text child does not run");
+
+promise_test(async () => {
+  window.ttRan3 = false;
+  let thrown = null;
+  const violations = await violationsDuring(() => {
+    const script = document.createElement("script");
+    document.body.appendChild(script);
+    // HTMLScriptElement's own textContent is a Trusted Types sink
+    // (Trusted Types 4.1.2.3): a string is checked at the setter.
+    try { script.textContent = "window.ttRan3 = true;"; } catch (e) { thrown = e; }
+  });
+  assert_true(thrown instanceof TypeError, "the setter throws a TypeError");
+  assert_false(window.ttRan3);
+  assert_equals(violations.length, 1);
+  assert_equals(violations[0].sample, "HTMLScriptElement textContent|window.ttRan3 = true;");
+}, "HTMLScriptElement.textContent with a string throws and reports at the setter");
+
+promise_test(async () => {
+  // A script with neither text nor src prepares to nothing: no violation.
+  const violations = await violationsDuring(() => {
+    document.body.appendChild(document.createElement("script"));
+  });
+  assert_equals(violations.length, 0);
+}, "an empty script is no violation");
+
+promise_test(async () => {
+  window.ttSvgRan = false;
+  const svgScript = document.querySelector("#svg script");
+  // The parser set its slot: taken out, made runnable and put back, it runs.
+  svgScript.remove();
+  svgScript.removeAttribute("type");
+  const violations = await violationsDuring(() => document.getElementById("svg").appendChild(svgScript));
+  assert_true(window.ttSvgRan, "a parser-created SVG script's text is trusted");
+  assert_equals(violations.length, 0);
+
+  window.ttSvgRan2 = false;
+  const created = document.createElementNS("http://www.w3.org/2000/svg", "script");
+  created.appendChild(document.createTextNode("window.ttSvgRan2 = true;"));
+  const violations2 = await violationsDuring(() => document.getElementById("svg").appendChild(created));
+  assert_false(window.ttSvgRan2, "an SVG script given text by a DOM API does not run");
+  assert_equals(violations2.length, 1);
+  assert_equals(violations2[0].sample, "SVGScriptElement text|window.ttSvgRan2 = true;");
+}, "SVG scripts have the slot too");
+</script>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Trusted Types: the require-trusted-types-for pre-navigation check of a javascript: URL</title>
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#require-trusted-types-for-pre-navigation-check">
+<link rel=help href="https://w3c.github.io/webappsec-csp/#should-block-navigation-request">
+<link rel=help href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-to-a-javascript:-url">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A frame navigates itself to a javascript: URL under a policy that requires
+// Trusted Types for 'script'. Without a default policy the check fails: an
+// enforced policy blocks the navigation, a report-only one reports and lets
+// it run; a default policy's createScript value replaces the code instead.
+// The violation's sample is "Location href|" and the code. (The code ends in
+// undefined: a String result would replace the frame's document, and the
+// violation event with it.)
+function frameWithPolicy(header) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    iframe.onload = () => resolve(iframe);
+    iframe.src = "/common/blank.html?pipe=header(" + header + ",require-trusted-types-for 'script')";
+    document.body.appendChild(iframe);
+  });
+}
+
+function navigateFrameItself(iframe, code, setup = "") {
+  const win = iframe.contentWindow;
+  const violations = [];
+  win.document.addEventListener("securitypolicyviolation", e => violations.push(e));
+  // Run from a task of the frame's own, so the frame's document is the
+  // entry settings object's - the navigation's source document, whose
+  // policy container the request carries.
+  win.eval(setup + "setTimeout(() => { location.href = 'javascript:" + code + "'; }, 0);");
+  return new Promise(resolve => step_timeout(() => resolve(violations), 300));
+}
+
+promise_test(async () => {
+  const iframe = await frameWithPolicy("Content-Security-Policy");
+  window.ttJsUrlEnforced = "not run";
+  const violations = await navigateFrameItself(iframe, "parent.ttJsUrlEnforced = \"ran\"");
+  assert_equals(window.ttJsUrlEnforced, "not run", "an enforced policy blocks the navigation");
+  assert_equals(violations.length, 1);
+  assert_equals(violations[0].effectiveDirective, "require-trusted-types-for");
+  assert_equals(violations[0].disposition, "enforce");
+  assert_equals(violations[0].sample, "Location href|parent.ttJsUrlEnforced = \"ran\"");
+  iframe.remove();
+}, "enforced: blocked and reported");
+
+promise_test(async () => {
+  const iframe = await frameWithPolicy("Content-Security-Policy-Report-Only");
+  window.ttJsUrlReportOnly = "not run";
+  const violations = await navigateFrameItself(iframe, "void (parent.ttJsUrlReportOnly = \"ran\")");
+  assert_equals(window.ttJsUrlReportOnly, "ran", "a report-only policy does not block");
+  assert_equals(violations.length, 1);
+  assert_equals(violations[0].disposition, "report");
+  iframe.remove();
+}, "report-only: reported, and the original code runs");
+
+promise_test(async () => {
+  const iframe = await frameWithPolicy("Content-Security-Policy");
+  window.ttJsUrlRewritten = "not run";
+  const violations = await navigateFrameItself(iframe, "parent.ttJsUrlRewritten = \"original\"",
+    "trustedTypes.createPolicy('default', { createScript: (s, type, sink) => " +
+    "s.replace('original', type + ' ' + sink) });");
+  assert_equals(window.ttJsUrlRewritten, "TrustedScript Location href", "the default policy's value runs");
+  assert_equals(violations.length, 0);
+  iframe.remove();
+}, "a default policy rewrites the code");
+</script>

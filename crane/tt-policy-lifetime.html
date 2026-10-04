@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Trusted Types: a global's factory, its default policy and a policy's options survive collections</title>
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#integration-with-html">
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#trustedtypepolicyfactory-default-policy">
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#trustedtypepolicy-options">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A Window has one trusted type policy factory, and the factory keeps its
+// default policy; a policy keeps its options. Nothing in script need hold any
+// of them: `trustedTypes.createPolicy("default", {...})` is the idiom, and the
+// default policy runs later, from a sink. If the factory, the policy or a
+// callback were held only by a weak wrapper, a collection would lose it (and
+// the next sink would read freed memory).
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+async function collectTwice() {
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+}
+
+promise_test(async () => {
+  trustedTypes.ttExpando = "kept";
+  await collectTwice();
+  assert_equals(trustedTypes.ttExpando, "kept", "trustedTypes is the same object");
+  assert_equals(window.trustedTypes, self.trustedTypes);
+}, "a window's trustedTypes is one object for the window's life");
+
+promise_test(async () => {
+  // The callbacks close over state script drops.
+  (() => {
+    const suffix = { value: "!" };
+    trustedTypes.createPolicy("default", {
+      createHTML: (s, type, sink) => s + suffix.value + type + "|" + sink,
+      createScriptURL: s => s + "#default",
+    });
+  })();
+  await collectTwice();
+  const policy = trustedTypes.defaultPolicy;
+  assert_true(policy instanceof TrustedTypePolicy, "the default policy is kept");
+  assert_equals(policy.name, "default");
+  assert_equals(policy.createHTML("x", "a", "b").toString(), "x!a|b", "its createHTML callback is kept");
+  assert_equals(policy.createScriptURL("u").toString(), "u#default", "its createScriptURL callback is kept");
+  assert_throws_js(TypeError, () => policy.createScript("s"), "an option it was not given is still missing");
+}, "the factory keeps its default policy, and the policy its options");
+
+promise_test(async () => {
+  let policy = trustedTypes.createPolicy("self-referencing", {
+    createHTML: s => policy.name + ":" + s,
+  });
+  policy.ttExpando = "kept";
+  await collectTwice();
+  assert_equals(policy.ttExpando, "kept");
+  assert_equals(policy.createHTML("a").toString(), "self-referencing:a");
+  assert_true(trustedTypes.isHTML(policy.createHTML("b")));
+}, "a policy whose option closes over the policy keeps working");
+
+promise_test(async () => {
+  const html = trustedTypes.emptyHTML;
+  html.ttExpando = "kept";
+  await collectTwice();
+  assert_equals(trustedTypes.emptyHTML, html, "emptyHTML is one object");
+  assert_equals(trustedTypes.emptyHTML.ttExpando, "kept");
+  assert_equals(trustedTypes.emptyScript, trustedTypes.emptyScript, "emptyScript is one object");
+  assert_true(trustedTypes.isScript(trustedTypes.emptyScript));
+  assert_equals(trustedTypes.emptyScript.toString(), "");
+}, "emptyHTML and emptyScript are kept by the factory");
+
+promise_test(async () => {
+  const iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  const other = iframe.contentWindow.trustedTypes;
+  assert_not_equals(other, trustedTypes, "each global has its own factory");
+  const p = other.createPolicy("frame-policy", { createHTML: s => s, createScript: s => s });
+  const html = p.createHTML("<b>");
+  assert_true(trustedTypes.isHTML(html), "isHTML takes another realm's TrustedHTML");
+  assert_false(trustedTypes.isScript(html));
+  assert_true(trustedTypes.isScript(p.createScript("1")));
+  assert_equals(Object.getPrototypeOf(html), iframe.contentWindow.TrustedHTML.prototype,
+                "a policy makes its values in its own realm");
+  iframe.remove();
+}, "isHTML is a brand check across realms");
+</script>
