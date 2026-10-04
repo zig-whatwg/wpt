@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame's interface objects inherit from the frame's own interface objects</title>
+<!--
+  WebIDL 3.7.1: an interface object's [[Prototype]] is the interface object of
+  its inherited interface IN THE SAME REALM. A frame's realm builds an
+  interface object the first time its script (or its parent) reads it; the
+  child read first must still reach its parent's object, and reading the
+  parent afterwards must give that same object.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<iframe id="frame"></iframe>
+<script>
+test(() => {
+  const w = document.getElementById("frame").contentWindow;
+  // The child first: its parent is built for it.
+  const proto = Object.getPrototypeOf(w.IDBOpenDBRequest);
+  assert_equals(proto, w.IDBRequest, "IDBOpenDBRequest -> the frame's IDBRequest");
+  assert_equals(Object.getPrototypeOf(w.IDBRequest), w.EventTarget, "IDBRequest -> the frame's EventTarget");
+  assert_not_equals(w.EventTarget, EventTarget, "the frame's own EventTarget");
+  assert_equals(Object.getPrototypeOf(w.EventTarget), w.Function.prototype, "EventTarget -> the frame's %Function.prototype%");
+}, "a frame's interface objects chain to its own parents");
+
+test(() => {
+  const w = document.getElementById("frame").contentWindow;
+  // Static members are inherited through the chain: Node's constants on Text.
+  assert_equals(w.Text.ELEMENT_NODE, 1);
+  assert_equals(Object.getPrototypeOf(w.Text), w.CharacterData);
+  assert_equals(Object.getPrototypeOf(w.CharacterData), w.Node);
+}, "constants are reached through a frame's interface object chain");
+
+test(() => {
+  assert_equals(Object.getPrototypeOf(HTMLDivElement), HTMLElement, "HTMLDivElement");
+  assert_equals(Object.getPrototypeOf(HTMLElement), Element, "HTMLElement");
+  assert_equals(Object.getPrototypeOf(Element), Node, "Element");
+  assert_equals(Object.getPrototypeOf(Node), EventTarget, "Node");
+  assert_equals(Object.getPrototypeOf(Window), EventTarget, "Window");
+  assert_equals(Text.ELEMENT_NODE, 1, "Text.ELEMENT_NODE");
+}, "the page's element interface objects chain to EventTarget");
+</script>

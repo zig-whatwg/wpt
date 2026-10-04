@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A sequence the binding returns is built with CreateDataProperty</title>
+<!--
+  WebIDL 3.2.28, sequence<T> to an ECMAScript value: "Perform !
+  CreateDataPropertyOrThrow(A, P, E)" - a setter on Array.prototype never
+  runs, and the element is the array's own. The adapter's arrays were filled
+  with [[Set]] (IndexedDB/bindings-inject-keys-bypass, codex-indexeddb Q39).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  const target = document.getElementById("target");
+  let path;
+  target.addEventListener("x", e => { path = e.composedPath(); });
+  // Poisoned only around the call: testharness.js builds arrays too.
+  let calls = 0;
+  for (const i of [0, 1, 2, 3, 4]) {
+    Object.defineProperty(Array.prototype, i, { set(v) { calls++; }, configurable: true });
+  }
+  try {
+    target.dispatchEvent(new Event("x", { bubbles: true }));
+  } finally {
+    for (const i of [0, 1, 2, 3, 4]) delete Array.prototype[i];
+  }
+  assert_equals(calls, 0, "no Array.prototype setter ran");
+  assert_true(Object.prototype.hasOwnProperty.call(path, 0), "path[0] is the array's own");
+  assert_equals(path[0], target);
+}, "Event.composedPath()'s array");
+</script>

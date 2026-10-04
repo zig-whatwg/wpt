@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A window operation's function has its length and name</title>
+<!--
+  WebIDL 3.7.6, create an operation function: "length" is the shortest
+  overload's count of required arguments, "name" the identifier, and the
+  function is no constructor. The window's operations are its own properties
+  ([Global]), made apart from the prototype's - with length 0 and name "".
+  requestidlecallback/idlharness.window.js: "requestIdleCallback ... length".
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  for (const [name, length] of [["requestIdleCallback", 1], ["cancelIdleCallback", 1], ["setTimeout", 1],
+                                ["clearTimeout", 0], ["fetch", 1], ["queueMicrotask", 1], ["atob", 1],
+                                ["btoa", 1], ["postMessage", 1], ["getComputedStyle", 1], ["alert", 0]]) {
+    assert_equals(typeof window[name], "function", name);
+    assert_equals(window[name].length, length, name + ".length");
+    assert_equals(window[name].name, name, name + ".name");
+  }
+}, "length and name");
+
+test(() => {
+  for (const name of ["atob", "setTimeout", "queueMicrotask"]) {
+    const d = Object.getOwnPropertyDescriptor(window, name);
+    assert_not_equals(d, undefined, name);
+    assert_true(d.writable, name + " writable");
+    assert_true(d.enumerable, name + " enumerable");
+    assert_true(d.configurable, name + " configurable");
+    assert_false(Object.prototype.hasOwnProperty.call(d.value, "prototype"), name + " has no prototype");
+    assert_throws_js(TypeError, () => new d.value(), "new " + name);
+  }
+}, "an operation is a writable, enumerable, configurable function that is no constructor");
+</script>

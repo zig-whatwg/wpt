@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Null for an optional argument is converted, not "not passed"</title>
+<!--
+  WebIDL (converting arguments, overload resolution step 4): only undefined
+  is a missing optional argument. Null is converted to the argument's type:
+  0 for a number, the defaults for a dictionary, "null" for a string, a
+  TypeError for a sequence or a non-nullable interface. The adapter read null
+  as "not passed" for every non-string type (codex-indexeddb Q39:
+  idbfactory_open's null version).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  // Blob.slice(optional [Clamp] long long start, optional [Clamp] long long end, ...)
+  assert_equals(new Blob(["abcd"]).slice(0, null).size, 0, "end: null is 0");
+  assert_equals(new Blob(["abcd"]).slice(0, undefined).size, 4, "end: undefined is not passed");
+}, "a number: null is 0");
+
+test(() => {
+  // optional (sequence<sequence<USVString>> or record<USVString, USVString> or USVString) init = ""
+  assert_equals(new URLSearchParams(null).toString(), "null=");
+  assert_equals(new URLSearchParams(undefined).toString(), "");
+}, "a union with a string arm: null is \"null\"");
+
+test(() => {
+  assert_false(new Event("x", null).bubbles);
+  assert_equals(new CustomEvent("x", null).detail, null);
+  assert_false(new TextDecoder("utf-8", null).fatal);
+}, "a dictionary: null is its defaults");
+
+test(() => {
+  // Blob(optional sequence<BlobPart> blobParts, optional BlobPropertyBag options = {})
+  assert_throws_js(TypeError, () => new Blob(null));
+  assert_equals(new Blob(undefined).size, 0);
+}, "a sequence: null is a TypeError");
+
+test(() => {
+  const div = document.createElement("div");
+  div.appendChild(document.createElement("span"));
+  // cloneNode(optional boolean subtree = false): null is false.
+  assert_equals(div.cloneNode(null).childNodes.length, 0);
+}, "a boolean: null is false");
+</script>

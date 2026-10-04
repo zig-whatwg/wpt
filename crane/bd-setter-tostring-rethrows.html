@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An attribute setter rethrows what its value's toString throws</title>
+<!--
+  WebIDL 3.2.10 (DOMString) and 3.2.12 (USVString): "Let x be ? ToString(V)" -
+  an abrupt completion propagates as it is. The DOMString attribute setter's
+  conversion turned it into a TypeError (codex-indexeddb Q39), where an
+  operation argument's conversion rethrows it.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const sentinel = { what: "thrown by toString" };
+const throwing = { toString() { throw sentinel; } };
+
+test(() => {
+  const el = document.createElement("div");
+  assert_throws_exactly(sentinel, () => { el.id = throwing; });
+  assert_equals(el.id, "", "the setter's steps did not run");
+}, "DOMString attribute (Element.id)");
+
+test(() => {
+  const url = new URL("https://example.test/");
+  assert_throws_exactly(sentinel, () => { url.hash = throwing; });
+  assert_equals(url.hash, "");
+}, "USVString attribute (URL.hash)");
+
+test(() => {
+  const el = document.createElement("div");
+  assert_throws_js(TypeError, () => { el.id = Symbol("s"); });
+}, "a Symbol is a TypeError");
+
+test(() => {
+  const el = document.createElement("div");
+  assert_throws_exactly(sentinel, () => { el.setAttribute("x", throwing); });
+}, "an operation argument rethrows too");
+</script>
