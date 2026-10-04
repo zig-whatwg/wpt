@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Serializable] platform objects survive structuredClone() and history state</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/structured-data.html#serializable-objects">
+<link rel="help" href="https://w3c.github.io/FileAPI/#blob-section">
+<link rel="help" href="https://drafts.fxtf.org/geometry/#structured-serialization">
+<link rel="help" href="https://webidl.spec.whatwg.org/#idl-DOMException">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Each case clones in the same realm: the copy is a new object of the same
+// interface, with the same data.
+
+promise_test(async () => {
+  const blob = new Blob(["hello", new Uint8Array([0, 255])], { type: "text/x-Crane" });
+  const copy = structuredClone(blob);
+  assert_not_equals(copy, blob);
+  assert_equals(Object.getPrototypeOf(copy), Blob.prototype);
+  assert_equals(copy.size, 7);
+  assert_equals(copy.type, "text/x-crane");
+  assert_array_equals(Array.from(new Uint8Array(await copy.arrayBuffer())), [104, 101, 108, 108, 111, 0, 255]);
+}, "a Blob clones with its bytes and type");
+
+promise_test(async () => {
+  const empty = structuredClone(new Blob());
+  assert_true(empty instanceof Blob);
+  assert_equals(empty.size, 0);
+  assert_equals(empty.type, "");
+}, "an empty Blob clones");
+
+promise_test(async () => {
+  const file = new File(["foo"], "bar.txt", { type: "text/x-bar", lastModified: 42 });
+  const copy = structuredClone(file);
+  assert_equals(Object.getPrototypeOf(copy), File.prototype);
+  assert_equals(copy.name, "bar.txt");
+  assert_equals(copy.lastModified, 42);
+  assert_equals(copy.type, "text/x-bar");
+  assert_equals(copy.size, 3);
+  assert_equals(await copy.text(), "foo");
+}, "a File clones with its name, lastModified, type and bytes");
+
+test(() => {
+  class FileSubclass extends File {}
+  const copy = structuredClone(new FileSubclass(["x"], "sub"));
+  assert_equals(Object.getPrototypeOf(copy), File.prototype);
+  assert_equals(copy.name, "sub");
+}, "an instance of a script subclass clones as its primary interface");
+
+test(() => {
+  const e = new DOMException("the message", "NotFoundError");
+  const copy = structuredClone(e);
+  assert_not_equals(copy, e);
+  assert_equals(Object.getPrototypeOf(copy), DOMException.prototype);
+  assert_equals(copy.name, "NotFoundError");
+  assert_equals(copy.message, "the message");
+  assert_equals(copy.code, 8);
+}, "a DOMException clones with its name, message and code");
+
+test(() => {
+  const copy = structuredClone(new DOMException());
+  assert_equals(copy.name, "Error");
+  assert_equals(copy.message, "");
+  assert_equals(copy.code, 0);
+}, "a default DOMException clones");
+
+test(() => {
+  const e = new QuotaExceededError("full", { quota: 10, requested: 20 });
+  const copy = structuredClone(e);
+  assert_equals(Object.getPrototypeOf(copy), QuotaExceededError.prototype);
+  assert_equals(copy.name, "QuotaExceededError");
+  assert_equals(copy.message, "full");
+  assert_equals(copy.quota, 10);
+  assert_equals(copy.requested, 20);
+  const none = structuredClone(new QuotaExceededError());
+  assert_equals(none.quota, null);
+  assert_equals(none.requested, null);
+}, "a QuotaExceededError clones with its quota and requested");
+
+for (const [name, Point] of [["DOMPointReadOnly", DOMPointReadOnly], ["DOMPoint", DOMPoint]]) {
+  test(() => {
+    const copy = structuredClone(new Point(1, -2, 3.5, -0));
+    assert_equals(Object.getPrototypeOf(copy), Point.prototype);
+    assert_equals(copy.x, 1);
+    assert_equals(copy.y, -2);
+    assert_equals(copy.z, 3.5);
+    assert_equals(copy.w, -0);
+    const nan = structuredClone(new Point(NaN, Infinity));
+    assert_equals(nan.x, NaN);
+    assert_equals(nan.y, Infinity);
+  }, `a ${name} clones with x, y, z and w`);
+}
+
+for (const [name, Rect] of [["DOMRectReadOnly", DOMRectReadOnly], ["DOMRect", DOMRect]]) {
+  test(() => {
+    const copy = structuredClone(new Rect(1, 2, -3, 4.25));
+    assert_equals(Object.getPrototypeOf(copy), Rect.prototype);
+    assert_equals(copy.x, 1);
+    assert_equals(copy.y, 2);
+    assert_equals(copy.width, -3);
+    assert_equals(copy.height, 4.25);
+    assert_equals(copy.left, -2);
+  }, `a ${name} clones with x, y, width and height`);
+}
+
+test(() => {
+  const quad = new DOMQuad({ x: 1, y: 2 }, { x: 3, y: 4, z: 5 }, { x: 6, y: 7, w: 8 }, { x: 9, y: 10 });
+  const copy = structuredClone(quad);
+  assert_equals(Object.getPrototypeOf(copy), DOMQuad.prototype);
+  assert_not_equals(copy.p1, quad.p1);
+  assert_equals(Object.getPrototypeOf(copy.p1), DOMPoint.prototype);
+  assert_array_equals([copy.p1.x, copy.p1.y, copy.p2.z, copy.p3.w, copy.p4.x, copy.p4.y], [1, 2, 5, 8, 9, 10]);
+}, "a DOMQuad clones with its four points");
+
+test(() => {
+  const r = new DOMRect(1, 2, 3, 4);
+  assert_equals(r.left, 1);
+  assert_equals(r.top, 2);
+  r.width = -5;
+  assert_equals(r.left, -4, "left follows a DOMRect's setters");
+  assert_equals(r.right, 1);
+}, "a DOMRect's edges are its read-only parent's, computed from what its setters wrote");
+
+for (const [name, Matrix] of [["DOMMatrixReadOnly", DOMMatrixReadOnly], ["DOMMatrix", DOMMatrix]]) {
+  test(() => {
+    const copy = structuredClone(new Matrix([1, 2, 3, 4, 5, 6]));
+    assert_equals(Object.getPrototypeOf(copy), Matrix.prototype);
+    assert_true(copy.is2D);
+    assert_array_equals([copy.a, copy.b, copy.c, copy.d, copy.e, copy.f], [1, 2, 3, 4, 5, 6]);
+  }, `a 2D ${name} clones`);
+
+  test(() => {
+    const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    const copy = structuredClone(new Matrix(values));
+    assert_false(copy.is2D);
+    assert_array_equals(Array.from(copy.toFloat64Array()), values);
+  }, `a 3D ${name} clones`);
+}
+
+test(() => {
+  const image = new ImageData(2, 1);
+  image.data.set([1, 2, 3, 4, 5, 6, 7, 8]);
+  const copy = structuredClone(image);
+  assert_equals(Object.getPrototypeOf(copy), ImageData.prototype);
+  assert_equals(copy.width, 2);
+  assert_equals(copy.height, 1);
+  assert_equals(copy.colorSpace, "srgb");
+  assert_not_equals(copy.data, image.data);
+  assert_true(copy.data instanceof Uint8ClampedArray);
+  assert_array_equals(Array.from(copy.data), [1, 2, 3, 4, 5, 6, 7, 8]);
+}, "an ImageData clones with its data, width, height and colorSpace");
+
+test(() => {
+  const image = new ImageData(1, 1);
+  const [i, d] = structuredClone([image, image.data]);
+  assert_equals(d, i.data, "the data array sub-serialized by its ImageData and referenced again is one object");
+}, "an ImageData's data shares the clone's memory");
+
+test(() => {
+  assert_throws_dom("DataCloneError", () => structuredClone(new Response()));
+  assert_throws_dom("DataCloneError", () => structuredClone(document.body));
+  assert_throws_dom("DataCloneError", () => structuredClone({ inner: new AbortController() }));
+}, "a platform object that is not [Serializable] throws DataCloneError");
+
+test(() => {
+  const blob = new Blob(["a"]);
+  const BlobInterface = globalThis.Blob;
+  delete globalThis.Blob;
+  try {
+    assert_true(structuredClone(blob) instanceof BlobInterface);
+  } finally {
+    globalThis.Blob = BlobInterface;
+  }
+}, "an object whose interface is deleted from the global still deserializes");
+
+promise_test(async () => {
+  const state = {
+    point: new DOMPoint(1, 2),
+    blob: new Blob(["state"], { type: "text/plain" }),
+    error: new DOMException("m", "AbortError"),
+  };
+  history.pushState(state, "");
+  const copy = history.state;
+  assert_true(copy.point instanceof DOMPoint);
+  assert_equals(copy.point.y, 2);
+  assert_true(copy.blob instanceof Blob);
+  assert_equals(await copy.blob.text(), "state");
+  assert_equals(copy.error.name, "AbortError");
+}, "history state (StructuredSerializeForStorage) keeps [Serializable] objects");
+</script>

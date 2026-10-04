@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>CryptoKey is [Serializable]: structuredClone, a worker and IndexedDB keep a working key</title>
+<link rel="help" href="https://w3c.github.io/webcrypto/#cryptokey-interface-clone">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+
+async function hmacKey(extractable = true) {
+  return crypto.subtle.generateKey({ name: "HMAC", hash: "SHA-256", length: 256 }, extractable, ["sign", "verify"]);
+}
+
+function assertSameKey(copy, key) {
+  assert_true(copy instanceof CryptoKey);
+  assert_not_equals(copy, key);
+  assert_equals(copy.type, key.type);
+  assert_equals(copy.extractable, key.extractable);
+  assert_equals(copy.algorithm.name, key.algorithm.name);
+  assert_equals(copy.algorithm.hash.name, key.algorithm.hash.name);
+  assert_equals(copy.algorithm.length, key.algorithm.length);
+  assert_array_equals(copy.usages, key.usages);
+}
+
+async function assertSignsAlike(copy, key) {
+  // The same key material, as an extractable key exports it (the way WPT's
+  // WebCryptoAPI/serialization compares).
+  const a = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  const b = new Uint8Array(await crypto.subtle.exportKey("raw", copy));
+  assert_array_equals(Array.from(b), Array.from(a), "the copy holds the same key material");
+}
+
+promise_test(async () => {
+  const key = await hmacKey();
+  const copy = structuredClone(key);
+  assertSameKey(copy, key);
+  await assertSignsAlike(copy, key);
+}, "structuredClone keeps the key's slots and material");
+
+promise_test(async t => {
+  const key = await hmacKey(false);
+  const copy = structuredClone(key);
+  assertSameKey(copy, key);
+  assert_false(copy.extractable);
+  // [[extractable]] is kept: the copy refuses to export its material.
+  await promise_rejects_dom(t, "InvalidAccessError", crypto.subtle.exportKey("raw", copy));
+}, "a non-extractable key clones and stays non-extractable");
+
+promise_test(async () => {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const [publicKey, privateKey] = structuredClone([pair.publicKey, pair.privateKey]);
+  assert_equals(publicKey.type, "public");
+  assert_equals(privateKey.type, "private");
+  assert_equals(publicKey.algorithm.namedCurve, "P-256");
+  const spki = new Uint8Array(await crypto.subtle.exportKey("spki", pair.publicKey));
+  assert_array_equals(Array.from(new Uint8Array(await crypto.subtle.exportKey("spki", publicKey))), Array.from(spki));
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+  assert_array_equals(Array.from(new Uint8Array(await crypto.subtle.exportKey("pkcs8", privateKey))), Array.from(pkcs8));
+}, "an ECDSA key pair clones with its curve and material");
+
+promise_test(async () => {
+  const key = await hmacKey();
+  const copy = await new Promise((resolve, reject) => {
+    const w = new Worker("resources/eb-echo-worker.js");
+    w.onmessage = e => { w.terminate(); resolve(e.data.data); };
+    w.onmessageerror = () => { w.terminate(); reject(new Error("messageerror")); };
+    w.postMessage(key);
+  });
+  assertSameKey(copy, key);
+  await assertSignsAlike(copy, key);
+}, "a key crosses to a dedicated worker and back");
+
+promise_test(async t => {
+  const key = await hmacKey();
+  const db = await createDatabase(t, db => { db.createObjectStore("keys"); });
+  t.add_cleanup(() => db.close());
+  const put = db.transaction("keys", "readwrite");
+  put.objectStore("keys").put(key, 1);
+  await promiseForTransaction(t, put);
+  const copy = await promiseForRequest(t, db.transaction("keys").objectStore("keys").get(1));
+  assertSameKey(copy, key);
+  await assertSignsAlike(copy, key);
+}, "IndexedDB stores a key (StructuredSerializeForStorage)");
+</script>

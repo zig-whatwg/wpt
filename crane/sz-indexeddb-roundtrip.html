@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Serializable] platform objects are stored by IndexedDB (StructuredSerializeForStorage)</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeforstorage">
+<link rel="help" href="https://w3c.github.io/IndexedDB/#dom-idbobjectstore-put">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Each value is put in one transaction and read back in another, so the copy
+// comes from the stored record, not from the value put. Plain on* handlers:
+// nothing here depends on the IndexedDB harness helpers.
+let counter = 0;
+function request(r) {
+  return new Promise((resolve, reject) => {
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+function done(transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error || new Error("aborted"));
+  });
+}
+async function openStore(t) {
+  const name = "sz-idb-" + (++counter) + "-" + Math.random();
+  const open = indexedDB.open(name, 1);
+  open.onupgradeneeded = () => open.result.createObjectStore("records");
+  const db = await request(open);
+  t.add_cleanup(() => { db.close(); indexedDB.deleteDatabase(name); });
+  return db;
+}
+async function storeAndRead(t, value) {
+  const db = await openStore(t);
+  const put = db.transaction("records", "readwrite");
+  put.objectStore("records").put(value, 1);
+  await done(put);
+  return request(db.transaction("records").objectStore("records").get(1));
+}
+
+promise_test(async t => {
+  const copy = await storeAndRead(t, { n: 1, s: "plain" });
+  assert_equals(copy.n, 1);
+  assert_equals(copy.s, "plain");
+}, "a plain object (the control: IndexedDB's own put and get)");
+
+promise_test(async t => {
+  const copy = await storeAndRead(t, new Blob(["stored"], { type: "text/x-stored" }));
+  assert_true(copy instanceof Blob);
+  assert_equals(copy.type, "text/x-stored");
+  assert_equals(await copy.text(), "stored");
+}, "a Blob");
+
+promise_test(async t => {
+  const copy = await storeAndRead(t, new File(["f"], "stored.txt", { lastModified: 7 }));
+  assert_true(copy instanceof File);
+  assert_equals(copy.name, "stored.txt");
+  assert_equals(copy.lastModified, 7);
+  assert_equals(await copy.text(), "f");
+}, "a File");
+
+promise_test(async t => {
+  const image = new ImageData(1, 1);
+  image.data.set([1, 2, 3, 4]);
+  const copy = await storeAndRead(t, {
+    error: new DOMException("kept", "InvalidStateError"),
+    point: new DOMPoint(1, 2, 3, 4),
+    rect: new DOMRectReadOnly(1, 2, 3, 4),
+    quad: new DOMQuad({ x: 1 }, { x: 2 }, { x: 3 }, { x: 4 }),
+    matrix: new DOMMatrix([1, 2, 3, 4, 5, 6]),
+    image,
+  });
+  assert_equals(copy.error.name, "InvalidStateError");
+  assert_equals(copy.error.message, "kept");
+  assert_true(copy.point instanceof DOMPoint);
+  assert_equals(copy.point.z, 3);
+  assert_equals(Object.getPrototypeOf(copy.rect), DOMRectReadOnly.prototype);
+  assert_equals(copy.quad.p3.x, 3);
+  assert_equals(copy.matrix.e, 5);
+  assert_array_equals(Array.from(copy.image.data), [1, 2, 3, 4]);
+}, "DOMException, geometry and ImageData");
+
+promise_test(async t => {
+  const db = await openStore(t);
+  const tx = db.transaction("records", "readwrite");
+  assert_throws_dom("DataCloneError", () => tx.objectStore("records").put(new Response(), 1));
+  tx.abort();
+}, "a platform object that is not [Serializable] throws DataCloneError at put");
+</script>

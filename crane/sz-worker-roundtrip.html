@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>[Serializable] platform objects cross to a dedicated worker and back</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/structured-data.html#serializable-objects">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#dom-worker-postmessage">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The worker echoes `data` back (resources/eb-echo-worker.js): each value is
+// serialized here, deserialized in the worker's realm on its own thread,
+// serialized there and deserialized here again.
+function roundTrip(value) {
+  return new Promise((resolve, reject) => {
+    const w = new Worker("resources/eb-echo-worker.js");
+    w.onmessage = e => { w.terminate(); resolve(e.data.data); };
+    w.onerror = e => { w.terminate(); reject(new Error("worker error: " + e.message)); };
+    w.onmessageerror = () => { w.terminate(); reject(new Error("messageerror")); };
+    w.postMessage(value);
+  });
+}
+
+promise_test(async () => {
+  const blob = new Blob(["through a worker"], { type: "text/plain" });
+  const copy = await roundTrip(blob);
+  assert_true(copy instanceof Blob);
+  assert_equals(copy.type, "text/plain");
+  assert_equals(await copy.text(), "through a worker");
+}, "a Blob");
+
+promise_test(async () => {
+  const copy = await roundTrip(new File(["abc"], "name.txt", { type: "text/x-a", lastModified: 1234 }));
+  assert_true(copy instanceof File);
+  assert_equals(copy.name, "name.txt");
+  assert_equals(copy.lastModified, 1234);
+  assert_equals(copy.type, "text/x-a");
+  assert_equals(await copy.text(), "abc");
+}, "a File");
+
+promise_test(async () => {
+  const copy = await roundTrip(new DOMException("worker message", "DataCloneError"));
+  assert_true(copy instanceof DOMException);
+  assert_equals(copy.name, "DataCloneError");
+  assert_equals(copy.message, "worker message");
+  assert_equals(copy.code, 25);
+}, "a DOMException");
+
+promise_test(async () => {
+  const copy = await roundTrip({
+    point: new DOMPoint(1, 2, 3, 4),
+    pointReadOnly: new DOMPointReadOnly(5),
+    rect: new DOMRect(1, 2, 3, 4),
+    rectReadOnly: new DOMRectReadOnly(0, 0, 9, 9),
+    quad: new DOMQuad({ x: 1 }, { x: 2 }, { x: 3 }, { x: 4 }),
+    matrix: new DOMMatrix([1, 2, 3, 4, 5, 6]),
+    matrix3d: new DOMMatrixReadOnly([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
+  });
+  assert_true(copy.point instanceof DOMPoint);
+  assert_equals(copy.point.w, 4);
+  assert_equals(Object.getPrototypeOf(copy.pointReadOnly), DOMPointReadOnly.prototype);
+  assert_equals(copy.pointReadOnly.x, 5);
+  assert_true(copy.rect instanceof DOMRect);
+  assert_equals(copy.rect.height, 4);
+  assert_equals(Object.getPrototypeOf(copy.rectReadOnly), DOMRectReadOnly.prototype);
+  assert_equals(copy.rectReadOnly.width, 9);
+  assert_true(copy.quad instanceof DOMQuad);
+  assert_equals(copy.quad.p4.x, 4);
+  assert_true(copy.matrix instanceof DOMMatrix);
+  assert_equals(copy.matrix.f, 6);
+  assert_equals(Object.getPrototypeOf(copy.matrix3d), DOMMatrixReadOnly.prototype);
+  assert_false(copy.matrix3d.is2D);
+  assert_equals(copy.matrix3d.m44, 16);
+}, "the geometry interfaces");
+
+promise_test(async () => {
+  const image = new ImageData(1, 1);
+  image.data.set([9, 8, 7, 6]);
+  const copy = await roundTrip(image);
+  assert_true(copy instanceof ImageData);
+  assert_equals(copy.width, 1);
+  assert_array_equals(Array.from(copy.data), [9, 8, 7, 6]);
+}, "an ImageData");
+
+promise_test(async t => {
+  const w = new Worker("resources/eb-echo-worker.js");
+  t.add_cleanup(() => w.terminate());
+  assert_throws_dom("DataCloneError", () => w.postMessage(new Response()));
+  assert_throws_dom("DataCloneError", () => w.postMessage([document]));
+}, "a platform object that is not [Serializable] throws DataCloneError at postMessage");
+</script>
