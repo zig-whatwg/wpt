@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The frames of a document a navigation replaced leave its navigable, whatever the collector does</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#child-navigable">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-length">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#definitely-close-a-top-level-traversable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A navigable's child navigables are the content navigables of the
+// navigable containers in its ACTIVE document ("document-tree child
+// navigables"): window.length and window[i] follow the document the window
+// shows. When a navigation replaces a document that held iframes, their
+// navigables stop being the navigable's children - Blink detaches them in
+// FrameLoader::DetachDocument (LocalFrame::DetachChildren), after the old
+// document's unload and before the new document commits.
+//
+// Crane kept them on the navigable's child list until the replaced
+// document's iframe elements were collected, which freed them there: the
+// next walk of the list - window.close()'s "definitely close", a history
+// traversal, window[0] - read a freed browsing context (SIGSEGV at
+// 0xaaaa... in BrowsingContext.collectDescendants, in a sweep of
+// html/browsers/browsing-the-web/navigating-across-documents/).
+
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+async function collectTwice() {
+  await collect();
+  await new Promise(r => step_timeout(r, 0));
+  await collect();
+}
+function frameLoad(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+// A frame whose document holds one iframe, then navigated to a document
+// with none. Nothing in this page keeps the replaced document.
+async function navigatedFrame(t) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  frame.srcdoc = "<iframe></iframe>";
+  const first = frameLoad(frame);
+  document.body.append(frame);
+  await first;
+  assert_equals(frame.contentWindow.length, 1, "the srcdoc document's iframe");
+  const second = frameLoad(frame);
+  frame.contentWindow.location.href = "/common/blank.html";
+  await second;
+  return frame;
+}
+
+promise_test(async t => {
+  const frame = await navigatedFrame(t);
+  assert_equals(frame.contentWindow.length, 0, "length");
+  assert_equals(frame.contentWindow[0], undefined, "[0]");
+}, "a navigation leaves the navigable none of the replaced document's frames");
+
+promise_test(async t => {
+  const frame = await navigatedFrame(t);
+  await collectTwice();
+  assert_equals(frame.contentWindow.length, 0, "length");
+  assert_equals(frame.contentWindow[0], undefined, "[0]");
+}, "nor after the replaced document's iframe element was collected");
+
+// The sweep's path: a popup whose replaced document held an iframe, closed
+// after a collection - "definitely close" walks the popup's navigables.
+promise_test(async t => {
+  const w = window.open("about:blank", "_blank");
+  t.add_cleanup(() => w.close());
+  w.document.body.append(w.document.createElement("iframe"));
+  assert_equals(w.length, 1, "the initial document's iframe");
+  const loaded = new Promise(resolve => w.addEventListener("load", resolve, { once: true }));
+  w.location.href = "/common/blank.html";
+  await loaded;
+  await collectTwice();
+  w.close();
+  await new Promise(r => step_timeout(r, 100));
+  assert_true(w.closed, "closed");
+  assert_equals(w.length, 0, "length");
+}, "closing a popup after its replaced document's iframe was collected");
+</script>

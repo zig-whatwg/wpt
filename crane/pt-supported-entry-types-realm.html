@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>PerformanceObserver.supportedEntryTypes is one frozen array per global</title>
+<link rel="help" href="https://w3c.github.io/performance-timeline/#supportedentrytypes-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// [SameObject] static readonly attribute FrozenArray<DOMString>
+// supportedEntryTypes: the environment settings object's global's frozen
+// array of supported entry types, made once per global.
+test(() => {
+  const types = PerformanceObserver.supportedEntryTypes;
+  assert_true(Array.isArray(types), "an Array");
+  assert_true(Object.isFrozen(types), "frozen");
+  assert_equals(PerformanceObserver.supportedEntryTypes, types, "the same object on every read");
+  assert_true(types.includes("mark") && types.includes("measure"), "User Timing's types are listed");
+  assert_equals(Object.getPrototypeOf(types), Array.prototype, "an Array of this realm");
+}, "supportedEntryTypes is one frozen array of this realm");
+
+test(() => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const W = frame.contentWindow;
+  const theirs = W.PerformanceObserver.supportedEntryTypes;
+  assert_not_equals(theirs, PerformanceObserver.supportedEntryTypes, "each global has its own");
+  assert_equals(Object.getPrototypeOf(theirs), W.Array.prototype, "made in the frame's realm");
+  assert_equals(W.PerformanceObserver.supportedEntryTypes, theirs, "kept by the frame's global");
+  // The getter called across realms answers for the global of the realm the
+  // getter belongs to - its environment settings object's.
+  const getter = Object.getOwnPropertyDescriptor(W.PerformanceObserver, "supportedEntryTypes").get;
+  assert_equals(getter.call(PerformanceObserver), theirs, "the getter's own realm decides");
+  assert_array_equals(theirs, PerformanceObserver.supportedEntryTypes, "with the same types");
+  frame.remove();
+}, "each global keeps its own supportedEntryTypes array");
+</script>

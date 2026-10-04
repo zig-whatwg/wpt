@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The PerformanceObserver task: once per batch, after the current task, never for a removed frame</title>
+<link rel="help" href="https://w3c.github.io/performance-timeline/#queue-the-performanceobserver-task">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async_test(t => {
+  const seen = [];
+  let calls = 0;
+  const observer = new PerformanceObserver(t.step_func((list, obs, options) => {
+    calls++;
+    assert_equals(obs, observer, "the observer is the second argument");
+    assert_true(list instanceof PerformanceObserverEntryList, "the first is an entry list");
+    assert_equals(typeof options, "object", "the third is the callback options");
+    assert_equals(options.droppedEntriesCount, 0, "requires dropped entries: the first call says how many");
+    // The other tests in this file mark in the same task: keep this test's.
+    for (const e of list.getEntries()) if (e.name.startsWith("batch-")) seen.push(e.name);
+    assert_array_equals(seen, ["batch-a", "batch-b", "batch-c"], "every entry queued in the task, in order");
+    assert_equals(calls, 1, "one callback for the batch");
+    observer.disconnect();
+    t.done();
+  }));
+  observer.observe({entryTypes: ["mark"]});
+  performance.mark("batch-a");
+  performance.mark("batch-b");
+  performance.mark("batch-c");
+  assert_equals(calls, 0, "never synchronously");
+}, "entries queued in one task reach the observer in one callback, after it");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const W = frame.contentWindow;
+  let called = false;
+  const observer = new W.PerformanceObserver(() => { called = true; });
+  observer.observe({type: "mark"});
+  W.performance.mark("in-a-frame-about-to-go");
+  // The task is queued; the frame goes before it runs.
+  frame.remove();
+  t.step_timeout(t.step_func_done(() => {
+    assert_false(called, "a removed frame's observer task is dropped, not run");
+  }), 100);
+}, "a removed frame's observer task does not run");
+
+test(() => {
+  const observer = new PerformanceObserver(() => {});
+  observer.observe({type: "mark"});
+  performance.mark("taken");
+  const records = observer.takeRecords();
+  assert_true(Array.isArray(records), "an Array");
+  assert_equals(records.length, 1);
+  assert_equals(records[0].name, "taken");
+  assert_equals(observer.takeRecords().length, 0, "the buffer was emptied");
+  observer.disconnect();
+}, "takeRecords returns the observer buffer and empties it");
+
+test(() => {
+  performance.clearMarks();
+  const m = performance.mark("same", {detail: {x: 1}});
+  assert_equals(performance.getEntriesByName("same")[0], m, "the buffer holds the object mark() returned");
+  assert_equals(m.detail, m.detail, "its detail is one object");
+  assert_equals(m.entryType, "mark");
+  assert_equals(m.duration, 0);
+  assert_true(m.id > 0, "queued entries get an id");
+  performance.clearMarks("same");
+  assert_equals(performance.getEntriesByName("same").length, 0, "clearMarks(name) removes it");
+}, "a mark is queued into the buffer as the object mark() returns");
+</script>

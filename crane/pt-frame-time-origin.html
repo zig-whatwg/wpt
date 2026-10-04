@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame's performance.timeOrigin is its window's creation, however late it is first read</title>
+<link rel="help" href="https://w3c.github.io/hr-time/#dfn-get-time-origin-timestamp">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#set-up-a-window-environment-settings-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HR-Time: Performance.timeOrigin is the time origin of the global's
+// environment settings object - for a Window, fixed when the window is made
+// (its document's navigation start). An engine that makes the Performance
+// object on first use must not take the time origin from that moment.
+// A frame no navigation of its own made (its initial about:blank document)
+// keeps its window's creation as the time origin.
+promise_test(async t => {
+  const before = performance.timeOrigin + performance.now();
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const after = performance.timeOrigin + performance.now();
+  t.add_cleanup(() => frame.remove());
+  // Let time pass before the frame's performance is touched at all.
+  await new Promise(resolve => t.step_timeout(resolve, 300));
+  const childOrigin = frame.contentWindow.performance.timeOrigin;
+  // Coarsening allows a little slack either way.
+  assert_less_than_equal(childOrigin, after + 1, "the frame's time origin is no later than its creation");
+  assert_greater_than_equal(childOrigin, before - 1, "and no earlier than the frame was asked for");
+  assert_greater_than_equal(frame.contentWindow.performance.now(), 250, "its now() counts from that origin");
+}, "a frame's performance first read late keeps the frame's creation as its time origin");
+
+// A frame a navigation made: its time origin is the navigation's start time
+// (HTML "create and initialize a Document object": the load timing info's
+// navigation start time) - after the frame was asked for, no later than its
+// load - and its navigation entry's times count from it.
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  const before = performance.timeOrigin + performance.now();
+  frame.src = "/common/blank.html";
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const loadedAt = performance.timeOrigin + performance.now();
+  const W = frame.contentWindow;
+  const childOrigin = W.performance.timeOrigin;
+  assert_greater_than_equal(childOrigin, before - 1, "no earlier than the navigation began");
+  assert_less_than_equal(childOrigin, loadedAt + 1, "no later than its load");
+  const [entry] = W.performance.getEntriesByType("navigation");
+  assert_true(!!entry, "the frame's document has a navigation entry");
+  assert_equals(entry.startTime, 0);
+  assert_greater_than_equal(entry.fetchStart, 0, "its fetch starts at or after its time origin");
+  assert_less_than_equal(entry.fetchStart, entry.responseEnd);
+}, "a navigated frame's time origin is its navigation's start");
+
+test(() => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const p = frame.contentWindow.performance;
+  assert_true(p instanceof frame.contentWindow.Performance, "a frame has a Performance of its own realm");
+  assert_equals(frame.contentWindow.performance, p, "the same object each time");
+  assert_not_equals(p, performance, "not the parent's");
+  frame.remove();
+}, "a frame's performance attribute is its own Performance, the same object on every read");
+</script>

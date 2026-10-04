@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The page's navigation timing entry and performance.timing</title>
+<link rel="help" href="https://w3c.github.io/navigation-timing/#dfn-create-the-navigation-timing-entry">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The first read of the time origin in this realm, before anything else ran:
+// the navigation's start time (HTML: the document's load timing info's
+// navigation start time) is set before any of the document's script runs.
+const originAtFirstRead = performance.timeOrigin;
+</script>
+<body>
+<script>
+// "Create the navigation timing entry" runs when the navigation makes the
+// document, so the entry is in the buffer while the document loads; "queue
+// the navigation timing entry" runs after the load event.
+const duringLoad = performance.getEntriesByType("navigation");
+// Once, for every test after it: promise_tests run one after another, and a
+// later one would wait for a load event that has already fired.
+const loaded = new Promise(resolve => addEventListener("load", () => step_timeout(resolve, 0)));
+
+test(() => {
+  assert_equals(duringLoad.length, 1, "one navigation entry while loading");
+  const e = duringLoad[0];
+  assert_true(e instanceof PerformanceNavigationTiming);
+  assert_equals(e.entryType, "navigation");
+  assert_equals(e.name, location.href);
+  assert_equals(e.startTime, 0);
+  assert_equals(e.initiatorType, "navigation");
+  assert_equals(e.loadEventEnd, 0, "the load event has not run");
+  assert_greater_than_equal(e.fetchStart, 0);
+  assert_less_than_equal(e.fetchStart, e.requestStart);
+  assert_less_than_equal(e.requestStart, e.responseStart);
+  assert_less_than_equal(e.responseStart, e.responseEnd);
+  assert_equals(e.type, "navigate");
+  assert_equals(e.redirectCount, 0);
+  assert_equals(e.responseStatus, 200);
+}, "the entry exists, with its fetch's times, while the document loads");
+
+promise_test(async () => {
+  await loaded;
+  const [e] = performance.getEntriesByType("navigation");
+  assert_equals(e, duringLoad[0], "the same entry");
+  assert_greater_than(e.domInteractive, e.responseEnd);
+  assert_less_than_equal(e.domInteractive, e.domContentLoadedEventStart);
+  assert_less_than_equal(e.domContentLoadedEventStart, e.domContentLoadedEventEnd);
+  assert_less_than_equal(e.domContentLoadedEventEnd, e.domComplete);
+  assert_less_than_equal(e.domComplete, e.loadEventStart);
+  assert_less_than_equal(e.loadEventStart, e.loadEventEnd);
+  assert_equals(e.duration, e.loadEventEnd, "duration is loadEventEnd - startTime");
+  assert_greater_than(e.id, 0, "queued: it has an id");
+  assert_equals(e.navigationId, e.id, "a navigation entry's navigationId is its id");
+
+  assert_equals(performance.timeOrigin, originAtFirstRead, "the time origin never moves once script has read it");
+  const t = performance.timing;
+  assert_equals(performance.timing, t, "[SameObject]");
+  assert_equals(t.navigationStart, Math.floor(performance.timeOrigin));
+  assert_equals(t.fetchStart, Math.floor(performance.timeOrigin + e.fetchStart));
+  assert_equals(t.loadEventEnd, Math.floor(performance.timeOrigin + e.loadEventEnd));
+  assert_equals(t.unloadEventStart, 0, "no previous document");
+  assert_equals(performance.navigation.type, PerformanceNavigation.TYPE_NAVIGATE);
+  assert_equals(performance.navigation.redirectCount, 0);
+
+  const json = performance.toJSON();
+  assert_equals(json.timeOrigin, performance.timeOrigin);
+  assert_equals(json.timing.fetchStart, t.fetchStart);
+  assert_equals(json.navigation.type, 0);
+}, "after the load event: the document's load timing, queued, and the legacy objects agree");
+
+promise_test(async () => {
+  await loaded;
+  const entries = await new Promise(resolve => {
+    new PerformanceObserver(list => resolve(list.getEntries())).observe({type: "navigation", buffered: true});
+  });
+  assert_equals(entries.length, 1);
+  assert_equals(entries[0], performance.getEntriesByType("navigation")[0]);
+}, "a buffered observer of 'navigation' hears the entry");
+</script>
