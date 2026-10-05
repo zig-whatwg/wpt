@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The frame element's content navigable</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/obsolete.html#frames">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 16.3.2: a frame element has a content navigable, as an iframe does.
+// Its post-connection steps create a new child navigable and process the
+// frame attributes (navigate to src); its removing steps destroy the
+// navigable; a src attribute set, changed or removed while it has one
+// navigates it again. Its target name is the name attribute's value when
+// the navigable is created.
+
+function loaded(t, frame) {
+  return Promise.race([
+    new Promise(resolve => frame.addEventListener("load", resolve, { once: true })),
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error("no load event at the frame")), 3000)),
+  ]);
+}
+
+promise_test(async t => {
+  const frame = document.createElement("frame");
+  frame.name = "nav7-frame";
+  frame.src = "/common/blank.html?first";
+  assert_equals(frame.getAttribute("name"), "nav7-frame", "name reflects");
+  assert_equals(frame.contentWindow, null, "no navigable before insertion");
+  const before = window.length;
+  const load = loaded(t, frame);
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  assert_not_equals(frame.contentWindow, null, "a navigable once inserted");
+  assert_equals(window.length, before + 1, "a child navigable of this document");
+  await load;
+  assert_equals(frame.contentWindow.location.search, "?first");
+  assert_equals(frame.contentDocument.URL, new URL("/common/blank.html?first", location.href).href);
+  assert_equals(frame.contentWindow.name, "nav7-frame", "its target name is the name attribute's");
+  assert_equals(window["nav7-frame"], frame.contentWindow, "named access on the parent");
+}, "an inserted frame element shows its src in a content navigable");
+
+promise_test(async t => {
+  const frame = document.createElement("frame");
+  frame.src = "/common/blank.html?one";
+  let load = loaded(t, frame);
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await load;
+  load = loaded(t, frame);
+  frame.src = "/common/blank.html?two";
+  await load;
+  assert_equals(frame.contentWindow.location.search, "?two", "a src change navigates");
+}, "changing a frame's src navigates its content navigable");
+
+promise_test(async t => {
+  const frame = document.createElement("frame");
+  const load = loaded(t, frame);
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await load;
+  assert_equals(frame.contentDocument.URL, "about:blank", "the initial about:blank document stays");
+}, "a frame with no src fires load at its initial about:blank document");
+
+promise_test(async t => {
+  const frameset = document.createElement("frameset");
+  const frame = document.createElement("frame");
+  frame.src = "/common/blank.html?in-frameset";
+  frameset.appendChild(frame);
+  const load = loaded(t, frame);
+  document.documentElement.appendChild(frameset);
+  t.add_cleanup(() => frameset.remove());
+  await load;
+  const win = frame.contentWindow;
+  const before = window.length;
+  frame.remove();
+  assert_equals(frame.contentWindow, null, "no navigable once removed");
+  assert_equals(window.length, before - 1, "the child navigable is gone");
+  assert_true(win.closed, "the removed frame's window is closed");
+}, "removing a frame from its frameset destroys its content navigable");
+</script>
+</body>

@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<script>
+// Posts {name, hasOpener, href} on the BroadcastChannel its query names, then
+// closes itself after half a second.
+const channel = new URLSearchParams(location.search).get("channel");
+new BroadcastChannel(channel).postMessage({ name: window.name, hasOpener: window.opener !== null, href: location.href });
+setTimeout(() => close(), 500);
+</script>

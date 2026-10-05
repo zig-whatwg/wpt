@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A document loaded from a blob: URL in a frame and a popup</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#scheme-fetch">
+<link rel="help" href="https://w3c.github.io/FileAPI/#blob-url-obtain-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A navigation's request reads the blob URL store as the environment the
+// navigation fetches for (scheme fetch "blob" steps 3-7): its reserved
+// client, of the blob URL's own origin - or "top-level-navigation" for a
+// popup. The creator's blob reaches the frame and the popup whoever
+// navigates them, and its script runs.
+
+function blobUrl(markup) {
+  return URL.createObjectURL(new Blob([markup], { type: "text/html" }));
+}
+
+function withTimeout(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what)), 3000))]);
+}
+
+promise_test(async t => {
+  const url = blobUrl("<!doctype html><script>window.ran = 'frame src';<\/script>");
+  const iframe = document.createElement("iframe");
+  const loaded = new Promise(resolve => { iframe.onload = resolve; });
+  iframe.src = url;
+  document.body.appendChild(iframe);
+  t.add_cleanup(() => iframe.remove());
+  await withTimeout(t, loaded, "the frame never loaded");
+  assert_equals(iframe.contentWindow.ran, "frame src", "the blob document's script ran");
+  assert_equals(iframe.contentDocument.URL, url);
+}, "an iframe whose src is a blob: URL shows the blob's document");
+
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  let loaded = new Promise(resolve => { iframe.onload = resolve; });
+  iframe.src = "/common/blank.html";
+  document.body.appendChild(iframe);
+  t.add_cleanup(() => iframe.remove());
+  await withTimeout(t, loaded, "the frame never loaded blank.html");
+  const url = blobUrl("<!doctype html><script>window.ran = 'location';<\/script>");
+  loaded = new Promise(resolve => { iframe.onload = resolve; });
+  iframe.contentWindow.location = url;
+  await withTimeout(t, loaded, "the frame never loaded the blob URL");
+  assert_equals(iframe.contentWindow.ran, "location");
+}, "a frame navigated to a blob: URL through its Location shows the blob's document");
+
+promise_test(async t => {
+  const channel = new BroadcastChannel("nav7-blob-popup");
+  t.add_cleanup(() => channel.close());
+  const message = new Promise(resolve => { channel.onmessage = e => resolve(e.data); });
+  const url = blobUrl("<!doctype html><script>new BroadcastChannel('nav7-blob-popup').postMessage(location.href); window.close();<\/script>");
+  window.open(url);
+  assert_equals(await withTimeout(t, message, "the popup's script never ran"), url);
+}, "a popup opened at a blob: URL shows the blob's document");
+
+promise_test(async t => {
+  const url = blobUrl("<!doctype html><script>window.ran = 'revoked after';<\/script>");
+  const iframe = document.createElement("iframe");
+  const loaded = new Promise(resolve => { iframe.onload = resolve; });
+  iframe.src = url;
+  document.body.appendChild(iframe);
+  URL.revokeObjectURL(url);
+  t.add_cleanup(() => iframe.remove());
+  await withTimeout(t, loaded, "the frame never loaded");
+  assert_equals(iframe.contentWindow.ran, "revoked after");
+}, "a navigation that started before its blob: URL was revoked still shows the blob's document");
+</script>
+</body>

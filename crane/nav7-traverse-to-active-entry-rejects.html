@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A navigation API traversal whose target is already the active entry rejects</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#performing-a-navigation-api-traversal">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Perform a navigation API traversal" step 12.3: when the queued traversal
+// steps run and the target entry is already the navigable's active session
+// history entry - a traversal queued earlier took the navigable there - the
+// finished promise is rejected with an "InvalidStateError" DOMException.
+// navigation.back() called from the navigate event of a history.back() to
+// the same entry is that case.
+promise_test(async t => {
+  await navigation.navigate("#nav7-traverse-1").finished;
+  const result = new Promise((resolve, reject) => {
+    navigation.onnavigate = e => {
+      navigation.onnavigate = null;
+      navigation.back().finished.then(
+        () => reject(new Error("back() finished, but its entry was already active")),
+        err => resolve(err));
+    };
+  });
+  history.back();
+  const err = await Promise.race([result,
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error("back()'s finished promise never settled")), 3000))]);
+  assert_equals(err.name, "InvalidStateError");
+}, "navigation.back() to the entry an ongoing history.back() reaches rejects with InvalidStateError");
+</script>
+</body>

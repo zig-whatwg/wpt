@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>A hyperlink with no target takes its document's base element's target</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#following-hyperlinks-2">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#get-an-element's-target">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<base target="_blank">
+</head>
+<body>
+<a id="link" href="resources/nav7-broadcast.html?channel=nav7-base-target">link</a>
+<script>
+// "Get an element's target": a hyperlink with no target attribute takes the
+// target of the first base element with one - here a parsed <base
+// target=_blank> - so following it opens a new window (with no opener, the
+// implicit noopener of "_blank") and leaves this page where it is.
+promise_test(async t => {
+  const channel = new BroadcastChannel("nav7-base-target");
+  t.add_cleanup(() => channel.close());
+  const message = new Promise(resolve => { channel.onmessage = e => resolve(e.data); });
+  document.getElementById("link").click();
+  const data = await Promise.race([message,
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error("no new window was opened")), 3000))]);
+  assert_false(data.hasOpener, "\"_blank\" implies noopener");
+}, "a parsed <base target=_blank> sends a hyperlink with no target to a new window");
+</script>
+</body>
+</html>

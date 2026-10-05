@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>window.postMessage transfers what its transfer list names</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/web-messaging.html#window-post-message-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The window post message steps 6-7: StructuredSerializeWithTransfer(message,
+// transfer) - a MessagePort in the list arrives in event.ports of the target
+// window's realm, still entangled with the sender's other end, and an
+// ArrayBuffer is detached at the sender; 8.4: deserialized in the target's
+// realm. With both overloads, to a same-origin frame and to an opaque-origin
+// data: frame.
+
+function loadFrame(t, setup) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    setup(iframe);
+    iframe.onload = () => resolve(iframe);
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+  });
+}
+
+const echo = `<script>
+onmessage = e => {
+  const port = e.ports[0];
+  if (!port) return parent.postMessage("no port: " + e.ports.length, "*");
+  port.postMessage({ got: e.data, ports: e.ports.length });
+};
+<\/script>`;
+
+function reply(t, port) {
+  return Promise.race([
+    new Promise(resolve => { port.onmessage = e => resolve(e.data); }),
+    new Promise(resolve => { onmessage = e => resolve(e.data); }),
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error("no reply on the transferred port")), 3000)),
+  ]);
+}
+
+promise_test(async t => {
+  const iframe = await loadFrame(t, f => { f.srcdoc = echo; });
+  const channel = new MessageChannel();
+  const answer = reply(t, channel.port1);
+  iframe.contentWindow.postMessage("hello", "*", [channel.port2]);
+  assert_object_equals(await answer, { got: "hello", ports: 1 });
+}, "postMessage(message, targetOrigin, transfer) sends a MessagePort to a same-origin frame");
+
+promise_test(async t => {
+  const iframe = await loadFrame(t, f => { f.src = "data:text/html," + encodeURIComponent(echo); });
+  const channel = new MessageChannel();
+  const answer = reply(t, channel.port1);
+  iframe.contentWindow.postMessage("x", "*", [channel.port2]);
+  assert_object_equals(await answer, { got: "x", ports: 1 });
+}, "a MessagePort reaches an opaque-origin data: frame");
+
+promise_test(async t => {
+  const iframe = await loadFrame(t, f => { f.srcdoc = echo; });
+  const channel = new MessageChannel();
+  const answer = reply(t, channel.port1);
+  iframe.contentWindow.postMessage({ n: 1 }, { targetOrigin: "*", transfer: [channel.port2] });
+  assert_object_equals(await answer, { got: { n: 1 }, ports: 1 });
+}, "postMessage(message, options) transfers options.transfer");
+
+promise_test(async t => {
+  const got = new Promise(resolve => { onmessage = e => resolve(e); });
+  const buffer = new Uint8Array([1, 2, 3]).buffer;
+  window.postMessage(buffer, "*", [buffer]);
+  assert_equals(buffer.byteLength, 0, "the sender's ArrayBuffer is detached");
+  const e = await got;
+  assert_array_equals(new Uint8Array(e.data), [1, 2, 3]);
+  assert_equals(e.ports.length, 0);
+}, "an ArrayBuffer in the transfer list is detached at the sender and arrives whole");
+
+test(() => {
+  const channel = new MessageChannel();
+  assert_throws_dom("DataCloneError", () => window.postMessage("x", "*", [channel.port1, channel.port1]));
+}, "a port twice in the transfer list is a DataCloneError");
+
+test(() => {
+  const buffer = new WebAssembly.Memory({ initial: 1 }).buffer;
+  assert_throws_js(TypeError, () => window.postMessage("x", "*", [buffer]));
+  assert_equals(buffer.byteLength, 65536, "the buffer stays attached");
+}, "an ArrayBuffer that cannot be detached (a WebAssembly.Memory's) is a TypeError");
+</script>
+</body>

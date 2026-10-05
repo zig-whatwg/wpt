@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<script>
+// Closes its opener, then reports to the test page (its opener's opener) how
+// window.opener reads once the opener's traversable has been closed.
+const testPage = window.opener.opener;
+onload = () => {
+  window.opener.close();
+  let polls = 0;
+  (function poll() {
+    if (window.opener === null) return testPage.postMessage({ openerIsNull: true, polls }, "*");
+    if (++polls > 100) return testPage.postMessage({ openerIsNull: false, closed: window.opener.closed }, "*");
+    setTimeout(poll, 10);
+  })();
+};
+</script>

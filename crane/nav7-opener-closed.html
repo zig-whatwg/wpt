@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>window.opener is null once the opener's traversable is closed</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-opener">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A popup B whose opener A is closed (A's traversable definitely closed, its
+// browsing context discarded) reads window.opener as null - as Blink
+// (Frame::Detach disposes the OpenedFrameTracker, clearing every openee's
+// opener) and Gecko (a discarded BrowsingContext is no opener) do. B lives
+// on: it is a top-level traversable of its own, not its opener's.
+promise_test(async t => {
+  const message = new Promise(resolve => { onmessage = e => resolve(e.data); });
+  window.open("resources/nav7-opener-closer.html");
+  const data = await Promise.race([message,
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error("the popup never reported")), 4000))]);
+  assert_true(data.openerIsNull, "window.opener is null after the opener closed");
+}, "a popup's opener reads null once its opener window is closed");
+</script>
+</body>

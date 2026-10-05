@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>noopener does not skip the name lookup of the rules for choosing a navigable</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#the-rules-for-choosing-a-navigable">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "The rules for choosing a navigable" step 7 finds a navigable by target name
+// whatever noopener is; noopener only decides what a NEW top-level traversable
+// is (step 8.7: no opener, a browsing context group of its own - which a later
+// name lookup from this page does not search). The window open steps return
+// null with noopener (step 18) and set no opener on an existing navigable
+// (step 16.2).
+
+function loadedFrame(t, name) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    iframe.name = name;
+    iframe.onload = () => resolve(iframe);
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+  });
+}
+
+function nextLoad(t, iframe) {
+  return Promise.race([
+    new Promise(resolve => { iframe.onload = resolve; }),
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error("the frame was not navigated")), 3000)),
+  ]);
+}
+
+promise_test(async t => {
+  const iframe = await loadedFrame(t, "nav7-noopener-frame-1");
+  const loaded = nextLoad(t, iframe);
+  assert_equals(window.open("/common/blank.html?open", iframe.name, "noopener"), null, "open() returns null");
+  await loaded;
+  assert_equals(iframe.contentWindow.location.search, "?open");
+  assert_equals(iframe.contentWindow.opener, null, "no opener was set on the frame");
+}, "window.open() with noopener navigates an existing frame of that name");
+
+promise_test(async t => {
+  const iframe = await loadedFrame(t, "nav7-noopener-frame-2");
+  const loaded = nextLoad(t, iframe);
+  const a = document.createElement("a");
+  a.rel = "noreferrer";
+  a.target = iframe.name;
+  a.href = "/common/blank.html?link";
+  document.body.appendChild(a);
+  t.add_cleanup(() => a.remove());
+  a.click();
+  await loaded;
+  assert_equals(iframe.contentWindow.location.search, "?link");
+}, "a rel=noreferrer link navigates an existing frame of its target name");
+
+promise_test(async t => {
+  const name = "nav7-noopener-window-" + Math.random();
+  const channel = new BroadcastChannel(name);
+  t.add_cleanup(() => channel.close());
+  let count = 0;
+  const two = new Promise(resolve => { channel.onmessage = () => { if (++count == 2) resolve(); }; });
+  const url = "resources/nav7-broadcast.html?channel=" + encodeURIComponent(name);
+  assert_equals(window.open(url, name, "noopener"), null);
+  assert_equals(window.open(url, name, "noopener"), null);
+  await Promise.race([two, new Promise((_, reject) => t.step_timeout(() => reject(new Error(`${count} of 2 windows ran`)), 3000))]);
+}, "a window opened with noopener is not found by name from its opener's page");
+
+promise_test(async t => {
+  const name = "nav7-noopener-existing-window-" + Math.random();
+  const win = window.open("", name);
+  t.add_cleanup(() => win.close());
+  const channel = new BroadcastChannel(name);
+  t.add_cleanup(() => channel.close());
+  const message = new Promise(resolve => { channel.onmessage = e => resolve(e.data); });
+  const a = document.createElement("a");
+  a.rel = "noreferrer";
+  a.target = name;
+  a.href = "resources/nav7-broadcast.html?channel=" + encodeURIComponent(name);
+  document.body.appendChild(a);
+  t.add_cleanup(() => a.remove());
+  a.click();
+  const data = await Promise.race([message, new Promise((_, reject) => t.step_timeout(() => reject(new Error("the named window was not navigated")), 3000))]);
+  assert_equals(data.name, name, "the existing window kept its name");
+  assert_true(data.hasOpener, "a navigation does not take the opener away");
+  assert_equals(data.href, a.href);
+}, "a rel=noreferrer link navigates an existing window of its target name");
+</script>
+</body>
