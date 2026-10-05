@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Overloaded constructors run WebIDL's overload resolution algorithm</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#dfn-overload-resolution-algorithm">
+<link rel=help href="https://html.spec.whatwg.org/multipage/canvas.html#dom-imagedata">
+<link rel=help href="https://urlpattern.spec.whatwg.org/#dom-urlpattern-urlpattern">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL 3.6: an overloaded constructor is chosen by the number of
+// arguments and, where several remain, by the TYPE of the value at the
+// distinguishing argument index; only then are the arguments converted, to
+// that constructor's types, and a conversion that throws is the call's
+// exception. Crane used to try each constructor in turn until one
+// converted: ToNumber(a Uint8ClampedArray) is NaN, so new ImageData(array,
+// w) became ImageData(0, w); a throwing conversion was left pending while
+// the next constructor was tried, running its getters again.
+
+test(() => {
+  const array = new Uint8ClampedArray(16);
+  const image = new ImageData(array, 2);
+  assert_equals(image.width, 2, "width");
+  assert_equals(image.height, 2, "height");
+  assert_equals(image.data, array, "data is the array given");
+}, "new ImageData(Uint8ClampedArray, sw) selects the data constructor");
+
+test(() => {
+  const array = new Uint8ClampedArray(24);
+  const image = new ImageData(array, 2, 3);
+  assert_equals(image.width, 2, "width");
+  assert_equals(image.height, 3, "height");
+  assert_equals(image.data, array, "data is the array given");
+}, "new ImageData(Uint8ClampedArray, sw, sh) selects the data constructor");
+
+test(() => {
+  const image = new ImageData(2, 3);
+  assert_equals(image.width, 2, "width");
+  assert_equals(image.height, 3, "height");
+  assert_equals(image.data.length, 24, "a new array of 4 x 2 x 3 bytes");
+}, "new ImageData(sw, sh) selects the size constructor");
+
+test(() => {
+  // Three arguments: (sw, sh, settings) and (data, sw, sh) both take three;
+  // the array picks the second, whose sh then converts {} to 0 - not 2.
+  assert_throws_dom("IndexSizeError", () => new ImageData(new Uint8ClampedArray(16), 2, {}));
+}, "the distinguishing argument decides before any later argument converts");
+
+test(() => {
+  // An Int8Array is no ImageDataArray: step 12.7 finds no typed array of
+  // its name, and step 16 the numeric `sw` - ToNumber is NaN, so sw is 0.
+  assert_throws_dom("IndexSizeError", () => new ImageData(new Int8Array(16), 2));
+}, "a typed array of another type falls through to the numeric constructor");
+
+test(() => {
+  let reads = 0;
+  const thrown = new Error("from the getter");
+  const input = { get pathname() { reads++; throw thrown; } };
+  // Two arguments, the second a string: (input, baseURL) is the one; its
+  // input dictionary's getter throws once, and that is the exception.
+  assert_throws_exactly(thrown, () => new URLPattern(input, "https://example.com"));
+  assert_equals(reads, 1, "the getter ran once");
+}, "a conversion that throws is the constructor's exception; no other constructor is tried");
+
+test(() => {
+  // Two arguments, the second undefined: the constructor whose argument at
+  // that index is optional - (input, options) - not (input, baseURL) with a
+  // base URL of "undefined".
+  const pattern = new URLPattern({ pathname: "/a" }, undefined);
+  assert_equals(pattern.pathname, "/a");
+}, "undefined at the distinguishing index selects the constructor with an optional argument there");
+</script>

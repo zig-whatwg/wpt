@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Enumeration values convert exactly as the IDL spells them</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#js-enumeration">
+<link rel=help href="https://fetch.spec.whatwg.org/#requestmode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL 3.2.23: a string converts to the enumeration value it equals, code
+// unit for code unit, or is a TypeError. Crane matched the Zig variant name
+// (`_same_origin_`), letting `-`, `_` and `/` stand for one another, so
+// "same_origin" was accepted as "same-origin" - and an enumeration value
+// that is spelled with an underscore (NavigationTimingType's
+// "back_forward") read back with a hyphen.
+
+test(() => {
+  assert_equals(new Request("/", { mode: "same-origin" }).mode, "same-origin");
+  assert_throws_js(TypeError, () => new Request("/", { mode: "same_origin" }));
+  assert_throws_js(TypeError, () => new Request("/", { mode: "same/origin" }));
+}, "RequestMode: only the exact value converts");
+
+test(() => {
+  assert_equals(new Request("/", { referrerPolicy: "no-referrer-when-downgrade" }).referrerPolicy, "no-referrer-when-downgrade");
+  assert_throws_js(TypeError, () => new Request("/", { referrerPolicy: "no_referrer" }));
+}, "ReferrerPolicy: only the exact value converts");
+
+test(() => {
+  assert_equals(new Request("/", { cache: "no-store" }).cache, "no-store");
+  assert_throws_js(TypeError, () => new Request("/", { cache: "NO-STORE" }));
+}, "RequestCache: the comparison is case-sensitive");
+</script>
