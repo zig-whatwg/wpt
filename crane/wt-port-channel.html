@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>MessagePorts on cross-thread channels: delivery order, transfer, close, workers</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/web-messaging.html#message-ports">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A MessagePort's channel - both ends' queues and their entanglement - can
+// have its two ends on two threads once workers run on threads of their own;
+// each port receives through its own realm's event loop. These cases pin
+// what that must not change.
+
+async_test(t => {
+  const { port1, port2 } = new MessageChannel();
+  const order = [];
+  port2.onmessage = t.step_func(e => order.push("message " + e.data));
+  port1.postMessage("a");
+  // A port's message is delivered ahead of a timeout armed after it was
+  // posted (browsers deliver it as a task, not a timer).
+  setTimeout(t.step_func_done(() => {
+    assert_array_equals(order, ["message a"]);
+    port1.close();
+  }), 0);
+}, "a port's message arrives before a setTimeout(0) armed after the post");
+
+async_test(t => {
+  const outer = new MessageChannel();
+  const inner = new MessageChannel();
+  outer.port2.onmessage = t.step_func(e => {
+    assert_equals(e.ports.length, 1);
+    const received = e.ports[0];
+    received.onmessage = t.step_func_done(m => {
+      assert_equals(m.data, "through the transferred port");
+      outer.port1.close();
+      received.close();
+    });
+    inner.port2.postMessage("through the transferred port");
+  });
+  outer.port1.postMessage("carrying a port", [inner.port1]);
+}, "a transferred port arrives entangled with its old peer");
+
+async_test(t => {
+  const { port1, port2 } = new MessageChannel();
+  port2.onclose = t.step_func_done(() => {});
+  port2.start();
+  port1.close();
+}, "closing one port fires close at the other");
+
+async_test(t => {
+  const source = `
+    onmessage = (e) => {
+      const port = e.ports[0];
+      port.onmessage = (m) => {
+        if (m.data === "close") { port.close(); return; }
+        port.postMessage("echo " + m.data);
+      };
+    };`;
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  const { port1, port2 } = new MessageChannel();
+  const got = [];
+  port1.onmessage = t.step_func(e => {
+    got.push(e.data);
+    if (got.length < 3) return;
+    assert_array_equals(got, ["echo 0", "echo 1", "echo 2"]);
+    port1.postMessage("close");
+  });
+  // The worker's end closes: the page's port hears it.
+  port1.onclose = t.step_func_done(() => {
+    worker.terminate();
+    URL.revokeObjectURL(url);
+  });
+  worker.postMessage("port", [port2]);
+  for (let i = 0; i < 3; i++) port1.postMessage(i);
+}, "a port transferred to a worker echoes in order, and its close reaches the page");
+</script>
