@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>testdriver cookie commands: get_all_cookies, get_named_cookie and delete_all_cookies answer from the browser's cookie store (WebDriver 14)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+"use strict";
+// cookies/attributes/* and cookies/name/* clean up with test_driver.delete_all_cookies()
+// and read flags with get_named_cookie(); without these commands each file waited out
+// its timeout (2026-10-04 timeout analysis: 23 files, ~1,000 runner-seconds a sweep).
+
+promise_test(async t => {
+  await test_driver.delete_all_cookies();
+  assert_equals(document.cookie, "", "delete_all_cookies leaves the document no cookie");
+  document.cookie = "td_a=1; path=/";
+  document.cookie = "td_b=2; path=/; SameSite=Strict";
+  const all = await test_driver.get_all_cookies();
+  assert_array_equals(all.map(c => c.name).sort(), ["td_a", "td_b"]);
+  const b = await test_driver.get_named_cookie("td_b");
+  assert_equals(b.value, "2");
+  assert_equals(b.path, "/");
+  assert_equals(b.domain, location.hostname);
+  assert_false(b.secure, "secure");
+  assert_false(b.httpOnly, "httpOnly");
+  assert_equals(b.sameSite, "Strict");
+  assert_false("expiry" in b, "a session cookie has no expiry");
+  const a = await test_driver.get_named_cookie("td_a");
+  assert_equals(a.sameSite, "Lax", "no SameSite attribute: Lax by default");
+  await test_driver.delete_all_cookies();
+  assert_equals(document.cookie, "");
+}, "cookies the document set are listed, read by name, and deleted");
+
+promise_test(async t => {
+  await test_driver.delete_all_cookies();
+  // An HttpOnly cookie is one of the document's associated cookies too.
+  await fetch("/cookies/resources/set.py?td_h=3;path=/;HttpOnly;Max-Age=600");
+  assert_equals(document.cookie, "", "document.cookie never shows an HttpOnly cookie");
+  const h = await test_driver.get_named_cookie("td_h");
+  assert_equals(h.value, "3");
+  assert_true(h.httpOnly, "httpOnly");
+  assert_equals(typeof h.expiry, "number", "a persistent cookie has an expiry");
+  assert_greater_than(h.expiry, Date.now() / 1000, "expiry is in seconds since the epoch, in the future");
+  await test_driver.delete_all_cookies();
+  await promise_rejects_js(t, Error, test_driver.get_named_cookie("td_h"), "deleted: no such cookie");
+}, "an HttpOnly cookie is read and deleted, and a missing one rejects");
+
+promise_test(async t => {
+  await test_driver.delete_all_cookies();
+  const ready = new Promise(resolve => window.addEventListener("message", e => {
+    if (e.data === "td-cookies-ready") resolve();
+  }));
+  const w = window.open("resources/td-cookies-child.html");
+  t.add_cleanup(() => w.close());
+  await ready;
+  document.cookie = "td_w=4; path=/";
+  // A command run in the popup's realm answers for the popup's document.
+  const popupCookies = await w.test_driver.get_all_cookies();
+  assert_array_equals(popupCookies.map(c => c.name), ["td_w"]);
+  await w.test_driver.delete_all_cookies();
+  assert_equals(document.cookie, "", "the popup's delete reached the same store");
+}, "a popup's commands answer for the popup's document, over the same store");
+</script>
