@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: elements a collected subtree's teardown frees leave none of their own state behind</title>
+<!--
+  leaks3 lane (2026-10-05). A subtree's teardown chose each element's deinit
+  by name and ran Element's for every element it did not name, so HTMLElement's
+  state (the inline style `style` writes) and the element type's own (an
+  input's dirty value) stayed in their registries, keyed by the element's
+  address. When the slab reissued the address to a new HTML element, its init
+  overwrote the stale entry and what it owned leaked - process-sensitive,
+  since it needs a collection to free the slot and a new element to take it
+  (dom/ranges/Range-surroundContents.html: the iframe document's testDiv,
+  styled "display: none", in the html subtree restoreIframe removes).
+  The leak is not observable from script. The measurement is the runner's own
+  DebugAllocator report count for this file (leaked: lines), base vs fix.
+  The cases check that elements made at reused addresses start with their
+  own, empty, state.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each root is dropped with its children: when the root's wrapper is
+// collected, its teardown walks the children - the path under test.
+function dropStyledSubtrees(round, count) {
+  for (let i = 0; i < count; i++) {
+    const root = document.createElement('div');
+    const styled = document.createElement('p');
+    styled.style.display = 'none';
+    styled.style.color = `rgb(${round}, ${i % 256}, 7)`;
+    root.appendChild(styled);
+    const input = document.createElement('input');
+    input.value = `value ${round} ${i}`;
+    root.appendChild(input);
+    const textarea = document.createElement('textarea');
+    textarea.value = `text ${round} ${i}`;
+    root.appendChild(textarea);
+  }
+}
+
+test(() => {
+  for (let round = 0; round < 6; round++) {
+    dropStyledSubtrees(round, 300);
+    TestUtils.gc();
+  }
+  const kept = [];
+  for (let i = 0; i < 600; i++) kept.push(document.createElement(i % 2 ? 'p' : 'span'));
+  for (const el of kept) {
+    assert_equals(el.style.cssText, '');
+    assert_equals(el.style.display, '');
+  }
+}, 'elements made after collected styled subtrees start with an empty inline style');
+
+test(() => {
+  for (let round = 0; round < 4; round++) {
+    dropStyledSubtrees(round + 10, 300);
+    TestUtils.gc();
+  }
+  const inputs = [];
+  const textareas = [];
+  for (let i = 0; i < 400; i++) {
+    inputs.push(document.createElement('input'));
+    textareas.push(document.createElement('textarea'));
+  }
+  for (const input of inputs) assert_equals(input.value, '');
+  for (const textarea of textareas) assert_equals(textarea.value, '');
+}, 'inputs and textareas made after collected subtrees start with an empty value');
+</script>
