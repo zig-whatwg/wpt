@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Media defaults, attribute storage, and empty ranges</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#media-elements">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+for (const name of ['audio', 'video']) {
+  test(() => {
+    const media = document.createElement(name);
+    assert_equals(media.currentSrc, '');
+    assert_equals(media.networkState, media.NETWORK_EMPTY);
+    assert_equals(media.readyState, media.HAVE_NOTHING);
+    assert_true(media.paused);
+    assert_false(media.seeking);
+    assert_false(media.ended);
+    assert_equals(media.volume, 1);
+    assert_false(media.muted);
+    assert_true(Number.isNaN(media.duration));
+    assert_equals(media.defaultPlaybackRate, 1);
+    assert_equals(media.playbackRate, 1);
+    assert_true(media.preservesPitch);
+    for (const name of ['buffered', 'seekable', 'played']) {
+      const ranges = media[name];
+      assert_equals(ranges.length, 0);
+      assert_not_equals(ranges, media[name], name + ' is a fresh snapshot');
+      assert_throws_dom('IndexSizeError', () => ranges.start(0));
+      assert_throws_dom('IndexSizeError', () => ranges.end(0));
+    }
+    media.volume = 0.25;
+    assert_equals(media.volume, 0.25);
+    assert_throws_dom('IndexSizeError', () => { media.volume = -0.1; });
+    assert_equals(media.volume, 0.25);
+    media.muted = true;
+    assert_true(media.muted);
+    media.currentTime = 12;
+    assert_equals(media.currentTime, 12, 'default playback start position');
+    media.preload = 'bogus';
+    assert_equals(media.preload, 'auto');
+    media.preload = 'NONE';
+    assert_equals(media.preload, 'none');
+    media.crossOrigin = 'bogus';
+    assert_equals(media.crossOrigin, 'anonymous');
+    media.crossOrigin = null;
+    assert_equals(media.crossOrigin, null);
+  }, name + ': initial values, empty TimeRanges, and stored properties');
+}
+</script>

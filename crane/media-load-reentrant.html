@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A reentrant load cancels the previous media selection</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/media.html#media-element-load-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Written before the implementation; red not observed while chat is unreachable.
+async_test(t => {
+  const video = document.createElement("video");
+  const events = [];
+  let loads = 0;
+  for (const name of ["abort", "emptied"]) {
+    video.addEventListener(name, t.step_func(event => {
+      assert_true(event.isTrusted);
+      events.push(event.type);
+    }));
+  }
+  video.addEventListener("loadstart", t.step_func(event => {
+    events.push(event.type);
+    assert_equals(video.error, null);
+    if (++loads === 1) video.load();
+  }));
+  video.addEventListener("error", t.step_func_done(event => {
+    events.push(event.type);
+    assert_array_equals(events, ["loadstart", "abort", "emptied", "loadstart", "error"]);
+    assert_equals(loads, 2);
+    assert_equals(video.error.code, MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED);
+    assert_equals(video.readyState, video.HAVE_NOTHING);
+  }));
+  video.src = "";
+}, "load() from loadstart cancels the old failure task and starts one new selection");
+</script>

@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Ancestor connection changes do not change a media track's parent</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+promise_test(async t => {
+  const media = document.createElement('video');
+  const element = document.createElement('track');
+  const list = media.textTracks;
+  let added = 0, removed = 0;
+  list.addEventListener('addtrack', () => ++added);
+  list.addEventListener('removetrack', () => ++removed);
+  const first = new Promise(resolve => list.addEventListener('addtrack', resolve, {once: true}));
+  media.append(element);
+  await first;
+  document.body.append(media);
+  await new Promise(resolve => t.step_timeout(resolve, 20));
+  assert_equals(added, 1, 'connecting an ancestor does not add the track again');
+  media.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 20));
+  assert_equals(removed, 0, 'disconnecting an ancestor does not remove the track');
+  assert_equals(list.length, 1);
+  assert_equals(list[0], element.track);
+}, 'list membership follows actual track parent changes');
+</script>

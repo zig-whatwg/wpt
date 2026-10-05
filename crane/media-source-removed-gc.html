@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A failed source removed by its error handler is released</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/gc.js></script>
+<script>
+promise_test(async () => {
+  const media = document.createElement('video');
+  const weak = await new Promise(resolve => {
+    const source = document.createElement('source');
+    source.onerror = event => {
+      const ref = new WeakRef(event.target);
+      event.target.remove();
+      resolve(ref);
+    };
+    media.append(source);
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await garbageCollect();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await garbageCollect();
+  assert_equals(weak.deref(), undefined, 'the failed candidate is no longer retained');
+  assert_equals(media.children.length, 0);
+}, 'resource selection releases a removed source after its error event');
+</script>

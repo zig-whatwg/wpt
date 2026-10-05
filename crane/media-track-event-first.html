@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The addtrack event can expose a TextTrack first</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+promise_test(async () => {
+  const media = document.createElement('video');
+  const element = document.createElement('track');
+  element.kind = 'captions';
+  element.label = 'Created before the getter';
+  const added = new Promise(resolve => media.textTracks.addEventListener('addtrack', resolve, {once: true}));
+  media.append(element);
+  const event = await added;
+  assert_true(event instanceof TrackEvent);
+  assert_equals(event.track.kind, 'captions');
+  assert_equals(event.track.label, 'Created before the getter');
+  assert_equals(element.track, event.track);
+}, 'addtrack initializes and hands out the same track before script reads the getter');
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Media play promises settle on pause, reload and source failure</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#dom-media-play">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+promise_test(async t => {
+  const media = document.createElement('audio');
+  const promise = media.play();
+  assert_true(promise instanceof Promise);
+  assert_false(media.paused);
+  media.pause();
+  assert_true(media.paused);
+  await promise_rejects_dom(t, 'AbortError', promise);
+}, 'pause rejects the pending play promise with AbortError');
+
+promise_test(async t => {
+  const media = document.createElement('video');
+  media.src = '';
+  const promise = media.play();
+  media.load();
+  await promise_rejects_dom(t, 'AbortError', promise);
+}, 'load rejects a previous pending play promise with AbortError');
+
+promise_test(async t => {
+  const media = document.createElement('video');
+  media.src = '';
+  await promise_rejects_dom(t, 'NotSupportedError', media.play());
+  assert_equals(media.error.code, MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED);
+  await promise_rejects_dom(t, 'NotSupportedError', media.play());
+}, 'unsupported source rejects both pending and subsequent play calls');
+</script>

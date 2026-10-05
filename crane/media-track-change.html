@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>TextTrackList mode changes are coalesced</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#pending-text-track-change-notification-flag">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+promise_test(async () => {
+  const media = document.createElement('video');
+  const first = document.createElement('track');
+  const second = document.createElement('track');
+  media.append(first, second);
+  const list = media.textTracks;
+  let changes = 0;
+  const changed = new Promise(resolve => {
+    list.onchange = event => {
+      assert_true(event.isTrusted);
+      assert_equals(event.target, list);
+      ++changes;
+      resolve();
+    };
+  });
+  first.track.mode = 'hidden';
+  first.track.mode = 'showing';
+  second.track.mode = 'hidden';
+  assert_equals(changes, 0, 'change is queued');
+  await changed;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert_equals(changes, 1, 'one notification for synchronous changes');
+}, 'several track mode changes produce one asynchronous list change event');
+</script>

@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Media text track lists and TrackEvent initialization</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#text-track-api">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const event = new TrackEvent('addtrack', {bubbles: true, cancelable: true});
+  assert_equals(event.type, 'addtrack');
+  assert_true(event.bubbles);
+  assert_true(event.cancelable);
+  assert_equals(event.track, null);
+}, 'TrackEvent initializes Event fields and defaults track to null');
+
+promise_test(async () => {
+  const media = document.createElement('video');
+  const list = media.textTracks;
+  const element = document.createElement('track');
+  element.id = 'captions';
+  element.kind = 'captions';
+  const added = new Promise(resolve => list.addEventListener('addtrack', resolve, {once: true}));
+  media.append(element);
+  assert_equals(media.textTracks, list);
+  assert_equals(list.length, 1);
+  assert_equals(list[0], element.track);
+  assert_equals(list.getTrackById('captions'), element.track);
+  const event = await added;
+  assert_true(event.isTrusted);
+  assert_equals(event.track, element.track);
+  const removed = new Promise(resolve => list.addEventListener('removetrack', resolve, {once: true}));
+  element.remove();
+  assert_equals(list.length, 0);
+  assert_equals((await removed).track, element.track);
+}, 'track insertion and removal update the same list and dispatch initialized events');
+
+promise_test(async () => {
+  const media = document.createElement('video');
+  const element = document.createElement('track');
+  element.default = true;
+  element.src = 'data:application/unsupported-track,bytes';
+  const failed = new Promise(resolve => element.addEventListener('error', resolve, {once: true}));
+  media.append(element);
+  await failed;
+  assert_equals(element.readyState, element.ERROR);
+  assert_equals(element.track.mode, 'showing');
+}, 'automatic selection starts the default track and unsupported data fails');
+</script>

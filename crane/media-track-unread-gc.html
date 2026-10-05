@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>An unread detached track releases its native child</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#sourcing-out-of-band-text-tracks">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/gc.js></script>
+<script>
+promise_test(async () => {
+  const ref = (() => new WeakRef(document.createElement('track')))();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await garbageCollect();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await garbageCollect();
+  assert_equals(ref.deref(), undefined);
+  // The runner's allocator report additionally checks its never-exposed track.
+}, 'an unread detached track is collected without a native allocation leak');
+</script>

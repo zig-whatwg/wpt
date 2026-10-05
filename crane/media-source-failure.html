@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Failed source children raise source errors and wait for another candidate</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Written before the implementation; red not observed while chat is unreachable.
+async_test(t => {
+  const video = document.createElement("video");
+  const first = document.createElement("source");
+  const next = document.createElement("source");
+  let failures = 0;
+  video.addEventListener("error", t.unreached_func("Source exhaustion is not a media error"));
+  next.src = "";
+  next.addEventListener("error", t.step_func(event => {
+    ++failures;
+    assert_true(event.isTrusted);
+    assert_false(event.bubbles);
+    assert_equals(event.target, next);
+    t.step_timeout(() => {
+      assert_equals(failures, 2);
+      assert_equals(video.error, null);
+      assert_equals(video.networkState, video.NETWORK_NO_SOURCE);
+      assert_equals(video.readyState, video.HAVE_NOTHING);
+      t.done();
+    }, 0);
+  }));
+  first.addEventListener("error", t.step_func(event => {
+    ++failures;
+    assert_true(event.isTrusted);
+    assert_equals(event.target, first);
+    assert_equals(video.error, null);
+    // Insert after failure has reached its waiting step, in a later task.
+    t.step_timeout(() => video.append(next), 0);
+  }));
+  video.append(first);
+}, "A missing then empty source src raises errors on the sources and resumes after insertion");
+</script>

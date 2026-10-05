@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Empty media src fails asynchronously with a trusted media error</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Written before the implementation; red not observed while chat is unreachable.
+async_test(t => {
+  const video = document.createElement("video");
+  const events = [];
+  video.addEventListener("loadeddata", t.unreached_func("No data can be decoded from an empty src"));
+  video.addEventListener("loadstart", t.step_func(event => {
+    events.push(event.type);
+    assert_true(event.isTrusted);
+    assert_equals(video.error, null, "failure has its own later task");
+    assert_equals(video.networkState, video.NETWORK_LOADING);
+  }));
+  video.addEventListener("error", t.step_func_done(event => {
+    events.push(event.type);
+    assert_array_equals(events, ["loadstart", "error"]);
+    assert_true(event.isTrusted);
+    assert_false(event.bubbles);
+    assert_false(event.cancelable);
+    assert_equals(event.target, video);
+    assert_equals(video.error.code, MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED);
+    assert_equals(video.networkState, video.NETWORK_NO_SOURCE);
+    assert_equals(video.readyState, video.HAVE_NOTHING);
+    assert_equals(video.currentSrc, "");
+  }));
+  video.src = "";
+  assert_equals(video.error, null, "setting src must not fire error synchronously");
+  assert_array_equals(events, []);
+}, "Empty src selects the attribute and queues loadstart followed by media error");
+</script>

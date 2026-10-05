@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Media failure releases the window load delay</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#delaying-the-load-event-flag">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+const t = async_test('window load follows an unsupported media resource failure');
+let failed = false;
+window.addEventListener('load', t.step_func_done(() => {
+  assert_true(failed, 'media error was dispatched before the load delay ended');
+}));
+</script>
+<video src="data:video/unknown,unsupported" onerror="failed = true"></video>

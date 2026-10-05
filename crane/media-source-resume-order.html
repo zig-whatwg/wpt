@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Multiple source insertions resume one resource selection algorithm</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+promise_test(async t => {
+  const media = document.createElement('video');
+  const exhausted = document.createElement('source');
+  const firstFailure = new Promise(resolve => exhausted.addEventListener('error', resolve, {once: true}));
+  media.append(exhausted);
+  await firstFailure;
+  await new Promise(resolve => t.step_timeout(resolve, 30));
+  assert_equals(media.networkState, media.NETWORK_NO_SOURCE);
+  const first = document.createElement('source');
+  first.src = 'data:audio/unsupported,bytes';
+  const second = document.createElement('source');
+  const order = [];
+  const done = Promise.all([first, second].map((source, index) => new Promise(resolve => {
+    source.addEventListener('error', () => { order.push(index); resolve(); }, {once: true});
+  })));
+  media.append(first, second);
+  await done;
+  assert_array_equals(order, [0, 1], 'neither candidate is skipped by a second stable-state continuation');
+}, 'two source insertions resume selection once and visit both candidates');
+</script>

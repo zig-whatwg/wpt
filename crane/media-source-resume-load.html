@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A source inserted after candidate exhaustion delays document load</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+async_test(t => {
+  // This separate media fetch keeps the document loading until the empty
+  // candidate's release task and the insertion timer have both run.
+  const blocker = document.createElement('audio');
+  blocker.src = '/media/sound_5.mp3?pipe=trickle(d1)';
+  document.body.append(blocker);
+  const media = document.createElement('video');
+  const first = document.createElement('source');
+  let resumed = false;
+  let failed = false;
+  first.addEventListener('error', t.step_func(() => {
+    t.step_timeout(() => {
+      assert_equals(media.networkState, media.NETWORK_NO_SOURCE);
+      const second = document.createElement('source');
+      second.src = '/media/sound_5.mp3?pipe=trickle(d2)';
+      second.addEventListener('error', t.step_func(() => { failed = true; }));
+      media.append(second);
+      resumed = true;
+    }, 30);
+  }), {once: true});
+  media.append(first);
+  document.body.append(media);
+  window.addEventListener('load', t.step_func_done(() => {
+    assert_true(resumed, 'candidate selection resumed before window load');
+    assert_true(failed, 'window load waits for the resumed candidate failure');
+  }));
+}, 'a resumed source candidate registers its document load delay');
+</script>

@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Track elements and their TextTracks share a collectable lifetime</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#text-track-api">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/gc.js></script>
+<script>
+async function collectMediaPair() {
+  await garbageCollect();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await garbageCollect();
+}
+promise_test(async t => {
+  const {track, outcome} = (() => {
+    const media = document.createElement('video');
+    const element = document.createElement('track');
+    element.src = 'data:text/vtt,WEBVTT%0A%0A';
+    const outcome = new Promise(resolve => {
+      const finished = event => resolve(event.target.readyState);
+      element.addEventListener('load', finished, {once: true});
+      element.addEventListener('error', finished, {once: true});
+    });
+    media.append(element);
+    return {track: element.track, outcome};
+  })();
+  await collectMediaPair();
+  track.mode = 'hidden';
+  // The element is deliberately not retained here; a mode change must still
+  // reach its processing model through the traced back edge.
+  const readiness = await outcome;
+  assert_not_equals(readiness, 0, 'mode change started the processing model');
+  assert_equals(track.mode, 'hidden');
+  assert_not_equals(track.cues, null, 'an enabled track exposes its cue list');
+}, 'a script-retained TextTrack survives collection and remains usable');
+
+promise_test(async () => {
+  const element = document.createElement('track');
+  element.track.mediaMarker = 73;
+  await collectMediaPair();
+  assert_equals(element.track.mediaMarker, 73, 'the same TextTrack survives');
+  element.track.mode = 'hidden';
+  assert_equals(element.track.mode, 'hidden');
+}, 'a detached element keeps its same TextTrack through collection');
+
+promise_test(async () => {
+  const refs = (() => {
+    const element = document.createElement('track');
+    const track = element.track;
+    return [new WeakRef(element), new WeakRef(track)];
+  })();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await collectMediaPair();
+  assert_equals(refs[0].deref(), undefined, 'the element is collected');
+  assert_equals(refs[1].deref(), undefined, 'the TextTrack is collected');
+}, 'mutual traced edges do not root an otherwise unreachable pair');
+</script>

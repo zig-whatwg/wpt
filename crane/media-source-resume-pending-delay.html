@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A pending load-delay task cannot cancel a resumed media fetch</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+promise_test(t => new Promise(resolve => {
+  const media = document.createElement('video');
+  const exhausted = document.createElement('source');
+  exhausted.addEventListener('error', () => {
+    // Resume at the next event-loop turn after the old selection's stable
+    // section has exhausted its candidates.
+    t.step_timeout(() => {
+      assert_equals(media.networkState, media.NETWORK_NO_SOURCE,
+                    'the original candidates are exhausted');
+      const next = document.createElement('source');
+      next.src = 'data:audio/unsupported,bytes';
+      next.addEventListener('error', t.step_func(() => {
+        assert_equals(media.currentSrc, next.src);
+        resolve();
+      }), {once: true});
+      media.append(next);
+    }, 0);
+  }, {once: true});
+  media.append(exhausted);
+}), 'the old load-delay release does not terminate a newly resumed fetch');
+</script>
