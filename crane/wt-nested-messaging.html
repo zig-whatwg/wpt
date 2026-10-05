@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Messages between a page, a worker and its nested worker, each on its own thread</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A nested worker runs on a thread of its own too: its owner is the outer
+// worker, which delivers what it posts, and whose end ends it ("run a
+// worker" step 17 disentangles the inner worker's ports - the page's port
+// entangled with one of them hears `close`).
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 5000))]);
+}
+function nextMessage(worker) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error("worker error: " + e.message));
+  });
+}
+
+promise_test(async t => {
+  const outer = new Worker("resources/wt-nested-outer.js");
+  t.add_cleanup(() => outer.terminate());
+  const reply = nextMessage(outer);
+  outer.postMessage("ping");
+  assert_equals(await within(t, reply, "the round trip"), "page <- outer <- inner <- outer <- page: ping");
+}, "a message goes page -> outer -> inner -> outer -> page");
+
+promise_test(async t => {
+  const outer = new Worker("resources/wt-nested-outer.js");
+  t.add_cleanup(() => outer.terminate());
+  const { port1, port2 } = new MessageChannel();
+  const closed = new Promise(resolve => { port1.onclose = resolve; });
+  port1.start();
+  const ack = nextMessage(outer);
+  outer.postMessage("port", [port2]);
+  assert_equals(await within(t, ack, "the inner worker's ack"), "page <- outer <- inner has the port");
+  outer.postMessage("close");
+  await within(t, closed, "the inner worker's port closing");
+}, "the inner worker ends when the outer worker closes");
+
+promise_test(async t => {
+  // A nested worker from a blob URL its outer worker made: the outer
+  // worker's thread resolves it in the process's one blob URL store.
+  const outerSource = `
+    const url = URL.createObjectURL(new Blob(["postMessage('inner from blob');"], { type: "text/javascript" }));
+    const inner = new Worker(url);
+    inner.onmessage = e => postMessage(e.data);
+    inner.onerror = () => postMessage("inner failed");`;
+  const url = URL.createObjectURL(new Blob([outerSource], { type: "text/javascript" }));
+  const outer = new Worker(url);
+  URL.revokeObjectURL(url);
+  t.add_cleanup(() => outer.terminate());
+  assert_equals(await within(t, nextMessage(outer), "the inner worker's message"), "inner from blob");
+}, "a worker's nested worker runs from a blob URL the worker made");
+</script>

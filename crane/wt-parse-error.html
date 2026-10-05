@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's script that does not parse fires a plain error at the Worker; a runtime error reaches the page</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Run a worker" onComplete step 1: a script whose error to rethrow is
+// non-null - one that did not parse - fires a plain `error` Event at the
+// Worker and runs nothing; nothing is reported at the page. A runtime error
+// is reported for the worker's global scope, then - unhandled - at the
+// Worker as an ErrorEvent, then - still unhandled - for the page's global
+// with `error` null ("report an exception" step 7).
+setup({ allow_uncaught_exception: true });
+
+function blobWorker(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  return { worker: new Worker(url), url };
+}
+
+// One at a time (promise_test): a case listens at the page for what the
+// other must not see.
+promise_test(t => new Promise((resolve, reject) => {
+  const { worker, url } = blobWorker("this is not javascript");
+  const pageErrors = [];
+  const onPageError = e => pageErrors.push(e.message);
+  window.addEventListener("error", onPageError);
+  t.add_cleanup(() => {
+    window.removeEventListener("error", onPageError);
+    worker.terminate();
+    URL.revokeObjectURL(url);
+  });
+  worker.onmessage = () => reject(new Error("the worker's script must not run"));
+  worker.onerror = t.step_func(e => {
+    assert_false(e instanceof ErrorEvent, "a plain Event, not an ErrorEvent");
+    assert_equals(e.type, "error");
+    assert_false(e.cancelable);
+    t.step_timeout(t.step_func(() => {
+      assert_array_equals(pageErrors, [], "nothing is reported at the page");
+      resolve();
+    }), 50);
+  });
+}), "a worker script that does not parse fires a plain error at the Worker, and nothing at the page");
+
+promise_test(t => new Promise(resolve => {
+  const { worker, url } = blobWorker('throw new Error("runtime boom");');
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  let workerEvent = null;
+  worker.onerror = t.step_func(e => {
+    assert_true(e instanceof ErrorEvent);
+    workerEvent = e;
+  });
+  const onPageError = t.step_func(e => {
+    window.removeEventListener("error", onPageError);
+    assert_not_equals(workerEvent, null, "the Worker heard it first");
+    assert_true(e.message.includes("runtime boom"), e.message);
+    assert_equals(e.filename, url);
+    assert_equals(e.error, null);
+    e.preventDefault();
+    resolve();
+  });
+  window.addEventListener("error", onPageError);
+}), "a runtime error the Worker leaves unhandled is reported for the page");
+</script>

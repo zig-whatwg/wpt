@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker spinning in a busy loop stalls neither its page nor another worker</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Every dedicated worker runs its agent on a thread of its own, so a
+// `while (true) {}` stalls that worker and nothing else. While a worker's
+// tasks ran on its page's loop, this page never ran another task.
+function blobWorker(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  return worker;
+}
+function nextMessage(worker) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error("worker error: " + e.message));
+  });
+}
+
+promise_test(async t => {
+  const spinner = blobWorker('postMessage("spinning"); while (true) {}');
+  t.add_cleanup(() => spinner.terminate());
+  assert_equals(await nextMessage(spinner), "spinning");
+  // The page's own tasks keep running: a chain of ten setTimeout(0)s.
+  let count = 0;
+  await new Promise(resolve => {
+    const step = () => (++count === 10 ? resolve() : t.step_timeout(step, 0));
+    t.step_timeout(step, 0);
+  });
+  assert_equals(count, 10);
+  // And another worker answers.
+  const echo = blobWorker('onmessage = e => postMessage("echo " + e.data);');
+  t.add_cleanup(() => echo.terminate());
+  const answer = nextMessage(echo);
+  echo.postMessage("ping");
+  assert_equals(await answer, "echo ping");
+}, "a spinning worker leaves its page's timers and another worker running");
+
+promise_test(async t => {
+  // Sixteen workers started at once, each on its own thread, each answering.
+  const workers = [];
+  const answers = [];
+  for (let i = 0; i < 16; i++) {
+    const worker = blobWorker('onmessage = e => { let s = 0; for (let k = 0; k < 100000; k++) s += k; postMessage(e.data + ":" + s); };');
+    t.add_cleanup(() => worker.terminate());
+    workers.push(worker);
+    answers.push(nextMessage(worker));
+    worker.postMessage(i);
+  }
+  const got = await Promise.all(answers);
+  for (let i = 0; i < 16; i++) assert_equals(got[i], i + ":4999950000");
+}, "sixteen workers started together all answer");
+</script>

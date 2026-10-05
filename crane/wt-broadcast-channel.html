@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>BroadcastChannel between a page and workers on threads of their own</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/web-messaging.html#broadcasting-to-other-browsing-contexts">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A dedicated worker runs on a thread of its own, so a BroadcastChannel
+// message to or from it crosses threads: the Browser's one list of channels
+// finds the destination, and the delivery is a task of the destination's own
+// loop. A destination that is closed, or whose realm has ended, hears nothing;
+// a worker terminated with deliveries queued drops them (the runner's
+// `leaked:` count says they were freed).
+function blobWorker(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  return worker;
+}
+function nextMessage(target) {
+  return new Promise(resolve => { target.onmessage = e => resolve(e.data); });
+}
+function within(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    t.step_timeout(() => reject(new Error(what + " never arrived")), 5000))]);
+}
+
+promise_test(async t => {
+  const worker = blobWorker(`
+    const bc = new BroadcastChannel("wt-bc-echo");
+    bc.onmessage = e => bc.postMessage("echo " + e.data);
+    postMessage("ready");`);
+  t.add_cleanup(() => worker.terminate());
+  assert_equals(await within(t, nextMessage(worker), "the worker's ready"), "ready");
+  const bc = new BroadcastChannel("wt-bc-echo");
+  t.add_cleanup(() => bc.close());
+  const echoed = nextMessage(bc);
+  bc.postMessage("ping");
+  assert_equals(await within(t, echoed, "the echo"), "echo ping");
+}, "a message crosses from a page to its worker and back");
+
+promise_test(async t => {
+  const closed = new BroadcastChannel("wt-bc-closed");
+  const open = new BroadcastChannel("wt-bc-closed");
+  t.add_cleanup(() => open.close());
+  let closedHeard = 0;
+  closed.onmessage = () => { closedHeard++; };
+  closed.close();
+  // A channel in a frame whose realm ends before the message is posted.
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  let frameHeard = 0;
+  const inFrame = new frame.contentWindow.BroadcastChannel("wt-bc-closed");
+  inFrame.onmessage = () => { frameHeard++; };
+  frame.remove();
+  const worker = blobWorker('new BroadcastChannel("wt-bc-closed").postMessage("from the worker");');
+  t.add_cleanup(() => worker.terminate());
+  assert_equals(await within(t, nextMessage(open), "the worker's message"), "from the worker");
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(closedHeard, 0, "a closed channel hears nothing");
+  assert_equals(frameHeard, 0, "a channel whose realm ended hears nothing");
+}, "a closed channel and one whose realm ended hear nothing from a worker");
+
+promise_test(async t => {
+  // The worker spins, so the deliveries wait in its loop's inbox.
+  const worker = blobWorker(`
+    const bc = new BroadcastChannel("wt-bc-dropped");
+    bc.onmessage = () => {};
+    postMessage("ready");
+    while (true) {}`);
+  assert_equals(await within(t, nextMessage(worker), "the worker's ready"), "ready");
+  const bc = new BroadcastChannel("wt-bc-dropped");
+  for (let i = 0; i < 100; i++) bc.postMessage({ i, bytes: new Uint8Array(256) });
+  worker.terminate();
+  bc.close();
+  // The page goes on: a fresh pair of channels still talks.
+  const a = new BroadcastChannel("wt-bc-after");
+  const b = new BroadcastChannel("wt-bc-after");
+  t.add_cleanup(() => { a.close(); b.close(); });
+  const heard = nextMessage(b);
+  a.postMessage("after");
+  assert_equals(await within(t, heard, "the message after"), "after");
+}, "a worker terminated with deliveries queued drops them");
+</script>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker blocked in Atomics.wait leaves its page running</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#obtain-a-dedicated/shared-worker-agent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A dedicated worker's agent has [[CanBlock]] true: Atomics.wait blocks its
+// thread - its own, not its page's.
+function blobWorker(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  return worker;
+}
+
+promise_test(async t => {
+  const waiter = blobWorker('postMessage("waiting"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000); postMessage("woke");');
+  t.add_cleanup(() => waiter.terminate());
+  const messages = [];
+  let resolveWaiting, resolveWoke;
+  const waiting = new Promise(r => { resolveWaiting = r; });
+  const woke = new Promise(r => { resolveWoke = r; });
+  waiter.onmessage = e => {
+    messages.push(e.data);
+    if (e.data === "waiting") resolveWaiting();
+    if (e.data === "woke") resolveWoke();
+  };
+  await waiting;
+  // A timer of the page fires while the worker waits.
+  const seen = await new Promise(resolve => t.step_timeout(() => resolve(messages.slice()), 20));
+  assert_array_equals(seen, ["waiting"], "the page's timer ran while the worker waited");
+  await woke;
+  assert_array_equals(messages, ["waiting", "woke"]);
+}, "a worker blocked in Atomics.wait leaves its page's timers running");
+</script>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's unhandled error reaches its Worker object across threads</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#runtime-script-errors-2">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "report an exception" for a worker: an ErrorEvent at its global scope,
+// then - unhandled - one at its Worker object, queued on the Worker's own
+// loop, with the error's message and position and `error` null.
+function blobWorker(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  return { worker: new Worker(url), url };
+}
+
+async_test(t => {
+  const { worker, url } = blobWorker('onmessage = () => { throw new Error("boom"); };');
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  worker.onerror = t.step_func_done(e => {
+    assert_true(e instanceof ErrorEvent);
+    assert_true(e.message.includes("boom"), e.message);
+    assert_equals(e.filename, url);
+    assert_equals(e.lineno, 1);
+    assert_equals(e.error, null);
+    e.preventDefault();
+  });
+  worker.postMessage("go");
+}, "an error thrown in a handler reaches the Worker as an ErrorEvent");
+
+async_test(t => {
+  const { worker, url } = blobWorker('onerror = () => true; onmessage = () => { throw new Error("handled"); }; setTimeout(() => postMessage("still running"), 50);');
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  worker.onerror = t.unreached_func("a handled error must not reach the Worker");
+  worker.onmessage = t.step_func_done(e => assert_equals(e.data, "still running"));
+  worker.postMessage("go");
+}, "an error the worker's onerror handles stays in the worker");
+
+async_test(t => {
+  const { worker, url } = blobWorker('this is not javascript');
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  // "Run a worker" onComplete step 1: a script that does not parse fires a
+  // plain `error` Event, not an ErrorEvent (crane/wt-parse-error.html).
+  worker.onerror = t.step_func_done(e => {
+    assert_false(e instanceof ErrorEvent);
+    assert_equals(e.type, "error");
+  });
+}, "a syntax error in the worker's script reaches the Worker as a plain error");
+</script>

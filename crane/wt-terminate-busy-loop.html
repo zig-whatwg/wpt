@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>terminate() ends a worker whose script never yields</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#terminate-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "terminate a worker" step 3: abort the script currently running in the
+// worker - from the page's thread, while the worker's thread is inside it. A
+// worker that did not end would keep its thread, and the Browser's end, which
+// joins every worker thread, would never return: the file would time out.
+function blobWorker(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  return worker;
+}
+function nextMessage(worker) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error("worker error: " + e.message));
+  });
+}
+function pause(t, ms) {
+  return new Promise(resolve => t.step_timeout(resolve, ms));
+}
+async function freshWorkerAnswers() {
+  const fresh = blobWorker('onmessage = e => postMessage("fresh " + e.data);');
+  const answer = nextMessage(fresh);
+  fresh.postMessage("ping");
+  assert_equals(await answer, "fresh ping");
+  fresh.terminate();
+}
+
+promise_test(async t => {
+  const spinner = blobWorker('postMessage("spinning"); while (true) {}');
+  assert_equals(await nextMessage(spinner), "spinning");
+  spinner.terminate();
+  await freshWorkerAnswers();
+}, "terminate() ends a worker spinning in a busy loop");
+
+promise_test(async t => {
+  const spinner = blobWorker('onmessage = () => { postMessage("spinning"); for (;;) {} };');
+  const started = nextMessage(spinner);
+  spinner.postMessage("go");
+  assert_equals(await started, "spinning");
+  spinner.terminate();
+  await freshWorkerAnswers();
+}, "terminate() ends a worker spinning inside a message handler");
+
+promise_test(async t => {
+  const waiter = blobWorker('postMessage("waiting"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); postMessage("woke");');
+  assert_equals(await nextMessage(waiter), "waiting");
+  let heard = null;
+  waiter.onmessage = e => { heard = e.data; };
+  // Let it block, then end it.
+  await pause(t, 50);
+  waiter.terminate();
+  await freshWorkerAnswers();
+  await pause(t, 50);
+  assert_equals(heard, null, "nothing after the wait was run");
+}, "terminate() wakes and ends a worker blocked in Atomics.wait");
+
+promise_test(async t => {
+  const spinner = blobWorker('while (true) {}');
+  // Terminated while its script may not have started yet.
+  spinner.terminate();
+  await freshWorkerAnswers();
+}, "terminate() right after the constructor ends a worker whose script never yields");
+</script>

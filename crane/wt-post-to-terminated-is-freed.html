@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Messages posted to a terminated worker are transferred, and dropped</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#dom-worker-postmessage">
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#terminate-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Worker.postMessage is the outside port's postMessage: its transfer steps run
+// whatever the state of the worker, so an ArrayBuffer in the transfer list is
+// detached. A terminated worker runs none of them; what it is sent - bytes and
+// port ends - is freed with its port (the runner's `leaked:` count says).
+function blobWorker(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  return worker;
+}
+
+promise_test(async t => {
+  const worker = blobWorker('onmessage = () => postMessage("ran");');
+  let heard = 0;
+  worker.onmessage = () => { heard++; };
+  worker.onerror = () => { heard++; };
+  worker.terminate();
+  for (let i = 0; i < 1000; i++) {
+    const buffer = new ArrayBuffer(64);
+    const { port1, port2 } = new MessageChannel();
+    worker.postMessage({ i, buffer }, [buffer, port2]);
+    assert_equals(buffer.byteLength, 0, "the buffer is detached");
+    port1.close();
+  }
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_equals(heard, 0, "the terminated worker ran nothing");
+}, "a terminated worker's messages are transferred and never delivered");
+
+promise_test(async t => {
+  // Posted before the worker's script has run, then terminated: dropped too.
+  const worker = blobWorker('onmessage = () => postMessage("ran");');
+  let heard = 0;
+  worker.onmessage = () => { heard++; };
+  for (let i = 0; i < 100; i++) {
+    const buffer = new ArrayBuffer(64);
+    worker.postMessage(buffer, [buffer]);
+  }
+  worker.terminate();
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_less_than_equal(heard, 100);
+}, "messages queued before terminate() are dropped with the worker");
+</script>
