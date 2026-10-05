@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A blob URL fetched from the page and from a worker, each resolve releasing its reference</title>
+<link rel=help href="https://w3c.github.io/FileAPI/#blob-url-resolve">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The blob URL store hands every resolve a reference of its own (a page and
+// its worker reach the store from two threads once workers have threads of
+// their own): each fetch must give it back. Run under `leaks --atExit`, this
+// file must leave no BlobData, and the runner's per-file leak count must stay
+// zero.
+promise_test(async () => {
+  const url = URL.createObjectURL(new Blob(["page bytes"], { type: "text/plain" }));
+  for (let i = 0; i < 20; i++) {
+    const text = await (await fetch(url)).text();
+    assert_equals(text, "page bytes");
+  }
+  URL.revokeObjectURL(url);
+}, "a page fetches its own blob URL twenty times");
+
+promise_test(async () => {
+  const source = `
+    onmessage = async (e) => {
+      const own = URL.createObjectURL(new Blob(["worker bytes"]));
+      let out = [];
+      for (let i = 0; i < 20; i++) out.push(await (await fetch(own)).text());
+      out.push(await (await fetch(e.data)).text());
+      URL.revokeObjectURL(own);
+      postMessage(out.join("|"));
+    };`;
+  const workerUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const pageUrl = URL.createObjectURL(new Blob(["from the page"]));
+  const worker = new Worker(workerUrl);
+  const reply = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error("worker error: " + e.message));
+    worker.postMessage(pageUrl);
+  });
+  worker.terminate();
+  URL.revokeObjectURL(workerUrl);
+  URL.revokeObjectURL(pageUrl);
+  const parts = reply.split("|");
+  assert_equals(parts.length, 21);
+  assert_true(parts.slice(0, 20).every(p => p === "worker bytes"), "the worker's own URL");
+  assert_equals(parts[20], "from the page", "the page's URL, fetched in the worker");
+}, "a worker made from a blob URL fetches its own blob URL and the page's");
+</script>
