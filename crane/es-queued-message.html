@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>EventSource creates each message before queuing its dispatch</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/server-sent-events.html#dispatchMessage">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+async_test(t => {
+  // A Fetch data response already owns its entire byte body: both dispatches
+  // are queued before the first listener runs, without network chunk timing.
+  const source = new EventSource('data:text/event-stream,' +
+    encodeURIComponent('data: first\n\ndata: second\n\n'));
+  t.add_cleanup(() => source.close());
+  let barrier;
+  let count = 0;
+  source.onerror = t.unreached_func('The data response must succeed');
+  source.onmessage = t.step_func(event => {
+    if (++count === 1) {
+      assert_equals(event.data, 'first');
+      barrier = new Event('barrier').timeStamp;
+      // Make deferred creation observable, and collect between dispatches.
+      const until = Date.now() + 25;
+      while (Date.now() < until) {}
+      garbageCollect();
+    } else {
+      assert_equals(count, 2);
+      assert_equals(event.data, 'second');
+      assert_less_than_equal(event.timeStamp, barrier,
+        'HTML 9.2.6 step 4 creates the event before step 8 queues dispatch');
+      source.close();
+      t.done();
+    }
+  });
+}, 'Queued messages retain their creation time and survive collection');
+</script>

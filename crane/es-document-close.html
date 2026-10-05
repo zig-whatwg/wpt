@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>EventSource document destruction cancels streaming and retry</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const during of ['open', 'retry']) {
+  async_test(t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    frame.onload = t.step_func(() => {
+      const url = new URL('/eventsource/resources/message.py?message=' +
+        encodeURIComponent('retry: 50\ndata: one\n\ndata: two\n\n'), location.href);
+      const source = new frame.contentWindow.EventSource(url);
+      let opens = 0;
+      let removed = false;
+      const remove = t.step_func(() => {
+        assert_false(removed);
+        removed = true;
+        frame.remove();
+        assert_equals(source.readyState, EventSource.CLOSED);
+        t.step_timeout(() => {
+          assert_equals(opens, 1);
+          assert_equals(source.readyState, EventSource.CLOSED);
+          t.done();
+        }, 200);
+      });
+      source.onopen = t.step_func(() => {
+        assert_false(removed, 'no open after document destruction');
+        assert_equals(++opens, 1);
+        if (during === 'open') remove();
+      });
+      source.onmessage = t.step_func(() => assert_false(removed));
+      source.onerror = t.step_func(() => {
+        assert_false(removed, 'no error after document destruction');
+        assert_equals(source.readyState, EventSource.CONNECTING);
+        if (during === 'retry') remove();
+      });
+    });
+    frame.src = 'about:blank';
+    document.body.append(frame);
+  }, 'Destroying the owning document during ' + during + ' closes the source silently');
+}
+</script>

@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>EventSource pending activity and close during queued delivery</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+async_test(t => {
+  new EventSource('/eventsource/resources/message.py?sleep=300').onmessage =
+    t.step_func(function (event) {
+      assert_equals(event.data, 'data');
+      assert_equals(event.currentTarget.readyState, EventSource.OPEN);
+      event.currentTarget.close();
+      t.done();
+    });
+  garbageCollect();
+}, 'A source referenced only by its pending activity survives collection');
+
+async_test(t => {
+  const source = new EventSource('/eventsource/resources/message.py?message=' +
+    encodeURIComponent('data: first\n\ndata: second\n\n'));
+  t.add_cleanup(() => source.close());
+  let count = 0;
+  source.onerror = t.unreached_func('No queued error fires after close');
+  source.onmessage = t.step_func(event => {
+    assert_equals(++count, 1);
+    assert_equals(event.data, 'first');
+    source.close();
+    assert_equals(source.readyState, EventSource.CLOSED);
+    t.step_timeout(() => {
+      assert_equals(count, 1);
+      t.done();
+    }, 100);
+  });
+}, 'Closing in a message listener suppresses later messages from the same chunk');
+
+async_test(t => {
+  const source = new EventSource('/eventsource/resources/message.py');
+  t.add_cleanup(() => source.close());
+  source.onmessage = t.unreached_func('No message after closing in open');
+  source.onerror = t.unreached_func('No error after closing in open');
+  source.onopen = t.step_func(() => {
+    source.close();
+    garbageCollect();
+    t.step_timeout(() => t.done(), 100);
+  });
+}, 'Closing in open cancels already queued messages and retry');
+
+async_test(t => {
+  const source = new EventSource('/eventsource/resources/message.py?message=' +
+    encodeURIComponent('retry: 50\ndata: first\n\n'));
+  t.add_cleanup(() => source.close());
+  let opens = 0;
+  source.onopen = t.step_func(() => assert_equals(++opens, 1));
+  source.onerror = t.step_func(() => {
+    assert_equals(source.readyState, EventSource.CONNECTING);
+    source.close();
+    t.step_timeout(() => {
+      assert_equals(source.readyState, EventSource.CLOSED);
+      assert_equals(opens, 1);
+      t.done();
+    }, 150);
+  });
+}, 'Closing in the reconnect error listener prevents another connection');
+</script>
