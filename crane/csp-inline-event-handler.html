@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-t' 'unsafe-hashes' 'sha256-oiogUm/g5mo+ySHCm6cU27nNYNn20VWZ9JCHqNWC3lY=' 'report-sample'">
+<title>CSP blocks an event handler content attribute: the handler never compiles</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-content-attributes">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-inline">
+<script nonce="t" src="/resources/testharness.js"></script>
+<script nonce="t" src="/resources/testharnessreport.js"></script>
+<script nonce="t">
+// HTML 8.1.8.1, the event handler content attributes' change steps, step
+// 5.1: CSP 4.2.3 with type "script attribute" and the value; "Blocked"
+// returns - the handler is not compiled, and its value stays what it was.
+// 'unsafe-hashes' lets a hash allow one ("window.hashed = true" hashes to
+// the sha256 in the policy).
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+</script>
+<body>
+<div id="markup" onclick="window.markupRan = true">markup</div>
+<div id="hashed" onclick="window.hashed = true">hashed</div>
+<script nonce="t">
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+
+promise_test(async () => {
+  await tick();
+  const markup = document.getElementById("markup");
+  const mine = violations.filter(e => e.target === markup);
+  assert_equals(mine.length, 1, "one violation, at the element");
+  assert_equals(mine[0].effectiveDirective, "script-src-attr");
+  assert_equals(mine[0].blockedURI, "inline");
+  assert_equals(mine[0].sample, "window.markupRan = true");
+  assert_equals(markup.onclick, null, "no handler");
+  markup.click();
+  assert_equals(window.markupRan, undefined, "nothing ran");
+}, "a parser-set handler attribute is blocked and reported at its element");
+
+promise_test(async () => {
+  await tick();
+  const hashed = document.getElementById("hashed");
+  assert_equals(violations.filter(e => e.target === hashed).length, 0);
+  assert_equals(typeof hashed.onclick, "function");
+  hashed.click();
+  assert_true(window.hashed);
+}, "'unsafe-hashes' and a matching hash allow a handler attribute");
+
+promise_test(async () => {
+  await tick();
+  const div = document.createElement("div");
+  document.body.appendChild(div);
+  function kept() {}
+  div.onclick = kept;
+  const before = violations.length;
+  div.setAttribute("onclick", "window.setRan = true");
+  assert_equals(div.onclick, kept, "a blocked value leaves the handler as it was");
+  div.click();
+  assert_equals(window.setRan, undefined);
+  await tick();
+  assert_equals(violations.length, before + 1);
+  assert_equals(violations[violations.length - 1].target, div);
+}, "setAttribute of a blocked handler leaves the old handler in place");
+
+promise_test(async () => {
+  await tick();
+  const div = document.createElement("div");
+  div.setAttribute("onclick", "window.disconnectedRan = true");
+  await tick();
+  const before = violations.length;
+  div.removeAttribute("onclick");
+  await tick();
+  assert_equals(violations.length, before, "removing the attribute is not checked");
+  assert_equals(div.onclick, null);
+}, "removing a handler attribute deactivates it unchecked");
+
+promise_test(async () => {
+  await tick();
+  const span = document.createElement("span");
+  const before = violations.length;
+  span.setAttribute("onnotanevent", "1");
+  span.setAttribute("data-onclick", "1");
+  await tick();
+  assert_equals(violations.length, before, "only event handler content attributes");
+}, "an attribute that is no event handler is not checked");
+</script>
+</body>

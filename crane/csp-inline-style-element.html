@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'; style-src 'nonce-ok' 'report-sample'">
+<title>CSP blocks an inline style block: securitypolicyviolation at the style element, and error</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-inline">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "update a style block" step 5: CSP 4.2.3 with type "style" and the
+// element's child text content. A blocked block reports a violation - its
+// effective directive style-src-elem, its resource "inline", the element as
+// its target while connected - and creates no sheet; like a sheet that
+// failed, it fires error (Chrome, Firefox and Safari do; WPT
+// style-src-error-event-fires).
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+window.events = [];
+function record(e) { events.push(e.target.id + ":" + e.type); }
+</script>
+<style id="blocked" onload="record(event)" onerror="record(event)">#blocked-target { margin-left: 2px; }</style>
+<style id="allowed" nonce="ok" onload="record(event)" onerror="record(event)">#allowed-target { margin-left: 3px; }</style>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+
+promise_test(async () => {
+  await tick();
+  const blocked = document.getElementById("blocked");
+  const mine = violations.filter(e => e.target === blocked);
+  assert_equals(mine.length, 1, "one violation, at the blocked style element");
+  const e = mine[0];
+  assert_equals(e.effectiveDirective, "style-src-elem");
+  assert_equals(e.violatedDirective, "style-src-elem");
+  assert_equals(e.blockedURI, "inline");
+  assert_equals(e.disposition, "enforce");
+  assert_equals(e.sample, "#blocked-target { margin-left: 2px; }", "'report-sample': the first 40 characters");
+  assert_equals(violations.filter(v => v.target === document.getElementById("allowed")).length, 0, "the nonce'd block is allowed");
+}, "a parser-inserted style block without a matching nonce is blocked and reported at itself");
+
+promise_test(async () => {
+  await tick();
+  assert_array_equals(events.filter(e => e.startsWith("blocked:")), ["blocked:error"], "a blocked block fires error, not load");
+  assert_array_equals(events.filter(e => e.startsWith("allowed:")), ["allowed:load"], "an allowed block fires load");
+}, "a blocked style block fires error; an allowed one load");
+
+promise_test(async () => {
+  await tick();
+  const before = violations.length;
+  const style = document.createElement("style");
+  style.id = "inserted";
+  style.textContent = "#x { color: red; } /* a sample longer than forty characters */";
+  await tick();
+  assert_equals(violations.length, before, "a style element that is not connected is not checked");
+  const fired = new Promise(resolve => style.addEventListener("error", resolve));
+  document.body.appendChild(style);
+  await fired;
+  await tick();
+  const mine = violations.filter(e => e.target === style);
+  assert_equals(mine.length, 1);
+  assert_equals(mine[0].sample, "#x { color: red; } /* a sample longer th");
+}, "a script-inserted style block is checked when it becomes connected");
+
+promise_test(async () => {
+  await tick();
+  const style = document.createElement("style");
+  style.setAttribute("nonce", "ok");
+  style.textContent = "#y { color: red; }";
+  const loaded = new Promise(resolve => style.addEventListener("load", resolve));
+  const before = violations.length;
+  document.body.appendChild(style);
+  await loaded;
+  await tick();
+  assert_equals(violations.length, before, "a nonce'd inserted block is allowed");
+  // Its text changes: the block is updated, and its nonce still allows it.
+  style.textContent = "#y { color: blue; }";
+  await tick();
+  assert_equals(violations.length, before);
+}, "a script-inserted style block with the nonce is allowed");
+
+promise_test(async () => {
+  await tick();
+  const blocked = document.getElementById("blocked");
+  const before = violations.filter(e => e.target === blocked).length;
+  const fired = new Promise(resolve => blocked.addEventListener("error", resolve, { once: true }));
+  blocked.textContent = "#z { color: green; }";
+  await fired;
+  await tick();
+  const mine = violations.filter(e => e.target === blocked);
+  // textContent removes the old child and inserts the new one: DOM runs the
+  // children changed steps for each, and each updates the block.
+  assert_greater_than(mine.length, before, "its children changed: updated, checked and reported again");
+  assert_equals(mine[mine.length - 1].sample, "#z { color: green; }");
+}, "changing a blocked block's text checks it again");
+
+promise_test(async () => {
+  await tick();
+  const style = document.createElement("style");
+  style.type = "text/plain";
+  style.textContent = "not css";
+  const before = violations.length;
+  document.body.appendChild(style);
+  await tick();
+  assert_equals(violations.length, before, "step 4 returns before the CSP check");
+}, "a style block whose type is not text/css is not checked");
+</script>
+</body>

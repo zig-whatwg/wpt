@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval'">
+<title>script-src with 'unsafe-eval' allows eval and the Function constructors</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#can-compile-strings">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+promise_test(async () => {
+  assert_equals(eval("1 + 1"), 2);
+  assert_equals((0, eval)("2 + 2"), 4);
+  assert_equals(new Function("a", "return a * 2")(21), 42);
+  await new Promise(resolve => step_timeout(resolve, 0));
+  assert_equals(violations.length, 0);
+}, "'unsafe-eval' allows string compilation, unreported");
+</script>

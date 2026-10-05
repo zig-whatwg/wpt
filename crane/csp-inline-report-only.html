@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A report-only policy reports inline styles, style attributes and handler attributes, and blocks none</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-inline">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// CSP 4.2.3 step 3.1.8: only an enforced policy blocks; a monitored one
+// (Content-Security-Policy-Report-Only, in the .headers file) reports with
+// disposition "report" and lets the inline behaviour through.
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+window.events = [];
+</script>
+<style id="block" onload="events.push('load')" onerror="events.push('error')">#x { color: red; }</style>
+<body>
+<div id="attr" style="margin-left: 2px" onclick="window.clicked = true">x</div>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const by = (target, directive) => violations.filter(e => e.target === target && e.effectiveDirective === directive);
+
+promise_test(async () => {
+  await tick();
+  const block = document.getElementById("block");
+  const mine = by(block, "style-src-elem");
+  assert_equals(mine.length, 1);
+  assert_equals(mine[0].disposition, "report");
+  assert_equals(mine[0].sample, "#x { color: red; }");
+  assert_array_equals(events, ["load"], "the block is used: load, not error");
+}, "a monitored policy reports an inline style block and lets it load");
+
+promise_test(async () => {
+  await tick();
+  const attr = document.getElementById("attr");
+  const style = by(attr, "style-src-attr");
+  assert_equals(style.length, 1);
+  assert_equals(style[0].disposition, "report");
+  const handler = by(attr, "script-src-attr");
+  assert_equals(handler.length, 1);
+  assert_equals(handler[0].disposition, "report");
+  assert_equals(handler[0].sample, "window.clicked = true");
+  attr.click();
+  assert_true(window.clicked, "the handler was compiled");
+}, "a monitored policy reports style and handler attributes and applies them");
+</script>
+</body>

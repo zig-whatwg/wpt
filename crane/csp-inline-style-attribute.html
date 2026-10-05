@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'; style-src-attr 'none' 'report-sample'">
+<title>CSP checks every write of the style attribute, and only those</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#the-style-attribute">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-inline">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML 3.2.6.5: when the style attribute is added or changed, CSP 4.2.3 runs
+// with type "style attribute" and the attribute's value - whoever wrote it:
+// the parser, setAttribute, an Attr node. CSSOM's own writes (element.style)
+// do not run it. A blocked attribute's rules are not applied.
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+</script>
+<body>
+<div id="markup" style="margin-left: 2px">markup</div>
+<svg id="svg" style="fill: red"></svg>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+
+promise_test(async () => {
+  await tick();
+  const markup = document.getElementById("markup");
+  const mine = violations.filter(e => e.target === markup);
+  assert_equals(mine.length, 1, "one violation, at the element");
+  assert_equals(mine[0].effectiveDirective, "style-src-attr");
+  assert_equals(mine[0].blockedURI, "inline");
+  assert_equals(mine[0].sample, "margin-left: 2px");
+}, "a parser-set style attribute is blocked and reported at its element");
+
+promise_test(async () => {
+  await tick();
+  const svg = document.getElementById("svg");
+  assert_equals(violations.filter(e => e.target === svg).length, 1);
+}, "an SVG element's style attribute is checked too");
+
+promise_test(async () => {
+  await tick();
+  const div = document.createElement("div");
+  const before = violations.length;
+  div.setAttribute("style", "color: red");
+  await tick();
+  const added = violations.slice(before);
+  assert_equals(added.length, 1);
+  assert_equals(added[0].target, document, "a disconnected element is not the target");
+  assert_equals(added[0].sample, "color: red");
+}, "setAttribute('style') is checked");
+
+promise_test(async () => {
+  await tick();
+  const div = document.createElement("div");
+  document.body.appendChild(div);
+  const before = violations.length;
+  const attr = document.createAttribute("style");
+  attr.value = "color: blue";
+  div.setAttributeNode(attr);
+  await tick();
+  assert_equals(violations.length, before + 1, "an Attr node set on the element");
+  attr.value = "color: green";
+  await tick();
+  assert_equals(violations.length, before + 2, "the Attr's value changed");
+  assert_equals(violations[violations.length - 1].target, div);
+}, "a style attribute set through an Attr node is checked");
+
+promise_test(async () => {
+  await tick();
+  const div = document.createElement("div");
+  document.body.appendChild(div);
+  const before = violations.length;
+  div.style.color = "red";
+  div.style.cssText = "margin-left: 4px";
+  div.removeAttribute("style");
+  await tick();
+  assert_equals(violations.length, before, "CSSOM writes and a removal report nothing");
+}, "CSSOM writes and removing the attribute are not checked");
+
+promise_test(async () => {
+  await tick();
+  const div = document.createElement("div");
+  const before = violations.length;
+  div.setAttributeNS("urn:x", "style", "color: red");
+  div.setAttribute("data-style", "color: red");
+  await tick();
+  assert_equals(violations.length, before, "only the style attribute in no namespace");
+}, "a namespaced style attribute is not the style attribute");
+</script>
+</body>

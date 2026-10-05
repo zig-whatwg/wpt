@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'report-sample'">
+<title>script-src without 'unsafe-eval' blocks eval and the Function constructors, and reports each</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#can-compile-strings">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#hostensurecancompilestrings(realm,-parameterstrings,-bodystring,-codestring,-compilationtype,-parameterargs,-bodyarg)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// CSP 4.4.1 EnsureCSPDoesNotBlockStringCompilation, through HTML's
+// HostEnsureCanCompileStrings: an EvalError, nothing compiled, and a
+// violation of script-src whose resource is "eval", sampled under
+// 'report-sample'.
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+
+promise_test(async () => {
+  const before = violations.length;
+  assert_throws_js(EvalError, () => eval("window.directRan = true"));
+  assert_equals(window.directRan, undefined);
+  await tick();
+  const added = violations.slice(before);
+  assert_equals(added.length, 1);
+  assert_equals(added[0].effectiveDirective, "script-src");
+  assert_equals(added[0].violatedDirective, "script-src");
+  assert_equals(added[0].blockedURI, "eval");
+  assert_equals(added[0].sample, "window.directRan = true");
+  assert_equals(added[0].disposition, "enforce");
+  assert_equals(added[0].target, document);
+}, "direct eval throws EvalError and reports");
+
+promise_test(async () => {
+  const before = violations.length;
+  assert_throws_js(EvalError, () => (0, eval)("window.indirectRan = true"));
+  assert_throws_js(EvalError, () => window.eval("window.indirectRan = true"));
+  assert_equals(window.indirectRan, undefined);
+  await tick();
+  assert_equals(violations.length, before + 2);
+}, "indirect eval throws EvalError and reports");
+
+promise_test(async () => {
+  const before = violations.length;
+  assert_throws_js(EvalError, () => new Function("a", "window.functionRan = a"));
+  assert_throws_js(EvalError, () => Function("return 1"));
+  const AsyncFunction = (async function () {}).constructor;
+  assert_throws_js(EvalError, () => new AsyncFunction("await 1"));
+  await tick();
+  const added = violations.slice(before);
+  assert_equals(added.length, 3);
+  assert_equals(added[0].blockedURI, "eval");
+  assert_equals(added[0].sample, "function anonymous(a\n) {\nwindow.function", "the sample is the first 40 characters of the source CreateDynamicFunction builds");
+}, "the Function constructors throw EvalError and report");
+
+promise_test(async () => {
+  const before = violations.length;
+  const o = { toString() { return "window.objectRan = true"; } };
+  assert_equals(eval(o), o, "eval of a non-string returns it");
+  assert_equals(eval(42), 42);
+  assert_equals(window.objectRan, undefined);
+  await tick();
+  assert_equals(violations.length, before, "nothing was compiled: nothing to report");
+}, "eval of a value that is not a string is not checked");
+
+test(() => {
+  assert_equals((function (a) { return a + 1; })(1), 2, "a function expression is no compilation from a string");
+  assert_equals(JSON.parse("[1]")[0], 1, "JSON.parse is not string compilation");
+}, "what is not compilation from a string still works");
+</script>

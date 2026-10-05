@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A report-only script-src reports eval and lets it run</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#can-compile-strings">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The .headers file delivers Content-Security-Policy-Report-Only:
+// script-src 'self' 'unsafe-inline' (no 'unsafe-eval').
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+promise_test(async () => {
+  assert_equals(eval("6 * 7"), 42);
+  assert_equals(new Function("return 'ran'")(), "ran");
+  await new Promise(resolve => step_timeout(resolve, 0));
+  const evals = violations.filter(e => e.blockedURI === "eval");
+  assert_equals(evals.length, 2);
+  for (const e of evals) {
+    assert_equals(e.disposition, "report");
+    assert_equals(e.effectiveDirective, "script-src");
+  }
+}, "a monitored policy reports eval and the Function constructor and lets them compile");
+</script>

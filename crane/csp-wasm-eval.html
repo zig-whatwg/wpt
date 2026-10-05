@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'">
+<title>CSP without 'wasm-unsafe-eval' blocks WebAssembly compilation and reports wasm-eval</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#can-compile-wasm-bytes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// CSP 4.5.1 EnsureCSPDoesNotBlockWasmByteCompilation: default-src stands in
+// for script-src; a WebAssembly.CompileError, and a violation of script-src
+// whose resource is "wasm-eval".
+window.violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+const bytes = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+
+promise_test(async t => {
+  assert_throws_js(WebAssembly.CompileError, () => new WebAssembly.Module(bytes));
+  await promise_rejects_js(t, WebAssembly.CompileError, WebAssembly.instantiate(bytes));
+  await new Promise(resolve => step_timeout(resolve, 0));
+  const wasm = violations.filter(e => e.blockedURI === "wasm-eval");
+  assert_greater_than_equal(wasm.length, 1);
+  assert_equals(wasm[0].effectiveDirective, "script-src");
+  assert_equals(wasm[0].originalPolicy, "default-src 'self' 'unsafe-inline'");
+  assert_equals(wasm[0].target, document);
+}, "new WebAssembly.Module() throws and WebAssembly.instantiate() rejects with CompileError, and each reports wasm-eval");
+
+promise_test(t => {
+  // V8 13.1 (the V8 Crane links) throws this CompileError synchronously
+  // instead of rejecting; later V8 rejects, as the JS API says.
+  return promise_rejects_js(t, WebAssembly.CompileError, WebAssembly.compile(bytes));
+}, "WebAssembly.compile() rejects with CompileError");
+
+test(() => {
+  assert_throws_js(EvalError, () => eval("1"));
+}, "eval is blocked by the same policy");
+</script>
