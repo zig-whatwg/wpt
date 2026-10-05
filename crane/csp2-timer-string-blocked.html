@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-abc' 'report-sample'">
+<title>CSP blocks a string timer handler at the call, as Chrome, Firefox and Safari do</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#can-compile-strings">
+<script nonce="abc" src="/resources/testharness.js"></script>
+<script nonce="abc" src="/resources/testharnessreport.js"></script>
+<script nonce="abc">
+// Without 'unsafe-eval', setTimeout(string) and setInterval(string) are
+// checked when they are called (HTML's step 10.8.2 checks when the timer
+// fires and reports an EvalError; Crane does what all three engines do,
+// stated): the call returns 0, nothing is scheduled, the violation of
+// script-src is reported (blockedURI "eval", the handler as the sample) and
+// no error reaches the window.
+setup({ allow_uncaught_exception: true });
+const violations = [];
+const errors = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+window.addEventListener("error", e => errors.push(e));
+
+function settle(t, ms = 200) {
+  return new Promise(resolve => t.step_timeout(resolve, ms));
+}
+
+promise_test(async t => {
+  window.timeoutRan = false;
+  const before = violations.length, errorsBefore = errors.length;
+  assert_equals(setTimeout("timeoutRan = true", 0), 0, "blocked at the call: id 0");
+  await settle(t);
+  assert_false(window.timeoutRan, "the handler did not run");
+  const mine = violations.slice(before);
+  assert_equals(mine.length, 1);
+  assert_equals(mine[0].blockedURI, "eval");
+  assert_equals(mine[0].effectiveDirective, "script-src");
+  assert_equals(mine[0].sample, "timeoutRan = true");
+  assert_equals(errors.length - errorsBefore, 0, "no error reported for the window");
+}, "setTimeout(string): 0, reported, no error event");
+
+promise_test(async t => {
+  window.intervalRuns = 0;
+  const before = violations.length, errorsBefore = errors.length;
+  assert_equals(setInterval("intervalRuns++", 0), 0, "blocked at the call: id 0");
+  await settle(t, 300);
+  assert_equals(window.intervalRuns, 0, "the handler did not run");
+  assert_equals(violations.length - before, 1, "checked once");
+  assert_equals(errors.length - errorsBefore, 0, "no error reported for the window");
+}, "setInterval(string): 0, reported once, no error event");
+
+promise_test(async t => {
+  window.functionRan = false;
+  assert_greater_than(setTimeout(() => { functionRan = true; }, 0), 0);
+  await settle(t);
+  assert_true(window.functionRan);
+}, "a function handler is not checked");
+</script>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A javascript: URL whose script starts a navigation makes no document of its String</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-to-a-javascript:-url">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// javascript:location.href='...' evaluates to the URL, a String. Blink
+// ignores the String when the script itself started a navigation - making
+// its document would cancel that navigation - and so does Crane (stated):
+// the frame goes straight to the URL, with one load event, and no document
+// whose text is the String.
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  iframe.src = "/common/blank.html";
+  await new Promise(resolve => { iframe.onload = resolve; document.body.appendChild(iframe); });
+  t.add_cleanup(() => iframe.remove());
+  const loads = [];
+  iframe.onload = () => loads.push(iframe.contentWindow.location.href);
+  iframe.contentWindow.eval("setTimeout(() => { location.href = \"javascript:location.href='/common/blank.html?navigated'\"; }, 0)");
+  await new Promise(resolve => t.step_timeout(resolve, 1000));
+  assert_array_equals(loads.map(u => new URL(u).search), ["?navigated"], "one load, of the URL the script navigated to");
+  assert_false(iframe.contentDocument.body.textContent.includes("navigated"), "no document of the String");
+}, "javascript:location.href='...' navigates, and its String makes no document");
+</script>

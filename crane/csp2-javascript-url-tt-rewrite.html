@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'; script-src 'nonce-abc' 'unsafe-hashes' 'sha256-mjTbGMSn7vrQHuI3uRkYbHVMKU0PuQ/lztpBXOmR3yo='">
+<title>CSP 4.2.4: the javascript: URL's inline check reads the URL the default policy rewrote</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-navigation-request">
+<link rel="help" href="https://w3c.github.io/trusted-types/dist/spec/#require-trusted-types-for-pre-navigation-check">
+<script nonce="abc" src="/resources/testharness.js"></script>
+<script nonce="abc" src="/resources/testharnessreport.js"></script>
+<body>
+<iframe id="frame"></iframe>
+<script nonce="abc">
+// The hash is javascript:void(parent.ttRewrite='rewritten')'s. The default
+// policy rewrites 'original' to 'rewritten' in step 3 (require-trusted-
+// types-for's pre-navigation check sets the request's URL), and step 4's
+// inline check reads the request's current URL: the rewritten one, which
+// the hash allows. A URL the policy leaves alone is blocked.
+trustedTypes.createPolicy("default", {
+  createScript: s => s.replace("original", "rewritten"),
+});
+const violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+function waitFor(t, predicate) {
+  return new Promise(resolve => {
+    const poll = () => predicate() ? resolve() : t.step_timeout(poll, 10);
+    poll();
+  });
+}
+
+promise_test(async t => {
+  window.ttRewrite = "";
+  document.getElementById("frame").src = "javascript:void(parent.ttRewrite='original')";
+  await waitFor(t, () => window.ttRewrite !== "");
+  assert_equals(window.ttRewrite, "rewritten");
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(violations.length, 0);
+}, "the rewritten URL is the one the hash is checked against");
+
+promise_test(async t => {
+  window.ttOther = false;
+  document.getElementById("frame").src = "javascript:void(parent.ttOther=true)";
+  await waitFor(t, () => violations.length > 0);
+  assert_equals(violations[0].effectiveDirective, "script-src-elem");
+  assert_equals(violations[0].blockedURI, "inline");
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_false(window.ttOther);
+}, "a URL whose rewrite has no allowed hash is blocked");
+</script>

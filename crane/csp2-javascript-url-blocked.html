@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-abc' 'report-sample'; form-action 'none'">
+<title>CSP 4.2.4: a navigation to a javascript: URL is checked against the initiator's policy</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-navigation-request">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-to-a-javascript:-url">
+<script nonce="abc" src="/resources/testharness.js"></script>
+<script nonce="abc" src="/resources/testharnessreport.js"></script>
+<body>
+<iframe name="target-frame" id="target-frame"></iframe>
+<script nonce="abc">
+// script-src without 'unsafe-inline' blocks every javascript: URL this page
+// navigates to: the inline check of type "navigation" (script-src-elem, the
+// resource "inline", the URL as the 'report-sample' sample). A form
+// submission is form-action's to block first (4.2.4 step 3): then step 4
+// never runs, so its one violation is form-action's. Every code ends in
+// void: a String result would replace the frame's document.
+const violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+function nextViolation(t) {
+  const seen = violations.length;
+  return new Promise((resolve, reject) => {
+    const poll = () => {
+      if (violations.length > seen) return resolve(violations[seen]);
+      t.step_timeout(poll, 10);
+    };
+    poll();
+  });
+}
+
+function settle(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 200));
+}
+
+promise_test(async t => {
+  window.anchorRan = false;
+  const a = document.createElement("a");
+  a.href = "javascript:void(anchorRan=true)";
+  document.body.appendChild(a);
+  t.add_cleanup(() => a.remove());
+  const violation = nextViolation(t);
+  a.click();
+  const e = await violation;
+  assert_equals(e.blockedURI, "inline");
+  assert_equals(e.effectiveDirective, "script-src-elem");
+  assert_equals(e.disposition, "enforce");
+  assert_equals(e.sample, "javascript:void(anchorRan=true)");
+  await settle(t);
+  assert_false(window.anchorRan, "the code did not run");
+}, "an anchor navigating the page to a javascript: URL is blocked and reported");
+
+promise_test(async t => {
+  window.frameRan = false;
+  const frame = document.getElementById("target-frame");
+  const violation = nextViolation(t);
+  frame.src = "javascript:void(parent.frameRan=true)";
+  const e = await violation;
+  assert_equals(e.blockedURI, "inline");
+  assert_equals(e.effectiveDirective, "script-src-elem");
+  assert_equals(e.target, frame, "fired at the navigated frame's container, in this document (Blink's)");
+  await settle(t);
+  assert_false(window.frameRan, "the code did not run");
+}, "a frame's src set to a javascript: URL by this page is blocked and reported here");
+
+promise_test(async t => {
+  window.targetedRan = false;
+  const a = document.createElement("a");
+  a.href = "javascript:void(parent.targetedRan=true)";
+  a.target = "target-frame";
+  document.body.appendChild(a);
+  t.add_cleanup(() => a.remove());
+  const violation = nextViolation(t);
+  a.click();
+  const e = await violation;
+  assert_equals(e.effectiveDirective, "script-src-elem");
+  await settle(t);
+  assert_false(window.targetedRan, "the code did not run");
+}, "an anchor targeting a frame with a javascript: URL is blocked and reported");
+
+promise_test(async t => {
+  window.openRan = false;
+  const violation = nextViolation(t);
+  const w = window.open("javascript:void(opener.openRan=true)", "_blank");
+  t.add_cleanup(() => { if (w) w.close(); });
+  const e = await violation;
+  assert_equals(e.blockedURI, "inline");
+  assert_equals(e.effectiveDirective, "script-src-elem");
+  await settle(t);
+  assert_false(window.openRan, "the code did not run");
+}, "window.open() of a javascript: URL is blocked and reported");
+
+promise_test(async t => {
+  window.formRan = false;
+  const form = document.createElement("form");
+  form.action = "javascript:void(parent.formRan=true)";
+  form.target = "target-frame";
+  document.body.appendChild(form);
+  t.add_cleanup(() => form.remove());
+  const violation = nextViolation(t);
+  form.submit();
+  const e = await violation;
+  assert_equals(e.effectiveDirective, "form-action");
+  assert_equals(e.blockedURI, "javascript", "the URL, stripped for reports to its scheme");
+  await settle(t);
+  assert_false(window.formRan, "the code did not run");
+  assert_equals(violations.filter(v => v.effectiveDirective === "script-src-elem" && v.sample.includes("formRan")).length, 0,
+                "a form submission form-action blocked reaches no inline check");
+}, "a form submitted to a javascript: URL is blocked by form-action, and only reported for it");
+</script>

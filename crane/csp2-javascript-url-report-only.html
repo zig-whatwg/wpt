@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>CSP 4.2.4: a report-only policy reports a javascript: URL navigation and lets it run</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-navigation-request">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe id="frame"></iframe>
+<script>
+// The .headers file delivers Content-Security-Policy-Report-Only:
+// script-src 'self' 'unsafe-hashes'
+// 'sha256-AVvNEWrz22dB7rgThdef3Bdu5pxghQNEeRumDWU0HF8=' 'report-sample'.
+// That hash is javascript:void(parent.ttRewrite='original')'s, so the
+// whole-URL hash matches only it (and only with 'unsafe-hashes'). This
+// inline script is reported too, and runs: violations are told apart by
+// their sample.
+const violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+function waitFor(t, predicate) {
+  return new Promise(resolve => {
+    const poll = () => predicate() ? resolve() : t.step_timeout(poll, 10);
+    poll();
+  });
+}
+
+promise_test(async t => {
+  window.reportOnlyRan = false;
+  const url = "javascript:void(parent.reportOnlyRan=true)";
+  document.getElementById("frame").src = url;
+  const mine = () => violations.filter(v => v.sample === url.slice(0, 40));
+  await waitFor(t, () => window.reportOnlyRan && mine().length > 0);
+  const e = mine()[0];
+  assert_equals(e.disposition, "report");
+  assert_equals(e.blockedURI, "inline");
+  assert_equals(e.effectiveDirective, "script-src-elem");
+  assert_equals(e.sample, url.slice(0, 40), "the sample: the URL's first 40 characters");
+}, "reported, and run");
+
+promise_test(async t => {
+  window.ttRewrite = "";
+  const url = "javascript:void(parent.ttRewrite='original')";
+  document.getElementById("frame").src = url;
+  await waitFor(t, () => window.ttRewrite === "original");
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(violations.filter(v => v.sample === url.slice(0, 40)).length, 0,
+                "a hash of the whole URL with 'unsafe-hashes' allows it: no report");
+}, "'unsafe-hashes' and the URL's hash: allowed, not reported");
+</script>

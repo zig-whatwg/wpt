@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>HTML timer initialization 10.8.2: a report-only policy reports a string handler and runs it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The .headers file delivers Content-Security-Policy-Report-Only:
+// script-src 'self' 'unsafe-inline' (no 'unsafe-eval').
+const violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+promise_test(async t => {
+  window.reportOnlyRan = 0;
+  setTimeout("reportOnlyRan++", 0);
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(window.reportOnlyRan, 1, "the handler ran");
+  const evals = violations.filter(e => e.blockedURI === "eval");
+  assert_equals(evals.length, 1);
+  assert_equals(evals[0].disposition, "report");
+}, "reported, and run");
+</script>

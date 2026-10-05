@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'nonce-abc'">
+<title>CSP 2.4.1 step 2: a violation carries the running script's source file, line and column</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#create-violation-for-global">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#strip-url-for-use-in-reports">
+<script nonce="abc" src="/resources/testharness.js"></script>
+<script nonce="abc" src="/resources/testharnessreport.js"></script>
+<script src="csp2-violation-source-location.js"></script>
+<script nonce="abc">
+// Without 'unsafe-eval' every eval is a violation, made while the script
+// that called eval runs: its URL (stripped for reports, CSP 5.4 - a
+// sourceURL a script names itself too) and the eval call's 1-based line and
+// column. A string that is no absolute URL is no source file.
+const violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+function nextViolation(t) {
+  const seen = violations.length;
+  return new Promise(resolve => {
+    const poll = () => violations.length > seen ? resolve(violations[seen]) : t.step_timeout(poll, 10);
+    poll();
+  });
+}
+
+promise_test(async t => {
+  const violation = nextViolation(t);
+  assert_true(evalHere() instanceof EvalError);
+  const e = await violation;
+  assert_equals(e.blockedURI, "eval");
+  assert_equals(e.sourceFile, new URL("csp2-violation-source-location.js", location.href).href);
+  assert_equals(e.lineNumber, 4);
+  assert_equals(e.columnNumber, 5);
+}, "an external script's eval: its URL, line and column");
+
+function evalNamed(sourceURL) {
+  // A nonce'd inline script that names itself (the policy blocks the
+  // Function constructor and eval, the other ways to name code).
+  const script = document.createElement("script");
+  script.nonce = "abc";
+  script.textContent = "try { eval('1'); } catch (e) {}\n//# sourceURL=" + sourceURL;
+  document.head.appendChild(script);
+  script.remove();
+}
+
+promise_test(async t => {
+  const violation = nextViolation(t);
+  evalNamed("https://user:pass@named.test/dir/script.js#frag");
+  const e = await violation;
+  assert_equals(e.sourceFile, "https://named.test/dir/script.js", "fragment and credentials stripped");
+  assert_equals(e.lineNumber, 1);
+  assert_equals(e.columnNumber, 7);
+}, "a script that names itself with //# sourceURL: that URL, stripped");
+
+promise_test(async t => {
+  const violation = nextViolation(t);
+  evalNamed("webpack://bundle/script.js");
+  assert_equals((await violation).sourceFile, "webpack", "a non-HTTP(S) URL is its scheme");
+}, "a non-HTTP(S) source file is its scheme");
+
+promise_test(async t => {
+  const violation = nextViolation(t);
+  evalNamed("relative.js");
+  assert_equals((await violation).sourceFile, "", "no URL, no source file");
+}, "a sourceURL that is no URL is no source file");
+</script>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'; form-action 'none'">
+<title>CSP 4.2.4: form-action applies to form submissions only; 'unsafe-inline' allows javascript: URLs</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#should-block-navigation-request">
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#form-action-pre-navigate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe name="target-frame" id="target-frame"></iframe>
+<script>
+// form-action's pre-navigation check runs only for a navigation of type
+// "form-submission": an anchor's javascript: URL is not subject to it, and
+// 'unsafe-inline' lets its code run. A form submitted to the same URL is
+// blocked by form-action. Every code ends in void.
+const violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e));
+
+function waitFor(t, predicate) {
+  return new Promise(resolve => {
+    const poll = () => predicate() ? resolve() : t.step_timeout(poll, 10);
+    poll();
+  });
+}
+
+function settle(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 200));
+}
+
+promise_test(async t => {
+  window.anchorRan = false;
+  const a = document.createElement("a");
+  a.href = "javascript:void(parent.anchorRan=true)";
+  a.target = "target-frame";
+  document.body.appendChild(a);
+  t.add_cleanup(() => a.remove());
+  a.click();
+  await waitFor(t, () => window.anchorRan);
+  await settle(t);
+  assert_equals(violations.length, 0, "no violation");
+}, "an anchor's javascript: URL is not subject to form-action");
+
+promise_test(async t => {
+  window.pageAnchorRan = false;
+  const a = document.createElement("a");
+  a.href = "javascript:void(pageAnchorRan=true)";
+  document.body.appendChild(a);
+  t.add_cleanup(() => a.remove());
+  a.click();
+  await waitFor(t, () => window.pageAnchorRan);
+  await settle(t);
+  assert_equals(violations.length, 0, "no violation");
+}, "an anchor navigating the page to a javascript: URL runs it under 'unsafe-inline'");
+
+promise_test(async t => {
+  window.formRan = false;
+  const before = violations.length;
+  const form = document.createElement("form");
+  form.action = "javascript:void(parent.formRan=true)";
+  form.target = "target-frame";
+  document.body.appendChild(form);
+  t.add_cleanup(() => form.remove());
+  form.submit();
+  await waitFor(t, () => violations.length > before);
+  const e = violations[before];
+  assert_equals(e.effectiveDirective, "form-action");
+  assert_equals(e.blockedURI, "javascript");
+  await settle(t);
+  assert_false(window.formRan, "the code did not run");
+}, "a form submitted to a javascript: URL in a frame is blocked by form-action");
+
+promise_test(async t => {
+  window.pageFormRan = false;
+  const before = violations.length;
+  const form = document.createElement("form");
+  form.action = "javascript:void(pageFormRan=true)";
+  document.body.appendChild(form);
+  t.add_cleanup(() => form.remove());
+  form.submit();
+  await waitFor(t, () => violations.length > before);
+  assert_equals(violations[before].effectiveDirective, "form-action");
+  await settle(t);
+  assert_false(window.pageFormRan, "the code did not run");
+}, "a form submitted to a javascript: URL in the page itself is blocked by form-action");
+</script>

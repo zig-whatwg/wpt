@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>requestIdleCallback in a Window reused for its first document</title>
+<link rel="help" href="https://w3c.github.io/requestidlecallback/#the-requestidlecallback-method">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A navigable's first navigation away from its initial about:blank document
+// reuses that document's Window for the new one (HTML "create and initialize
+// a Document object" step 6) when they are same origin: an iframe given a
+// src, a srcdoc frame, a window.open(url) popup. The about:blank document's
+// unloading must not leave the reused Window without idle periods: the new
+// document's idle callbacks run, with or without a timeout - also when the
+// initial document registered one before the navigation committed.
+
+function idle(win, options) {
+  return new Promise(resolve => win.requestIdleCallback(deadline => resolve(deadline), options));
+}
+
+function loadedFrame(t, setup) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    setup(iframe);
+    iframe.onload = () => resolve(iframe);
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+  });
+}
+
+function withTimeout(t, promise, what) {
+  return Promise.race([promise, new Promise((_, reject) => t.step_timeout(() => reject(new Error(what + " never ran")), 2000))]);
+}
+
+promise_test(async t => {
+  const iframe = await loadedFrame(t, f => { f.src = "/common/blank.html"; });
+  const deadline = await withTimeout(t, idle(iframe.contentWindow), "the idle callback");
+  assert_equals(typeof deadline.timeRemaining(), "number");
+  await withTimeout(t, idle(iframe.contentWindow, { timeout: 100 }), "the idle callback with a timeout");
+}, "an iframe navigated from its initial about:blank runs idle callbacks");
+
+promise_test(async t => {
+  const iframe = await loadedFrame(t, f => { f.srcdoc = "<p>srcdoc"; });
+  await withTimeout(t, idle(iframe.contentWindow), "the idle callback");
+  await withTimeout(t, idle(iframe.contentWindow, { timeout: 100 }), "the idle callback with a timeout");
+}, "a srcdoc frame runs idle callbacks");
+
+promise_test(async t => {
+  const popup = window.open("/common/blank.html", "_blank");
+  t.add_cleanup(() => popup.close());
+  await new Promise(resolve => popup.addEventListener("load", resolve, { once: true }));
+  await withTimeout(t, idle(popup), "the idle callback");
+  await withTimeout(t, idle(popup, { timeout: 100 }), "the idle callback with a timeout");
+}, "a window.open(url) popup runs idle callbacks");
+
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  iframe.src = "/common/blank.html";
+  const loaded = new Promise(resolve => { iframe.onload = resolve; });
+  document.body.appendChild(iframe);
+  t.add_cleanup(() => iframe.remove());
+  const initial = iframe.contentWindow;
+  // Registered on the initial about:blank document, before the commit.
+  initial.requestIdleCallback(() => {});
+  initial.requestIdleCallback(() => {}, { timeout: 50 });
+  await loaded;
+  assert_equals(iframe.contentWindow, initial, "the navigation reused the Window");
+  await withTimeout(t, idle(iframe.contentWindow), "the callback registered after the commit");
+  await withTimeout(t, idle(iframe.contentWindow, { timeout: 100 }), "the callback with a timeout registered after the commit");
+}, "callbacks registered before the commit do not take the reused Window's idle periods with them");
+</script>
