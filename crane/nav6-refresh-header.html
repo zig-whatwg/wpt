@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A navigation response's Refresh header refreshes the new document, before a meta refresh can</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object">
+<link rel=help href="https://html.spec.whatwg.org/multipage/semantics.html#shared-declarative-refresh-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "create and initialize a Document object" step 17: a response with a
+// Refresh header runs the shared declarative refresh steps with the new
+// document and the header's value (isomorphic decoded) - before the parser,
+// so a <meta http-equiv=refresh> in the body finds "will declaratively
+// refresh" already set. The header's URL is parsed relative to the new
+// document.
+const base = "/html/browsers/browsing-the-web/navigating-across-documents/refresh/resources/";
+
+function loads(frame, count) {
+  return new Promise(resolve => {
+    const urls = [];
+    frame.onload = () => {
+      urls.push(frame.contentWindow.location.href);
+      if (urls.length === count) resolve(urls);
+    };
+  });
+}
+
+promise_test(async t => {
+  const response = await fetch(base + "multiple.asis");
+  assert_equals(response.headers.get("refresh"), "0,./refreshed.txt", "the header reaches fetch()");
+}, "the test resource sends the header");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const seen = loads(frame, 2);
+  frame.src = base + "multiple.asis";
+  document.body.append(frame);
+  const urls = await seen;
+  assert_equals(urls[1], new URL(base + "refreshed.txt", location).href);
+}, "the header refreshes, and wins over the body's meta refresh");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const seen = loads(frame, 2);
+  frame.src = base + "refresh.py";
+  document.body.append(frame);
+  const urls = await seen;
+  assert_equals(urls[1], new URL(base + "refreshed.txt?\u0080ÿ", location).href);
+}, "the header's bytes are isomorphic decoded");
+</script>

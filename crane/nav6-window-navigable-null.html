@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A Window with no navigable: parent and top are null, closed is true, length is 0</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-navigable">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-parent">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-top">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-closed">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML: "A Window's navigable is the navigable whose active document is the
+// Window's associated Document's, or null if there is no such navigable."
+// A Window a navigation replaced has none: its navigable's active document
+// is its successor's. Script in the replaced realm still runs (a function
+// made there and called after the navigation), and its own globals answer
+// for the replaced Window: parent and top null, closed true, length 0 -
+// Blink's DOMWindow::parent()/top() return null with no frame.
+//
+// Crane answered from the browsing context, which the new document's Window
+// now owns: the old Window read the new document's parent, top and frames.
+
+function frameLoad(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  frame.srcdoc = "<iframe></iframe>";
+  const first = frameLoad(frame);
+  document.body.append(frame);
+  await first;
+  const read = frame.contentWindow.Function(
+    "return { parent: parent, top: top, closed: closed, length: length };");
+  const before = read();
+  assert_equals(before.parent, window, "parent before");
+  assert_equals(before.top, window, "top before");
+  assert_false(before.closed, "closed before");
+  assert_equals(before.length, 1, "length before");
+
+  const second = frameLoad(frame);
+  frame.contentWindow.location.href = "/common/blank.html";
+  await second;
+  const after = read();
+  assert_equals(after.parent, null, "parent after");
+  assert_equals(after.top, null, "top after");
+  assert_true(after.closed, "closed after");
+  assert_equals(after.length, 0, "length after");
+
+  // The WindowProxy goes on to the new Window, whose navigable it is.
+  assert_equals(frame.contentWindow.parent, window, "the new Window's parent");
+  assert_equals(frame.contentWindow.top, window, "the new Window's top");
+  assert_false(frame.contentWindow.closed, "the new Window's closed");
+}, "a Window a navigation replaced has no navigable");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = "<iframe></iframe>";
+  const first = frameLoad(frame);
+  document.body.append(frame);
+  await first;
+  const outer = frame.contentWindow;
+  const inner = outer[0];
+  assert_equals(inner.parent, outer, "inner parent before");
+  assert_equals(inner.top, window, "inner top before");
+  frame.remove();
+  assert_equals(outer.parent, null, "outer parent");
+  assert_equals(outer.top, null, "outer top");
+  assert_true(outer.closed, "outer closed");
+  assert_equals(outer.length, 0, "outer length");
+  assert_equals(inner.parent, null, "inner parent");
+  assert_equals(inner.top, null, "inner top");
+  assert_true(inner.closed, "inner closed");
+}, "removing a frame leaves it and its descendants with no navigable");
+
+promise_test(async t => {
+  const w = window.open("about:blank", "_blank");
+  assert_equals(w.parent, w, "parent while open");
+  assert_equals(w.top, w, "top while open");
+  w.close();
+  await new Promise(r => step_timeout(r, 100));
+  assert_true(w.closed, "closed");
+  assert_equals(w.parent, null, "parent once closed");
+  assert_equals(w.top, null, "top once closed");
+}, "a closed popup's Window has no navigable");
+</script>
