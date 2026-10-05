@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mixed WebSocket connections fail without a network handshake</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+promise_test(async t => {
+  const urls = getRequestURLs("websocket", "same-ws", "no-redirect");
+  await xhrRequest(urls.announceUrl);
+  const socket = new WebSocket(urls.testUrl);
+  t.add_cleanup(() => socket.close());
+  assert_equals(socket.readyState, WebSocket.CONNECTING, "Constructor returns before failure");
+  const events = [];
+  const finished = new Promise(resolve => {
+    socket.onopen = () => { events.push("open"); socket.send("echo"); };
+    socket.onmessage = () => socket.close();
+    socket.onerror = () => events.push("error");
+    socket.onclose = () => { events.push("close"); resolve(); };
+  });
+  await finished;
+  const observed = await xhrRequest(urls.assertUrl);
+  assert_equals(observed.status, "blocked", "No insecure handshake reaches the server");
+  assert_array_equals(events, ["error", "close"], "Normal failure events are delivered");
+  assert_equals(socket.readyState, WebSocket.CLOSED);
+}, "HTTPS client blocks ws: before connecting and receives error then close");
+</script>

@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+<title>WebSocket policy upgrades the handshake before mixed content blocking</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+for (const origin of ["same-ws-downgrade", "cross-ws-downgrade"]) {
+  promise_test(async t => {
+    const urls = getRequestURLs("websocket", origin, "no-redirect");
+    await xhrRequest(urls.announceUrl);
+    const socket = new WebSocket(urls.testUrl);
+    t.add_cleanup(() => socket.close());
+    assert_equals(socket.readyState, WebSocket.CONNECTING);
+    assert_equals(socket.url, urls.testUrl, "The object's URL is the constructor's parsed URL");
+    const events = [];
+    await new Promise(resolve => {
+      socket.onopen = () => { events.push("open"); socket.send("echo"); };
+      socket.onmessage = () => { events.push("message"); socket.close(); };
+      socket.onerror = () => events.push("error");
+      socket.onclose = () => { events.push("close"); resolve(); };
+    });
+    const observed = await xhrRequest(urls.assertUrl);
+    assert_equals(observed.status, "allowed", "The TLS-only endpoint received the upgraded handshake and message");
+    assert_array_equals(events, ["open", "message", "close"]);
+    assert_equals(socket.url, urls.testUrl, "Upgrading the handshake does not rewrite the object's URL");
+  }, `UIR upgrades a ${origin} WebSocket before Mixed Content checks`);
+}
+</script>

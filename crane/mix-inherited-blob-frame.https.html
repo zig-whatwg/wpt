@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blob frame inheritance of mixed content restrictions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+promise_test(async t => {
+  const urls = getRequestURLs("fetch", "same-http", "no-redirect");
+  await xhrRequest(urls.announceUrl);
+  const token = guid();
+  const source = `<script>fetch(${JSON.stringify(urls.testUrl)}, {mode: "no-cors"})
+    .then(() => parent.postMessage(${JSON.stringify(token)}, "*"),
+          () => parent.postMessage(${JSON.stringify(token)}, "*"));<\/script>`;
+  const blobURL = URL.createObjectURL(new Blob([source], {type: "text/html"}));
+  t.add_cleanup(() => URL.revokeObjectURL(blobURL));
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const completed = new Promise(resolve => {
+    const listener = event => {
+      if (event.source === frame.contentWindow && event.data === token) resolve();
+    };
+    window.addEventListener("message", listener);
+    t.add_cleanup(() => window.removeEventListener("message", listener));
+  });
+  const timeout = t.step_timeout(() => {
+    assert_unreached("blob: frame never loaded - blob navigation origin gap");
+  }, 3000);
+  t.add_cleanup(() => clearTimeout(timeout));
+  frame.src = blobURL;
+  document.body.append(frame);
+  await completed;
+  const observed = await xhrRequest(urls.assertUrl);
+  assert_equals(observed.status, "blocked");
+}, "A blob frame created by HTTPS blocks HTTP fetch before network dispatch");
+</script>
+<body></body>

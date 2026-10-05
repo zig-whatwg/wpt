@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mixed audio and video requests reach the server over HTTPS</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+for (const tag of ["audio", "video"]) {
+  for (const crossorigin of [null, "anonymous"]) {
+    promise_test(async t => {
+      const urls = getRequestURLs(`${tag}-tag`, "same-http-downgrade", "no-redirect", true);
+      await xhrRequest(urls.announceUrl);
+      const media = document.createElement(tag);
+      if (crossorigin !== null) media.setAttribute("crossorigin", crossorigin);
+      t.add_cleanup(() => {
+        media.removeAttribute("src");
+        media.load();
+        media.remove();
+      });
+      // A host without a decoder fires error after fetching. The server's
+      // observation proves which scheme the request actually used.
+      const finished = new Promise(resolve => {
+        media.onloadeddata = media.onerror = resolve;
+      });
+      media.src = urls.testUrl;
+      document.body.append(media);
+      await finished;
+      const observed = await xhrRequest(urls.assertUrl);
+      assert_equals(observed.status, "upgraded", "The media request must reach the server over HTTPS");
+    }, `An HTTP ${crossorigin === null ? "no-cors" : "CORS"} ${tag} URL is upgraded on the HTTPS port`);
+  }
+}
+</script>

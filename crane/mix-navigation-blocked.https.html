@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mixed nested navigation blocks the network and completes its load</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+promise_test(async t => {
+  const urls = getRequestURLs("iframe-tag", "same-http", "no-redirect");
+  await xhrRequest(urls.announceUrl);
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  let loads = 0;
+  const loaded = new Promise(resolve => {
+    frame.onload = () => { ++loads; resolve(); };
+  });
+  frame.src = urls.testUrl;
+  document.body.append(frame);
+  await loaded;
+  const observed = await xhrRequest(urls.assertUrl);
+  assert_equals(observed.status, "blocked", "The HTTP frame request must not leave the client");
+  assert_equals(loads, 1, "The blocked frame completes its load once");
+}, "HTTPS initiator blocks nested HTTP navigation and receives load completion");
+</script>
+<body></body>

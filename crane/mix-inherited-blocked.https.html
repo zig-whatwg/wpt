@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Local frame documents inherit mixed content restrictions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+// Mixed Content 4.3 step 2: an opaque data: origin still has its HTTPS
+// embedding document. Each case includes an HTTPS control request.
+for (const context of ["iframe-blank", "srcdoc", "iframe-data", "iframe"]) {
+  for (const [origin, expected] of [["same-http", "blocked"], ["same-https", "allowed"]]) {
+    promise_test(async () => {
+      const urls = getRequestURLs("fetch", origin, "no-redirect");
+      await xhrRequest(urls.announceUrl);
+      try {
+        await invokeRequest({subresourceType: "fetch", url: urls.testUrl, policyDeliveries: []},
+          [{sourceContextType: context, policyDeliveries: []}]);
+      } catch (_) {
+        // The server observation, not a rejected promise, decides the result.
+      }
+      const observed = await xhrRequest(urls.assertUrl);
+      assert_equals(observed.status, expected);
+    }, `${context}: ${origin} fetch is ${expected} under an HTTPS parent`);
+  }
+}
+
+</script>
+<body></body>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mixed content upgrades and redirect checks happen before network dispatch</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+for (const crossorigin of [null, "anonymous"]) {
+promise_test(async t => {
+  const urls = getRequestURLs("img-tag", "same-http-downgrade", "no-redirect", true);
+  await xhrRequest(urls.announceUrl);
+  // Exercise both modes directly; no canvas readback is needed to observe
+  // that the server received the upgraded request.
+  const img = document.createElement("img");
+  if (crossorigin !== null) img.setAttribute("crossorigin", crossorigin);
+  t.add_cleanup(() => img.remove());
+  const finished = new Promise(resolve => { img.onload = img.onerror = resolve; });
+  img.src = urls.testUrl;
+  document.body.append(img);
+  await finished;
+  const observed = await xhrRequest(urls.assertUrl);
+  assert_equals(observed.status, "upgraded", "The image must reach the server over HTTPS");
+}, `An HTTP ${crossorigin === null ? "no-cors" : "CORS"} image URL is upgraded on the HTTPS port`);
+}
+
+promise_test(async t => {
+  const urls = getRequestURLs("fetch", "same-http", "no-redirect");
+  await xhrRequest(urls.announceUrl);
+  const redirect = new URL("/common/redirect.py", location.href);
+  redirect.searchParams.set("location", urls.testUrl);
+  let rejected = false;
+  try {
+    await fetch(redirect.href, {mode: "no-cors"});
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  const observed = await xhrRequest(urls.assertUrl);
+  assert_equals(observed.status, "blocked", "The insecure redirect target must receive no request");
+  assert_true(rejected, "The redirected fetch rejects with TypeError");
+}, "HTTPS-to-HTTP redirect is rechecked before the next hop");
+</script>

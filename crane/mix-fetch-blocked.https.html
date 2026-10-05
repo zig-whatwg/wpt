@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mixed content fetch is blocked before a network request is sent</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+// Mixed Content 4.3 and 4.4; Fetch main fetch step 7. Observe the server,
+// since a later CORS failure alone cannot prove that the request was blocked.
+promise_test(async () => {
+  const urls = getRequestURLs("fetch", "same-http", "no-redirect");
+  await xhrRequest(urls.announceUrl);
+  let rejected = false;
+  try {
+    await fetch(urls.testUrl, {mode: "no-cors"});
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  const observed = await xhrRequest(urls.assertUrl);
+  assert_equals(observed.status, "blocked", "The server must see no HTTP request");
+  assert_true(rejected, "fetch rejects with TypeError");
+}, "HTTPS fetch blocks an HTTP request before network dispatch");
+</script>
