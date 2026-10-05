@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An object's or embed's child navigable is one of its document's child navigables, in tree order, and goes with it</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#document-tree-child-navigables">
+<link rel=help href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-object-element">
+<link rel=help href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-embed-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// window.length and window[i] are the document's child navigables: the
+// content navigables of its navigable containers - iframe, object, embed.
+// Their order is the order the navigables were made in, as in Blink (and as
+// WPT's moveBefore and indexed-browsing-contexts-01 expect; the spec says
+// tree order): an object's is made only once its fetch is done, after an
+// iframe that follows it in the tree made its own.
+
+function settle(el) {
+  return new Promise(resolve => {
+    el.addEventListener("load", resolve, { once: true });
+    el.addEventListener("error", resolve, { once: true });
+  });
+}
+
+promise_test(async t => {
+  const div = document.createElement("div");
+  t.add_cleanup(() => div.remove());
+  const obj = document.createElement("object");
+  obj.name = "objectNavigable";
+  obj.type = "text/html";
+  obj.data = "/common/blank.html";
+  const frame = document.createElement("iframe");
+  frame.name = "frameNavigable";
+  div.append(obj, frame);
+  const loaded = settle(obj);
+  document.body.append(div);
+  await loaded;
+  assert_equals(window.length, 2, "two child navigables");
+  assert_equals(window[0], frame.contentWindow, "the iframe's first: made at its insertion");
+  assert_equals(window[1], obj.contentWindow, "then the object's, made after its fetch");
+  assert_equals(window.objectNavigable, obj.contentWindow, "named by its name attribute");
+  assert_equals(obj.contentWindow.name, "objectNavigable", "its target name");
+}, "an object's navigable is a child navigable, in creation order, named by its name");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  obj.data = "/common/blank.html";
+  const loaded = settle(obj);
+  document.body.append(obj);
+  await loaded;
+  const win = obj.contentWindow;
+  assert_equals(window.length, 1, "one child navigable");
+  obj.remove();
+  assert_equals(window.length, 0, "removed: no child navigable");
+  assert_equals(obj.contentWindow, null, "no content window");
+  assert_true(win.closed, "its window is closed");
+}, "a removed object's navigable is destroyed");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.type = "text/html";
+  obj.data = "/common/blank.html";
+  const loaded = settle(obj);
+  document.body.append(obj);
+  await loaded;
+  obj.removeAttribute("type");
+  assert_equals(window.length, 1, "removing type changes nothing at once");
+  obj.removeAttribute("data");
+  assert_equals(window.length, 1, "removing data re-determines from a task");
+  await new Promise(r => step_timeout(r, 10));
+  assert_equals(window.length, 0, "then the fallback content: no navigable");
+  assert_equals(obj.contentWindow, null, "no content window");
+}, "an object whose data goes shows its fallback content, from a task");
+
+promise_test(async t => {
+  const embed = document.createElement("embed");
+  t.add_cleanup(() => embed.remove());
+  embed.name = "embedNavigable";
+  embed.src = "/common/blank.html";
+  const loaded = settle(embed);
+  document.body.append(embed);
+  const e = await loaded;
+  assert_equals(e.type, "load", "load");
+  assert_equals(window.length, 1, "one child navigable");
+  assert_equals(window.embedNavigable, window[0], "named by its name attribute");
+  assert_equals(window[0].location.href, new URL("/common/blank.html", location).href, "its document");
+  embed.remove();
+  assert_equals(window.length, 0, "removed: no child navigable");
+}, "an embed's navigable is a child navigable, and goes with the element");
+
+promise_test(async t => {
+  const embed = document.createElement("embed");
+  t.add_cleanup(() => embed.remove());
+  embed.type = "image/png";
+  embed.src = "/images/blue.png";
+  const loaded = settle(embed);
+  document.body.append(embed);
+  const e = await loaded;
+  assert_equals(e.type, "load", "an image fires load");
+  assert_equals(window.length, 0, "and is no child navigable");
+}, "an embed's image: load, no navigable");
+
+promise_test(async t => {
+  const embed = document.createElement("embed");
+  t.add_cleanup(() => embed.remove());
+  embed.src = "http://127.0.0.1:1/";
+  const loaded = settle(embed);
+  document.body.append(embed);
+  const e = await loaded;
+  assert_equals(e.type, "load", "a network error fires load at an embed");
+  assert_equals(window.length, 0, "and makes no navigable");
+}, "an embed's network error: load, no navigable");
+</script>

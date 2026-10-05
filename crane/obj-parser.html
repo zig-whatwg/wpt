@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A parsed object element is processed once its children are parsed - when the parser pops it, or stops at the end of the input</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-object-element">
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#stack-of-open-elements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The object element's (re)determination is queued "when the element is
+// popped off the stack of open elements of an HTML parser", and its step 2
+// shows the fallback content while "the element is still in the stack of
+// open elements": a parsed object is fetched once, after its fallback
+// children are in. The parser tells the element's type of every pop
+// (dom.finish_parsing_children) - its end tag's, a td end tag's that pops
+// it with everything above the cell, and the pops "stop parsing" makes at
+// the end of the input.
+const t = async_test("each parsed object fetched its data once, and fired load");
+const loads = [];
+function loaded(name) { loads.push(name); }
+window.addEventListener("load", t.step_func_done(() => {
+  for (const name of ["closed", "implied", "eof"]) {
+    const entries = performance.getEntriesByType("resource").filter(e => e.name.includes("/images/blue.png?" + name));
+    assert_equals(entries.length, 1, name + ": one fetch");
+    assert_equals(entries[0].initiatorType, "object", name + ": initiator type");
+  }
+  assert_array_equals(loads.slice().sort(), ["closed", "eof", "implied"], "every object fired load");
+  assert_equals(document.getElementById("closed").firstElementChild.textContent, "fallback", "its fallback children were parsed");
+}));
+</script>
+<body>
+<object id="closed" data="/images/blue.png?closed" onload="loaded('closed')"><p>fallback</p></object>
+<table><tr><td><object data="/images/blue.png?implied" onload="loaded('implied')"><span>x</td></tr></table>
+<object data="/images/blue.png?eof" onload="loaded('eof')"><p>unclosed to the end

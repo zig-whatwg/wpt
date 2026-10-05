@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An object element fetches its data, then represents an image, a child navigable or its fallback content, and fires load or error</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-object-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 4.8.7 "(re)determine what the object element represents": the data
+// attribute's URL is fetched (destination "object"); a failed load fires
+// error and shows the fallback content; an image type represents the image
+// and fires load once it is loaded; a document type creates a child
+// navigable and navigates it, and load fires when its document has
+// completely loaded. Crane's object element did none of this: no fetch, no
+// event, no navigable - every test waiting on one timed out.
+
+function settle(obj) {
+  return new Promise(resolve => {
+    obj.addEventListener("load", e => resolve(e), { once: true });
+    obj.addEventListener("error", e => resolve(e), { once: true });
+  });
+}
+
+function check(e, obj, type) {
+  assert_equals(e.type, type, "event");
+  assert_equals(Object.getPrototypeOf(e), Event.prototype, "an Event");
+  assert_true(e.isTrusted, "trusted");
+  assert_false(e.bubbles, "bubbles");
+  assert_false(e.cancelable, "cancelable");
+  assert_equals(e.target, obj, "target");
+}
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.data = "/images/blue.png";
+  const settled = settle(obj);
+  document.body.append(obj);
+  check(await settled, obj, "load");
+  assert_equals(obj.contentWindow, null, "an image is no navigable");
+  assert_equals(obj.contentDocument, null, "contentDocument");
+}, "an image: load, and no navigable");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.data = "/common/blank.html";
+  const settled = settle(obj);
+  document.body.append(obj);
+  check(await settled, obj, "load");
+  assert_true(obj.contentWindow instanceof obj.contentWindow.Window, "a navigable's window");
+  assert_equals(obj.contentDocument.URL, new URL("/common/blank.html", location).href, "its document");
+  assert_equals(obj.contentWindow.frameElement, obj, "its container");
+}, "an HTML document: a child navigable, and load once it has loaded");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.data = "about:blank";
+  const settled = settle(obj);
+  document.body.append(obj);
+  check(await settled, obj, "load");
+  assert_true(obj.contentWindow instanceof obj.contentWindow.Window, "a navigable's window");
+}, "about:blank: a child navigable with its initial document, and load");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.data = "/common/blank.html?pipe=status(404)";
+  const settled = settle(obj);
+  document.body.append(obj);
+  check(await settled, obj, "error");
+  assert_equals(obj.contentWindow, null, "fallback content: no navigable");
+}, "a 404: error, and the fallback content");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.data = "http://test:test";
+  const settled = settle(obj);
+  document.body.append(obj);
+  check(await settled, obj, "error");
+}, "a URL that does not parse: error");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.type = "text/html";
+  let events = 0;
+  obj.onload = obj.onerror = () => events++;
+  document.body.append(obj);
+  await new Promise(r => step_timeout(r, 100));
+  assert_equals(events, 0, "no data: nothing to fetch, no event");
+  assert_equals(obj.contentWindow, null, "no navigable");
+}, "no data attribute: the fallback content, and no event");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  obj.data = "/images/blue.png";
+  let events = 0;
+  obj.onload = obj.onerror = () => events++;
+  await new Promise(r => step_timeout(r, 100));
+  assert_equals(events, 0, "not in a document: nothing fetched");
+}, "an object not in a document fetches nothing");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.data = "/common/text-plain.txt";
+  const settled = settle(obj);
+  document.body.append(obj);
+  check(await settled, obj, "load");
+  assert_not_equals(obj.contentDocument, null, "a text document");
+  assert_true(obj.contentDocument.body.textContent.length > 0, "showing the text");
+}, "a text/plain resource is a document in a child navigable");
+</script>

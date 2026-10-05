@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An object's fetch ends with the element's removal, a newer data value, or its document; nothing fires after</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-object-element">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The object element's fetch is pending activity: it keeps the element
+// while it runs and nothing longer. It ends - firing nothing - when the
+// element leaves its document, when its data changes (the newer
+// processing supersedes it), and when its document is destroyed with it
+// in flight.
+
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+const wait = ms => new Promise(r => step_timeout(r, ms));
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  obj.data = "/common/slow.py?delay=300";
+  obj.type = "text/plain";
+  const events = [];
+  obj.onload = obj.onerror = e => events.push(e.type);
+  document.body.append(obj);
+  await wait(50);
+  obj.remove();
+  await collect();
+  await wait(700);
+  assert_array_equals(events, [], "nothing fires for the removed element");
+  assert_equals(obj.contentWindow, null, "no navigable");
+  assert_equals(window.length, 0, "no child navigable");
+}, "removed with its fetch in flight: nothing fires");
+
+promise_test(async t => {
+  const obj = document.createElement("object");
+  t.add_cleanup(() => obj.remove());
+  obj.data = "/common/slow.py?delay=300";
+  obj.type = "text/plain";
+  const events = [];
+  const loaded = new Promise(resolve => {
+    obj.onload = obj.onerror = e => { events.push(e.type); resolve(); };
+  });
+  document.body.append(obj);
+  await wait(50);
+  obj.data = "/images/blue.png";
+  await loaded;
+  await wait(600);
+  assert_array_equals(events, ["load"], "only the newer data's load");
+  assert_equals(obj.contentWindow, null, "the image, not the first fetch's document");
+}, "a newer data value supersedes the fetch in flight");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  document.body.append(frame);
+  await new Promise(r => { frame.onload = r; frame.src = "/common/blank.html"; });
+  const doc = frame.contentDocument;
+  const obj = doc.createElement("object");
+  obj.data = "/common/slow.py?delay=300";
+  obj.type = "text/plain";
+  const events = [];
+  obj.onload = obj.onerror = e => events.push(e.type);
+  doc.body.append(obj);
+  await wait(50);
+  frame.remove();
+  await collect();
+  await wait(700);
+  assert_array_equals(events, [], "nothing fires once the document is gone");
+}, "its document destroyed with the fetch in flight: nothing fires");
+
+promise_test(async t => {
+  // The element is kept for as long as its fetch runs: script holds no
+  // reference to it, the collector runs, and the event still arrives.
+  let fired = new Promise(resolve => { window.objectFired = resolve; });
+  const div = document.createElement("div");
+  t.add_cleanup(() => div.remove());
+  div.innerHTML = '<object type="text/plain" data="/common/slow.py?delay=200" onload="objectFired(\'load\')" onerror="objectFired(\'error\')"></object>';
+  document.body.append(div);
+  await collect();
+  assert_equals(await fired, "load", "the event fired");
+}, "an object with its fetch in flight is kept");
+</script>
