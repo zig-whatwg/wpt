@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's setTimeout and setInterval: string handlers, WebIDL conversions, and arguments</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps">
+<link rel=help href="https://webidl.spec.whatwg.org/#es-union">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML timer initialization steps in a worker's global scope: a handler that
+// is not a Function is a string (WebIDL's TimerHandler union converts it by
+// ToString when setTimeout is called), compiled as a classic script when the
+// timer fires and run in the worker's realm; what it throws is reported for
+// the worker's global scope. A Function handler is invoked with the extra
+// arguments. The timeout is a WebIDL long (ToNumber, then modulo 2^32).
+
+// Runs `source` in a dedicated worker; resolves with every message it posts
+// up to and including the one equal to "end".
+function messagesOf(t, source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  return new Promise((resolve, reject) => {
+    const messages = [];
+    worker.onmessage = e => {
+      if (e.data === "end") resolve(messages);
+      else messages.push(e.data);
+    };
+    worker.onerror = e => { e.preventDefault(); reject(new Error("worker error: " + e.message)); };
+  });
+}
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    setTimeout("postMessage([this === self, typeof importScripts]); postMessage('end')", 0);
+  `);
+  assert_array_equals(messages[0], [true, "function"]);
+}, "setTimeout(string) runs the string as a classic script in the worker's global scope");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    var n = 0;
+    var id = setInterval("n++; postMessage(n); if (n === 3) { clearInterval(id); setTimeout(() => postMessage('end'), 50); }", 5);
+    postMessage(id > 0);
+  `);
+  assert_array_equals(messages, [true, 1, 2, 3]);
+}, "setInterval(string) repeats until its own script clears it");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    self.onerror = function (message) { postMessage(String(message)); postMessage('end'); return true; };
+    setTimeout("throw new Error('boom in a string handler')", 0);
+  `);
+  assert_equals(messages.length, 1);
+  assert_true(messages[0].includes("boom in a string handler"), messages[0]);
+}, "what a string handler throws is reported for the worker's global scope");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    var log = '';
+    function logger(s) { log += s + ' '; }
+    setTimeout({ toString: function () {
+      setTimeout("logger('ONE')", 20);
+      return "logger('TWO'); postMessage(log); postMessage('end')";
+    } }, 20);
+  `);
+  assert_array_equals(messages, ["ONE TWO "]);
+}, "a handler that is not a function is converted by ToString when setTimeout is called");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    try {
+      setTimeout({ toString() { throw new Error('no string'); } }, 0);
+      postMessage('no throw');
+    } catch (e) {
+      postMessage(e.message);
+    }
+    postMessage('end');
+  `);
+  assert_array_equals(messages, ["no string"]);
+}, "an exception from the handler's ToString reaches setTimeout's caller");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    try {
+      setTimeout();
+      postMessage('no throw');
+    } catch (e) {
+      postMessage(e.constructor.name);
+    }
+    postMessage('end');
+  `);
+  assert_array_equals(messages, ["TypeError"]);
+}, "setTimeout() with no handler throws a TypeError");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    setTimeout(function (a, b) {
+      postMessage([a, b, arguments.length]);
+      postMessage('end');
+    }, 0, 'x', 2);
+  `);
+  assert_array_equals(messages[0], ["x", 2, 2]);
+}, "a function handler is invoked with the extra arguments");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    setTimeout("postMessage('string ran')", 0, 'ignored');
+    setTimeout(() => postMessage('end'), 50);
+  `);
+  assert_array_equals(messages, ["string ran"]);
+}, "a string handler runs whatever arguments follow it");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    setTimeout(() => postMessage('2^32 is 0'), Math.pow(2, 32));
+    setTimeout(() => { postMessage('100'); postMessage('end'); }, 100);
+  `);
+  assert_array_equals(messages, ["2^32 is 0", "100"]);
+}, "the timeout converts as a WebIDL long: 2^32 is 0");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, `
+    setTimeout(() => { postMessage('fired'); postMessage('end'); }, { valueOf() { postMessage('valueOf'); return 0; } });
+    postMessage('returned');
+  `);
+  assert_array_equals(messages, ["valueOf", "returned", "fired"]);
+}, "the timeout converts by ToNumber when setTimeout is called");
+</script>

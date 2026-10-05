@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A transferred ArrayBuffer that cannot be detached is a TypeError on every postMessage</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializewithtransfer">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// StructuredSerializeWithTransfer step 5.4.3 performs DetachArrayBuffer,
+// which throws a TypeError when the buffer's [[ArrayBufferDetachKey]] is not
+// undefined - a WebAssembly.Memory's buffer has one. Every postMessage with a
+// transfer list goes through it: a window's, a MessagePort's and a Worker's.
+// The buffer stays attached and nothing is sent.
+
+function memoryBuffer() {
+  return new WebAssembly.Memory({ initial: 1 }).buffer;
+}
+
+test(() => {
+  const buffer = memoryBuffer();
+  assert_throws_js(TypeError, () => window.postMessage("x", "*", [buffer]));
+  assert_equals(buffer.byteLength, 65536, "the buffer stays attached");
+}, "window.postMessage");
+
+test(() => {
+  const channel = new MessageChannel();
+  const buffer = memoryBuffer();
+  assert_throws_js(TypeError, () => channel.port1.postMessage("x", [buffer]));
+  assert_equals(buffer.byteLength, 65536, "the buffer stays attached");
+  channel.port1.close();
+}, "MessagePort.postMessage");
+
+test(t => {
+  const worker = new Worker(URL.createObjectURL(new Blob(["onmessage = () => {};"], { type: "text/javascript" })));
+  t.add_cleanup(() => worker.terminate());
+  const buffer = memoryBuffer();
+  assert_throws_js(TypeError, () => worker.postMessage("x", [buffer]));
+  assert_equals(buffer.byteLength, 65536, "the buffer stays attached");
+}, "Worker.postMessage");
+</script>
+</body>

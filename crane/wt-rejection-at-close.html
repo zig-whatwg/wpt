@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker that closes with an unhandled rejection pending drops its notification</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#notify-about-rejected-promises">
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#dom-workerglobalscope-close">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Notify about rejected promises" queues a global task for the worker's
+// unhandled rejections after the microtask checkpoint that ends the task.
+// When that task called close(), the worker's tasks are discarded: the
+// notification never runs, so the worker's unhandledrejection handler never
+// hears it - and what the queued task held (the promises and their reasons)
+// is released, not leaked (checked by leaks --atExit over this file).
+// A worker that does not close hears it.
+
+function run(t, source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  return new Promise(resolve => {
+    const messages = [];
+    worker.onmessage = e => messages.push(e.data);
+    // Long enough for a notification task to run, had it been kept.
+    t.step_timeout(() => resolve(messages), 300);
+  });
+}
+
+promise_test(async t => {
+  const messages = await run(t, `
+    self.onunhandledrejection = e => postMessage("heard " + e.reason.message);
+    postMessage("closing");
+    for (let i = 0; i < 20; i++) Promise.reject(new Error("rejected " + i));
+    close();
+  `);
+  assert_array_equals(messages, ["closing"]);
+}, "a closing worker's pending rejection notification is discarded");
+
+promise_test(async t => {
+  const messages = await run(t, `
+    self.onunhandledrejection = e => { e.preventDefault(); postMessage("heard " + e.reason.message); };
+    Promise.reject(new Error("kept"));
+  `);
+  assert_array_equals(messages, ["heard kept"]);
+}, "a worker that does not close hears its unhandled rejection");
+</script>

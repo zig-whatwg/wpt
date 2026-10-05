@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a [CEReactions] member whose steps end the receiver's realm</title>
+<!--
+  HTML 4.13.6 [CEReactions]: the bracket's end runs after the member's steps,
+  and those steps can run script. Here the script removes the iframe whose
+  document owns the receiver, which ends that document's realm, while the
+  member - appendChild / append / setAttribute-free insertions on the iframe's
+  body - is still on the stack. The bracket's end must not read the receiver
+  or its realm (bind-ce, codex-ce Q21). Run under MallocScribble=1
+  MallocGuardEdges=1 to make a stray read fail loudly.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function withFrame(t, steps) {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = "<!DOCTYPE html><body></body>";
+  frame.onload = t.step_func(() => steps(frame));
+  document.body.append(frame);
+}
+
+function removingScript(doc, id) {
+  const script = doc.createElement("script");
+  script.textContent = `parent.document.getElementById(${JSON.stringify(id)}).remove();`;
+  return script;
+}
+
+async_test(t => {
+  withFrame(t, frame => {
+    frame.id = "f1";
+    const doc = frame.contentDocument;
+    const body = doc.body;
+    const script = removingScript(doc, "f1");
+    const result = body.appendChild(script);
+    assert_equals(frame.isConnected, false, "the iframe is gone");
+    assert_equals(frame.contentWindow, null, "its navigable is gone");
+    assert_equals(result, script, "appendChild still returns the appended node");
+    t.done();
+  });
+}, "appendChild on the frame's body, inserting a script that removes the frame");
+
+async_test(t => {
+  withFrame(t, frame => {
+    frame.id = "f2";
+    const doc = frame.contentDocument;
+    doc.body.append(removingScript(doc, "f2"));
+    assert_equals(frame.isConnected, false, "the iframe is gone");
+    t.done();
+  });
+}, "append on the frame's body, inserting a script that removes the frame");
+
+async_test(t => {
+  withFrame(t, frame => {
+    frame.id = "f3";
+    const doc = frame.contentDocument;
+    const holder = doc.createElement("div");
+    doc.body.append(holder);
+    holder.replaceChildren(removingScript(doc, "f3"));
+    assert_equals(frame.isConnected, false, "the iframe is gone");
+    t.done();
+  });
+}, "replaceChildren on an element of the frame, inserting a script that removes the frame");
+</script>

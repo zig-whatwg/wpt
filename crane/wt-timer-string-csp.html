@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' blob: 'report-sample'">
+<title>CSP blocks a worker's string timer handler at the call, as Chrome, Firefox and Safari do</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps">
+<link rel=help href="https://w3c.github.io/webappsec-csp/#can-compile-strings">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A blob: worker's policy container is a clone of its creator's, so its
+// script-src has no 'unsafe-eval'. As for a window (csp2-timer-string-blocked),
+// setTimeout(string) and setInterval(string) are checked when they are
+// called - the stated deviation from HTML's step 10.8.2 that all three
+// engines make: the call returns 0, nothing runs, the violation is reported
+// at the worker's global scope, and no error is reported. A function handler
+// is not checked.
+
+function messagesOf(t, source) {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  return new Promise((resolve, reject) => {
+    const messages = [];
+    worker.onmessage = e => {
+      if (e.data === "end") resolve(messages);
+      else messages.push(e.data);
+    };
+    worker.onerror = e => { e.preventDefault(); reject(new Error("worker error: " + e.message)); };
+  });
+}
+
+const prelude = `
+  var violations = [], errors = [];
+  self.addEventListener('securitypolicyviolation', e => violations.push([e.blockedURI, e.effectiveDirective, e.sample]));
+  self.addEventListener('error', e => errors.push(e.message));
+`;
+
+promise_test(async t => {
+  const messages = await messagesOf(t, prelude + `
+    self.ran = false;
+    const id = setTimeout("self.ran = true", 0);
+    setTimeout(() => { postMessage({ id, ran: self.ran, violations, errors }); postMessage('end'); }, 100);
+  `);
+  const { id, ran, violations, errors } = messages[0];
+  assert_equals(id, 0, "blocked at the call: id 0");
+  assert_false(ran, "the handler did not run");
+  assert_equals(violations.length, 1);
+  assert_array_equals(violations[0], ["eval", "script-src", "self.ran = true"]);
+  assert_array_equals(errors, [], "no error reported");
+}, "setTimeout(string) in a worker: 0, reported, no error");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, prelude + `
+    self.runs = 0;
+    const id = setInterval("self.runs++", 0);
+    setTimeout(() => { postMessage({ id, runs: self.runs, violations: violations.length, errors }); postMessage('end'); }, 150);
+  `);
+  const { id, runs, violations, errors } = messages[0];
+  assert_equals(id, 0, "blocked at the call: id 0");
+  assert_equals(runs, 0, "the handler did not run");
+  assert_equals(violations, 1, "checked once");
+  assert_array_equals(errors, [], "no error reported");
+}, "setInterval(string) in a worker: 0, reported once, no error");
+
+promise_test(async t => {
+  const messages = await messagesOf(t, prelude + `
+    const id = setTimeout(() => { postMessage({ id, violations: violations.length }); postMessage('end'); }, 0);
+  `);
+  assert_greater_than(messages[0].id, 0);
+  assert_equals(messages[0].violations, 0);
+}, "a function handler in a worker is not checked");
+</script>
