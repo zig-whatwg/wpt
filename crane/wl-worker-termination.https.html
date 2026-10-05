@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Web Locks: a worker's end releases its locks and drops its requests</title>
+<link rel="help" href="https://w3c.github.io/web-locks/#termination-of-locks">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+// "When an agent terminates, terminate remaining locks and requests with the
+// agent": the window's request, queued behind a terminated worker's lock, is
+// granted; the worker's own queued request is gone.
+let next = 0;
+function ask(worker, message) {
+  const id = ++next;
+  return new Promise(resolve => {
+    worker.addEventListener("message", function listener(e) {
+      if (e.data.id !== id) return;
+      worker.removeEventListener("message", listener);
+      resolve(e.data);
+    });
+    worker.postMessage(Object.assign({ id }, message));
+  });
+}
+
+promise_test(async () => {
+  const worker = new Worker("resources/wl-worker.js");
+  const name = `wl-terminated-${Math.random()}`;
+  assert_true((await ask(worker, { op: "hold", name })).held);
+  let granted = false;
+  const mine = navigator.locks.request(name, () => { granted = true; });
+  worker.terminate();
+  await mine;
+  assert_true(granted);
+}, "terminate() releases the lock a worker held");
+
+promise_test(async () => {
+  const name = `wl-dropped-${Math.random()}`;
+  let release;
+  const mine = navigator.locks.request(name, () => new Promise(resolve => { release = resolve; }));
+  const worker = new Worker("resources/wl-worker.js");
+  assert_true((await ask(worker, { op: "wait", name })).requested);
+  let state = await navigator.locks.query();
+  assert_equals(state.pending.filter(l => l.name === name).length, 1, "the worker's request waits");
+  worker.terminate();
+  // Its end runs on its own thread: wait for the request to leave.
+  for (let i = 0; i < 100; i++) {
+    state = await navigator.locks.query();
+    if (state.pending.filter(l => l.name === name).length === 0) break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert_equals(state.pending.filter(l => l.name === name).length, 0, "the worker's request is dropped");
+  release();
+  await mine;
+}, "terminate() drops a worker's waiting request");
+
+promise_test(async () => {
+  const name = `wl-closed-${Math.random()}`;
+  const worker = new Worker(URL.createObjectURL(new Blob([`
+    navigator.locks.request(${JSON.stringify(name)}, () => {
+      postMessage("held");
+      setTimeout(() => close(), 0);
+      return new Promise(() => {});
+    });
+  `], { type: "text/javascript" })));
+  await new Promise(resolve => { worker.onmessage = resolve; });
+  // The worker closes itself while it holds the lock.
+  let granted = false;
+  await navigator.locks.request(name, () => { granted = true; });
+  assert_true(granted);
+}, "a worker that closes itself releases its locks");
+</script>

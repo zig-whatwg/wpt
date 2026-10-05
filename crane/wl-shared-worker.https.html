@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Web Locks: a shared worker's requests</title>
+<link rel="help" href="https://w3c.github.io/web-locks/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+let next = 0;
+function ask(port, message) {
+  const id = ++next;
+  return new Promise(resolve => {
+    port.addEventListener("message", function listener(e) {
+      if (e.data.id !== id) return;
+      port.removeEventListener("message", listener);
+      resolve(e.data);
+    });
+    port.postMessage(Object.assign({ id }, message));
+  });
+}
+
+promise_test(async () => {
+  const worker = new SharedWorker(`resources/wl-worker.js?${Math.random()}`);
+  worker.port.start();
+  const name = `wl-shared-${Math.random()}`;
+  assert_true((await ask(worker.port, { op: "hold", name })).held);
+  let granted = false;
+  const mine = navigator.locks.request(name, () => { granted = true; });
+  const state = await navigator.locks.query();
+  assert_equals(state.held.filter(l => l.name === name).length, 1, "the shared worker holds it");
+  assert_equals(state.pending.filter(l => l.name === name).length, 1);
+  await ask(worker.port, { op: "release", name });
+  await mine;
+  assert_true(granted);
+}, "a shared worker holds a lock the window then waits for, and releases it");
+
+promise_test(async () => {
+  const worker = new SharedWorker(`resources/wl-worker.js?${Math.random()}`);
+  worker.port.start();
+  const name = `wl-shared-wait-${Math.random()}`;
+  let release;
+  const mine = navigator.locks.request(name, () => new Promise(resolve => { release = resolve; }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const granted = new Promise(resolve => {
+    worker.port.addEventListener("message", function listener(e) {
+      if (e.data.granted) { worker.port.removeEventListener("message", listener); resolve(); }
+    });
+  });
+  assert_true((await ask(worker.port, { op: "wait", name })).requested);
+  release();
+  await mine;
+  await granted;
+}, "a shared worker waits for the window's lock, and is granted it");
+</script>

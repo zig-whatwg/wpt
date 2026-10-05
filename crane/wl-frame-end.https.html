@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Web Locks: a removed frame's locks and requests end with its document</title>
+<link rel="help" href="https://w3c.github.io/web-locks/#termination-of-locks">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function frame() {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    iframe.onload = () => resolve(iframe);
+    iframe.src = "/common/blank.html";
+    document.body.appendChild(iframe);
+  });
+}
+
+promise_test(async () => {
+  const iframe = await frame();
+  const name = `wl-frame-${Math.random()}`;
+  const theirs = iframe.contentWindow.navigator.locks;
+  await new Promise(resolve => {
+    theirs.request(name, () => { resolve(); return new Promise(() => {}); });
+  });
+  let granted = false;
+  const mine = navigator.locks.request(name, () => { granted = true; });
+  let state = await navigator.locks.query();
+  assert_equals(state.held.filter(l => l.name === name).length, 1);
+  assert_equals(state.pending.filter(l => l.name === name).length, 1);
+  iframe.remove();
+  await mine;
+  assert_true(granted, "the frame's document ended: its lock was released");
+}, "removing a frame releases the lock it held");
+
+promise_test(async t => {
+  const iframe = await frame();
+  const { navigator: theirs, DOMException: TheirDOMException } = iframe.contentWindow;
+  iframe.remove();
+  await promise_rejects_dom(t, "InvalidStateError", TheirDOMException,
+    theirs.locks.request("x", t.unreached_func("never granted")));
+  await promise_rejects_dom(t, "InvalidStateError", TheirDOMException, theirs.locks.query());
+}, "a removed frame's LockManager rejects with InvalidStateError");
+
+promise_test(async () => {
+  const name = `wl-frame-pending-${Math.random()}`;
+  let release;
+  const mine = navigator.locks.request(name, () => new Promise(resolve => { release = resolve; }));
+  const iframe = await frame();
+  iframe.contentWindow.navigator.locks.request(name, () => {});
+  let state = await navigator.locks.query();
+  assert_equals(state.pending.filter(l => l.name === name).length, 1);
+  iframe.remove();
+  state = await navigator.locks.query();
+  assert_equals(state.pending.filter(l => l.name === name).length, 0, "the frame's request left with it");
+  release();
+  await mine;
+}, "removing a frame drops its waiting request");
+promise_test(async () => {
+  const name = `wl-frame-self-${Math.random()}`;
+  const iframe = await frame();
+  // The frame's callback ends its own document while it runs.
+  await new Promise(resolve => {
+    iframe.contentWindow.navigator.locks.request(name, () => {
+      iframe.remove();
+      resolve();
+    });
+  });
+  const state = await navigator.locks.query();
+  assert_equals(state.held.filter(l => l.name === name).length, 0, "its lock went with it");
+  assert_true(await navigator.locks.request(name, { ifAvailable: true }, lock => lock !== null));
+}, "a frame removed by its own lock callback releases the lock");
+
+promise_test(async () => {
+  const name = `wl-frame-self-unavailable-${Math.random()}`;
+  let release;
+  const mine = navigator.locks.request(name, () => new Promise(resolve => { release = resolve; }));
+  const iframe = await frame();
+  // ifAvailable: the callback runs with null, and removes the frame.
+  await new Promise(resolve => {
+    iframe.contentWindow.navigator.locks.request(name, { ifAvailable: true }, lock => {
+      iframe.remove();
+      resolve(lock);
+    });
+  });
+  release();
+  await mine;
+}, "a frame removed by its own ifAvailable callback");
+</script>
+</body>
