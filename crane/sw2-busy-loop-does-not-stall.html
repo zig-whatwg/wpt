@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A shared worker spinning in a busy loop stalls neither its page nor another shared worker</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Every shared worker runs its agent on a thread of its own, so a
+// `while (true) {}` stalls that worker and nothing else. While shared
+// workers' tasks ran on their creator's loop, this page never ran another
+// task. The spinning worker's only owner is a frame: removing the frame
+// empties its owner set, and the worker - not actively needed, still
+// executing - is terminated (HTML 10.2.4), its script aborted.
+const url = new URL("resources/sw2-instance.js", location.href).href;
+const token = Math.random().toString(36).slice(2);
+
+function frame() {
+  return new Promise(resolve => {
+    const f = document.createElement("iframe");
+    f.onload = () => resolve(f);
+    document.body.appendChild(f);
+  });
+}
+
+function ask(worker, what) {
+  return new Promise((resolve, reject) => {
+    worker.port.onmessage = e => resolve(e.data);
+    worker.onerror = () => reject(new Error("error at the SharedWorker"));
+    worker.port.postMessage(what);
+  });
+}
+
+promise_test(async t => {
+  const f = await frame();
+  t.add_cleanup(() => f.remove());
+  const spinner = new f.contentWindow.SharedWorker(url, "spinner-" + token);
+  assert_equals(await ask(spinner, "spin"), "spinning");
+  // The page's own tasks keep running: a chain of ten setTimeout(0)s.
+  let count = 0;
+  await new Promise(resolve => {
+    const step = () => (++count === 10 ? resolve() : t.step_timeout(step, 0));
+    t.step_timeout(step, 0);
+  });
+  assert_equals(count, 10);
+  // Another shared worker answers.
+  const other = await ask(new SharedWorker(url, "other-" + token), "id");
+  assert_equals(typeof other.id, "string");
+  // The spinner's owner goes: it is closed and its script aborted, and the
+  // same name runs a fresh worker.
+  f.remove();
+  const fresh = await ask(new SharedWorker(url, "spinner-" + token), "id");
+  assert_equals(fresh.connections, 1);
+}, "a spinning shared worker leaves its page's timers and another shared worker running");
+</script>

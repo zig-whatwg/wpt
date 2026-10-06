@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's global scope has a Performance of its own, its time origin the worker's creation time</title>
+<link rel=help href="https://w3c.github.io/hr-time/#the-performance-attribute">
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HR-Time: WindowOrWorkerGlobalScope's `performance` is the global's
+// Performance, whose time origin is its settings object's - for a worker,
+// "run a worker" step 3's unsafe worker creation time. User Timing and the
+// performance timeline work there as on a window (marks, measures, an
+// observer). The worker answers with what it sees.
+const probe = `
+  function report() {
+    const out = {};
+    out.isPerformance = performance instanceof Performance;
+    out.sameObject = self.performance === performance;
+    out.timeOrigin = performance.timeOrigin;
+    const a = performance.now();
+    const b = performance.now();
+    out.now = a;
+    out.monotonic = b >= a;
+    out.jsonOrigin = performance.toJSON().timeOrigin;
+    const mark = performance.mark("m1");
+    out.markIsMark = mark instanceof PerformanceMark;
+    out.markEntries = performance.getEntriesByName("m1").length;
+    performance.measure("me1", "m1");
+    out.measureEntries = performance.getEntriesByType("measure").length;
+    return out;
+  }
+  function observe(post) {
+    new PerformanceObserver((list, observer) => {
+      observer.disconnect();
+      post({ observed: list.getEntries().map(e => e.name) });
+    }).observe({ type: "mark" });
+    performance.mark("m2");
+  }
+`;
+
+function check(r, before) {
+  assert_true(r.isPerformance, "performance is a Performance");
+  assert_true(r.sameObject, "[SameObject]");
+  assert_greater_than_equal(r.timeOrigin, before - 1, "the worker's time origin is its creation time, not earlier");
+  assert_less_than(r.timeOrigin, performance.timeOrigin + performance.now() + 1, "and not after now");
+  assert_less_than(r.now, 30000, "performance.now() counts from the worker's time origin");
+  assert_true(r.monotonic);
+  assert_equals(r.jsonOrigin, r.timeOrigin);
+  assert_true(r.markIsMark, "performance.mark() returns a PerformanceMark");
+  assert_equals(r.markEntries, 1);
+  assert_equals(r.measureEntries, 1);
+}
+
+promise_test(async t => {
+  const before = performance.timeOrigin + performance.now();
+  const source = probe + 'postMessage(report()); observe(m => postMessage(m));';
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const worker = new Worker(url);
+  t.add_cleanup(() => worker.terminate());
+  const answers = [];
+  await new Promise((resolve, reject) => {
+    worker.onerror = e => reject(new Error(e.message));
+    worker.onmessage = e => { answers.push(e.data); if (answers.length === 2) resolve(); };
+  });
+  check(answers[0], before);
+  assert_array_equals(answers[1].observed, ["m2"], "a PerformanceObserver in the worker hears its mark");
+}, "a dedicated worker's performance");
+
+promise_test(async t => {
+  const before = performance.timeOrigin + performance.now();
+  const source = probe + 'onconnect = e => { const p = e.ports[0]; p.postMessage(report()); observe(m => p.postMessage(m)); };';
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const worker = new SharedWorker(url);
+  const answers = [];
+  await new Promise((resolve, reject) => {
+    worker.onerror = () => reject(new Error("error at the SharedWorker"));
+    worker.port.onmessage = e => { answers.push(e.data); if (answers.length === 2) resolve(); };
+  });
+  check(answers[0], before);
+  assert_array_equals(answers[1].observed, ["m2"]);
+}, "a shared worker's performance");
+</script>

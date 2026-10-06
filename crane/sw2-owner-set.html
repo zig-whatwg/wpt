@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A shared worker lives while its owner set is not empty, and a new SharedWorker after that starts a fresh one</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#the-worker's-lifetime">
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#dom-sharedworker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 10.2.3: a Document joins a shared worker's owner set when it makes or
+// connects to it ("run a worker" step 9, the SharedWorker constructor's step
+// 11.5.8) and leaves it when it is destroyed ("destroy a document" step 8).
+// "Closing orphan workers": a worker whose owner set is empty stops being
+// protected, and its closing flag is set no later than when it stops being
+// permissible - and a closing worker is never matched by a later
+// constructor (step 11.2), which runs a fresh worker with its own creator's
+// settings. The worker's id is random per worker.
+const url = new URL("resources/sw2-instance.js", location.href).href;
+const token = Math.random().toString(36).slice(2);
+
+function frame() {
+  return new Promise(resolve => {
+    const f = document.createElement("iframe");
+    f.onload = () => resolve(f);
+    document.body.appendChild(f);
+  });
+}
+
+function ask(worker, what) {
+  return new Promise((resolve, reject) => {
+    worker.port.onmessage = e => resolve(e.data);
+    worker.onerror = () => reject(new Error("error at the SharedWorker"));
+    worker.port.postMessage(what);
+  });
+}
+
+promise_test(async t => {
+  const f = await frame();
+  const name = "orphan-" + token;
+  const first = await ask(new f.contentWindow.SharedWorker(url, name), "id");
+  assert_equals(first.connections, 1);
+  // The frame's Document was the worker's one owner.
+  f.remove();
+  const second = await ask(new SharedWorker(url, name), "id");
+  assert_not_equals(second.id, first.id, "a fresh worker");
+  assert_equals(second.connections, 1);
+}, "a worker whose owner set empties is closed; the next SharedWorker runs a fresh one");
+
+promise_test(async t => {
+  const f = await frame();
+  const name = "kept-" + token;
+  const inFrame = new f.contentWindow.SharedWorker(url, name);
+  const a = await ask(inFrame, "id");
+  const here = new SharedWorker(url, name);
+  const b = await ask(here, "id");
+  assert_equals(b.id, a.id, "one worker for both Documents");
+  assert_equals(b.connections, 2);
+  // This Document still owns it.
+  f.remove();
+  const c = await ask(here, "id");
+  assert_equals(c.id, a.id, "the worker still answers");
+  const d = await ask(new SharedWorker(url, name), "id");
+  assert_equals(d.id, a.id, "a new SharedWorker still finds it");
+  assert_equals(d.connections, 3);
+}, "a worker with an owner left keeps running and is still found");
+
+promise_test(async t => {
+  const name = "closer-" + token;
+  const w = new SharedWorker(url, name);
+  const a = await ask(w, "id");
+  assert_equals(await ask(w, "close"), "closing", "the closing task's message is delivered");
+  const b = await ask(new SharedWorker(url, name), "id");
+  assert_not_equals(b.id, a.id, "a closing worker is never matched");
+}, "a worker that called close() is not matched by a later SharedWorker");
+
+promise_test(async t => {
+  // HTML 10.2.3 "in extended lifetime": a shared worker made with
+  // extendedLifetime true stays protected for the extended lifetime shared
+  // worker timeout after its owner set empties - a Document that connects
+  // in that time finds it.
+  const f = await frame();
+  const name = "extended-" + token;
+  const first = await ask(new f.contentWindow.SharedWorker(url, { name, extendedLifetime: true }), "id");
+  f.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  const again = await ask(new SharedWorker(url, { name, extendedLifetime: true }), "id");
+  assert_equals(again.id, first.id, "the same worker");
+  assert_equals(again.connections, 2);
+}, "a worker with extendedLifetime outlives its owner set emptying");
+
+promise_test(async t => {
+  // The SharedWorker constructor's step 11.4: a running worker whose
+  // extended lifetime differs from options["extendedLifetime"] - `error`.
+  const name = "extended-mismatch-" + token;
+  const w = new SharedWorker(url, { name, extendedLifetime: true });
+  await ask(w, "id");
+  const other = new SharedWorker(url, { name });
+  await new Promise((resolve, reject) => {
+    other.onerror = t.step_func(e => { assert_equals(e.type, "error"); resolve(); });
+    other.port.onmessage = () => reject(new Error("must not connect"));
+    other.port.postMessage("id");
+  });
+}, "an extendedLifetime mismatch fires error at the SharedWorker");
+
+promise_test(async t => {
+  const name = "nested-" + token;
+  const w = new SharedWorker(url, name);
+  const a = await ask(w, "id");
+  assert_equals(await ask(w, "nested"), "nested " + a.id);
+  assert_equals(await ask(w, "timer"), "timer " + a.id);
+}, "a shared worker runs its timers and a dedicated worker of its own");
+</script>

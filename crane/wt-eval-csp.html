@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A worker's eval, Function and WebAssembly compilation are checked against the worker's CSP</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#hostensurecancompilestrings(realm,-parameterstrings,-bodystring,-codestring,-compilationtype,-parameterargs,-bodyarg)">
+<link rel=help href="https://w3c.github.io/webappsec-csp/#can-compile-strings">
+<link rel=help href="https://w3c.github.io/webappsec-csp/#can-compile-wasm-bytes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HostEnsureCanCompileStrings and HostEnsureCanCompileWasmBytes are the host's
+// for every agent, a worker agent's too: a worker whose policy has a
+// script-src without 'unsafe-eval' or 'wasm-unsafe-eval' cannot eval, make a
+// Function from strings or compile WebAssembly, and each refusal is a
+// violation reported at the worker's global scope.
+function run(url) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(url);
+    worker.onmessage = e => { worker.terminate(); resolve(e.data); };
+    worker.onerror = e => { worker.terminate(); reject(new Error(e.message)); };
+  });
+}
+
+promise_test(async () => {
+  const r = await run("resources/wt-eval-csp-worker.js");
+  assert_equals(r.eval, "EvalError", "eval");
+  assert_equals(r.fn, "EvalError", "new Function");
+  assert_equals(r.wasm, "CompileError", "new WebAssembly.Module");
+  assert_true(r.violations.length >= 2, "violations reported at the worker: " + r.violations.join(", "));
+  for (const v of r.violations) assert_true(v.startsWith("script-src"), v);
+}, "script-src 'self' blocks eval, Function and WebAssembly in the worker");
+
+promise_test(async () => {
+  const r = await run("resources/wt-eval-nocsp-worker.js");
+  assert_equals(r.eval, "42");
+  assert_equals(r.fn, "42");
+  assert_equals(r.wasm, "allowed");
+  assert_array_equals(r.violations, []);
+}, "with no policy the same worker compiles all three");
+</script>

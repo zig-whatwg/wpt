@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A shared worker that cannot start fires a plain error at the SharedWorker that ran it</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#run-a-worker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Run a worker" onComplete step 1: a null script (the fetch failed) or one
+// whose error to rethrow is non-null (it did not parse) - `error` at the
+// SharedWorker, a plain Event, not cancelable; nothing runs. The worker
+// starts on a thread of its own, so the outcome reaches the page as a task
+// posted back from that thread.
+function blobURL(source) {
+  return URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+}
+
+function errorOf(worker, t) {
+  return new Promise((resolve, reject) => {
+    worker.onerror = t.step_func(e => resolve(e));
+    worker.port.onmessage = () => reject(new Error("the worker must not run"));
+    worker.port.start();
+  });
+}
+
+promise_test(async t => {
+  const url = blobURL("this is not javascript");
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const e = await errorOf(new SharedWorker(url), t);
+  assert_false(e instanceof ErrorEvent, "a plain Event");
+  assert_equals(e.type, "error");
+  assert_false(e.cancelable);
+}, "a script that does not parse");
+
+promise_test(async t => {
+  const e = await errorOf(new SharedWorker("resources/sw2-does-not-exist.js"), t);
+  assert_equals(e.type, "error");
+}, "a script that is not there");
+
+promise_test(async t => {
+  const url = blobURL('onconnect = e => e.ports[0].postMessage("up");');
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const w = new SharedWorker(url, "posted-first");
+  // Posted before the worker's thread has even started: it waits.
+  w.port.postMessage("early");
+  const answer = await new Promise(resolve => { w.port.onmessage = e => resolve(e.data); });
+  assert_equals(answer, "up");
+}, "a worker that starts connects its first port after its script ran");
+</script>
