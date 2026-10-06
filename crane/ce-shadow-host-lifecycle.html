@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow-including insertion and removal steps</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ["open", "closed"]) {
+  test(t => {
+    const host = document.createElement("div");
+    const root = host.attachShadow({mode});
+    const nestedHost = document.createElement("section");
+    const nestedRoot = nestedHost.attachShadow({mode: mode === "open" ? "closed" : "open"});
+    root.appendChild(nestedHost);
+    const frame = document.createElement("iframe");
+    const script = document.createElement("script");
+    const key = "ceShadowScriptRuns_" + mode;
+    self[key] = 0;
+    script.text = "self['" + key + "']++";
+    nestedRoot.appendChild(frame);
+    nestedRoot.appendChild(script);
+    t.add_cleanup(() => { host.remove(); delete self[key]; });
+
+    assert_false(frame.isConnected);
+    assert_false(script.isConnected);
+    assert_equals(frame.contentWindow, null, "a detached iframe has no browsing context");
+    assert_equals(self[key], 0, "the detached script has not run");
+
+    document.body.appendChild(host);
+    assert_true(frame.isConnected);
+    assert_true(script.isConnected);
+    assert_not_equals(frame.contentWindow, null, "insertion creates the iframe browsing context");
+    assert_not_equals(frame.contentDocument, null, "the initial about:blank document is available");
+    assert_equals(self[key], 1, "insertion runs the script once");
+
+    host.remove();
+    assert_false(frame.isConnected);
+    assert_false(script.isConnected);
+    assert_equals(frame.contentWindow, null, "removal destroys the iframe browsing context");
+    document.body.appendChild(host);
+    assert_not_equals(frame.contentWindow, null, "reinsertion creates a browsing context again");
+    assert_equals(self[key], 1, "an already-started script does not run again");
+  }, mode + " outer shadow root: nested iframe and script follow their host's connectedness");
+}
+</script>

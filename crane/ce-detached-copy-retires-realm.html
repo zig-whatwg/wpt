@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A detached custom element copy can retire its result's realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const operation of ["cloneNode", "importNode"]) {
+  test(t => {
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+    const child = frame.contentWindow;
+    const childDocument = frame.contentDocument;
+    const source = childDocument.createElement("ce-detached-retiring-copy");
+    let copying = false;
+    let retired = false;
+    class RetiringCopy extends child.HTMLElement {
+      constructor() {
+        super();
+        this.copyMarker = 847;
+        if (copying) {
+          retired = true;
+          frame.remove();
+          for (let i = 0; i < 200; ++i) document.createElement("div");
+        }
+      }
+    }
+    child.customElements.define("ce-detached-retiring-copy", RetiringCopy);
+    child.customElements.upgrade(source);
+    assert_true(source instanceof RetiringCopy, "the source was upgraded before copying");
+    copying = true;
+    // Removing the frame does not itself invalidate a surviving result.
+    // The binding rejects only a result whose native generation changed.
+    const copy = operation === "cloneNode" ? source.cloneNode(true) : childDocument.importNode(source, true);
+    assert_true(copy instanceof RetiringCopy, "the copy retains its custom class");
+    assert_equals(copy.copyMarker, 847, "the copy retains its constructor's expando");
+    assert_true(retired, "the copy's constructor retired its own realm");
+    assert_false(frame.isConnected);
+    const control = document.createElement("div");
+    document.body.appendChild(control);
+    t.add_cleanup(() => control.remove());
+    assert_true(control.isConnected);
+  }, operation + " returns a surviving detached result after its iframe is removed");
+}
+</script>

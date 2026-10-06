@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reinsertion during upgrade drains the element's pending reactions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  t.add_cleanup(() => host.remove());
+  const candidate = document.createElement("ce-reentrant-upgrade-insertion");
+  candidate.setAttribute("watch", "before");
+  host.appendChild(candidate);
+  const events = [];
+  class Reinserted extends HTMLElement {
+    static observedAttributes = ["watch"];
+    constructor() {
+      super();
+      events.push("constructor:start");
+      host.appendChild(this);
+      events.push("constructor:end");
+    }
+    attributeChangedCallback() { events.push("attribute"); }
+    connectedCallback() { events.push("connected"); }
+    disconnectedCallback() { events.push("disconnected"); }
+  }
+  customElements.define("ce-reentrant-upgrade-insertion", Reinserted);
+  assert_true(candidate instanceof Reinserted);
+  assert_array_equals(events, ["constructor:start", "attribute", "connected", "constructor:end"]);
+}, "try-to-upgrade enqueues a precustomized element so its pending callbacks drain in the nested insertion scope");
+</script>

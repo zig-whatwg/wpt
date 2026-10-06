@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A parser reaction can retire the document.close parser's realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  const childDocument = frame.contentDocument;
+  childDocument.open();
+  let reacted = false;
+  child.customElements.define('ce-closing-parser-retirement', class extends child.HTMLElement {
+    static observedAttributes = ['watched'];
+    attributeChangedCallback() {
+      reacted = true;
+      frame.remove();
+      for (let i = 0; i < 200; ++i) document.createElement('div');
+    }
+  });
+  try {
+    childDocument.write('<ce-closing-parser-retirement watched="value"></ce-closing-parser-retirement><p>later token</p>');
+    // Crane currently buffers writes to a document.open-created parser until
+    // close(). This case reaches its actual full parser despite that gap.
+    childDocument.close();
+  } catch (_) {}
+  assert_true(reacted, 'the parser invoked its queued attribute reaction');
+  assert_false(frame.isConnected);
+  let connected = false;
+  customElements.define('ce-after-closing-parser', class extends HTMLElement {
+    connectedCallback() { connected = true; }
+  });
+  const next = document.createElement('ce-after-closing-parser');
+  t.add_cleanup(() => next.remove());
+  document.body.appendChild(next);
+  assert_true(connected, 'the surviving agent stack is balanced');
+}, 'Closing a script-created parser survives a reaction retiring its realm');
+</script>

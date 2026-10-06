@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom element creation paths and creation options</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-create-element">
+<link rel="help" href="https://dom.spec.whatwg.org/#flatten-element-creation-options">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const created = [];
+  class NamespacedElement extends HTMLElement {
+    constructor() { super(); created.push(this); }
+  }
+  customElements.define('ce-namespaced-element', NamespacedElement);
+  const element = document.createElementNS(
+    'http://www.w3.org/1999/xhtml', 'p:ce-namespaced-element');
+  assert_array_equals(created, [element]);
+  assert_true(element instanceof NamespacedElement);
+  assert_equals(element.prefix, 'p');
+
+  const foreign = document.createElementNS('urn:ce-foreign', 'ce-namespaced-element');
+  assert_false(foreign instanceof NamespacedElement);
+  assert_equals(created.length, 1, 'foreign namespaces do not consult HTML definitions');
+}, 'createElementNS constructs only in the HTML namespace and preserves the prefix');
+
+test(() => {
+  const created = [];
+  class CustomizedButton extends HTMLButtonElement {
+    constructor() { super(); created.push(this); }
+  }
+  customElements.define('ce-created-button', CustomizedButton, {extends: 'button'});
+  const element = document.createElement('button', {is: 'ce-created-button'});
+  assert_array_equals(created, [element]);
+  assert_true(element instanceof CustomizedButton);
+  assert_equals(element.localName, 'button');
+  assert_false(element.hasAttribute('is'), 'creation options do not append an attribute');
+
+  const plain = document.createElement('button', 'ce-created-button');
+  assert_false(plain instanceof CustomizedButton, 'legacy string options do not set is');
+  plain.setAttribute('is', 'ce-created-button');
+  customElements.upgrade(plain);
+  assert_false(plain instanceof CustomizedButton, 'changing the attribute cannot change the is value');
+  assert_equals(created.length, 1);
+}, 'dictionary is selects a customized built-in; strings and later attributes do not');
+
+test(() => {
+  const created = [];
+  class ClonedElement extends HTMLElement {
+    constructor() {
+      super();
+      created.push([this, this.getAttribute('data-value'), this.childNodes.length]);
+    }
+  }
+  customElements.define('ce-cloned-element', ClonedElement);
+  const source = document.createElement('ce-cloned-element');
+  source.setAttribute('data-value', 'copied');
+  source.appendChild(document.createTextNode('child'));
+  created.length = 0;
+
+  // DOM clone a single node step 2.4 creates nonsynchronously. Its queued
+  // upgrade runs after cloning has copied attributes and descendants.
+  const clone = source.cloneNode(true);
+  assert_equals(created.length, 1);
+  assert_equals(created[0][0], clone);
+  assert_equals(created[0][1], 'copied');
+  assert_equals(created[0][2], 1);
+  assert_true(clone instanceof ClonedElement);
+  assert_equals(clone.textContent, 'child');
+}, 'cloneNode upgrades after copying attributes and children');
+
+test(() => {
+  const created = [];
+  class ImportedElement extends HTMLElement {
+    constructor() { super(); created.push(this); }
+  }
+  customElements.define('ce-imported-element', ImportedElement);
+  const inert = document.implementation.createHTMLDocument('source');
+  const source = inert.createElement('ce-imported-element');
+  source.appendChild(inert.createTextNode('imported child'));
+  assert_equals(created.length, 0);
+
+  const imported = document.importNode(source, true);
+  assert_array_equals(created, [imported]);
+  assert_true(imported instanceof ImportedElement);
+  assert_equals(imported.ownerDocument, document);
+  assert_equals(imported.textContent, 'imported child');
+}, 'importNode uses the destination global registry and honors deep cloning');
+</script>

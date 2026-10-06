@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A scope begun with no definitions balances after the first define</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const candidate = document.createElement('ce-first-defined');
+  document.body.appendChild(candidate);
+  t.add_cleanup(() => candidate.remove());
+  const calls = [];
+  class First extends HTMLElement {
+    constructor() { super(); calls.push('constructed'); }
+    connectedCallback() { calls.push('connected'); }
+  }
+  let read = false;
+  const result = document.createElement('div', {
+    get is() {
+      read = true;
+      customElements.define('ce-first-defined', First);
+      assert_true(candidate instanceof First, 'define drains even though its begin saw zero definitions');
+      assert_array_equals(calls, ['constructed', 'connected']);
+      return undefined;
+    }
+  });
+  assert_true(read, 'creation reads the options inside its outer scope');
+  assert_equals(result.localName, 'div');
+  assert_array_equals(calls, ['constructed', 'connected']);
+}, 'First definition inside an existing empty reaction scope upgrades synchronously');
+</script>

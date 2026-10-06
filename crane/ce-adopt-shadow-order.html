@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document adoption reaches shadow descendants and custom element reactions</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-adopt">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ['open', 'closed']) {
+  test(t => {
+    const events = [];
+    const documents = [];
+    const name = 'ce-adopt-shadow-' + mode;
+    class Adopted extends HTMLElement {
+      disconnectedCallback() { events.push('disconnected:' + this.id); }
+      adoptedCallback(oldDocument, newDocument) {
+        events.push('adopted:' + this.id);
+        documents.push([oldDocument, newDocument, this.ownerDocument]);
+      }
+    }
+    customElements.define(name, Adopted);
+    const host = document.createElement(name);
+    const shadowChild = document.createElement(name);
+    const lightChild = document.createElement(name);
+    assert_true(host instanceof Adopted);
+    host.id = 'host';
+    shadowChild.id = 'shadow';
+    lightChild.id = 'light';
+    const root = host.attachShadow({mode});
+    root.appendChild(shadowChild);
+    host.appendChild(lightChild);
+    document.body.appendChild(host);
+    t.add_cleanup(() => host.remove());
+    events.length = 0;
+    const destination = document.implementation.createHTMLDocument('adoption');
+    assert_equals(destination.adoptNode(host), host);
+    // The element queue visits shadow-including tree order. Each element's
+    // reaction queue drains its disconnected and adopted callbacks together.
+    assert_array_equals(events, [
+      'disconnected:host', 'adopted:host',
+      'disconnected:shadow', 'adopted:shadow',
+      'disconnected:light', 'adopted:light'
+    ]);
+    assert_equals(documents.length, 3);
+    for (const args of documents) assert_array_equals(args, [document, destination, destination]);
+    for (const node of [host, root, shadowChild, lightChild]) {
+      assert_equals(node.ownerDocument, destination);
+      assert_false(node.isConnected);
+    }
+  }, mode + ' shadow descendants adopt in element-queue order before adoptNode returns');
+}
+
+test(() => {
+  const destination = document.implementation.createHTMLDocument('rejections');
+  assert_throws_dom('NotSupportedError', () => destination.adoptNode(document));
+  const host = document.createElement('div');
+  const root = host.attachShadow({mode: 'closed'});
+  assert_throws_dom('HierarchyRequestError', () => destination.adoptNode(root));
+  assert_equals(root.ownerDocument, document);
+}, 'adoptNode rejects documents and shadow roots without changing their documents');
+</script>

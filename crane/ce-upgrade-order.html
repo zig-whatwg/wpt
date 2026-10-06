@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom element upgrade order and construction identity</title>
+<link rel="help" href="https://html.spec.whatwg.org/#upgrades">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement('div');
+  t.add_cleanup(() => host.remove());
+  const shadow = host.attachShadow({mode: 'closed'});
+  const inShadow = document.createElement('ce-tree-upgrade');
+  const inLight = document.createElement('ce-tree-upgrade');
+  const detached = document.createElement('ce-tree-upgrade');
+  shadow.appendChild(inShadow);
+  host.appendChild(inLight);
+  document.body.appendChild(host);
+  const log = [];
+  class TreeElement extends HTMLElement {
+    constructor() { super(); log.push(this); }
+  }
+  customElements.define('ce-tree-upgrade', TreeElement);
+  assert_array_equals(log, [inShadow, inLight], 'define uses shadow-including tree order');
+  assert_false(detached instanceof TreeElement);
+  customElements.upgrade(detached);
+  assert_array_equals(log, [inShadow, inLight, detached]);
+  assert_true(detached instanceof TreeElement);
+  customElements.upgrade(host);
+  assert_equals(log.length, 3, 'already-custom elements are not constructed again');
+}, 'define upgrades connected shadow descendants; upgrade includes a detached root');
+
+test(t => {
+  const element = document.createElement('ce-attribute-upgrade');
+  element.setAttribute('second', '2');
+  element.setAttribute('first', '1');
+  t.add_cleanup(() => element.remove());
+  document.body.appendChild(element);
+  const log = [];
+  class AttributeUpgrade extends HTMLElement {
+    static observedAttributes = ['first', 'second'];
+    constructor() { super(); log.push(['constructor', this]); }
+    attributeChangedCallback(name, oldValue, newValue) { log.push([name, oldValue, newValue]); }
+    connectedCallback() { log.push(['connected']); }
+  }
+  customElements.define('ce-attribute-upgrade', AttributeUpgrade);
+  assert_equals(log.length, 4);
+  assert_array_equals(log[0], ['constructor', element]);
+  assert_array_equals(log[1], ['second', null, '2']);
+  assert_array_equals(log[2], ['first', null, '1']);
+  assert_array_equals(log[3], ['connected']);
+}, 'upgrade preserves element identity and queues existing attributes in attribute-list order');
+
+test(() => {
+  const detached = document.createElement('ce-insert-upgrade');
+  const log = [];
+  class InsertUpgrade extends HTMLElement {
+    constructor() { super(); log.push('constructed'); }
+    connectedCallback() { log.push('connected'); }
+  }
+  customElements.define('ce-insert-upgrade', InsertUpgrade);
+  assert_array_equals(log, []);
+  const container = document.createElement('div');
+  container.appendChild(detached);
+  assert_array_equals(log, [], 'insertion into a disconnected subtree does not upgrade');
+  document.body.appendChild(container);
+  try {
+    assert_array_equals(log, ['constructed', 'connected']);
+    assert_true(detached instanceof InsertUpgrade);
+  } finally {
+    container.remove();
+  }
+}, 'insertion tries to upgrade only when the element becomes connected');
+</script>

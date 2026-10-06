@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Plain editable selection lifetime control for custom-element reactions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/custom-elements/resources/custom-elements-helpers.js"></script>
+<body>
+<script>
+// The failing custom-elements/reactions/Document.html path without a custom
+// element. A DebugAllocator run must finish without leaked: reports.
+test_with_window((contentWindow, contentDocument) => {
+  const child = contentDocument.createElement('span');
+  const container = contentDocument.createElement('div');
+  container.contentEditable = true;
+  container.appendChild(child);
+  contentDocument.body.appendChild(container);
+  container.focus();
+  const selection = contentDocument.getSelection();
+  selection.collapse(container, 1);
+  assert_equals(selection.anchorNode, container);
+  assert_equals(selection.anchorOffset, 1);
+  assert_equals(typeof contentDocument.execCommand('delete', false, null), 'boolean');
+}, 'A plain editable selection and delete command release their native state');
+</script>

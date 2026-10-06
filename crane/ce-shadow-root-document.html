@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A shadow root starts with its host's node document</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-element-attach-a-shadow-root">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ['open', 'closed']) {
+  test(() => {
+    const host = document.createElement('div');
+    const root = host.attachShadow({mode});
+    assert_equals(host.ownerDocument, document);
+    assert_equals(root.ownerDocument, document);
+    const destination = document.implementation.createHTMLDocument('rejection');
+    assert_throws_dom('HierarchyRequestError', () => destination.adoptNode(root));
+    assert_equals(root.ownerDocument, document);
+  }, mode + ' shadow root has its host document before and after a rejected adoption');
+}
+test(() => {
+  const other = document.implementation.createHTMLDocument('host document');
+  const host = other.createElement('div');
+  const root = host.attachShadow({mode: 'closed'});
+  assert_equals(root.ownerDocument, host.ownerDocument);
+  assert_equals(root.ownerDocument, other);
+}, 'a shadow root uses its host document rather than the window document');
+</script>

@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nested constructor reactions collect before createElement returns</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  assert_true(!!self.TestUtils && typeof TestUtils.gc === 'function', 'Crane exposes synchronous TestUtils.gc');
+  const order = [];
+  class Collector extends HTMLElement {
+    connectedCallback() {
+      order.push('reaction');
+      TestUtils.gc(); // Collection is synchronous; its promise is not awaited.
+    }
+  }
+  customElements.define('ce-return-nested-collector', Collector);
+  const collector = document.createElement('ce-return-nested-collector');
+  t.add_cleanup(() => collector.remove());
+  class Returned extends HTMLElement {
+    constructor() {
+      super();
+      order.push('constructor:start');
+      this.marker = 'kept across collection';
+      document.body.appendChild(collector);
+      order.push('constructor:end');
+    }
+  }
+  customElements.define('ce-return-nested-element', Returned);
+  const result = document.createElement('ce-return-nested-element');
+  order.push('returned');
+  assert_array_equals(order, ['constructor:start', 'reaction', 'constructor:end', 'returned']);
+  assert_true(result instanceof Returned);
+  assert_equals(result.marker, 'kept across collection');
+}, 'A constructor DOM call drains its nested reaction scope and preserves the constructed wrapper');
+</script>

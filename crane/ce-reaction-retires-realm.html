@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A nested reaction can retire an outer CEReactions receiver</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  const childDocument = frame.contentDocument;
+  const calls = [];
+  child.customElements.define("ce-frame-removing-reaction", class extends child.HTMLElement {
+    connectedCallback() {
+      calls.push("reaction");
+      frame.remove();
+    }
+  });
+  const actor = childDocument.createElement("ce-frame-removing-reaction");
+  child.customElements.define("ce-frame-retiring-member", class extends child.HTMLElement {
+    constructor() {
+      super();
+      calls.push("constructor");
+      childDocument.body.appendChild(actor);
+      for (let i = 0; i < 200; ++i) document.createElement("div");
+      calls.push("after reaction");
+    }
+  });
+  try { childDocument.createElement("ce-frame-retiring-member"); } catch (_) {}
+  assert_array_equals(calls, ["constructor", "reaction", "after reaction"]);
+  assert_false(frame.isConnected);
+
+  customElements.define("ce-after-frame-retiring-reaction", class extends HTMLElement {
+    connectedCallback() { calls.push("surviving agent"); }
+  });
+  const next = document.createElement("ce-after-frame-retiring-reaction");
+  t.add_cleanup(() => next.remove());
+  document.body.appendChild(next);
+  assert_equals(calls[calls.length - 1], "surviving agent");
+}, "a reaction in a member retires its receiver's realm without unbalancing the agent stack");
+</script>

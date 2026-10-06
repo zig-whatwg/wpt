@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A definition getter can retire its registry's realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  const registry = child.customElements;
+  let getterRan = false;
+  class RetiringDefinition extends child.HTMLElement {
+    static get observedAttributes() {
+      getterRan = true;
+      frame.remove();
+      for (let i = 0; i < 200; ++i) document.createElement("div");
+      TestUtils.gc();
+      return [];
+    }
+    attributeChangedCallback() {}
+  }
+  try { registry.define("ce-retiring-definition-getter", RetiringDefinition); } catch (_) {}
+  assert_true(getterRan, "definition collection reached its author getter");
+  assert_false(frame.isConnected);
+  const control = document.createElement("div");
+  document.body.appendChild(control);
+  t.add_cleanup(() => control.remove());
+  assert_true(control.isConnected, "the surviving document remains usable");
+}, "a definition getter retiring its registry's realm leaves the agent usable");
+</script>

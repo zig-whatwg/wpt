@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Light-tree iframe post-connection control</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement("div");
+  const frame = document.createElement("iframe");
+  host.appendChild(frame);
+  t.add_cleanup(() => host.remove());
+  assert_equals(frame.contentWindow, null);
+  document.body.appendChild(host);
+  assert_not_equals(frame.contentWindow, null, "initial insertion creates a context");
+  host.remove();
+  assert_equals(frame.contentWindow, null, "removal discards the context");
+  document.body.appendChild(host);
+  assert_not_equals(frame.contentWindow, null, "reinsertion creates a new context");
+}, "an iframe in a light-tree host receives post-connection steps on reinsertion");
+</script>

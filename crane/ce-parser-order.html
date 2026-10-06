@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parser custom element construction precedes token attributes and children</title>
+<link rel="help" href="https://html.spec.whatwg.org/#create-an-element-for-the-token">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const ceParserLog = [];
+class ParserElement extends HTMLElement {
+  static observedAttributes = ['data-value'];
+  constructor() {
+    super();
+    ceParserLog.push(['constructor', this, this.attributes.length, this.childNodes.length, this.parentNode]);
+  }
+  attributeChangedCallback(name, oldValue, newValue) {
+    ceParserLog.push(['attribute', this, name, oldValue, newValue]);
+  }
+  connectedCallback() { ceParserLog.push(['connected', this]); }
+}
+customElements.define('ce-parser-element', ParserElement);
+</script>
+<ce-parser-element data-value="token"><span>child</span></ce-parser-element>
+<script>
+test(() => {
+  const element = document.querySelector('ce-parser-element');
+  assert_equals(ceParserLog.length, 3);
+  assert_array_equals(ceParserLog[0], ['constructor', element, 0, 0, null]);
+  assert_array_equals(ceParserLog[1], ['attribute', element, 'data-value', null, 'token']);
+  assert_array_equals(ceParserLog[2], ['connected', element]);
+  assert_equals(element.childNodes.length, 1);
+  assert_true(element instanceof ParserElement);
+}, 'parser constructs synchronously, applies token attributes, then connects the same element');
+</script>

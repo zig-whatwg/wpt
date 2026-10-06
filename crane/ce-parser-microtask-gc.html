@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parser reactions keep a custom element alive through their microtask checkpoint</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+let parserConnected = false;
+let parserMicrotaskRan = false;
+let parserMicrotaskSawConnection;
+class ParserMicrotaskCollected extends HTMLElement {
+  static observedAttributes = ['watched'];
+  constructor() {
+    super();
+    this.marker = 'parser microtask wrapper';
+  }
+  attributeChangedCallback() {
+    // The callback captures no element. Its microtask can run when the
+    // parser's native creation result has not been inserted yet.
+    queueMicrotask(function () {
+      parserMicrotaskRan = true;
+      parserMicrotaskSawConnection = parserConnected;
+      TestUtils.gc();
+      for (let i = 0; i < 200; ++i) document.createElement('span');
+    });
+  }
+  connectedCallback() { parserConnected = true; }
+}
+customElements.define('ce-parser-microtask-collected', ParserMicrotaskCollected);
+</script>
+<ce-parser-microtask-collected watched="value" id="parser-microtask-result"></ce-parser-microtask-collected>
+<script>
+test(() => {
+  assert_true(parserMicrotaskRan, 'the attribute callback reached its checkpoint');
+  assert_false(parserMicrotaskSawConnection, 'the checkpoint preceded parser insertion');
+  const result = document.getElementById('parser-microtask-result');
+  assert_true(result instanceof ParserMicrotaskCollected);
+  assert_equals(result.marker, 'parser microtask wrapper');
+  assert_true(result.isConnected);
+  assert_true(parserConnected);
+}, 'A parser-created custom wrapper survives a reaction microtask collecting before insertion');
+</script>

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Customized built-in constructors use NewTarget's realm for fallback prototypes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/custom-elements/resources/custom-elements-helpers.js"></script>
+<body>
+<script>
+for (const proxyInFrame of [false, true]) {
+  test_with_window(w => {
+    let constructing = false;
+    function Target() {
+      return Reflect.construct(w.HTMLParagraphElement, [], new.target);
+    }
+    const ProxyConstructor = proxyInFrame ? w.Proxy : Proxy;
+    const Constructor = new ProxyConstructor(Target, {
+      get(target, key) {
+        if (key === 'prototype') return constructing ? null : {};
+        return target[key];
+      }
+    });
+    w.customElements.define('ce-fallback-paragraph', Constructor, {extends: 'p'});
+    constructing = true;
+    const element = new Constructor();
+    assert_not_equals(Object.getPrototypeOf(element), Object.prototype,
+      'The HTML interface fallback must replace Object.prototype');
+    assert_equals(Object.getPrototypeOf(element), HTMLParagraphElement.prototype);
+    assert_not_equals(Object.getPrototypeOf(element), w.HTMLParagraphElement.prototype);
+  }, 'Primitive prototype fallback uses the target function realm; proxy in frame=' + proxyInFrame);
+}
+</script>

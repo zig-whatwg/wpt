@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A custom element return hold does not end built-in pending activity</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  let toggled = false;
+  class PendingDetails extends HTMLDetailsElement {
+    constructor() {
+      super();
+      this.addEventListener("toggle", () => { toggled = true; });
+      this.open = true;
+      this.open = false;
+    }
+  }
+  customElements.define("ce-pending-details", PendingDetails, {extends: "details"});
+  // No script reference to the result survives this statement. A queued
+  // toggle task must keep it alive after the return-conversion hold ends.
+  void document.createElement("details", {is: "ce-pending-details"});
+  await Promise.resolve();
+  if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  else {
+    let junk = [];
+    for (let i = 0; i < 300000; ++i) junk.push({i});
+    junk = null;
+  }
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_true(toggled, "the pending toggle survives return conversion and collection");
+}, "returning a customized built-in preserves its independent pending activity");
+</script>

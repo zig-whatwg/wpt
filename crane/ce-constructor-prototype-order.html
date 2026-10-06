@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTMLConstructor prototype access precedes the construction-stack marker</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const name = "ce-prototype-retry";
+  const element = document.createElement(name);
+  document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  const failure = {};
+  let armed = false;
+  let gets = 0;
+  let retries = 0;
+  class Candidate extends HTMLElement {
+    constructor() {
+      try {
+        super();
+      } catch (error) {
+        assert_equals(error, failure, "the prototype getter's exception propagates");
+        retries++;
+        super();
+      }
+      this.prototypeRetry = 19;
+    }
+  }
+  const Constructor = new Proxy(Candidate, {
+    get(target, key, receiver) {
+      if (key === "prototype" && armed && ++gets === 1) throw failure;
+      return Reflect.get(target, key, receiver);
+    }
+  });
+  // define reads the prototype before upgrading candidates. Arm the trap
+  // after that first read, so the first super() fails during the upgrade.
+  const DefiningConstructor = new Proxy(Constructor, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      if (key === "prototype") armed = true;
+      return value;
+    }
+  });
+  customElements.define(name, DefiningConstructor);
+  assert_equals(retries, 1);
+  assert_equals(gets, 2, "both super calls read the prototype");
+  assert_true(element instanceof Candidate);
+  assert_equals(element.prototypeRetry, 19,
+                "a failed prototype lookup did not mark the existing element as constructed");
+}, "an upgrade can retry super after NewTarget.prototype throws");
+</script>

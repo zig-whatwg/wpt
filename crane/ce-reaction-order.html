@@ -1,0 +1,103 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom element reactions at DOM mutation boundaries</title>
+<link rel="help" href="https://html.spec.whatwg.org/#custom-element-reactions">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const log = [];
+  class ConnectedElement extends HTMLElement {
+    connectedCallback() { log.push(['connected', this]); }
+    disconnectedCallback() { log.push(['disconnected', this]); }
+  }
+  customElements.define('ce-connected-boundary', ConnectedElement);
+  const element = document.createElement('ce-connected-boundary');
+  t.add_cleanup(() => element.remove());
+  document.body.appendChild(element);
+  assert_equals(log.length, 1, 'appendChild invokes reactions before returning');
+  assert_array_equals(log[0], ['connected', element]);
+  element.remove();
+  assert_equals(log.length, 2, 'remove invokes reactions before returning');
+  assert_array_equals(log[1], ['disconnected', element]);
+}, 'connection and disconnection callbacks receive the element as this');
+
+test(() => {
+  const log = [];
+  class AttributesElement extends HTMLElement {
+    static observedAttributes = ['watched'];
+    attributeChangedCallback(...args) { log.push([this, ...args]); }
+  }
+  customElements.define('ce-observed-attribute', AttributesElement);
+  const element = document.createElement('ce-observed-attribute');
+  element.setAttribute('ignored', 'not observed');
+  element.setAttributeNS('urn:ce-attribute', 'p:watched', 'first');
+  element.setAttributeNS('urn:ce-attribute', 'p:watched', 'second');
+  element.removeAttributeNS('urn:ce-attribute', 'watched');
+  assert_equals(log.length, 3);
+  assert_array_equals(log[0], [element, 'watched', null, 'first', 'urn:ce-attribute']);
+  assert_array_equals(log[1], [element, 'watched', 'first', 'second', 'urn:ce-attribute']);
+  assert_array_equals(log[2], [element, 'watched', 'second', null, 'urn:ce-attribute']);
+}, 'attribute reactions preserve old/new strings, local name and namespace');
+
+test(() => {
+  const log = [];
+  class NestedElement extends HTMLElement {
+    static observedAttributes = ['first', 'second'];
+    attributeChangedCallback(name) {
+      log.push(name + ':start');
+      if (name === 'first') this.setAttribute('second', 'nested');
+      log.push(name + ':end');
+    }
+  }
+  customElements.define('ce-nested-reactions', NestedElement);
+  const element = document.createElement('ce-nested-reactions');
+  element.setAttribute('first', 'outer');
+  assert_array_equals(log, ['first:start', 'second:start', 'second:end', 'first:end']);
+}, 'nested CEReactions drain their frame before the outer callback resumes');
+
+test(t => {
+  const log = [];
+  class AdoptedElement extends HTMLElement {
+    disconnectedCallback() { log.push(['disconnected']); }
+    adoptedCallback(oldDocument, newDocument) { log.push(['adopted', oldDocument, newDocument]); }
+  }
+  customElements.define('ce-adopted-boundary', AdoptedElement);
+  const element = document.createElement('ce-adopted-boundary');
+  t.add_cleanup(() => element.remove());
+  document.body.appendChild(element);
+  const destination = document.implementation.createHTMLDocument('destination');
+  destination.adoptNode(element);
+  assert_equals(log.length, 2);
+  assert_array_equals(log[0], ['disconnected']);
+  assert_array_equals(log[1], ['adopted', document, destination]);
+  assert_equals(element.ownerDocument, destination);
+}, 'adoption drains disconnected before adopted with both document arguments');
+
+for (const explicitMove of [false, true]) {
+  test(t => {
+    const log = [];
+    class MovingElement extends HTMLElement {
+      connectedCallback() { log.push('connected'); }
+      disconnectedCallback() { log.push('disconnected'); }
+    }
+    if (explicitMove) {
+      MovingElement.prototype.connectedMoveCallback = function() { log.push('moved'); };
+    }
+    const name = explicitMove ? 'ce-moving-explicit' : 'ce-moving-fallback';
+    customElements.define(name, MovingElement);
+    const container = document.createElement('div');
+    t.add_cleanup(() => container.remove());
+    document.body.appendChild(container);
+    const first = document.createElement(name);
+    const second = document.createElement('span');
+    container.append(first, second);
+    log.length = 0;
+    container.moveBefore(first, null);
+    assert_array_equals(log, explicitMove ? ['moved'] : ['disconnected', 'connected']);
+    assert_equals(container.lastChild, first);
+  }, explicitMove ? 'moveBefore invokes connectedMoveCallback alone' :
+    'moveBefore falls back to disconnected then connected callbacks');
+}
+</script>

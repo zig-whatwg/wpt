@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A parser attribute reaction can retire the parser's realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  const childDocument = frame.contentDocument;
+  childDocument.open();
+  let reacted = false;
+  child.customElements.define('ce-parser-retiring-element', class extends child.HTMLElement {
+    static observedAttributes = ['watched'];
+    attributeChangedCallback() {
+      reacted = true;
+      frame.remove();
+      for (let i = 0; i < 200; ++i) document.createElement('div');
+    }
+  });
+  try {
+    childDocument.write('<ce-parser-retiring-element watched="value"></ce-parser-retiring-element><p>later token</p>');
+  } catch (_) {}
+  assert_true(reacted, 'the parser invoked its queued attribute reaction');
+  assert_false(frame.isConnected);
+  let connected = false;
+  customElements.define('ce-after-retired-parser', class extends HTMLElement {
+    connectedCallback() { connected = true; }
+  });
+  const next = document.createElement('ce-after-retired-parser');
+  t.add_cleanup(() => next.remove());
+  document.body.appendChild(next);
+  assert_true(connected, 'the surviving agent stack is balanced');
+}, 'Retiring a parser realm from its post-construction reaction leaves the agent usable');
+</script>

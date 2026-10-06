@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Importing template custom elements releases their native state</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/custom-elements/resources/custom-elements-helpers.js"></script>
+<script src="/custom-elements/reactions/resources/reactions.js"></script>
+<body>
+<script>
+// Isolates the template-import path of custom-elements/reactions/Document.html.
+// A DebugAllocator run must also finish without leaked: reports.
+test_with_window((contentWindow, contentDocument) => {
+  const element = define_custom_element_in_window(contentWindow, 'ce-template-copy', []);
+  const template = contentDocument.createElement('template');
+  template.innerHTML = '<ce-template-copy></ce-template-copy>';
+  assert_array_equals(element.takeLog().types(), []);
+  const copy = contentDocument.importNode(template.content, true);
+  assert_array_equals(element.takeLog().types(), ['constructed']);
+  assert_equals(copy.firstChild.localName, 'ce-template-copy');
+  assert_equals(copy.firstChild.ownerDocument, contentDocument);
+}, 'Importing a template upgrades its custom element in the receiving document');
+</script>

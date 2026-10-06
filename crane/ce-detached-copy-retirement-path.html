@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Copy constructors execute when they retire their own document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const operation of ['cloneNode', 'importNode']) {
+  test(t => {
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+    const child = frame.contentWindow;
+    const childDocument = frame.contentDocument;
+    const source = childDocument.createElement('ce-retiring-copy-path');
+    let copying = false;
+    let copies = 0;
+    class RetiringCopy extends child.HTMLElement {
+      constructor() {
+        super();
+        this.marker = 'custom copy';
+        if (copying) {
+          ++copies;
+          frame.remove();
+          for (let i = 0; i < 200; ++i) document.createElement('div');
+        }
+      }
+    }
+    child.customElements.define('ce-retiring-copy-path', RetiringCopy);
+    child.customElements.upgrade(source);
+    assert_true(source instanceof RetiringCopy);
+    copying = true;
+    let result, failure;
+    try {
+      result = operation === 'cloneNode' ? source.cloneNode(true) : childDocument.importNode(source, true);
+    } catch (error) { failure = error; }
+    assert_equals(copies, 1, 'the copy was constructed before the binding returned');
+    assert_false(frame.isConnected);
+    if (failure) {
+      assert_equals(failure.name, 'InvalidStateError', 'Crane rejects a result freed during reactions');
+    } else {
+      // A result whose native identity survived needs no generation rejection.
+      // Check only ordinary JS properties, so this observation does not invoke
+      // another IDL operation on a possibly retired native realm.
+      assert_true(result instanceof RetiringCopy);
+      assert_equals(result.marker, 'custom copy');
+    }
+  }, operation + ' invokes a realm-retiring copy constructor exactly once');
+}
+</script>

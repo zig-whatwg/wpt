@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parser attribute reactions preserve the custom wrapper through GC</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  assert_true(!!self.TestUtils && typeof TestUtils.gc === 'function');
+  const order = [];
+  class Parsed extends HTMLElement {
+    static observedAttributes = ['watched'];
+    constructor() {
+      super();
+      this.marker = 'parser custom wrapper';
+      order.push('constructor');
+    }
+    attributeChangedCallback() {
+      order.push('attribute');
+      assert_false(this.isConnected, 'attribute reaction precedes parser insertion');
+      TestUtils.gc();
+    }
+    connectedCallback() { order.push('connected'); }
+  }
+  customElements.define('ce-parser-collected', Parsed);
+  document.write('<ce-parser-collected watched="value" id="ce-parser-collected-result"></ce-parser-collected>');
+  const element = document.getElementById('ce-parser-collected-result');
+  assert_array_equals(order, ['constructor', 'attribute', 'connected']);
+  assert_true(element instanceof Parsed);
+  assert_equals(element.marker, 'parser custom wrapper');
+}, 'Synchronous parser attribute reactions collect after construction and before insertion');
+</script>

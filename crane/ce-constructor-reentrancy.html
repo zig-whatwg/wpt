@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom element construction-stack reentrancy</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+setup({allow_uncaught_exception: true});
+
+function expectUpgradeError(t, name, makeConstructor) {
+  const element = document.createElement(name);
+  document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  const errors = [];
+  const onerror = event => { errors.push(event.error); event.preventDefault(); };
+  addEventListener("error", onerror);
+  t.add_cleanup(() => removeEventListener("error", onerror));
+  const Constructor = makeConstructor(element);
+  customElements.define(name, Constructor);
+  assert_equals(errors.length, 1, "the outer upgrade reports exactly one exception");
+  assert_true(errors[0] instanceof TypeError);
+  return {element, Constructor};
+}
+
+test(t => {
+  let recurse = true;
+  let nested;
+  const {element, Constructor} = expectUpgradeError(t, "ce-nested-before-super", () => {
+    return class Candidate extends HTMLElement {
+      constructor() {
+        if (recurse) {
+          recurse = false;
+          nested = new Candidate();
+        }
+        super();
+      }
+    };
+  });
+  assert_equals(nested, element, "the nested construction took the stack entry");
+  assert_not_equals(new Constructor(), element, "the failed outer upgrade popped its marker");
+}, "a nested new before super consumes the upgrade entry exactly once");
+
+test(t => {
+  let double = true;
+  const {element, Constructor} = expectUpgradeError(t, "ce-double-super", () => {
+    return class extends HTMLElement {
+      constructor() {
+        super();
+        if (double) {
+          double = false;
+          super();
+        }
+      }
+    };
+  });
+  assert_not_equals(new Constructor(), element, "a double super failure leaves no stale marker");
+}, "double super rejects the already-constructed marker and restores the stack");
+
+test(t => {
+  let firstPrototype = true;
+  let reentered = false;
+  let nested;
+  let Constructor;
+  const result = expectUpgradeError(t, "ce-proxy-reentrant-prototype", () => {
+    class Candidate extends HTMLElement {}
+    Constructor = new Proxy(Candidate, {
+      get(target, key, receiver) {
+        if (key === "prototype") {
+          if (firstPrototype) firstPrototype = false; // define's lookup
+          else if (!reentered) {
+            reentered = true;
+            nested = new Constructor();
+          }
+        }
+        return Reflect.get(target, key, receiver);
+      }
+    });
+    return Constructor;
+  });
+  assert_true(reentered);
+  assert_equals(nested, result.element, "prototype access can consume the upgrade entry");
+  assert_not_equals(new Constructor(), result.element, "the outer failure restored the stack");
+}, "a Proxy NewTarget prototype getter can reenter the same definition");
+</script>

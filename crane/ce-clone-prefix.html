@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Element cloning preserves absent and nonempty namespace prefixes</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-clone">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const deep of [false, true]) {
+  test(() => {
+    const source = document.createElement('div');
+    source.appendChild(document.createElement('span'));
+    const clone = source.cloneNode(deep);
+    assert_equals(clone.nodeName, 'DIV');
+    assert_equals(clone.tagName, 'DIV');
+    assert_equals(clone.localName, 'div');
+    if (deep) assert_equals(clone.firstChild.nodeName, 'SPAN');
+  }, `Cloning an ordinary HTML element keeps its unprefixed name (deep=${deep})`);
+
+  test(() => {
+    const source = document.createElementNS('urn:ce-clone-prefix', 'p:item');
+    const clone = source.cloneNode(deep);
+    assert_equals(clone.nodeName, 'p:item');
+    assert_equals(clone.localName, 'item');
+    assert_equals(clone.prefix, 'p');
+  }, `Cloning preserves an explicit namespace prefix (deep=${deep})`);
+
+  test(() => {
+    const other = document.implementation.createHTMLDocument('other');
+    const source = other.createElement('div');
+    source.appendChild(other.createElement('span'));
+    const copy = document.importNode(source, deep);
+    assert_equals(copy.nodeName, 'DIV');
+    assert_equals(copy.ownerDocument, document);
+    if (deep) assert_equals(copy.firstChild.nodeName, 'SPAN');
+  }, `Importing an ordinary HTML element keeps its unprefixed name (deep=${deep})`);
+}
+</script>

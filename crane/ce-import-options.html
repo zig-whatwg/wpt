@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom element import options and destination registry</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const observations = [];
+  class Imported extends HTMLElement {
+    constructor() { super(); observations.push(this.childNodes.length); }
+  }
+  customElements.define('ce-options-imported', Imported);
+  const sourceDocument = document.implementation.createHTMLDocument('source');
+  const source = sourceDocument.createElement('ce-options-imported');
+  source.appendChild(sourceDocument.createTextNode('copied'));
+  for (const [options, children] of [[{}, 1], [{selfOnly: false}, 1], [{selfOnly: true}, 0], [null, 1], [true, 1], [false, 0], [undefined, 0]]) {
+    const copy = document.importNode(source, options);
+    assert_true(copy instanceof Imported);
+    assert_equals(copy.ownerDocument, document);
+    assert_equals(copy.childNodes.length, children);
+    assert_equals(observations.pop(), children, 'constructor runs after the selected subtree is copied');
+  }
+}, 'importNode accepts dictionary selfOnly and boolean options before destination upgrades');
+</script>

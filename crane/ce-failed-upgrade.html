@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Failed custom-element upgrades discard queued reactions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+setup({allow_uncaught_exception: true});
+
+test(t => {
+  const element = document.createElement('ce-fails-during-upgrade');
+  element.setAttribute('observed', 'before');
+  document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  const calls = [];
+  const failure = new Error('expected constructor failure');
+  let reported = 0;
+  const onerror = event => {
+    if (event.error === failure) {
+      reported++;
+      event.preventDefault();
+    }
+  };
+  window.addEventListener('error', onerror);
+  t.add_cleanup(() => window.removeEventListener('error', onerror));
+  customElements.define('ce-fails-during-upgrade', class extends HTMLElement {
+    static get observedAttributes() { return ['observed']; }
+    constructor() {
+      super();
+      calls.push('constructor');
+      throw failure;
+    }
+    connectedCallback() { calls.push('connected'); }
+    disconnectedCallback() { calls.push('disconnected'); }
+    attributeChangedCallback() { calls.push('attribute'); }
+  });
+  assert_array_equals(calls, ['constructor']);
+  assert_equals(reported, 1);
+  element.remove();
+  element.setAttribute('observed', 'after');
+  document.body.appendChild(element);
+  customElements.upgrade(element);
+  assert_array_equals(calls, ['constructor'], 'failed elements cannot be upgraded again');
+}, 'Failed upgrade clears pre-construction callbacks and remains failed');
+
+test(t => {
+  const calls = [];
+  const failure = new Error('expected callback failure');
+  let reported = 0;
+  const onerror = event => {
+    if (event.error === failure) {
+      reported++;
+      event.preventDefault();
+    }
+  };
+  window.addEventListener('error', onerror);
+  t.add_cleanup(() => window.removeEventListener('error', onerror));
+  customElements.define('ce-throwing-connected', class extends HTMLElement {
+    connectedCallback() {
+      calls.push(this.id);
+      if (this.id === 'first') throw failure;
+    }
+  });
+  const first = document.createElement('ce-throwing-connected');
+  const second = document.createElement('ce-throwing-connected');
+  first.id = 'first';
+  second.id = 'second';
+  t.add_cleanup(() => { first.remove(); second.remove(); });
+  document.body.append(first, second);
+  assert_array_equals(calls, ['first', 'second']);
+  assert_equals(reported, 1);
+}, 'A reported callback exception does not stop the element queue');
+</script>

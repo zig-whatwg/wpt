@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document adoption preserves live-range mutation behavior</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-adopt">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const parent = document.createElement('div');
+  const element = document.createElement('span');
+  const text = document.createTextNode('abcdef');
+  element.appendChild(text);
+  parent.appendChild(element);
+  document.body.appendChild(parent);
+  t.add_cleanup(() => parent.remove());
+  const range = document.createRange();
+  range.setStart(text, 1);
+  range.setEnd(text, 4);
+  const destination = document.implementation.createHTMLDocument('destination');
+  destination.adoptNode(element);
+  assert_equals(element.parentNode, null);
+  assert_equals(parent.childNodes.length, 0);
+  assert_equals(element.ownerDocument, destination);
+  assert_equals(text.ownerDocument, destination);
+  assert_equals(range.startContainer, parent);
+  assert_equals(range.endContainer, parent);
+  assert_equals(range.startOffset, 0);
+  assert_equals(range.endOffset, 0);
+  assert_true(range.collapsed);
+}, 'adoptNode removes a parented node and relocates its live-range boundaries');
+
+test(() => {
+  const element = document.createElement('div');
+  const text = document.createTextNode('abcdef');
+  element.appendChild(text);
+  const range = document.createRange();
+  range.setStart(text, 1);
+  range.setEnd(text, 4);
+  const destination = document.implementation.createHTMLDocument('destination');
+  destination.adoptNode(element);
+  assert_equals(range.startContainer, text);
+  assert_equals(range.endContainer, text);
+  assert_equals(range.toString(), 'bcd');
+  // Character-data mutations in the new document must still find the live
+  // range, whose root remained this detached element throughout adoption.
+  text.insertData(0, 'XY');
+  assert_equals(range.startOffset, 3);
+  assert_equals(range.endOffset, 6);
+  assert_equals(range.toString(), 'bcd');
+}, 'adoptNode moves a detached subtree live range to the new document mutation list');
+</script>

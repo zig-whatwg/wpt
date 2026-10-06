@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom element construction can retire its receiver's realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  const childDocument = frame.contentDocument;
+  let constructed = false;
+  class Retiring extends child.HTMLElement {
+    constructor() {
+      super();
+      constructed = true;
+      frame.remove();
+      // Reuse native allocation slots before the old createElement bracket
+      // ends. It must not select its state through a retired receiver.
+      for (let i = 0; i < 200; ++i) document.createElement("div");
+    }
+  }
+  child.customElements.define("ce-retires-own-frame", Retiring);
+  try { childDocument.createElement("ce-retires-own-frame"); } catch (_) {}
+  assert_true(constructed, "construction reached script before the frame was removed");
+  assert_false(frame.isConnected);
+
+  const callbacks = [];
+  customElements.define("ce-after-retired-construction", class extends HTMLElement {
+    connectedCallback() { callbacks.push("connected"); }
+  });
+  const next = document.createElement("ce-after-retired-construction");
+  t.add_cleanup(() => next.remove());
+  document.body.appendChild(next);
+  assert_array_equals(callbacks, ["connected"], "the surviving agent's brackets remain balanced");
+}, "retiring a construction receiver's realm leaves the agent usable");
+</script>

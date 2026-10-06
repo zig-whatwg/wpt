@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>createElement synchronously constructs an autonomous custom element</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-create-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Isolated first regression for the constructor missing from reactions/ tests.
+test(() => {
+  const log = [];
+  class CreatedElement extends HTMLElement {
+    constructor() {
+      super();
+      log.push(this);
+    }
+  }
+  customElements.define('ce-created-autonomous', CreatedElement);
+
+  // DOM create an element, step 5.1: construct before returning to script.
+  const element = document.createElement('ce-created-autonomous');
+  assert_array_equals(log, [element]);
+  assert_true(element instanceof CreatedElement);
+  assert_equals(element.ownerDocument, document);
+  assert_equals(element.namespaceURI, 'http://www.w3.org/1999/xhtml');
+  assert_equals(element.localName, 'ce-created-autonomous');
+  assert_equals(element.parentNode, null);
+}, 'createElement returns the element whose custom constructor it invoked');
+</script>
