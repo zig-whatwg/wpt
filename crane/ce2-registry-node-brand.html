@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Registry tree operations require a Node argument</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const registry = new CustomElementRegistry();
+  assert_throws_js(TypeError, () => registry.initialize(registry));
+}, 'initialize rejects a platform object that does not implement Node');
+
+test(() => {
+  const registry = new CustomElementRegistry();
+  assert_throws_js(TypeError, () => registry.upgrade(registry));
+}, 'upgrade rejects a platform object that does not implement Node');
+</script>

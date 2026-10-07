@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Adoption reactions follow the resulting registry association</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const events = [];
+  class GlobalAdopted extends HTMLElement {
+    connectedCallback() { events.push('connected'); }
+    disconnectedCallback() { events.push('disconnected'); }
+    adoptedCallback() { events.push('adopted'); }
+  }
+  customElements.define('ce2-global-adopted', GlobalAdopted);
+  const element = new GlobalAdopted();
+  const destination = new Document();
+  document.body.append(element);
+  destination.adoptNode(element);
+  destination.append(element);
+  assert_equals(destination.customElementRegistry, null);
+  assert_equals(element.customElementRegistry, null);
+  assert_array_equals(events, ['connected', 'disconnected', 'adopted']);
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(element.customElementRegistry, customElements);
+  assert_array_equals(events.slice(-3), ['disconnected', 'adopted', 'connected']);
+}, 'A global element adopted into a registry-less document skips insertion reactions');
+
+test(t => {
+  const events = [];
+  const registry = new CustomElementRegistry();
+  class ScopedAdopted extends HTMLElement {
+    connectedCallback() { events.push('connected'); }
+    adoptedCallback() { events.push('adopted'); }
+  }
+  registry.define('ce2-scoped-adopted', ScopedAdopted);
+  const element = document.createElement('ce2-scoped-adopted', {customElementRegistry: registry});
+  const destination = new Document();
+  destination.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(element.customElementRegistry, registry);
+  assert_array_equals(events, ['adopted', 'connected']);
+}, 'A scoped element keeps its registry and connected reaction after adoption');
+</script>

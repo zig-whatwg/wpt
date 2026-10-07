@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parsed FormData keeps platform File entries alive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+promise_test(async () => {
+  const body = '--ce2\r\nContent-Disposition: form-data; name="upload"; filename="payload.bin"\r\n' +
+    'Content-Type: application/octet-stream\r\n\r\ncontents\u0000\u0001\r\n--ce2--\r\n';
+  const data = await new Response(body, {
+    headers: {'Content-Type': 'multipart/form-data; boundary=ce2'}
+  }).formData();
+  let file = data.get('upload');
+  assert_true(file instanceof File);
+  const weak = new WeakRef(file);
+  file = null;
+  await garbageCollect();
+  const retained = data.get('upload');
+  assert_equals(retained, weak.deref(), 'the entry keeps the same File alive');
+  assert_equals(data.getAll('upload')[0], retained);
+  assert_equals(retained.name, 'payload.bin');
+  assert_equals(retained.type, 'application/octet-stream');
+  assert_equals(await retained.text(), 'contents\u0000\u0001');
+}, 'Parsed FormData retains its File wrapper when script drops the File reference');
+</script>

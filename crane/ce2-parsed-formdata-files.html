@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parsed multipart entries are retained File objects</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+function parsedMultipart() {
+  const body = '--ce2\r\nContent-Disposition: form-data; name="upload"; filename="first.bin"\r\n' +
+    'Content-Type: Application/Octet-Stream\r\n\r\ncontents\u0000\u0001\r\n' +
+    '--ce2\r\nContent-Disposition: form-data; name="upload"; filename=""\r\n\r\nsecond\r\n' +
+    '--ce2\r\nContent-Disposition: form-data; name="upload"\r\n\r\nplain\r\n--ce2--\r\n';
+  return new Response(body, {
+    headers: {'Content-Type': 'multipart/form-data; boundary=ce2'}
+  }).formData();
+}
+
+promise_test(async () => {
+  const data = await parsedMultipart();
+  const file = data.get('upload');
+  assert_true(file instanceof File, 'get returns a platform File');
+  assert_equals(file.name, 'first.bin');
+  assert_equals(file.type, 'application/octet-stream');
+  assert_equals(file.size, 10);
+  assert_equals(await file.text(), 'contents\u0000\u0001');
+  assert_equals(data.get('upload'), file, 'repeated reads preserve identity');
+}, 'Multipart get returns a File with the part name, type and exact bytes');
+
+promise_test(async () => {
+  const data = await parsedMultipart();
+  const values = data.getAll('upload');
+  assert_equals(values.length, 3);
+  assert_true(values[0] instanceof File, 'first value is a File');
+  assert_true(values[1] instanceof File, 'empty filename still creates a File');
+  assert_equals(values[1].name, '');
+  assert_equals(values[1].type, 'text/plain', 'missing Content-Type uses the multipart default');
+  assert_equals(await values[1].text(), 'second');
+  assert_equals(values[2], 'plain');
+  assert_equals(values[0], data.get('upload'));
+  assert_equals(values[1], data.getAll('upload')[1]);
+}, 'Multipart getAll preserves File values, defaults, order and identity');
+
+promise_test(async () => {
+  const data = await parsedMultipart();
+  await garbageCollect();
+  const entries = Array.from(data.entries());
+  assert_array_equals(entries.map(entry => entry[0]), ['upload', 'upload', 'upload']);
+  assert_true(entries[0][1] instanceof File, 'iterator returns a retained File');
+  assert_equals(entries[0][1], data.get('upload'));
+  assert_equals(entries[1][1], data.getAll('upload')[1]);
+  assert_equals(await entries[0][1].text(), 'contents\u0000\u0001');
+  assert_equals(entries[2][1], 'plain');
+}, 'Parsed FormData retains its File entries across GC and iteration');
+</script>

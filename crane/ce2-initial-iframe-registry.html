@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Initial iframe elements inherit their document registry</title>
+<link rel="help" href="https://html.spec.whatwg.org/#creating-a-new-browsing-context">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  const doc = child.document;
+  assert_equals(doc.customElementRegistry, child.customElements);
+  for (const element of [doc.documentElement, doc.head, doc.body]) {
+    assert_equals(element.customElementRegistry, doc.customElementRegistry,
+                  element.localName + ' inherits the initial registry');
+  }
+}, 'Initial iframe html, head and body inherit the document registry');
+
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  child.eval(`
+    self.InitialControl = class extends HTMLElement {
+      constructor() { super(); this.constructed = true; }
+    };
+    customElements.define('ce2-initial-frame', InitialControl);
+    document.body.innerHTML = '<ce2-initial-frame></ce2-initial-frame>';
+  `);
+  const element = child.document.body.firstElementChild;
+  assert_true(element.constructed, 'innerHTML invokes the registered constructor');
+  assert_true(element instanceof child.InitialControl);
+  assert_equals(element.customElementRegistry, child.customElements);
+}, 'Initial iframe innerHTML uses that document\'s global registry');
+</script>

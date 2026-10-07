@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scoped registries in shadow trees and clones</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-clone">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const registry = new CustomElementRegistry();
+  const host = document.createElement('div');
+  const shadow = host.attachShadow({mode: 'open', customElementRegistry: registry});
+  assert_equals(shadow.customElementRegistry, registry);
+  class Scoped extends HTMLElement {}
+  registry.define('ce2-shadow-child', Scoped);
+  shadow.innerHTML = '<ce2-shadow-child></ce2-shadow-child>';
+  assert_equals(shadow.firstChild.customElementRegistry, registry);
+  assert_true(shadow.firstChild instanceof Scoped);
+}, 'shadow innerHTML uses the shadow registry, independently of its host');
+
+test(() => {
+  const registry = new CustomElementRegistry();
+  const host = document.createElement('div', {customElementRegistry: registry});
+  host.innerHTML = '<span><ce2-element-child></ce2-element-child></span>';
+  assert_equals(host.firstChild.customElementRegistry, registry);
+  assert_equals(host.firstChild.firstChild.customElementRegistry, registry);
+}, 'element innerHTML propagates the context registry through descendants');
+
+test(() => {
+  const registry = new CustomElementRegistry();
+  const root = document.createElement('div', {customElementRegistry: registry});
+  const child = document.createElement('span', {customElementRegistry: null});
+  root.append(child);
+  const copy = root.cloneNode(true);
+  assert_equals(copy.customElementRegistry, registry);
+  assert_equals(copy.firstChild.customElementRegistry, null);
+  const imported = document.importNode(root, {customElementRegistry: registry});
+  assert_equals(imported.customElementRegistry, registry);
+  assert_equals(imported.firstChild.customElementRegistry, registry);
+}, 'clone preserves associations while import applies its fallback only to null');
+
+test(() => {
+  const registry = new CustomElementRegistry();
+  const host = document.createElement('div');
+  const shadow = host.attachShadow({mode: 'open', clonable: true, customElementRegistry: registry});
+  shadow.append(document.createElement('span', {customElementRegistry: registry}));
+  const copy = host.cloneNode(false);
+  assert_equals(copy.shadowRoot.customElementRegistry, registry);
+  assert_equals(copy.shadowRoot.firstChild.customElementRegistry, registry);
+}, 'a shallow host clone still clones a clonable shadow tree and its registry');
+</script>

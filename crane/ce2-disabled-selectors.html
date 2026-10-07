@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom control disabled matching follows the first legend</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+class CE2DisabledControl extends HTMLElement {
+  static formAssociated = true;
+  constructor() { super(); this.internals = this.attachInternals(); this.changes = []; }
+  formDisabledCallback(value) { this.changes.push(value); }
+}
+customElements.define('ce2-disabled-control', CE2DisabledControl);
+
+test(t => {
+  const fieldset = document.createElement('fieldset');
+  const legend = document.createElement('legend');
+  const control = new CE2DisabledControl();
+  legend.append(control); fieldset.append(legend);
+  fieldset.disabled = true;
+  document.body.append(fieldset); t.add_cleanup(() => fieldset.remove());
+  assert_true(control.matches(':enabled'));
+  assert_false(control.matches(':disabled'));
+  assert_equals(fieldset.querySelector(':enabled'), control);
+  assert_array_equals(control.changes, []);
+  const first = document.createElement('legend'); fieldset.prepend(first);
+  assert_true(control.matches(':disabled'));
+  assert_false(control.matches(':enabled'));
+  assert_equals(fieldset.querySelector(':disabled'), control);
+  assert_array_equals(control.changes, [true]);
+  first.remove();
+  assert_true(control.matches(':enabled'));
+  assert_array_equals(control.changes, [true, false]);
+}, 'First-legend changes update disabled matching and callback state together');
+</script>

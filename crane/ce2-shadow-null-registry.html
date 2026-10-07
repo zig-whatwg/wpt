@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attachShadow registry member presence</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.createElement('div').attachShadow({mode:'open', customElementRegistry:null});
+  assert_equals(root.customElementRegistry, null);
+  root.innerHTML = '<ce2-null-shadow></ce2-null-shadow>';
+  assert_equals(root.firstChild.customElementRegistry, null);
+}, 'An explicit null registry is different from an omitted registry');
+test(() => {
+  const root = document.createElement('div').attachShadow({mode:'open'});
+  assert_equals(root.customElementRegistry, customElements);
+}, 'An omitted registry uses the document registry');
+</script>

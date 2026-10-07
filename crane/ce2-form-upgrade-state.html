@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form membership starts after custom element upgrade</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<form id="form"><fieldset id="fieldset"><ce2-upgrade-form></ce2-upgrade-form></fieldset></form>
+<script>
+test(() => {
+  const form = document.getElementById('form');
+  const fieldset = document.getElementById('fieldset');
+  let internals, countDuring, ownerDuring, associated;
+  customElements.define('ce2-upgrade-form', class extends HTMLElement {
+    static formAssociated = true;
+    constructor() {
+      super(); internals = this.attachInternals();
+      countDuring = fieldset.elements.length;
+      ownerDuring = internals.form;
+    }
+    formAssociatedCallback(value) { associated = value; }
+  });
+  assert_equals(countDuring, 0);
+  assert_equals(ownerDuring, null);
+  assert_equals(fieldset.elements.length, 1);
+  assert_equals(internals.form, form);
+  assert_equals(associated, form);
+}, 'Upgrade sets the form owner after construction and then publishes form membership');
+</script>

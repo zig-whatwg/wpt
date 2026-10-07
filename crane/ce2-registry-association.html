@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom element registry association and initialization</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-customelementregistry-initialize">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const registry = new CustomElementRegistry();
+  const doc = document.implementation.createHTMLDocument();
+  const element = doc.createElement('ce2-initialize-before-define');
+  doc.body.append(element);
+  registry.initialize(doc);
+  assert_equals(doc.customElementRegistry, registry);
+  assert_equals(element.customElementRegistry, registry);
+  class Scoped extends HTMLElement {}
+  registry.define('ce2-initialize-before-define', Scoped);
+  assert_true(element instanceof Scoped);
+}, 'initialize associates a document and its descendants before define');
+
+test(() => {
+  const registry = new CustomElementRegistry();
+  const other = new CustomElementRegistry();
+  const root = document.createElement('div', {customElementRegistry: null});
+  const child = document.createElement('span', {customElementRegistry: other});
+  root.append(child);
+  registry.initialize(root);
+  assert_equals(root.customElementRegistry, registry);
+  assert_equals(child.customElementRegistry, other);
+  customElements.initialize(root);
+  assert_equals(root.customElementRegistry, registry);
+}, 'initialize fills only null associations and accepts the matching global registry');
+
+test(t => {
+  const registry = new CustomElementRegistry();
+  const element = document.createElement('ce2-late-scoped', {customElementRegistry: registry});
+  const wrong = new CustomElementRegistry();
+  class Scoped extends HTMLElement {}
+  class Wrong extends HTMLElement {}
+  registry.define('ce2-late-scoped', Scoped);
+  wrong.define('ce2-late-scoped', Wrong);
+  wrong.upgrade(element);
+  assert_false(element instanceof Wrong);
+  assert_false(element instanceof Scoped);
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_true(element instanceof Scoped);
+}, 'insertion upgrades through the associated scoped registry only');
+
+test(() => {
+  class Global extends HTMLElement {}
+  customElements.define('ce2-explicit-null', Global);
+  const element = document.createElement('ce2-explicit-null', {customElementRegistry: null});
+  assert_false(element instanceof Global);
+  assert_equals(element.customElementRegistry, null);
+  customElements.upgrade(element);
+  assert_false(element instanceof Global);
+  customElements.initialize(element);
+  assert_true(element instanceof Global);
+}, 'null registry suppresses construction and upgrade until initialize');
+
+test(() => {
+  const registry = new CustomElementRegistry();
+  const element = document.createElementNS('urn:ce2', 'n:item', {customElementRegistry: registry});
+  assert_equals(element.namespaceURI, 'urn:ce2');
+  assert_equals(element.prefix, 'n');
+  assert_equals(element.customElementRegistry, registry);
+}, 'non-HTML elements retain the explicit registry without custom construction');
+</script>

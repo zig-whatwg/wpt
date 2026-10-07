@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CustomStateSet live mutation and matching</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+class CE2States extends HTMLElement {
+  constructor() { super(); this.internals = this.attachInternals(); }
+}
+customElements.define('ce2-states-mutation', CE2States);
+test(() => {
+  const e = new CE2States(), states = e.internals.states;
+  assert_equals(states, e.internals.states);
+  assert_equals(states.add('ready'), states);
+  states.add('ready');
+  assert_equals(states.size, 1);
+  assert_true(e.matches(':state(ready)'));
+  assert_true(states.delete('ready'));
+  assert_false(states.delete('ready'));
+  assert_false(e.matches(':state(ready)'));
+}, 'SameObject, duplicate suppression, add result and live :state matching');
+test(() => {
+  const states = new CE2States().internals.states;
+  states.add('a'); states.add('b');
+  const seen = [], receiver = {};
+  states.forEach(function(value, key, set) {
+    assert_equals(this, receiver);
+    assert_equals(value, key);
+    assert_equals(set, states);
+    seen.push(value);
+    if (value === 'a') { states.clear(); states.add('c'); }
+  }, receiver);
+  assert_array_equals(seen, ['a', 'c']);
+  assert_equals(states.size, 1);
+  const sentinel = {};
+  assert_throws_exactly(sentinel, () => states.forEach(() => { throw sentinel; }));
+  assert_throws_js(TypeError, () => states.forEach(null));
+}, 'forEach observes appends after clear and propagates callback exceptions');
+</script>

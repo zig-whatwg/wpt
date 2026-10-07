@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Disabled custom form controls cannot take focus</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+customElements.define('ce2-focus-control', class extends HTMLElement {
+  static formAssociated = true;
+});
+test(t => {
+  const control = document.createElement('ce2-focus-control');
+  control.tabIndex = 0;
+  document.body.append(control);
+  t.add_cleanup(() => control.remove());
+  control.setAttribute('disabled', '');
+  control.focus();
+  assert_not_equals(document.activeElement, control);
+  control.removeAttribute('disabled');
+  control.focus();
+  assert_equals(document.activeElement, control);
+}, 'The disabled attribute prevents focus and removing it restores focusability');
+
+test(t => {
+  const fieldset = document.createElement('fieldset');
+  const legend = document.createElement('legend');
+  const exempt = document.createElement('ce2-focus-control');
+  const disabled = document.createElement('ce2-focus-control');
+  exempt.tabIndex = disabled.tabIndex = 0;
+  legend.append(exempt);
+  fieldset.append(legend, disabled);
+  fieldset.disabled = true;
+  document.body.append(fieldset);
+  t.add_cleanup(() => fieldset.remove());
+  disabled.focus();
+  assert_not_equals(document.activeElement, disabled);
+  exempt.focus();
+  assert_equals(document.activeElement, exempt);
+}, 'Disabled fieldsets prevent custom control focus with the first legend exception');
+</script>

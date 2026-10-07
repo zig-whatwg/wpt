@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form collection wrappers remain reachable from their owner</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+promise_test(async () => {
+  const form = document.createElement('form');
+  const fieldset = document.createElement('fieldset'); form.append(fieldset);
+  fieldset.append(document.createElement('input'));
+  form.elements.saved = 37; fieldset.elements.saved = 42;
+  await garbageCollect();
+  assert_equals(form.elements.saved, 37);
+  assert_equals(fieldset.elements.saved, 42);
+  assert_equals(form.elements.length, 2);
+  assert_equals(fieldset.elements.length, 1);
+}, 'SameObject collections keep their wrapper and expandos across collection');
+promise_test(async () => {
+  const collection = document.createElement('form').elements;
+  await garbageCollect();
+  assert_equals(collection.length, 0);
+  assert_equals(collection.namedItem('missing'), null);
+}, 'A live form collection retains its root after the direct form reference is dropped');
+</script>

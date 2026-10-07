@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scoped registry selects the constructor and remains associated</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-create-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const registry = new CustomElementRegistry();
+  class Scoped extends HTMLElement {}
+  registry.define('ce2-scoped-created', Scoped);
+  const element = document.createElement('ce2-scoped-created', {
+    customElementRegistry: registry
+  });
+  assert_true(element instanceof Scoped);
+  assert_equals(element.customElementRegistry, registry);
+}, 'createElement uses and preserves an explicit scoped registry');
+</script>

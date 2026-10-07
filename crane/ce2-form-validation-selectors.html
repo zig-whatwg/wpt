@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom form validity participates in selector matching</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  customElements.define('ce2-css-control', class extends HTMLElement {
+    static formAssociated = true;
+    constructor() { super(); this.internals = this.attachInternals(); }
+  });
+  const form = document.createElement('form'); form.id = 'ce2-css-form';
+  const fieldset = document.createElement('fieldset');
+  const control = document.createElement('ce2-css-control');
+  fieldset.append(control); form.append(fieldset); document.body.append(form);
+  t.add_cleanup(() => { control.remove(); form.remove(); });
+  for (const element of [control, fieldset, form]) {
+    assert_true(element.matches(':valid'));
+    assert_false(element.matches(':invalid'));
+  }
+  control.internals.setValidity({customError: true}, 'required');
+  for (const element of [control, fieldset, form]) {
+    assert_false(element.matches(':valid'));
+    assert_true(element.matches(':invalid'));
+  }
+  let events = 0; control.addEventListener('invalid', () => ++events);
+  assert_equals(document.querySelector('ce2-css-control:invalid'), control);
+  assert_equals(events, 0, 'Matching validity must not fire invalid events');
+  control.setAttribute('readonly', '');
+  assert_false(control.matches(':valid'));
+  assert_false(control.matches(':invalid'));
+  assert_true(form.matches(':valid'));
+  control.removeAttribute('readonly');
+  control.setAttribute('form', form.id); document.body.append(control);
+  assert_true(fieldset.matches(':valid'));
+  assert_true(form.matches(':invalid'));
+}, 'Validity selectors inspect custom controls and their form/fieldset without dispatching events');
+</script>

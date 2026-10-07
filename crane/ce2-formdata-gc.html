@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom submission values survive formdata event collection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  class CustomFile extends HTMLElement {
+    static formAssociated = true;
+    constructor() { super(); this.internals = this.attachInternals(); }
+  }
+  customElements.define('ce2-formdata-gc', CustomFile);
+  const form = document.createElement('form');
+  const control = new CustomFile(); control.setAttribute('name', 'upload');
+  const file = new File(['body'], 'kept.txt');
+  control.internals.setFormValue(file);
+  form.append(control); document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  form.addEventListener('formdata', event => {
+    control.internals.setFormValue(null);
+    control.remove();
+    TestUtils.gc();
+    assert_equals(event.formData.get('upload'), file);
+    event.formData.append('second', file);
+  }, {once: true});
+  const data = new FormData(form);
+  TestUtils.gc();
+  assert_equals(data.get('upload'), file);
+  assert_equals(data.get('second'), file);
+}, 'The formdata event and returned entry list keep custom File values across GC');
+
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame); t.add_cleanup(() => frame.remove());
+  const child = frame.contentWindow;
+  class RetiringControl extends child.HTMLElement { static formAssociated = true; }
+  child.customElements.define('ce2-retiring-form', RetiringControl);
+  const form = child.document.createElement('form');
+  const control = new RetiringControl(); control.setAttribute('name', 'value');
+  control.attachInternals().setFormValue(new child.File(['x'], 'x.txt'));
+  form.append(control); child.document.body.append(form);
+  let called = false;
+  form.addEventListener('formdata', () => {
+    called = true; frame.remove();
+    for (let i = 0; i < 200; ++i) document.createElement('div');
+    TestUtils.gc();
+  });
+  try { new child.FormData(form); } catch (_) {}
+  assert_true(called);
+  assert_false(frame.isConnected);
+  assert_equals(document.createElement('div').localName, 'div');
+}, 'A formdata listener retiring its realm leaves the surviving document usable');
+</script>

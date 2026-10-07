@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Existing NodeList wrapper churn control</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+// Compare the journal's heap_used_kb on the paired runners. This exercises
+// the existing Node.childNodes path without ElementInternals or custom states.
+promise_test(async () => {
+  let checked = 0;
+  for (let index = 0; index < 10000; ++index) {
+    const element = document.createElement('div');
+    if (element.childNodes.length !== 0) throw new Error('nonempty detached div');
+    ++checked;
+  }
+  await garbageCollect();
+  await garbageCollect();
+  assert_equals(checked, 10000);
+}, 'Discarded childNodes collections retain no script-visible contents');
+</script>

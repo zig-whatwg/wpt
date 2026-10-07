@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Derived form collections retain indexed access</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+class CE2IndexedControl extends HTMLElement { static formAssociated = true; }
+customElements.define('ce2-indexed-control', CE2IndexedControl);
+test(t => {
+  const form = document.createElement('form');
+  const first = new CE2IndexedControl();
+  const second = new CE2IndexedControl();
+  first.setAttribute('name', 'field'); second.setAttribute('name', 'field');
+  form.append(first, second); document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const elements = form.elements;
+  assert_equals(elements[0], first);
+  assert_equals(elements[1], second);
+  assert_equals(elements[2], undefined);
+  const named = elements.namedItem('field');
+  assert_true(named instanceof RadioNodeList);
+  assert_equals(named[0], first);
+  assert_equals(named[1], second);
+  first.remove();
+  assert_equals(elements[0], second);
+  assert_equals(named[0], second);
+  assert_equals(named[1], undefined);
+}, 'HTMLFormControlsCollection and RadioNodeList index getters are inherited and live');
+</script>

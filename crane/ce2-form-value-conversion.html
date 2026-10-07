@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form value entry copies follow WebIDL argument conversion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+class CE2ConvertedValue extends HTMLElement {
+  static formAssociated = true;
+  constructor() { super(); this.internals = this.attachInternals(); }
+}
+customElements.define('ce2-converted-value', CE2ConvertedValue);
+
+test(t => {
+  const form = document.createElement('form');
+  const control = new CE2ConvertedValue();
+  form.append(control); document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const value = new FormData(); value.append('field', 'before');
+  let conversions = 0;
+  control.internals.setFormValue(value, {
+    toString() { ++conversions; value.set('field', 'after'); return 'state'; }
+  });
+  assert_equals(conversions, 1);
+  assert_equals(new FormData(form).get('field'), 'after');
+  value.set('field', 'later');
+  assert_equals(new FormData(form).get('field'), 'after');
+}, 'State conversion runs before the submission FormData entry list is copied');
+
+test(() => {
+  class CE2NotForm extends HTMLElement {}
+  customElements.define('ce2-not-form-conversion', CE2NotForm);
+  const internals = new CE2NotForm().attachInternals();
+  const exception = new Error('state conversion');
+  assert_throws_exactly(exception, () => internals.setFormValue(null, {
+    toString() { throw exception; }
+  }));
+}, 'State conversion precedes the form-associated precondition');
+
+promise_test(async t => {
+  const form = document.createElement('form');
+  const control = new CE2ConvertedValue();
+  form.append(control); document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const file = new File(['payload'], 'value.txt');
+  const value = new FormData(); value.append('upload', file);
+  control.internals.setFormValue(value, 'state');
+  value.delete('upload');
+  await garbageCollect();
+  assert_equals(new FormData(form).get('upload'), file);
+  control.internals.setFormValue(null);
+  await garbageCollect();
+  assert_equals(new FormData(form).get('upload'), null);
+}, 'A copied submission list keeps its File reachable until the value is cleared');
+</script>

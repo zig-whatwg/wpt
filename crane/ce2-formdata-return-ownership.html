@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FormData string return ownership control</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Run this file under leaks --atExit on both paired runners. A returned
+// string must not leave an additional native engine handle per call.
+test(() => {
+  const data = new FormData();
+  data.append('field', 'value');
+  for (let i = 0; i < 100; ++i)
+    assert_equals(data.get('field'), 'value');
+}, 'Repeated FormData string reads preserve the stored value');
+</script>

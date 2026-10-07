@@ -1,0 +1,34 @@
+<!doctype html>
+<title>ElementInternals form and states entry points</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-attachinternals">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  class Control extends HTMLElement {
+    static formAssociated = true;
+  }
+  customElements.define('ce2-internals-control', Control);
+  const element = new Control();
+  const internals = element.attachInternals();
+  assert_equals(internals.form, null);
+  assert_true(internals.willValidate);
+  internals.setFormValue('value');
+  assert_true(internals.checkValidity());
+}, 'form-associated custom elements expose functional ElementInternals');
+
+test(() => {
+  class Stateful extends HTMLElement {}
+  customElements.define('ce2-internals-stateful', Stateful);
+  const element = new Stateful();
+  const internals = element.attachInternals();
+  const states = internals.states;
+  assert_equals(internals.states, states);
+  states.add('ready');
+  assert_true(states.has('ready'));
+  assert_true(element.matches(':state(ready)'));
+  assert_array_equals([...states], ['ready']);
+  states.delete('ready');
+  assert_false(element.matches(':state(ready)'));
+}, 'custom states are observable through the setlike API and selectors');
+</script>

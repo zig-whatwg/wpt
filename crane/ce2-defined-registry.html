@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Defined state is independent of custom element registry association</title>
+<link rel="help" href="https://html.spec.whatwg.org/#selector-defined">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = new Document();
+  const ordinary = doc.createElement('ordinary');
+  assert_equals(ordinary.customElementRegistry, null);
+  assert_true(ordinary.matches(':defined'));
+  const registry = new CustomElementRegistry();
+  registry.initialize(ordinary);
+  assert_equals(ordinary.customElementRegistry, registry);
+  assert_true(ordinary.matches(':defined'));
+  const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'ce2-svg');
+  assert_true(svg.matches(':defined'), 'non-HTML elements are uncustomized');
+}, 'Uncustomized elements are defined with null or scoped registries');
+
+test(() => {
+  const doc = new Document();
+  const element = doc.createElementNS('http://www.w3.org/1999/xhtml', 'ce2-defined-scoped');
+  assert_false(element.matches(':defined'));
+  let duringUpgrade;
+  const registry = new CustomElementRegistry();
+  class Scoped extends HTMLElement {
+    constructor() {
+      super();
+      duringUpgrade = this.matches(':defined');
+    }
+  }
+  registry.define('ce2-defined-scoped', Scoped);
+  registry.initialize(element);
+  assert_false(duringUpgrade, 'precustomized is not defined');
+  assert_true(element.matches(':defined'));
+  assert_true(element instanceof Scoped);
+}, 'Scoped upgrade changes undefined to custom through precustomized');
+</script>

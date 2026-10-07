@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom control validation anchors include nested shadow descendants</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+customElements.define('ce2-anchor-control', class extends HTMLElement {
+  static formAssociated = true;
+  constructor() {
+    super();
+    this.internals = this.attachInternals();
+  }
+});
+test(() => {
+  const control = document.createElement('ce2-anchor-control');
+  const flags = {customError: true};
+  const message = 'Invalid value';
+  assert_throws_dom('NotFoundError', () =>
+    control.internals.setValidity(flags, message, document.documentElement));
+  const foreign = document.createElementNS('urn:ce2', 'foreign');
+  control.append(foreign);
+  assert_throws_js(TypeError, () =>
+    control.internals.setValidity(flags, message, foreign));
+
+  control.internals.setValidity(flags, message, control);
+  const light = document.createElement('span');
+  control.append(light);
+  control.internals.setValidity(flags, message, light);
+  const shadow = control.attachShadow({mode: 'closed'});
+  const nestedHost = document.createElement('div');
+  shadow.append(nestedHost);
+  control.internals.setValidity(flags, message, nestedHost);
+  const nested = nestedHost.attachShadow({mode: 'closed'});
+  const anchor = document.createElement('span');
+  nested.append(anchor);
+  control.internals.setValidity(flags, message, anchor);
+  assert_true(control.internals.validity.customError);
+  assert_equals(control.internals.validationMessage, message);
+}, 'Validation anchors enforce HTMLElement branding and shadow-including ancestry');
+</script>

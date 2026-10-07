@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTML context fragments retain their root children</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [name, source] of [
+  ["explicit head", "<head></head><body></body><!-- tail -->"],
+  ["omitted head", "<body></body><!-- tail -->"],
+  ["closing html", "<head></head><body></body></html><!-- tail -->"],
+]) {
+  test(() => {
+    const root = document.createElement("html");
+    root.innerHTML = source;
+    assert_array_equals(Array.from(root.childNodes, node => node.nodeName),
+                        ["HEAD", "BODY", "#comment"]);
+    assert_equals(root.lastChild.data, " tail ");
+    assert_equals(root.firstChild.customElementRegistry, customElements);
+    assert_equals(root.children[1].customElementRegistry, customElements);
+  }, "HTML innerHTML preserves head, body and comment: " + name);
+}
+</script>

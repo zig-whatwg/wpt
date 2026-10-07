@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FACE submission, live collections and callbacks</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+class CE2Control extends HTMLElement {
+  static formAssociated = true;
+  constructor() { super(); this.internals = this.attachInternals(); this.events = []; }
+  formAssociatedCallback(form) { this.events.push(['form', form]); }
+  formDisabledCallback(disabled) { this.events.push(['disabled', disabled]); }
+  formResetCallback() { this.events.push(['reset']); }
+}
+customElements.define('ce2-control', CE2Control);
+
+test(t => {
+  const form = document.createElement('form');
+  document.body.append(form); t.add_cleanup(() => form.remove());
+  const control = new CE2Control(); control.name = 'unused';
+  control.setAttribute('name', 'field'); form.append(control);
+  control.internals.setFormValue('one');
+  assert_equals(new FormData(form).get('field'), 'one');
+  const file = new File(['payload'], 'file.txt', {type: 'text/plain'});
+  control.internals.setFormValue(file);
+  assert_equals(new FormData(form).get('field'), file);
+  const supplied = new FormData(); supplied.append('multi', 'first'); supplied.append('upload', file);
+  control.internals.setFormValue(supplied); supplied.set('multi', 'later');
+  control.removeAttribute('name');
+  const result = new FormData(form);
+  assert_equals(result.get('multi'), 'first');
+  assert_equals(result.get('upload'), file);
+  assert_array_equals(result.getAll('upload'), [file]);
+  control.internals.setFormValue(null);
+  assert_false(new FormData(form).has('multi'));
+}, 'Submission values retain Files and clone FormData independently of the name attribute');
+
+test(t => {
+  const form = document.createElement('form');
+  document.body.append(form); t.add_cleanup(() => form.remove());
+  const collection = form.elements;
+  const first = new CE2Control(), second = new CE2Control();
+  first.setAttribute('name', 'same'); second.id = 'same';
+  form.append(first, second);
+  assert_equals(collection.length, 2);
+  assert_equals(first.internals.form, form);
+  const matches = collection.namedItem('same');
+  assert_true(matches instanceof RadioNodeList);
+  assert_equals(matches.length, 2);
+  second.remove(); assert_equals(matches.length, 1);
+  first.setAttribute('name', 'different'); assert_equals(matches.length, 0);
+  assert_equals(collection.length, 1);
+}, 'Form collections and duplicate-name RadioNodeLists remain live for custom controls');
+
+test(t => {
+  const form = document.createElement('form');
+  document.body.append(form); t.add_cleanup(() => form.remove());
+  const fieldset = document.createElement('fieldset'); form.append(fieldset);
+  const control = new CE2Control(); control.id = 'ce2-labeled'; fieldset.append(control);
+  assert_array_equals(control.events[0], ['form', form]);
+  const labels = control.internals.labels;
+  assert_equals(labels.length, 0);
+  const label = document.createElement('label'); label.htmlFor = control.id; form.append(label);
+  assert_equals(labels.length, 1); assert_equals(labels[0], label);
+  assert_equals(fieldset.elements[0], control);
+  fieldset.disabled = true;
+  assert_array_equals(control.events.at(-1), ['disabled', true]);
+  assert_false(control.internals.willValidate);
+  fieldset.disabled = false;
+  assert_array_equals(control.events.at(-1), ['disabled', false]);
+  form.reset(); assert_array_equals(control.events.at(-1), ['reset']);
+  label.remove(); assert_equals(labels.length, 0);
+  control.remove(); assert_array_equals(control.events.at(-1), ['form', null]);
+}, 'Labels, form ownership, disabled fieldsets and reset callbacks update synchronously');
+
+test(t => {
+  const form = document.createElement('form'); document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const control = new CE2Control(); form.append(control);
+  const validity = control.internals.validity;
+  assert_true(validity.valid);
+  control.internals.setValidity({customError: true}, 'bad\r\nvalue');
+  assert_false(validity.valid); assert_true(validity.customError);
+  assert_equals(control.internals.validationMessage, 'bad\nvalue');
+  let invalid = 0;
+  control.addEventListener('invalid', e => { ++invalid; assert_true(e.cancelable); e.preventDefault(); });
+  assert_false(form.checkValidity()); assert_equals(invalid, 1);
+  control.setAttribute('readonly', ''); assert_true(form.checkValidity());
+  control.removeAttribute('readonly');
+  control.internals.setValidity({});
+  assert_true(validity.valid); assert_equals(control.internals.validationMessage, '');
+}, 'Live ValidityState and form validation include form-associated custom controls');
+</script>
