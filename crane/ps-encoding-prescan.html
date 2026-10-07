@@ -1,0 +1,11 @@
+<!doctype html><div id="sample">ý</div>
+<meta http-equiv="content-type" content="text/html; note=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; charset=iso-8859-15">
+<title>Prescan consumes complete long attributes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_equals(document.characterSet, 'ISO-8859-15');
+  assert_equals(document.getElementById('sample').textContent, '\u00c3\u0153');
+}, 'A charset late in a long content attribute decodes preceding bytes correctly');
+</script>

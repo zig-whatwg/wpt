@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fragment context and template insertion modes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#html-fragment-parsing-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const t = document.createElement('template');
+  t.innerHTML = '<head><title>x</title></head><frameset><frame></frameset>';
+  assert_equals(t.innerHTML, '<title>x</title>');
+}, 'Template fragments ignore head, frameset and frame tokens');
+test(() => {
+  const frameset = document.createElement('frameset');
+  frameset.innerHTML = '<template>x</template><frame>';
+  assert_equals(frameset.innerHTML, '<frame>');
+}, 'Frameset fragment context uses the in-frameset insertion mode');
+test(() => {
+  const head = document.createElement('head');
+  head.innerHTML = '<div>x</div>';
+  assert_equals(head.innerHTML, '<div>x</div>');
+}, 'Head fragment context uses in-body without synthesizing a body');
+test(() => {
+  const td = document.createElement('td');
+  td.innerHTML = '<tr><td>x';
+  assert_equals(td.innerHTML, 'x');
+}, 'A cell fragment context is the last node during insertion-mode reset');
+test(() => {
+  const t = document.createElement('template');
+  t.innerHTML = '<form id=f><div id=d></div></form>';
+  const div = t.content.querySelector('#d');
+  div.innerHTML = '<div><form></div><input></form>';
+  assert_equals(div.querySelectorAll('form').length, 0);
+  assert_equals(div.querySelectorAll('input').length, 1);
+}, 'A context inside template content still seeds its ancestor form pointer');
+test(() => {
+  const doc = new DOMParser().parseFromString('<template><noscript><div>x</div></noscript></template>', 'text/html');
+  const noscript = doc.querySelector('template').content.querySelector('noscript');
+  assert_equals(noscript.innerHTML, '<div>x</div>');
+  const t = document.createElement('template');
+  t.innerHTML = '<noscript><div>x</div></noscript>';
+  assert_equals(t.content.querySelector('noscript').innerHTML, '&lt;div&gt;x&lt;/div&gt;');
+}, 'Noscript serialization uses the inert template owner document');
+for (const markup of ['<caption id=x>x</caption>', '<tbody id=x><tr><td>x</td></tr></tbody>', '<colgroup id=x><col></colgroup>']) {
+  test(() => {
+    const container = document.createElement('div');
+    container.innerHTML = '<table><template>' + markup + '</template><tr><td>after</td></tr></table>';
+    const table = container.querySelector('table');
+    const t = table.querySelector('template');
+    assert_equals(t.parentNode, table);
+    assert_not_equals(t.content.querySelector('#x'), null);
+    assert_equals(table.querySelectorAll('tr').length, 1);
+    assert_equals(table.querySelector('td').textContent, 'after');
+  }, 'Table context clearing stops at template: ' + markup);
+}
+</script>

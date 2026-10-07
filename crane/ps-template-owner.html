@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Template contents use a shared inert owner document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#appropriate-template-contents-owner-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const first = document.createElement('template');
+  const second = document.createElement('template');
+  const content = first.content;
+  assert_equals(content.nodeType, Node.DOCUMENT_FRAGMENT_NODE);
+  assert_equals(first.content, content);
+  assert_not_equals(content.ownerDocument, document);
+  assert_equals(content.ownerDocument, second.content.ownerDocument);
+  assert_equals(content.ownerDocument.defaultView, null);
+  const nested = content.ownerDocument.createElement('template');
+  assert_equals(nested.content.ownerDocument, content.ownerDocument);
+}, 'Each document shares one inert template owner, which owns its own templates');
+</script>

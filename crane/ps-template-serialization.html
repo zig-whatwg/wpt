@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTML and XML template serialization</title>
+<link rel="help" href="https://w3c.github.io/DOM-Parsing/#dfn-xml-serializing-an-element-node">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const template = document.createElement('template');
+  template.innerHTML = '<template><style>a>b{content:"&"}</style><p title="&lt;&gt;&amp;&quot;">&nbsp;&amp;</p></template>';
+  template.appendChild(document.createElement('b'));
+  assert_equals(template.outerHTML, '<template><template><style>a>b{content:"&"}</style><p title="&lt;&gt;&amp;&quot;">&nbsp;&amp;</p></template></template>');
+  assert_equals(template.getHTML(), template.innerHTML);
+}, 'HTML serialization traverses content, escapes attributes, and preserves raw text');
+
+test(() => {
+  const ns = 'http://www.w3.org/1999/xhtml';
+  const doc = document.implementation.createDocument(ns, 'html');
+  const template = doc.createElementNS(ns, 'template');
+  const nested = doc.createElementNS(ns, 'template');
+  const div = doc.createElementNS(ns, 'div');
+  div.textContent = 'x&y';
+  nested.content.appendChild(div);
+  template.content.appendChild(nested);
+  assert_equals(template.outerHTML, '<template xmlns="http://www.w3.org/1999/xhtml"><template><div>x&amp;y</div></template></template>');
+  assert_equals(new XMLSerializer().serializeToString(template), template.outerHTML);
+}, 'XML serialization preserves the namespace across nested template contents');
+
+test(() => {
+  const doc = document.implementation.createDocument(null, 'root');
+  const root = doc.documentElement;
+  const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttributeNS('http://www.w3.org/1999/xlink', 'href', 'a\nb');
+  root.appendChild(svg);
+  assert_equals(new XMLSerializer().serializeToString(root), '<root><svg xmlns="http://www.w3.org/2000/svg" xmlns:ns1="http://www.w3.org/1999/xlink" ns1:href="a&#xA;b"/></root>');
+}, 'XML serialization creates prefixes for namespaced attributes and escapes line breaks');
+</script>
+<script>
+test(() => {
+  const template = document.createElement('template');
+  template.content.appendChild(document.createElement('button', {is: 'ps-control'}));
+  assert_equals(template.innerHTML, '<button is="ps-control"></button>');
+}, 'Serialization preserves an is value without a corresponding attribute');
+</script>

@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Adoption agency uses the live DOM after script changes it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#adoption-agency-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function frame(t, source) {
+  const iframe = document.createElement('iframe');
+  t.add_cleanup(() => iframe.remove());
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  iframe.srcdoc = source;
+  document.body.appendChild(iframe);
+  await loaded;
+  return iframe.contentWindow;
+}
+
+promise_test(async t => {
+  const w = await frame(t, '<div id="ancestor"><b><p id="block"><script>' +
+    'window.savedBlock=document.getElementById("block");' +
+    'window.savedAncestor=document.getElementById("ancestor");' +
+    'document.body.appendChild(savedBlock);savedBlock.appendChild(savedAncestor);' +
+    '<\/script></b></div>');
+  assert_equals(w.document.body.childNodes.length, 0);
+  assert_equals(w.savedBlock.parentNode, null);
+  assert_false(w.savedAncestor.contains(w.savedBlock));
+}, 'Remove the furthest block before rejecting a cycle-inducing insertion');
+
+promise_test(async t => {
+  const w = await frame(t, '<div id="ancestor"><b><p id="block"><script>' +
+    'window.savedBlock=document.getElementById("block");' +
+    'window.savedAncestor=document.getElementById("ancestor");' +
+    'const host=document.createElement("template");' +
+    'document.body.appendChild(savedBlock);savedBlock.appendChild(host);' +
+    'host.content.appendChild(savedAncestor);' +
+    '<\/script></b></div>');
+  assert_equals(w.document.body.childNodes.length, 0);
+  assert_equals(w.savedBlock.parentNode, null);
+  assert_false(w.savedAncestor.contains(w.savedBlock));
+}, 'Cycle rejection includes the template content host edge');
+</script>

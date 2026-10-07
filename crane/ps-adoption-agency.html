@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Adoption agency reconstructs misnested formatting</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#adoption-agency-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = '<b data-copy="yes">1<p>2</b>3</p>';
+  assert_equals(wrapper.innerHTML,
+    '<b data-copy="yes">1</b><p><b data-copy="yes">2</b>3</p>');
+}, 'Adoption agency moves the furthest block and copies formatting attributes');
+</script>

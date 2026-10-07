@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parser newline tokens, textarea RCDATA, and br end tags</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<pre id="live-pre">
+x</pre>
+<listing id="live-listing">
+x</listing>
+<textarea id="live-textarea">
+x</textarea>
+<script>
+for (const tag of ["pre", "listing", "textarea"]) {
+  test(() => {
+    assert_equals(document.getElementById("live-" + tag).textContent, "x");
+    const holder = document.createElement("div");
+    holder.innerHTML = `<${tag}>\n\nx</${tag}>`;
+    assert_equals(holder.firstChild.textContent, "\nx");
+    holder.innerHTML = `<${tag}>&#10;x</${tag}>`;
+    assert_equals(holder.firstChild.textContent, "x");
+    const context = document.createElement(tag);
+    context.innerHTML = "\nx";
+    assert_equals(context.textContent, "\nx");
+  }, `${tag}: discard one LF after its start tag, preserve fragment-context LF`);
+}
+test(() => {
+  const holder = document.createElement("div");
+  holder.innerHTML = "<pre><!--c-->\nx</pre>";
+  assert_equals(holder.firstChild.textContent, "\nx");
+  holder.innerHTML = "<textarea>\n<b>&amp;</textarea><p>after";
+  assert_equals(holder.firstChild.textContent, "<b>&");
+  assert_equals(holder.lastChild.localName, "p");
+}, "Only the immediate LF token is ignored; textarea content uses RCDATA");
+for (const prefix of ["", "<svg>", "<math>"]) {
+  test(() => {
+    const holder = document.createElement("div");
+    holder.innerHTML = prefix + "</br data-drop=yes>tail";
+    const br = holder.querySelector("br");
+    assert_not_equals(br, null);
+    assert_equals(br.parentNode, holder);
+    assert_equals(br.namespaceURI, "http://www.w3.org/1999/xhtml");
+    assert_equals(br.attributes.length, 0);
+    assert_equals(br.nextSibling.data, "tail");
+  }, `br end tag drops attributes and inserts in HTML after ${prefix || "HTML"}`);
+}
+</script>

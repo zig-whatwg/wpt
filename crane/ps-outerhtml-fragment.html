@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>outerHTML replacement within DocumentFragment</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#the-outerhtml-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const fragment = document.createDocumentFragment();
+  const old = document.createElement("div");
+  old.textContent = "original";
+  fragment.appendChild(old);
+  const observer = new MutationObserver(() => {});
+  observer.observe(fragment, {childList: true});
+  old.outerHTML = "<body><span>one</span><b>two</b></body>";
+  const records = observer.takeRecords();
+  observer.disconnect();
+  assert_equals(old.parentNode, null);
+  assert_equals(old.textContent, "original");
+  assert_equals(fragment.childNodes.length, 2);
+  assert_equals(fragment.firstChild.localName, "span");
+  assert_equals(fragment.lastChild.localName, "b");
+  assert_equals(fragment.textContent, "onetwo");
+  assert_equals(records.length, 1);
+  assert_equals(records[0].addedNodes.length, 2);
+  assert_equals(records[0].removedNodes[0], old);
+}, "DocumentFragment context uses a temporary body and one replacement mutation");
+test(() => {
+  assert_throws_dom("NoModificationAllowedError", () => document.documentElement.outerHTML = "<html></html>");
+}, "A Document parent rejects outerHTML with NoModificationAllowedError");
+</script>

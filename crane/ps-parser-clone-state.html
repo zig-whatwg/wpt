@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Imported parser nodes preserve their destination realm and script state</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  for (const [factory, type] of [["createTextNode", Text], ["createComment", Comment]]) {
+    const source = frame.contentDocument[factory]("x");
+    const copy = frame.contentWindow.Document.prototype.importNode.call(document, source);
+    assert_true(copy instanceof type, factory + " destination realm");
+    assert_equals(copy.ownerDocument, document);
+    assert_equals(copy.data, "x");
+  }
+}, "importNode creates text and comments in the target document's realm");
+for (const operation of ["clone", "import"]) {
+  test(t => {
+    window.psScriptRuns = 0;
+    t.add_cleanup(() => { delete window.psScriptRuns; });
+    const parsed = new DOMParser().parseFromString("<svg><script>window.psScriptRuns++;</scr" + "ipt></svg>", "text/html");
+    const source = parsed.querySelector("svg");
+    const copy = operation === "clone" ? source.cloneNode(true) : document.importNode(source, true);
+    document.body.appendChild(copy);
+    t.add_cleanup(() => copy.remove());
+    assert_not_equals(copy.querySelector("script"), null, "copy has its script child");
+    assert_equals(window.psScriptRuns, 0);
+  }, operation + " preserves a parsed SVG script's already-started state");
+}
+</script>

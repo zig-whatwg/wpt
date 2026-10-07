@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>javascript URL response scalar conversion does not crash tree construction</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#evaluate-a-javascript:-url">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  frame.src = "javascript:String.fromCharCode(0xDE0D, 0x41)";
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(frame.contentDocument.body.textContent, "\uFFFDA");
+  assert_equals(frame.contentDocument.characterSet, "UTF-8");
+}, "A javascript URL string result replaces a lone surrogate before rendering HTML");
+</script>

@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XML serialization without an XML parser dependency</title>
+<link rel="help" href="https://w3c.github.io/DOM-Parsing/#dfn-xml-serialization-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const xmlns = 'http://www.w3.org/2000/xmlns/';
+const serializer = new XMLSerializer();
+test(() => {
+  const doc = document.implementation.createDocument(null, 'r');
+  doc.documentElement.setAttributeNS(xmlns, 'xmlns:p', 'urn:x');
+  const child = doc.createElementNS('urn:x', 'q:c');
+  child.setAttributeNS('urn:x', 'a', 'v');
+  doc.documentElement.appendChild(child);
+  assert_equals(serializer.serializeToString(doc), '<r xmlns:p="urn:x"><p:c p:a="v"/></r>');
+}, 'Reuse an inherited prefix for an element and namespaced attribute');
+test(() => {
+  const doc = document.implementation.createDocument(null, 'r');
+  for (const [tag, ns, attr, value] of [['a', 'urn:x', 'x', '1'], ['b', 'urn:y', 'y', '2']]) {
+    const child = doc.createElementNS(null, tag);
+    child.setAttributeNS(ns, attr, value);
+    doc.documentElement.appendChild(child);
+  }
+  assert_equals(serializer.serializeToString(doc), '<r><a xmlns:ns1="urn:x" ns1:x="1"/><b xmlns:ns2="urn:y" ns2:y="2"/></r>');
+}, 'Namespace maps are scoped while generated prefix numbers span siblings');
+test(() => {
+  const doc = document.implementation.createDocument('urn:x', 'r');
+  doc.documentElement.appendChild(doc.createElementNS(null, 'c'));
+  assert_equals(doc.documentElement.outerHTML, '<r xmlns="urn:x"><c xmlns=""/></r>');
+}, 'A no-namespace child clears the inherited default namespace');
+test(() => {
+  const doc = document.implementation.createDocument(null, 'r');
+  doc.documentElement.textContent = '\u0001';
+  assert_throws_dom('InvalidStateError', () => doc.documentElement.outerHTML);
+  assert_equals(serializer.serializeToString(doc), '<r>\u0001</r>');
+}, 'The require-well-formed flag distinguishes outerHTML from XMLSerializer');
+</script>

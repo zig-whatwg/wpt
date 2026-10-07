@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Template contents follow parsing, cloning, and adoption</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#the-template-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<template id="parsed"><div>outer<template><span>inner</span></template></div></template>
+<script>
+test(() => {
+  const template = document.getElementById('parsed');
+  assert_equals(template.childNodes.length, 0);
+  assert_equals(template.content.firstChild.localName, 'div');
+  assert_equals(template.content.firstChild.ownerDocument, template.content.ownerDocument);
+  const nested = template.content.querySelector('template');
+  assert_equals(nested.content.ownerDocument, template.content.ownerDocument);
+  assert_equals(nested.content.firstChild.textContent, 'inner');
+}, 'The document parser inserts into nested template contents');
+
+test(() => {
+  const template = document.createElement('template');
+  template.innerHTML = '<tr><td>x</td></tr><template><p>nested</p></template>';
+  assert_equals(template.childNodes.length, 0);
+  assert_equals(template.content.firstChild.localName, 'tr');
+  assert_equals(template.innerHTML, '<tr><td>x</td></tr><template><p>nested</p></template>');
+  const saved = template.content;
+  template.innerHTML = '';
+  assert_equals(template.content, saved);
+  assert_equals(saved.childNodes.length, 0);
+}, 'innerHTML parses in template context and replaces content, including empty input');
+
+test(() => {
+  const template = document.createElement('template');
+  template.innerHTML = '<div><template><p>x</p></template></div>';
+  const content = template.content;
+  const nested = content.firstChild.firstChild;
+  const nestedContent = nested.content;
+  const other = document.implementation.createHTMLDocument('other');
+  assert_equals(other.adoptNode(template), template);
+  const expected = other.createElement('template').content.ownerDocument;
+  assert_equals(template.ownerDocument, other);
+  assert_equals(template.content, content);
+  assert_equals(content.ownerDocument, expected);
+  assert_equals(content.firstChild.ownerDocument, expected);
+  assert_equals(nestedContent.ownerDocument, expected);
+  assert_equals(nestedContent.firstChild.ownerDocument, expected);
+  assert_equals(document.adoptNode(content), content);
+  assert_equals(content.ownerDocument, document);
+}, 'Adoption updates saved content and nested content, including direct fragment adoption');
+
+test(() => {
+  const template = document.createElement('template');
+  template.innerHTML = '<template><span>x</span></template>';
+  template.appendChild(document.createElement('b'));
+  const shallow = template.cloneNode(false);
+  assert_equals(shallow.content.childNodes.length, 0);
+  assert_equals(shallow.childNodes.length, 0);
+  const clone = template.cloneNode(true);
+  assert_not_equals(clone.content, template.content);
+  assert_equals(clone.childNodes.length, 1);
+  assert_equals(clone.content.firstChild.content.firstChild.textContent, 'x');
+  const other = document.implementation.createHTMLDocument('import');
+  const imported = other.importNode(template, true);
+  const expected = other.createElement('template').content.ownerDocument;
+  assert_equals(imported.ownerDocument, other);
+  assert_equals(imported.content.ownerDocument, expected);
+  assert_equals(imported.content.firstChild.content.firstChild.ownerDocument, expected);
+  assert_equals(imported.content.firstChild.content.firstChild.textContent, 'x');
+}, 'Deep cloning and importing copy template contents as well as ordinary children');
+
+test(() => {
+  const template = document.createElement('template');
+  assert_throws_dom('HierarchyRequestError', () => template.content.appendChild(template));
+  const child = document.createElement('div');
+  template.content.appendChild(child);
+  assert_throws_dom('HierarchyRequestError', () => child.appendChild(template));
+}, 'Template hosts participate in host-including cycle checks');
+</script>
+<script>
+test(() => {
+  const root = document.createElement('template');
+  let current = root;
+  for (let i = 0; i < 80; ++i) {
+    const next = document.createElement('template');
+    current.content.appendChild(next);
+    current = next;
+  }
+  try {
+    assert_throws_dom('HierarchyRequestError', () => current.content.appendChild(root));
+  } finally {
+    if (root.parentNode) root.parentNode.removeChild(root);
+  }
+  assert_equals(root.parentNode, null);
+}, 'Host-inclusive cycle checks traverse deeply nested template contents');
+</script>

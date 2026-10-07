@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Large document parse benchmark</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Same fixed input and five samples on the frozen baseline and lane runners.
+const markup = '<!doctype html><html><head><title>Large page</title></head><body>' +
+  '<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>'.repeat(2500) +
+  '</body></html>';
+for (let sample = 0; sample < 5; ++sample) {
+  const start = performance.now();
+  const parsed = new DOMParser().parseFromString(markup, 'text/html');
+  const elapsed = performance.now() - start;
+  test(() => {
+    assert_equals(parsed.querySelectorAll('section').length, 2500);
+    assert_equals(parsed.querySelectorAll('li').length, 5000);
+  }, 'DOMParser sample ' + sample + ': ' + elapsed.toFixed(3) + ' ms for ' + markup.length + ' bytes');
+}
+</script>
