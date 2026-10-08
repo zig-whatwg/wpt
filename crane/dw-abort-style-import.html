@@ -5,7 +5,7 @@
 <script src="/resources/testharnessreport.js"></script>
 <body>
 <script>
-promise_test(async t => {
+for (const stop of [true, false]) promise_test(async t => {
   const frame = document.createElement("iframe");
   t.add_cleanup(() => frame.remove());
   const loaded = new Promise(resolve => frame.onload = resolve);
@@ -17,8 +17,8 @@ promise_test(async t => {
   let loads = 0;
   style.onload = () => loads++;
   frame.contentDocument.head.appendChild(style);
-  frame.contentWindow.stop();
+  if (stop) frame.contentWindow.stop();
   await new Promise(resolve => t.step_timeout(resolve, 800));
-  assert_equals(loads, 0);
-}, "window.stop prevents a pending CSS import from later firing load");
+  assert_equals(loads, stop ? 0 : 1, stop ? "stop suppresses load" : "the uncanceled producer fires load");
+}, stop ? "window.stop prevents a pending CSS import from later firing load" : "the uncanceled style-import resource fires load");
 </script>

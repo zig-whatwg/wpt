@@ -8,10 +8,12 @@
 <script>
 promise_test(async t => {
   let removals = 0;
+  let openWeak;
   window.craneRemoveWrittenFrame = t.step_func(frame => {
     ++removals;
     frame.remove();
-    if (typeof gc === 'function') gc();
+    TestUtils.gc();
+    assert_not_equals(openWeak.deref(), undefined, 'the active parser retains its detached mapped node during removal');
   });
   t.add_cleanup(() => { delete window.craneRemoveWrittenFrame; });
   for (let i = 0; i < 8; ++i) {
@@ -20,16 +22,23 @@ promise_test(async t => {
     t.add_cleanup(() => frame.remove());
     let doc = frame.contentDocument;
     doc.open();
-    doc.write('<body><div>before<script>parent.craneRemoveWrittenFrame(frameElement);' +
+    doc.write('<body><div id="open">before');
+    openWeak = (() => {
+      const open = doc.getElementById('open');
+      assert_not_equals(open, null);
+      open.remove();
+      return new WeakRef(open);
+    })();
+    // End the WeakRef-creation job before the written script collects.
+    await new Promise(resolve => step_timeout(resolve, 0));
+    doc.write('</div><script>parent.craneRemoveWrittenFrame(frameElement);' +
       '<\/script><p id="after">after</p>');
     assert_false(frame.isConnected, 'The written script removed its frame synchronously');
     doc = null;
     await new Promise(resolve => step_timeout(resolve, 0));
-    if (typeof gc === 'function') {
-      gc();
-      gc();
-    }
+    TestUtils.gc();
+    TestUtils.gc();
   }
   assert_equals(removals, 8, 'Every active parser unwound after its frame was removed');
-}, 'Removing and collecting a frame from its written script keeps parser cleanup valid');
+}, 'Full collection while removing a frame from its written script keeps parser cleanup valid');
 </script>

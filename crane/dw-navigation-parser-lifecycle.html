@@ -82,9 +82,24 @@ promise_test(async t => {
 
 promise_test(async t => {
   const entry = await waitingFrame(t);
+  const doc = entry.frame.contentDocument;
+  const headWeak = new WeakRef(doc.head);
+  const loaded = new Promise(resolve => entry.frame.addEventListener('load', resolve, {once: true}));
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  // The previous task created the WeakRef. Removing the head now cancels
+  // its stylesheet and script, leaving only the parser's open-element edge.
+  (() => doc.head.remove())();
+  TestUtils.gc();
+  assert_not_equals(headWeak.deref(), undefined, 'the suspended navigation parser retains its detached open head');
+  await loaded;
+  assert_equals(doc.getElementById('after').textContent, 'after');
+}, 'a suspended navigation parser retains its detached open element across collection');
+
+promise_test(async t => {
+  const entry = await waitingFrame(t);
   const document = entry.frame.contentDocument;
   entry.frame.remove();
-  if (typeof gc === 'function') gc();
+  TestUtils.gc();
   await new Promise(resolve => t.step_timeout(resolve, 2500));
   assert_equals(document.getElementById('after'), null);
   assert_array_equals(entry.events, ['ready'], 'a removed frame never resumes its old parser');

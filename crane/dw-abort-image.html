@@ -5,7 +5,7 @@
 <script src="/resources/testharnessreport.js"></script>
 <body>
 <script>
-promise_test(async t => {
+for (const stop of [true, false]) promise_test(async t => {
   const frame = document.createElement("iframe");
   t.add_cleanup(() => frame.remove());
   const loaded = new Promise(resolve => frame.onload = resolve);
@@ -17,8 +17,8 @@ promise_test(async t => {
   image.onload = () => loads++;
   image.src = "/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/resources/slow-png.py";
   await new Promise(resolve => t.step_timeout(resolve, 0));
-  frame.contentWindow.stop();
+  if (stop) frame.contentWindow.stop();
   await new Promise(resolve => t.step_timeout(resolve, 2300));
-  assert_equals(loads, 0);
-}, "window.stop prevents a pending image from later firing load");
+  assert_equals(loads, stop ? 0 : 1, stop ? "stop suppresses load" : "the uncanceled producer fires load");
+}, stop ? "window.stop prevents a pending image from later firing load" : "the uncanceled image resource fires load");
 </script>

@@ -5,7 +5,7 @@
 <script src="/resources/testharnessreport.js"></script>
 <body>
 <script>
-promise_test(async t => {
+for (const stop of [true, false]) promise_test(async t => {
   const frame = document.createElement("iframe");
   t.add_cleanup(() => frame.remove());
   const loaded = new Promise(resolve => frame.onload = resolve);
@@ -20,8 +20,8 @@ promise_test(async t => {
   // The element's setup task must run and start its fetch before stop.
   await new Promise(resolve => t.step_timeout(resolve, 100));
   assert_equals(loads, 0, "the slow resource is still pending before stop");
-  frame.contentWindow.stop();
+  if (stop) frame.contentWindow.stop();
   await new Promise(resolve => t.step_timeout(resolve, 800));
-  assert_equals(loads, 0);
-}, "window.stop prevents a pending object resource from firing load");
+  assert_equals(loads, stop ? 0 : 1, stop ? "stop suppresses load" : "the uncanceled producer fires load");
+}, stop ? "window.stop prevents a pending object resource from firing load" : "the uncanceled object resource fires load");
 </script>
