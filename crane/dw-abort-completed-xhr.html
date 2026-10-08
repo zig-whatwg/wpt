@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Document abort does not replay terminal events of completed XHR</title>
+<link rel="help" href="https://xhr.spec.whatwg.org/#handle-errors">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const [name, method, url, stopAt, status, terminal] of [
+  ['HEAD load', 'HEAD', '/common/blank.html', 'load', 200, 'load'],
+  ['204 load', 'GET', '/common/blank.html?pipe=status(204)', 'load', 204, 'load'],
+  ['data load', 'GET', 'data:text/plain,completed', 'load', 200, 'load'],
+  ['data loadend', 'GET', 'data:text/plain,completed', 'loadend', 200, 'load'],
+  ['network error', 'GET', 'http://127.0.0.1:65533/refused', 'error', 0, 'error'],
+  ['HEAD terminal progress', 'HEAD', '/common/blank.html', 'progress', 200, 'load'],
+]) promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const ready = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.append(frame);
+  await ready;
+  const request = new frame.contentWindow.XMLHttpRequest();
+  const events = [];
+  let stopped = false;
+  request.open(method, url);
+  request.onreadystatechange = () => {
+    if (request.readyState === 4) events.push('readystatechange(4)');
+  };
+  for (const type of ['load', 'loadend', 'error', 'abort', 'progress'])
+    request.addEventListener(type, () => {
+      if (type !== 'progress') events.push(type);
+      if (type === stopAt) {
+        stopped = true;
+        frame.contentWindow.stop();
+      }
+    });
+  const ended = new Promise(resolve => request.addEventListener('loadend', resolve, {once: true}));
+  request.send();
+  await ended;
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_true(stopped, 'the terminal callback reached window.stop');
+  assert_array_equals(events, ['readystatechange(4)', terminal, 'loadend']);
+  assert_equals(request.readyState, 4);
+  assert_equals(request.status, status, 'queued abort leaves the completed response intact');
+}, `window.stop from ${name} does not replay XHR terminal events`);
+</script>
