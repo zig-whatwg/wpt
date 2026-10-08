@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.stop aborts a document's EventSource connection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const source = new frame.contentWindow.EventSource("/common/slow.py?delay=1500");
+  t.add_cleanup(() => source.close());
+  let errors = 0;
+  source.onerror = t.step_func(() => {
+    errors++;
+    assert_equals(source.readyState, source.CLOSED);
+  });
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(errors, 1, "cancellation queues a failure event before the response arrives");
+  assert_equals(source.readyState, source.CLOSED);
+}, "window.stop fails EventSource with CLOSED and one error event");
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A stylesheet media mutation releases a parser after the mutating script returns</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  let loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const win = frame.contentWindow;
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write("<script>window.order=[];<\/script>" +
+    "<link id='sheet' rel='stylesheet' href='/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d1)'>" +
+    "<script>window.order.push('inline');<\/script><p id='after'>after</p>");
+  assert_array_equals(win.order, [], "the stylesheet initially blocks the inline script");
+  loaded = new Promise(resolve => frame.onload = resolve);
+  doc.close();
+  await new Promise(resolve => t.step_timeout(() => {
+    doc.getElementById("sheet").media = "print";
+    win.order.push("mutator-end");
+    resolve();
+  }, 0));
+  await loaded;
+  assert_array_equals(win.order, ["mutator-end", "inline"], "the parser resumes after the media setter's caller returns");
+}, "changing a blocking stylesheet's media does not execute the waiting parser script within the mutator");
+</script>

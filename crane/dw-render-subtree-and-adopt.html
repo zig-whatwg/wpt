@@ -1,0 +1,34 @@
+<!doctype html>
+<head><meta charset=utf-8>
+<title>Removal and adoption unblock before graph fetch completion</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+const subtree = document.createElement('div');
+const removed = document.createElement('script');
+removed.type = 'module';
+removed.blocking.value = 'render';
+removed.textContent = `import './resources/dw-render-dependency.js?pipe=trickle(d0.8)&subtree'; window.removedModuleRan = true;`;
+subtree.append(removed);
+document.head.append(subtree);
+const adopted = document.createElement('script');
+adopted.type = 'module';
+adopted.blocking.value = 'render';
+adopted.textContent = `import './resources/dw-render-dependency.js?pipe=trickle(d0.8)&adopted'; window.adoptedModuleRan = true;`;
+document.head.append(adopted);
+const destination = document.implementation.createHTMLDocument();
+setTimeout(() => {
+  subtree.remove();
+  destination.adoptNode(adopted);
+}, 0);
+</script>
+</head><body>
+<script>
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  assert_equals(window.removedModuleRan, undefined);
+  assert_equals(window.adoptedModuleRan, undefined);
+  assert_equals(adopted.ownerDocument, destination);
+  assert_false(subtree.isConnected);
+}, 'Subtree removal and cross-document adoption release all original blockers');
+</script>

@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Concurrent roots finish a cyclic module graph</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  window.dwCycleRuns = 0;
+  const start = performance.now();
+  const pending = [];
+  for (const url of ["dw-module-cycle-a.mjs", "dw-module-cycle-b.mjs?pipe=trickle(d1)"]) {
+    const element = document.createElement("script");
+    element.type = "module";
+    element.src = url;
+    t.add_cleanup(() => element.remove());
+    pending.push(new Promise((resolve, reject) => {
+      element.onload = resolve;
+      element.onerror = () => reject(new Error("cyclic module graph failed"));
+    }));
+    document.body.appendChild(element);
+  }
+  assert_less_than(performance.now() - start, 500);
+  await Promise.all(pending);
+  assert_equals(dwCycleRuns, 2, "Each member of the cycle evaluates once");
+}, "Concurrent module graph roots sharing a slow cyclic dependency both finish");
+</script>

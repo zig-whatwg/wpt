@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A written parser script suspends parsing until its response arrives</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe id="frame"></iframe>
+<script>
+async_test(t => {
+  const frame = document.getElementById("frame");
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write("<script>window.order=[];<\/script>" +
+    "<script src='/crane/resources/script-inserted-log.js?name=blocking&pipe=trickle(d1)'><\/script>" +
+    "<p id='after'>after</p>");
+  t.step(() => {
+    assert_array_equals(frame.contentWindow.order, [], "write returned before the response");
+    assert_equals(doc.getElementById("after"), null, "parsing waits at the blocker");
+  });
+  frame.onload = t.step_func_done(() => {
+    assert_array_equals(frame.contentWindow.order, ["blocking"]);
+    assert_equals(doc.getElementById("after").textContent, "after");
+  });
+  doc.close();
+}, "document.close waits for a written external parser blocker before finishing its stream");
+</script>

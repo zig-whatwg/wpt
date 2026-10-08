@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.stop performs user-aborted media loading steps</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const media = frame.contentDocument.createElement("video");
+  media.preload = "auto";
+  frame.contentDocument.body.appendChild(media);
+  const started = new Promise(resolve => media.onloadstart = resolve);
+  media.src = "/common/slow.py?delay=1500";
+  await started;
+  assert_equals(media.networkState, media.NETWORK_LOADING);
+  const events = [];
+  media.onabort = t.step_func(() => {
+    events.push("abort");
+    assert_equals(media.error.code, media.error.MEDIA_ERR_ABORTED);
+  });
+  media.onemptied = () => events.push("emptied");
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_array_equals(events, ["abort", "emptied"]);
+  assert_equals(media.readyState, media.HAVE_NOTHING);
+  assert_equals(media.networkState, media.NETWORK_EMPTY);
+  assert_equals(media.error.code, media.error.MEDIA_ERR_ABORTED);
+}, "window.stop gives pending media MEDIA_ERR_ABORTED, abort, and emptied");
+</script>

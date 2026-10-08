@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A script-created parser retains partial tokens across writes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.open();
+  doc.write('<p id="chunk" title="par');
+  assert_equals(doc.getElementById('chunk'), null, 'An incomplete start tag is not emitted');
+  doc.write('tial">a &am');
+  const p = doc.getElementById('chunk');
+  assert_not_equals(p, null, 'Completing a start tag emits its element');
+  assert_equals(p.title, 'partial');
+  doc.write('p; b</p><!--split');
+  assert_equals(p.textContent, 'a & b', 'Character references survive chunk boundaries');
+  doc.write('--><p id="after">after</p>');
+  assert_equals(doc.getElementById('after').textContent, 'after');
+  doc.close();
+  assert_equals(doc.getElementById('chunk'), p);
+}, 'Partial attributes, character references, and comments retain tokenizer state');
+</script>

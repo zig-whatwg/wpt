@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Written parser stylesheet script blocking criteria</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const delayedSheet = "/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d1)";
+
+async function writtenFrame(t) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  // document.open during the iframe's load event mutes the next iframe
+  // load event. Resume in a new task after those load steps have returned.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  frame.contentDocument.open();
+  frame.contentDocument.write("<script>window.order=[];<\/script>");
+  return frame;
+}
+
+async function finishFrame(frame) {
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.contentDocument.close();
+  await loaded;
+}
+
+for (const [name, markup] of [
+  ["matching parser-created link", `<link rel='stylesheet' href='${delayedSheet}'>`],
+  ["parser-created link whose media becomes matching", `<link id='s' rel='stylesheet' media='print' href='${delayedSheet}'><script>document.getElementById('s').media='';<\/script>`],
+  ["parser-created style with a critical import", `<style>@import url('${delayedSheet}');</style>`],
+  ["stylesheet load failure", `<link rel='stylesheet' href='${delayedSheet.replace("trickle(d1)", "status(404)|trickle(d1)")}'>`],
+]) {
+  promise_test(async t => {
+    const frame = await writtenFrame(t);
+    const doc = frame.contentDocument;
+    doc.write(markup + "<script>window.order.push('inline');<\/script><p id='after'>after</p>");
+    assert_array_equals(frame.contentWindow.order, [], "inline waits while the sheet loads");
+    assert_equals(doc.getElementById("after"), null, "the parser waits with its inline script");
+    await finishFrame(frame);
+    assert_array_equals(frame.contentWindow.order, ["inline"], "completion releases the script");
+    assert_equals(doc.getElementById("after").textContent, "after");
+  }, name + " blocks and releases a written inline script");
+}
+
+for (const [name, markup] of [
+  ["print stylesheet", `<link rel='stylesheet' media='print' href='${delayedSheet}'>`],
+  ["disabled stylesheet", `<link rel='stylesheet' disabled href='${delayedSheet}'>`],
+  ["alternate stylesheet", `<link rel='alternate stylesheet' title='other' href='${delayedSheet}'>`],
+  ["dynamic stylesheet", `<script>const s=document.createElement('link');s.rel='stylesheet';s.href='${delayedSheet}';document.head.appendChild(s);<\/script>`],
+  ["stylesheet enabled after creation", `<link id='s' rel='stylesheet' disabled href='${delayedSheet}'><script>document.getElementById('s').disabled=false;<\/script>`],
+  ["stylesheet relationship added after creation", `<link id='s' href='${delayedSheet}'><script>document.getElementById('s').rel='stylesheet';<\/script>`],
+  ["style without critical subresources", "<style>body { color: green; }</style>"],
+]) {
+  promise_test(async t => {
+    const frame = await writtenFrame(t);
+    const doc = frame.contentDocument;
+    doc.write(markup + "<script>window.order.push('inline');<\/script><p id='after'>after</p>");
+    assert_array_equals(frame.contentWindow.order, ["inline"], "inline is ready synchronously");
+    assert_equals(doc.getElementById("after").textContent, "after", "the parser continues");
+    await finishFrame(frame);
+    assert_array_equals(frame.contentWindow.order, ["inline"]);
+  }, name + " does not block a written inline script");
+}
+</script>

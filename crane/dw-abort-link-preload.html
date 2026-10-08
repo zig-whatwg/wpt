@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.stop cancels a link preload request</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const link = frame.contentDocument.createElement("link");
+  link.rel = "preload";
+  link.as = "fetch";
+  link.href = "/common/slow.py?delay=500";
+  let loads = 0;
+  link.onload = () => loads++;
+  frame.contentDocument.head.appendChild(link);
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 800));
+  assert_equals(loads, 0);
+}, "window.stop prevents a pending link preload from later firing load");
+</script>

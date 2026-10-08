@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deferred scripts remain rooted until their ordered execution</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/html/semantics/scripting-1/the-script-element/execution-timing/testlib/testlib.js"></script>
+<script>
+const queueTest = async_test("A detached ready deferred script survives while an earlier script is fetching");
+addEventListener("DOMContentLoaded", queueTest.step_func_done(() => {
+  assert_array_equals(eventOrder, ["external script #1", "external script #2"]);
+}));
+</script>
+<script defer src="/html/semantics/scripting-1/the-script-element/execution-timing/scripts/include-1.js?pipe=trickle(d1)"></script>
+<script id="detached-defer" defer src="/html/semantics/scripting-1/the-script-element/execution-timing/scripts/include-2.js"
+        onload="queueTest.step(() => assert_equals(this.queueMarker, 'kept'))"></script>
+<script>
+document.getElementById("detached-defer").queueMarker = "kept";
+document.getElementById("detached-defer").remove();
+setTimeout(queueTest.step_func(() => {
+  if (self.TestUtils && TestUtils.gc) TestUtils.gc();
+  else {
+    let garbage = [];
+    for (let i = 0; i < 300000; i++) garbage.push({i, s: "x" + i});
+    garbage = null;
+  }
+}), 100);
+</script>
+<body>

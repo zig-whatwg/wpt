@@ -1,0 +1,44 @@
+<!doctype html>
+<head><meta charset=utf-8>
+<title>Removing blockers preserves callback cancellation and next-frame order</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script type=module async blocking=render id=blocker>
+import './resources/dw-render-dependency.js?pipe=trickle(d0.6)&removed';
+window.graphRan = true;
+</script>
+<script>
+var seen = [];
+const cancelled = requestAnimationFrame(() => seen.push('cancelled'));
+requestAnimationFrame(() => {
+  seen.push('first');
+  requestAnimationFrame(() => seen.push('next'));
+});
+requestAnimationFrame(() => seen.push('second'));
+// The timer runs while render blocking suppresses frame dispatch.
+setTimeout(() => {
+  cancelAnimationFrame(cancelled);
+  document.getElementById('blocker').blocking.remove('render');
+}, 0);
+</script>
+</head><body>
+<script>
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  assert_array_equals(seen, ['first', 'second']);
+  assert_equals(window.graphRan, undefined);
+  await new Promise(requestAnimationFrame);
+  assert_array_equals(seen, ['first', 'second', 'next']);
+}, 'Token removal releases rendering; deferred cancellation and registration order survive');
+test(() => {
+  const script = document.createElement('script');
+  const tokens = script.blocking;
+  assert_equals(tokens, script.blocking);
+  assert_true(tokens.supports('RENDER'));
+  assert_false(tokens.supports('unknown'));
+  script.blocking = 'render';
+  assert_equals(script.getAttribute('blocking'), 'render');
+  tokens.value = '';
+  assert_equals(script.getAttribute('blocking'), '');
+}, 'blocking reflects a SameObject token list with PutForwards and supported tokens');
+</script>

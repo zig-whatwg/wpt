@@ -1,0 +1,20 @@
+<!doctype html>
+<head><meta charset=utf-8>
+<title>External scripts block through execution and failed module results release</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>var moduleErrors = 0;</script>
+<script async blocking=render src="resources/dw-render-classic.js?pipe=trickle(d0.3)"></script>
+<script type=module async blocking=render src="resources/dw-render-module.js"></script>
+<script type=module async blocking=render onerror="moduleErrors++">
+import './resources/dw-render-dependency.js?pipe=trickle(d0.6)|status(404)&error';
+</script>
+</head><body>
+<script>
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  assert_true(window.externalClassicRan, 'external classic executed');
+  assert_true(window.externalModuleRan, 'external module and descendant executed');
+  assert_equals(moduleErrors, 1, 'null module result fired error before rendering');
+}, 'External classic/module and a failed inline module all release before animation frames');
+</script>

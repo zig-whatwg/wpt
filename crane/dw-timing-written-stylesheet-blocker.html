@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A stylesheet releases a written parser's pending inline script</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const initialLoad = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await initialLoad;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const win = frame.contentWindow;
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write("<script>window.order=[];<\/script>" +
+    "<link rel='stylesheet' href='/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d1)'>" +
+    "<script>window.order.push('inline');<\/script><p id='after'>after</p>");
+  assert_array_equals(win.order, [], "the inline script awaits the stylesheet");
+  assert_equals(doc.getElementById("after"), null, "the pending script pauses its parser");
+  const finished = new Promise(resolve => frame.onload = resolve);
+  doc.close();
+  await finished;
+  assert_array_equals(win.order, ["inline"]);
+  assert_equals(doc.getElementById("after").textContent, "after");
+}, "a written parser resumes its inline script after a blocking stylesheet loads");
+</script>

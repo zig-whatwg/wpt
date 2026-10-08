@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A replacement XHR cancels queued document-abort delivery</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  const events = [];
+  xhr.onreadystatechange = () => events.push(xhr.readyState);
+  xhr.onabort = t.unreached_func("open must cancel the old request's queued abort");
+  xhr.onerror = t.unreached_func("the replacement must not receive an old error");
+  xhr.open("GET", "/common/blank.html?pipe=trickle(d1)");
+  xhr.send();
+  frame.contentWindow.stop();
+  assert_equals(xhr.readyState, xhr.OPENED);
+  xhr.open("GET", "/common/blank.html");
+  assert_array_equals(events, [1], "opening an already opened XHR does not dispatch a state change");
+  const replacement = new Promise(resolve => xhr.onload = resolve);
+  xhr.send();
+  await replacement;
+  assert_equals(xhr.status, 200);
+  assert_equals(xhr.readyState, xhr.DONE);
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(events.filter(state => state === 4).length, 1, "only the replacement reaches DONE");
+}, "open and send after window.stop suppress the old networking task");
+</script>

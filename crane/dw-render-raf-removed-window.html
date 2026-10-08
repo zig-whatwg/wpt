@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Removed Window animation frame requests never run</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html><body>ready';
+  document.body.append(frame);
+  await loaded;
+  const child = frame.contentWindow;
+  const callback = child.Function('window.removedFrameCallbackRan = true');
+  frame.remove();
+  const first = child.requestAnimationFrame(callback);
+  const second = child.requestAnimationFrame(callback);
+  assert_greater_than(first, 0, 'request still returns a handle');
+  assert_greater_than(second, first, 'discarded requests still advance the identifier');
+  child.cancelAnimationFrame(first);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  assert_equals(child.removedFrameCallbackRan, undefined);
+}, 'A saved removed Window accepts handles without invoking its callbacks');
+
+promise_test(async t => {
+  // Distinct child-realm functions make this a retention probe for live-handle
+  // counters and gc_bench as well as a script-visible teardown control.
+  for (let cycle = 0; cycle < 16; ++cycle) {
+    const frame = document.createElement('iframe');
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.srcdoc = '<!doctype html><body>ready';
+    document.body.append(frame);
+    await loaded;
+    const child = frame.contentWindow;
+    frame.remove();
+    for (let request = 0; request < 8; ++request) {
+      child.requestAnimationFrame(child.Function('parent.removedFrameChurnRan = true'));
+    }
+  }
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  assert_equals(window.removedFrameChurnRan, undefined);
+}, 'Post-removal requests across many child realms never run');
+</script>

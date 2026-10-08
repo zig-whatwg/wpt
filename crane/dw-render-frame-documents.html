@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Animation frame document eligibility is captured before callbacks</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+const dependency = new URL('resources/dw-render-dependency.js?pipe=trickle(d0.8)&frame', location).href;
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const seen = [];
+  let seenAtParent;
+  const completed = new Promise(resolve => {
+    window.blockedChildReady = child => {
+      requestAnimationFrame(() => {
+        seenAtParent = seen.slice();
+        child.document.getElementById('blocker').blocking.value = '';
+        child.requestAnimationFrame(() => seen.push('new'));
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          resolve();
+        }));
+      });
+      child.requestAnimationFrame(() => seen.push('old'));
+    };
+  });
+  frame.srcdoc = `<head><script type="module" async blocking="render" id="blocker">import ${JSON.stringify(dependency)};<\/script></head><body><script>parent.blockedChildReady(window);<\/script>`;
+  document.body.append(frame);
+  await completed;
+  assert_array_equals(seenAtParent, [], 'blocked child was excluded at frame start');
+  assert_array_equals(seen, ['old', 'new'], 'deferred entry precedes new registration');
+}, 'An eligible parent unblocks a child for the next frame and preserves deferred order');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  let graphAtCallback;
+  await new Promise(resolve => {
+    window.eligibleChildReady = child => {
+      requestAnimationFrame(() => {
+        child.document.body.remove();
+        const blocker = child.document.createElement('script');
+        blocker.type = 'module';
+        blocker.blocking.value = 'render';
+        blocker.textContent = `import ${JSON.stringify(dependency + '&later')}; window.childGraphRan = true;`;
+        child.document.head.append(blocker);
+      });
+      child.requestAnimationFrame(() => {
+        graphAtCallback = child.childGraphRan;
+        resolve();
+      });
+    };
+    frame.srcdoc = '<head></head><body><script>parent.eligibleChildReady(window);<\/script>';
+    document.body.append(frame);
+  });
+  assert_equals(graphAtCallback, undefined, 'the selected callback runs before the new graph completes');
+}, 'A child eligible at frame start still runs after its parent adds a render blocker');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  let childRan = false;
+  await new Promise(resolve => {
+    window.destroyedChildReady = child => {
+      requestAnimationFrame(() => {
+        frame.remove();
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+      child.requestAnimationFrame(() => { childRan = true; });
+    };
+    frame.srcdoc = '<head></head><body><script>parent.destroyedChildReady(window);<\/script>';
+    document.body.append(frame);
+  });
+  assert_false(childRan, 'a selected callback was canceled by realm teardown');
+}, 'Removing a frame cancels its already selected animation callback');
+</script>

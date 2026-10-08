@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stopping a written parser cancels its blocking stylesheet without executing its script</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const win = frame.contentWindow;
+  const doc = frame.contentDocument;
+  const events = [];
+  frame.onload = () => events.push("frame-load");
+  doc.open();
+  doc.write("<script>window.order=[];<\/script>" +
+    "<link id='sheet' rel='stylesheet' href='/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d1)'>" +
+    "<script>window.order.push('inline');<\/script><p id='after'>after</p>");
+  const sheet = doc.getElementById("sheet");
+  sheet.addEventListener("load", () => events.push("sheet-load"));
+  sheet.addEventListener("error", () => events.push("sheet-error"));
+  doc.addEventListener("DOMContentLoaded", () => events.push("DOMContentLoaded"));
+  assert_array_equals(win.order, [], "the stylesheet blocks the inline script before stop");
+  win.stop();
+  assert_array_equals(win.order, [], "canceling the stylesheet does not execute the aborted script");
+  assert_equals(doc.getElementById("after"), null, "stop discards the remaining parser input");
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_array_equals(win.order, [], "the canceled fetch cannot resume the script later");
+  assert_array_equals(events, [], "an aborted parser and stylesheet fire no completion events");
+}, "window.stop cancels a parser-blocking stylesheet without resuming the aborted inline script");
+</script>

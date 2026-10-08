@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.open inherits the entry document URL</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html?dw-entry#old';
+  document.body.appendChild(frame);
+  await loaded;
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  const expected = new URL(document.URL);
+  expected.hash = '';
+  const length = win.history.length;
+  win.history.replaceState({ retained: 17 }, '');
+  const state = win.history.state;
+  assert_equals(doc.open(), doc);
+  assert_equals(doc.URL, expected.href, 'The entry document supplies the URL');
+  assert_equals(win.location.href, expected.href, 'Location follows the history update');
+  assert_equals(win.history.length, length, 'Opening replaces the current history entry');
+  assert_equals(win.history.state, state, 'The default serializedData preserves the same state object');
+  doc.close();
+}, 'Opening another active document copies the entry URL and replaces history');
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument('detached');
+  doc.open();
+  assert_equals(doc.URL, 'about:blank', 'A document without a navigable does not inherit the entry URL');
+  doc.close();
+}, 'Opening a detached document preserves its URL');
+</script>

@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A nested close preserves the parser until the outer write unwinds</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-close">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  win.order = [];
+  doc.open();
+  doc.write('<body><script>document.close(); order.push("closed");' +
+    'document.write("<p id=inner>inner</p>"); order.push("written");' +
+    '<\/script><p id="after">after</p>');
+  assert_array_equals(win.order, ['closed', 'written']);
+  assert_equals(doc.getElementById('inner').nextElementSibling.id, 'after');
+  const after = doc.getElementById('after');
+  doc.close();
+  assert_equals(doc.getElementById('after'), after);
+}, 'A parser-inserted script can close and continue writing without replay or premature teardown');
+</script>

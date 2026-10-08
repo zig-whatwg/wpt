@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opening replaces parser state and closing emits EOF once</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-open">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.open();
+  doc.write('<p id="old">old</p><!--unfinished');
+  assert_not_equals(doc.getElementById('old'), null);
+  doc.open();
+  doc.write('<title>new</title>');
+  assert_equals(doc.getElementById('old'), null);
+  assert_equals(doc.title, 'new');
+  assert_equals(doc.body, null, 'Running out of characters is not EOF');
+  doc.close();
+  const body = doc.body;
+  assert_not_equals(body, null, 'Explicit EOF inserts the implicit body');
+  doc.close();
+  assert_equals(doc.body, body, 'Repeated close does not repeat EOF processing');
+}, 'Reopening resets partial tokens and close supplies exactly one EOF');
+</script>

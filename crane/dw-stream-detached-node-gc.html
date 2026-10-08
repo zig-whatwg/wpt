@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A persistent parser retains an open element removed from the DOM</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-stack-of-open-elements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.open();
+  doc.write('<body><div id="open">before');
+  const weak = (() => {
+    const element = doc.getElementById('open');
+    assert_not_equals(element, null);
+    element.remove();
+    return new WeakRef(element);
+  })();
+  await new Promise(resolve => step_timeout(resolve, 0));
+  if (typeof gc === 'function') {
+    gc();
+    gc();
+  }
+  doc.write('<span id="nested">after</span></div><p id="live">live</p>');
+  const open = weak.deref();
+  assert_not_equals(open, undefined, 'The parser stack keeps its detached element alive');
+  assert_equals(open.querySelector('#nested').textContent, 'after');
+  assert_equals(doc.getElementById('nested'), null, 'The removed element stays removed');
+  assert_equals(doc.getElementById('live').textContent, 'live');
+  doc.close();
+}, 'The parser keeps its detached open element alive across writes and collection');
+</script>

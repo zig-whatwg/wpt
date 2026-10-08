@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A container document's stylesheet blocks its child document's scripts</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  let loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write("<iframe id='child' src='/common/blank.html'></iframe>");
+  const child = doc.getElementById("child");
+  await new Promise(resolve => child.onload = resolve);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const childDoc = child.contentDocument;
+  child.contentWindow.ran = false;
+  childDoc.open();
+  doc.write("<link rel='stylesheet' href='/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d1)'>");
+  childDoc.write("<script>window.ran=true;<\/script><p id='after'>after</p>");
+  assert_false(child.contentWindow.ran, "the immediate container document blocks the child script");
+  assert_equals(childDoc.getElementById("after"), null);
+  const childLoaded = new Promise(resolve => child.onload = resolve);
+  childDoc.close();
+  loaded = new Promise(resolve => frame.onload = resolve);
+  doc.close();
+  await childLoaded;
+  assert_true(child.contentWindow.ran, "completion of the container's sheet resumes the child");
+  assert_equals(childDoc.getElementById("after").textContent, "after");
+  await loaded;
+}, "a container stylesheet blocks and releases its child document's written parser");
+</script>

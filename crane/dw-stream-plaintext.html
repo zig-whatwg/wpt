@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A plaintext tokenizer state survives successive document writes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.open();
+  doc.write('<body><p>before<plaintext>Filler ');
+  const plaintext = doc.querySelector('plaintext');
+  assert_not_equals(plaintext, null);
+  assert_equals(plaintext.parentElement, doc.body, 'The plaintext start tag closes the paragraph');
+  doc.write('<b>literal &amp;\r\n');
+  assert_equals(plaintext.textContent, 'Filler <b>literal &amp;\n');
+  assert_equals(plaintext.children.length, 0, 'Later markup is plaintext');
+  doc.close();
+  assert_equals(doc.querySelector('plaintext'), plaintext);
+}, 'Plaintext remains literal across writes and close');
+</script>

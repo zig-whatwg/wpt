@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document cancellation queues XHR request error steps</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function loadedFrame(t) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  return frame;
+}
+
+promise_test(async t => {
+  const frame = await loadedFrame(t);
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  xhr.open("GET", "/common/blank.html?pipe=trickle(d1)");
+  const events = [];
+  xhr.onreadystatechange = () => events.push("state:" + xhr.readyState);
+  xhr.onabort = () => events.push("abort:" + xhr.readyState);
+  xhr.onerror = t.unreached_func("stop must report abort rather than error");
+  xhr.onload = t.unreached_func("the stopped request must not load");
+  const ended = new Promise(resolve => xhr.onloadend = () => {
+    events.push("loadend:" + xhr.readyState);
+    resolve();
+  });
+  xhr.send();
+  frame.contentWindow.stop();
+  assert_equals(xhr.readyState, xhr.OPENED, "stop preserves readyState until the networking task");
+  assert_array_equals(events, [], "request error events must not run inside stop");
+  await Promise.resolve();
+  assert_array_equals(events, [], "request error events must not run in a microtask");
+  await ended;
+  assert_array_equals(events, ["state:4", "abort:4", "loadend:4"]);
+  assert_equals(xhr.status, 0);
+}, "window.stop queues XHR abort and loadend after the current task");
+
+promise_test(async t => {
+  const frame = await loadedFrame(t);
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  xhr.open("GET", "/common/blank.html?pipe=trickle(d1)");
+  const events = [];
+  xhr.onreadystatechange = () => events.push("state:" + xhr.readyState);
+  xhr.onabort = () => events.push("abort:" + xhr.readyState);
+  xhr.onloadend = () => events.push("loadend:" + xhr.readyState);
+  xhr.send();
+  xhr.abort();
+  assert_array_equals(events, ["state:4", "abort:4", "loadend:4"]);
+  assert_equals(xhr.readyState, xhr.UNSENT, "public abort keeps its synchronous final reset");
+}, "explicit xhr.abort remains synchronous");
+</script>

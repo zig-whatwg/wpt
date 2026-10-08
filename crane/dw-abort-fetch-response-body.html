@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stopping a document errors a fetch response body with AbortError</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  const response = await frame.contentWindow.fetch("/fetch/api/resources/trickle.py?ms=200&count=10");
+  const body = response.text().then(
+    () => assert_unreached("response body should abort"),
+    error => {
+      assert_equals(error.name, "AbortError");
+      assert_equals(error.constructor, frame.contentWindow.DOMException);
+    });
+  frame.contentWindow.stop();
+  await body;
+}, "window.stop errors an already exposed fetch response body with AbortError");
+</script>

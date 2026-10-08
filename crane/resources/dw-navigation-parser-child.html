@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset=utf-8>
+<script>
+const id = window.dwId || new URL(location.href).searchParams.get('id');
+function report(event) { parent.postMessage({kind: 'dw-navigation', id, event}, '*'); }
+addEventListener('DOMContentLoaded', () => report('DOMContentLoaded'));
+report('ready');
+</script>
+<link rel=stylesheet href="/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d2)">
+<script>report('script')</script>
+<p id=after>after</p>

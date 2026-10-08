@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nested script-created document writes are parsed in insertion order</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  win.order = [];
+  doc.open();
+  doc.write('<p id="before">before</p><script>' +
+    'order.push("script"); document.open();' +
+    'document.write("<p id=inner>inner</p>");' +
+    'order.push(document.getElementById("inner").textContent);' +
+    '<\/script><p id="after">after</p>');
+  assert_array_equals(win.order, ['script', 'inner'], 'The inner write completes during script execution');
+  assert_equals(doc.getElementById('before').textContent, 'before', 'Open from the parser script is ignored');
+  assert_equals(doc.getElementById('inner').nextElementSibling.id, 'after');
+  doc.close();
+  assert_array_equals(win.order, ['script', 'inner'], 'Close does not execute the script again');
+}, 'Parser scripts run before write returns and nested writes precede remaining input');
+</script>

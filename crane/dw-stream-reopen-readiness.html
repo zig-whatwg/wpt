@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reopening during parser completion abandons the old completion steps</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  const doc = frame.contentDocument;
+  let reopened = false;
+  const events = [];
+  doc.open();
+  doc.write("<body id=old>old");
+  doc.addEventListener("readystatechange", () => {
+    if (doc.readyState !== "interactive" || reopened) return;
+    reopened = true;
+    doc.open();
+    doc.write("<body id=new>new");
+    doc.addEventListener("DOMContentLoaded", () => events.push("DOMContentLoaded"));
+    frame.contentWindow.addEventListener("load", () => events.push("load"));
+  });
+  doc.close();
+  assert_true(reopened, "the old parser's interactive listener ran");
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_equals(doc.body.id, "new");
+  assert_equals(doc.readyState, "loading", "the new parser has not received EOF");
+  assert_array_equals(events, [], "old parser completion cannot finish the new parser");
+  doc.close();
+}, "A readiness listener can reopen the document without the old close finishing its new parser");
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A character-at-a-time written script writes plaintext before its table</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-intable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  let checked = false;
+  window.craneCheckWrittenPlaintext = t.step_func(() => {
+    checked = true;
+    assert_equals(doc.body.children[0].localName, 'plaintext');
+    assert_equals(doc.body.children[0].textContent, 'Filler ');
+    assert_equals(doc.body.children[1].localName, 'table');
+  });
+  t.add_cleanup(() => { delete window.craneCheckWrittenPlaintext; });
+  const source = '<script>document.write("<table><plaintext>Filler "); document.close();' +
+    'parent.craneCheckWrittenPlaintext();<\/script>';
+  for (const character of source) doc.write(character);
+  assert_true(checked, 'The completed written script ran before write returned');
+}, 'A written plaintext element is foster-parented before its table while the outer parser is active');
+</script>

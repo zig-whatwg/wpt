@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Descendant abort tasks do not affect a later active document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const outer = document.createElement("iframe");
+  t.add_cleanup(() => outer.remove());
+  const loaded = new Promise(resolve => outer.onload = resolve);
+  outer.src = "/common/blank.html";
+  document.body.appendChild(outer);
+  await loaded;
+  const child = outer.contentDocument.createElement("iframe");
+  outer.contentDocument.body.appendChild(child);
+  const replacement = new Promise((resolve, reject) => {
+    child.onload = () => {
+      child.onload = null;
+      child.contentWindow.fetch("/common/blank.html").then(resolve, reject);
+    };
+  });
+  child.srcdoc = "<!doctype html><p>replacement</p>";
+  outer.contentWindow.stop();
+  assert_equals((await replacement).status, 200);
+}, "a descendant navigation queued before stop preserves its replacement document's fetch");
+</script>

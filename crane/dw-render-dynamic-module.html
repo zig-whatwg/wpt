@@ -1,0 +1,32 @@
+<!doctype html>
+<head><meta charset=utf-8>
+<title>A dynamic inline module prepared before body blocks rendering</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+var completed = false;
+const blocking = document.createElement('script');
+blocking.type = 'module';
+blocking.blocking = 'render';
+blocking.textContent = `import './resources/dw-render-dependency.js?pipe=trickle(d0.3)&dynamic'; completed = true;`;
+document.head.append(blocking);
+</script>
+</head><body>
+<script>
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  assert_true(completed);
+}, 'Dynamic inline module acquired before body blocks animation frames');
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  const afterBody = document.createElement('script');
+  afterBody.type = 'module';
+  afterBody.blocking.value = 'render';
+  var afterBodyRan = false;
+  window.afterBodyCompleted = () => { afterBodyRan = true; };
+  afterBody.textContent = `import './resources/dw-render-dependency.js?pipe=trickle(d0.3)&after-body'; afterBodyCompleted();`;
+  document.head.append(afterBody);
+  await new Promise(requestAnimationFrame);
+  assert_false(afterBodyRan, 'body prevents further render-blocking additions');
+}, 'A module prepared after body does not acquire render blocking');
+</script>

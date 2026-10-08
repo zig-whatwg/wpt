@@ -1,0 +1,11 @@
+<!doctype html>
+<script>
+new MutationObserver((records, observer) => {
+  if (records.some(record => Array.from(record.addedNodes).some(node => node.id === 'victim'))) {
+    observer.disconnect();
+    document.open();
+    document.write('<body>replacement');
+    document.close();
+  }
+}).observe(document.documentElement, {childList:true, subtree:true});
+</script><body>old<script id="victim" type="module">window.victimRan=true;</script><p>old after</p>

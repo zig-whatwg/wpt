@@ -1,0 +1,25 @@
+<!doctype html>
+<head><meta charset=utf-8>
+<title>Unsupported blocking tokens do not block an inline module</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+const unsupported = document.createElement('script');
+unsupported.type = 'module';
+unsupported.blocking.value = 'unknown';
+unsupported.textContent = `import './resources/dw-render-dependency.js?pipe=trickle(d0.6)&unknown'; window.unknownRan = true;`;
+document.head.append(unsupported);
+const verticalTab = document.createElement('script');
+verticalTab.type = 'module';
+verticalTab.setAttribute('blocking', 'render\vother');
+verticalTab.textContent = `import './resources/dw-render-dependency.js?pipe=trickle(d0.6)&vertical-tab'; window.verticalTabRan = true;`;
+document.head.append(verticalTab);
+</script>
+</head><body>
+<script>
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  assert_equals(window.unknownRan, undefined);
+  assert_equals(window.verticalTabRan, undefined);
+}, 'Unknown tokens and vertical-tab-separated render do not acquire blockers');
+</script>

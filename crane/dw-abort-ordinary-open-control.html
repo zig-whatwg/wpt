@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Ordinary document.open preserves pending requests</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  xhr.open("GET", "/common/slow.py?delay=100");
+  const request = new Promise((resolve, reject) => {
+    xhr.onload = resolve;
+    xhr.onabort = () => reject(new Error("ordinary open aborted XHR"));
+    xhr.onerror = () => reject(new Error("XHR failed"));
+    xhr.send();
+  });
+  const response = frame.contentWindow.fetch("/common/slow.py?delay=100");
+  frame.contentDocument.open();
+  frame.contentDocument.write("<p>replacement</p>");
+  frame.contentDocument.close();
+  await request;
+  assert_equals(xhr.status, 200);
+  assert_equals((await response).status, 200);
+}, "document.open without a pending navigation preserves XHR and fetch");
+</script>

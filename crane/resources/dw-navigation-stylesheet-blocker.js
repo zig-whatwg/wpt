@@ -1,0 +1,1 @@
+dwNavigationEvents.push("external");

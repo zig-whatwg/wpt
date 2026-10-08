@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.open rejects a pending fetch with AbortError</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  let openReturned = false;
+  const result = frame.contentWindow.fetch("/common/slow.py?delay=1500").then(
+    () => assert_unreached("fetch should abort"),
+    error => {
+      assert_true(openReturned, "promise reactions run after document.open returns");
+      assert_equals(error.name, "AbortError");
+      assert_equals(error.constructor, frame.contentWindow.DOMException);
+    });
+  frame.contentWindow.location.href = "/common/slow.py?delay=2000";
+  frame.contentDocument.open();
+  openReturned = true;
+  await result;
+}, "document.open while navigating rejects fetch in its realm with AbortError");
+</script>

@@ -1,0 +1,22 @@
+<!doctype html>
+<head>
+<meta charset=utf-8>
+<title>Both deferred and async inline modules block animation frames</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>var completed = [];</script>
+<script type=module blocking="RENDER unknown">
+import {loaded} from './resources/dw-render-dependency.js?pipe=trickle(d0.3)&deferred';
+completed.push('deferred');
+</script>
+<script type=module async blocking=render>
+import {loaded} from './resources/dw-render-dependency.js?pipe=trickle(d0.6)&async';
+completed.push('async');
+</script>
+</head><body>
+<script>
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  assert_array_equals(completed.slice().sort(), ['async', 'deferred']);
+}, 'All render blockers execute before animation frames');
+</script>

@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Module fetches use a cookie jar with independent allocation ownership</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  document.cookie = "dw_module_allocator=present; path=/";
+  t.add_cleanup(() => { document.cookie = "dw_module_allocator=; Max-Age=0; path=/"; });
+  assert_true(document.cookie.includes("dw_module_allocator=present"));
+  const namespace = await import("./dw-timing-module-dependency.mjs?cookie-allocator");
+  assert_true(namespace.ready);
+}, "a same-origin module fetch completes when the Browser cookie jar is populated");
+</script>

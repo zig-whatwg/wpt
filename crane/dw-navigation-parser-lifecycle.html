@@ -1,0 +1,92 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>Navigation parser continuation in child documents</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+let serial = 0;
+const observed = new Map();
+addEventListener('message', event => {
+  if (!event.data || event.data.kind !== 'dw-navigation') return;
+  const entry = observed.get(event.data.id);
+  if (entry) entry.events.push(event.data.event);
+});
+
+async function waitingFrame(t, srcdoc = false, bytes = false) {
+  const id = String(++serial);
+  const frame = document.createElement('iframe');
+  const entry = {events: [], frame};
+  observed.set(id, entry);
+  t.add_cleanup(() => { frame.remove(); observed.delete(id); });
+  const ready = new Promise(resolve => {
+    const listener = event => {
+      if (event.data && event.data.kind === 'dw-navigation' &&
+          event.data.id === id && event.data.event === 'ready') {
+        removeEventListener('message', listener);
+        resolve();
+      }
+    };
+    addEventListener('message', listener);
+    t.add_cleanup(() => removeEventListener('message', listener));
+  });
+  const resource = bytes ? 'dw-navigation-parser-bytes.html' : 'dw-navigation-parser-child.html';
+  const url = '/crane/resources/' + resource + '?id=' + id;
+  if (srcdoc) {
+    const source = await (await fetch(url)).text();
+    frame.srcdoc = '<script>window.dwId=' + JSON.stringify(id) + '<\/script>' + source;
+  } else frame.src = url;
+  document.body.append(frame);
+  await ready;
+  assert_equals(frame.contentDocument.readyState, 'loading', 'the stylesheet wait preserves loading');
+  assert_equals(frame.contentDocument.getElementById('after'), null, 'remaining input has not run yet');
+  return entry;
+}
+
+async function completeFrame(t, srcdoc, bytes = false) {
+  const entry = await waitingFrame(t, srcdoc, bytes);
+  await new Promise(resolve => entry.frame.addEventListener('load', resolve, {once: true}));
+  assert_equals(entry.frame.contentDocument.getElementById('after').textContent, bytes ? 'café' : 'after');
+  assert_equals(entry.frame.contentDocument.readyState, 'complete');
+  // Message tasks precede the frame load task queued by completely finish loading.
+  assert_array_equals(entry.events, ['ready', 'script', 'DOMContentLoaded']);
+  if (bytes) assert_equals(entry.frame.contentDocument.characterSet, 'windows-1252');
+}
+
+promise_test(t => completeFrame(t, false), 'HTTP child parsing resumes and reaches actual EOF');
+promise_test(t => completeFrame(t, true), 'srcdoc child parsing resumes and reaches actual EOF');
+promise_test(t => completeFrame(t, false, true), 'a late meta encoding change retains original navigation bytes across a wait');
+
+promise_test(async t => {
+  const entry = await waitingFrame(t);
+  const document = entry.frame.contentDocument;
+  document.open();
+  document.write('<!doctype html><p id=replacement>replacement');
+  document.close();
+  await new Promise(resolve => t.step_timeout(resolve, 2500));
+  assert_equals(document.getElementById('replacement').textContent, 'replacement');
+  assert_equals(document.getElementById('after'), null);
+  assert_array_equals(entry.events, ['ready'], 'the canceled old script and EOF never run');
+}, 'document.open cancels a child navigation waiting on a stylesheet');
+
+promise_test(async t => {
+  const entry = await waitingFrame(t);
+  const document = entry.frame.contentDocument;
+  entry.frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 2500));
+  assert_equals(document.readyState, 'complete');
+  assert_equals(document.getElementById('after'), null);
+  assert_array_equals(entry.events, ['ready'], 'abort runs neither the blocked script nor normal EOF events');
+}, 'window.stop cancels a child navigation waiting on a stylesheet');
+
+promise_test(async t => {
+  const entry = await waitingFrame(t);
+  const document = entry.frame.contentDocument;
+  entry.frame.remove();
+  if (typeof gc === 'function') gc();
+  await new Promise(resolve => t.step_timeout(resolve, 2500));
+  assert_equals(document.getElementById('after'), null);
+  assert_array_equals(entry.events, ['ready'], 'a removed frame never resumes its old parser');
+}, 'removing a child cancels its navigation parser while a stylesheet waits');
+</script>

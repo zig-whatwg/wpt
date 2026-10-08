@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An old parser's load wait does not complete its replacement parser</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  win.order = [];
+  doc.open();
+  doc.write('<!doctype html><body><script id="old" async ' +
+      'src="/crane/resources/script-inserted-log.js?name=old&pipe=trickle(d0.3)\"><\/script>');
+  const old = doc.getElementById("old");
+  doc.close();
+  assert_equals(doc.readyState, "interactive", "old parser stopped and waits for its async script");
+
+  doc.open();
+  doc.write('<!doctype html><body><script src="/crane/resources/script-inserted-log.js?name=new&pipe=trickle(d0.05)\"><\/script>');
+  let loads = 0;
+  win.addEventListener("load", () => ++loads);
+  // document.open preserves the async queue, while replacing its parser.
+  const oldDelivered = new Promise((resolve, reject) => {
+    old.onload = resolve;
+    old.onerror = () => reject(new Error("old async script fetch failed"));
+  });
+  await oldDelivered;
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_array_equals(win.order, ["new", "old"], "both response tasks have completed");
+  assert_equals(doc.readyState, "loading", "the replacement parser still awaits explicit EOF");
+  assert_equals(loads, 0, "old lifecycle work must not fire replacement load");
+  const replacementLoaded = new Promise(resolve => win.addEventListener("load", resolve, {once: true}));
+  doc.close();
+  await replacementLoaded;
+  assert_equals(loads, 1);
+}, "finishing a preserved async script cannot finish a replacement parser before document.close");
+</script>

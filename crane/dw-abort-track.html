@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.stop aborts an out-of-band text track fetch</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const media = frame.contentDocument.createElement("video");
+  const track = frame.contentDocument.createElement("track");
+  track.src = "/common/slow.py?delay=1500";
+  media.appendChild(track);
+  frame.contentDocument.body.appendChild(media);
+  let errors = 0;
+  track.onerror = () => errors++;
+  track.track.mode = "hidden";
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(track.readyState, track.LOADING);
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(track.readyState, track.ERROR);
+  assert_equals(errors, 1, "cancellation fails the track before the response arrives");
+}, "window.stop sets a loading text track to ERROR and fires error");
+</script>

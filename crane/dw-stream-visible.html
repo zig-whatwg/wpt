@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.write processes a script-created parser before close</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.open();
+  doc.write('<!doctype html><html><head></head><body><p id="first">one</p>');
+  const first = doc.getElementById('first');
+  assert_not_equals(first, null, 'A complete element is visible before close');
+  assert_equals(first.textContent, 'one');
+  first.marker = 17;
+  doc.write('<p id="second">two</p>');
+  assert_equals(doc.getElementById('first'), first, 'A later write preserves node identity');
+  assert_equals(first.marker, 17);
+  assert_equals(doc.getElementById('second').textContent, 'two');
+  doc.close();
+  assert_equals(doc.getElementById('first'), first, 'EOF preserves existing nodes');
+}, 'Written markup is visible immediately and is never replayed at close');
+</script>

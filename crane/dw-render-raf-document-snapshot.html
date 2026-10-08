@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Animation frame callback handles are snapshotted per document</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+async function readyFrame(t) {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html><body>ready';
+  document.body.append(frame);
+  await loaded;
+  return frame;
+}
+
+for (const initiallyQueued of [false, true]) {
+  promise_test(async t => {
+    const frame = await readyFrame(t);
+    const child = frame.contentWindow;
+    const seen = [];
+    let childTurnFrame;
+    let nestedFrame;
+    let frameNumber = 0;
+    if (initiallyQueued) child.requestAnimationFrame(() => seen.push('old'));
+    await new Promise(resolve => requestAnimationFrame(() => {
+      frameNumber = 1;
+      child.requestAnimationFrame(() => {
+        childTurnFrame = frameNumber;
+        seen.push('new');
+        child.requestAnimationFrame(() => { nestedFrame = frameNumber; });
+      });
+      requestAnimationFrame(() => {
+        frameNumber = 2;
+        requestAnimationFrame(resolve);
+      });
+    }));
+    assert_equals(childTurnFrame, 1, 'parent registration joins the selected child turn');
+    assert_equals(nestedFrame, 2, 'child registration during its own turn waits');
+    assert_array_equals(seen, initiallyQueued ? ['old', 'new'] : ['new']);
+  }, `Parent registration runs in the same frame in a child with ${initiallyQueued ? 'an initial' : 'no initial'} callback`);
+}
+
+promise_test(async t => {
+  const frame = await readyFrame(t);
+  const child = frame.contentWindow;
+  const dependency = new URL('resources/dw-render-dependency.js?pipe=trickle(d0.8)&raf-block', location).href;
+  let parentRan = false;
+  let childAfterParent;
+  let graphAtChild;
+  // Queue the child first so document ordering, rather than registration order,
+  // determines whether the blocker is added before its turn.
+  const completed = new Promise(resolve => {
+    child.requestAnimationFrame(() => {
+      childAfterParent = parentRan;
+      graphAtChild = child.graphRan;
+      resolve();
+    });
+    requestAnimationFrame(() => {
+      parentRan = true;
+      child.document.body.remove();
+      const blocker = child.document.createElement('script');
+      blocker.type = 'module';
+      blocker.blocking.value = 'render';
+      blocker.textContent = `import ${JSON.stringify(dependency)}; window.graphRan = true;`;
+      child.document.head.append(blocker);
+    });
+  });
+  await completed;
+  assert_true(childAfterParent);
+  assert_equals(graphAtChild, undefined, 'eligibility remains the decision made at frame start');
+}, 'An initially eligible child runs after its parent adds a render blocker');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const dependency = new URL('resources/dw-render-dependency.js?pipe=trickle(d0.8)&raf-unblock', location).href;
+  // Observe the parsed body while the async module is still fetching.
+  let complete;
+  const completed = new Promise(resolve => { complete = resolve; });
+  window.rafBlockedChildReady = child => {
+    let frameNumber = 0;
+    let oldFrame;
+    let newFrame;
+    child.requestAnimationFrame(() => { oldFrame = frameNumber; });
+    requestAnimationFrame(() => {
+      frameNumber = 1;
+      child.document.getElementById('blocker').blocking.value = '';
+      child.requestAnimationFrame(() => { newFrame = frameNumber; });
+      requestAnimationFrame(() => {
+        frameNumber = 2;
+        requestAnimationFrame(() => complete({oldFrame, newFrame}));
+      });
+    });
+  };
+  t.add_cleanup(() => { delete window.rafBlockedChildReady; });
+  frame.srcdoc = `<head><script type="module" async blocking="render" id="blocker">import ${JSON.stringify(dependency)};<\/script></head><body><script>parent.rafBlockedChildReady(window);<\/script>`;
+  document.body.append(frame);
+  const observation = await completed;
+  assert_equals(observation.oldFrame, 2);
+  assert_equals(observation.newFrame, 2);
+}, 'An initially blocked child waits until the next frame after its parent unblocks it');
+</script>

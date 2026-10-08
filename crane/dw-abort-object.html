@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.stop cancels an object resource fetch</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const object = frame.contentDocument.createElement("object");
+  let loads = 0;
+  object.onload = () => loads++;
+  object.data = "/common/slow.py?delay=500&pipe=header(Content-Type,image/png)";
+  frame.contentDocument.body.appendChild(object);
+  // The element's setup task must run and start its fetch before stop.
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_equals(loads, 0, "the slow resource is still pending before stop");
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 800));
+  assert_equals(loads, 0);
+}, "window.stop prevents a pending object resource from firing load");
+</script>

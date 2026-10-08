@@ -1,0 +1,13 @@
+<!doctype html>
+<script>
+const control = parent.__dwCheckpointRemoved;
+const outer = parent;
+new MutationObserver((records, observer) => {
+  if (records.some(record => Array.from(record.addedNodes).some(node => node.id === 'victim'))) {
+    observer.disconnect();
+    frameElement.remove();
+    if (outer.gc) outer.gc();
+    control.done();
+  }
+}).observe(document.documentElement, {childList:true, subtree:true});
+</script><body>old<script id="victim">control.victimRan=true;</script><p>old after</p>

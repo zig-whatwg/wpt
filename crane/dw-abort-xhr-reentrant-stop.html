@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An abort listener can send a new XHR during window.stop</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  let aborts = 0;
+  const replacement = new Promise((resolve, reject) => {
+    xhr.onabort = () => {
+      ++aborts;
+      assert_equals(aborts, 1);
+      xhr.open("GET", "/common/blank.html");
+      xhr.onload = resolve;
+      xhr.onerror = () => reject(new Error("replacement failed"));
+      xhr.send();
+    };
+  });
+  xhr.open("GET", "/common/slow.py?delay=1500");
+  xhr.send();
+  frame.contentWindow.stop();
+  await replacement;
+  assert_equals(aborts, 1);
+  assert_equals(xhr.status, 200);
+}, "window.stop preserves a request started reentrantly by the old request's abort listener");
+</script>

@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>abort listeners may remove their document's frame</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const child = frame.contentWindow;
+  const request = new child.XMLHttpRequest();
+  let aborts = 0;
+  let resolveAbort;
+  const aborted = new Promise(resolve => resolveAbort = resolve);
+  request.onabort = t.step_func(() => {
+    ++aborts;
+    frame.remove();
+    resolveAbort();
+  });
+  request.open("GET", "/common/blank.html?pipe=trickle(d1)");
+  request.send();
+  const ignored = child.fetch("/common/blank.html?pipe=trickle(d1)");
+  ignored.catch(() => {});
+  child.stop();
+  await aborted;
+  assert_equals(aborts, 1);
+  assert_false(frame.isConnected);
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+}, "window.stop remains safe when a request abort listener destroys its frame");
+</script>

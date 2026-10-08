@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.stop cancels a pending image request</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const image = frame.contentDocument.createElement("img");
+  let loads = 0;
+  image.onload = () => loads++;
+  image.src = "/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/resources/slow-png.py";
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 2300));
+  assert_equals(loads, 0);
+}, "window.stop prevents a pending image from later firing load");
+</script>

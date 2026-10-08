@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Written textarea preserves RCDATA and its leading newline rule</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.open();
+  const input = '<textarea><span>Filler</span> &amp; &lt; </nottextarea></TEXTAREA><p>after</p>';
+  for (const character of input) doc.write(character);
+  const textarea = doc.querySelector('textarea');
+  assert_equals(textarea.textContent, '<span>Filler</span> & < </nottextarea>');
+  assert_equals(textarea.children.length, 0);
+  assert_equals(textarea.nextElementSibling.textContent, 'after');
+  doc.close();
+  assert_equals(doc.querySelector('textarea'), textarea);
+}, 'Textarea stays in RCDATA across every single-character write and restores body parsing at its end tag');
+
+test(() => {
+  const cases = [
+    ['\n\nFiller', '\nFiller'],
+    ['\r\nFiller\r\n', 'Filler\n'],
+    ['&#10;\nFiller', '\nFiller'],
+    ['x\nFiller', 'x\nFiller']
+  ];
+  for (const [content, expected] of cases) {
+    const doc = document.implementation.createHTMLDocument('');
+    doc.open();
+    doc.write('<textarea>');
+    doc.write('');
+    for (const character of content) doc.write(character);
+    doc.write('</textarea><p>\nfollowing</p><textarea></textarea><p>\nlast</p>');
+    assert_equals(doc.querySelector('textarea').textContent, expected);
+    assert_equals(doc.querySelectorAll('p')[0].textContent, '\nfollowing');
+    assert_equals(doc.querySelectorAll('p')[1].textContent, '\nlast');
+    doc.close();
+  }
+}, 'Textarea ignores exactly one first LF token despite empty writes, split CRLF, or character references');
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Failed module resources notify all waiting roots and can be retried</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const endpoint = "/html/semantics/scripting-1/the-script-element/module-fetch-tester.py";
+  const key = token();
+  const url = endpoint + "?key=" + key + "&pipe=trickle(d1)";
+  const pending = [];
+  const start = performance.now();
+  for (let i = 0; i < 2; i++) {
+    const element = document.createElement("script");
+    element.type = "module";
+    element.src = url;
+    t.add_cleanup(() => element.remove());
+    pending.push(new Promise((resolve, reject) => {
+      element.onerror = resolve;
+      element.onload = () => reject(new Error("initial failed resource unexpectedly loaded"));
+    }));
+    document.body.appendChild(element);
+  }
+  assert_less_than(performance.now() - start, 500);
+  await Promise.all(pending);
+  const count = () => fetch(endpoint + "?key=" + key + "&action=stat").then(r => r.text()).then(Number);
+  assert_equals(await count(), 1, "The failed fetch completed both waiting roots");
+  assert_equals((await import(url)).default, "hello", "A transport failure leaves no permanent null cache entry");
+  assert_equals(await count(), 2, "Retry fetched the failed URL again");
+}, "A failed shared module fetch notifies each root, then a later import retries it");
+</script>

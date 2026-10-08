@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Failed parser script preparation restores force async</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script id="empty-script"></script>
+<script id="unsupported-script" type="text/plain">unused</script>
+<script id="async-unsupported-script" type="text/plain" async>unused</script>
+<script>
+test(() => {
+  assert_true(document.getElementById("empty-script").async);
+}, "An empty parser script becomes force async after preparation returns");
+test(() => {
+  assert_true(document.getElementById("unsupported-script").async);
+}, "An unsupported parser script becomes force async after preparation returns");
+test(() => {
+  const script = document.getElementById("async-unsupported-script");
+  script.removeAttribute("async");
+  assert_false(script.async);
+}, "An explicit async attribute does not restore force async after failed preparation");
+</script>

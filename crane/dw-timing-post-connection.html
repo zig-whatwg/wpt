@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Script post-connection runs after children changed steps</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script id="outer"></script>
+<script>
+test(() => {
+  window.dwTimingOrder = [];
+  const inner = document.createElement("script");
+  inner.textContent = "dwTimingOrder.push('inner')";
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(document.createTextNode("dwTimingOrder.push('outer-start');"));
+  fragment.appendChild(inner);
+  fragment.appendChild(document.createTextNode("dwTimingOrder.push('outer-end');"));
+  document.getElementById("outer").appendChild(fragment);
+  assert_array_equals(dwTimingOrder, ["outer-start", "outer-end", "inner"]);
+}, "An outer script's child text executes before a nested script's post-connection steps");
+</script>

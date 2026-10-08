@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Navigation suppresses old-document XHR cancellation events</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const firstLoad = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await firstLoad;
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  // Python handlers accept POST; static-file routes only accept GET, so a
+  // POST to blank.html would complete immediately without its trickle pipe.
+  xhr.open("POST", "/xhr/resources/delay.py?ms=1000");
+  const events = [];
+  for (const name of ["abort", "error", "load", "loadend"])
+    xhr.addEventListener(name, () => events.push(name));
+  for (const name of ["abort", "error"])
+    xhr.upload.addEventListener(name, () => events.push("upload." + name));
+  xhr.send("pending request");
+  const replacementLoad = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html?replacement";
+  await replacementLoad;
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_array_equals(events, [], "the old document's request error task must be discarded");
+}, "navigation discards XHR abort delivery belonging to the old document");
+</script>

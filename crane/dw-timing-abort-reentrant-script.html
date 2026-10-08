@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A script started by an XHR abort listener survives the current stop</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  const win = frame.contentWindow;
+  const doc = frame.contentDocument;
+  win.order = [];
+  const oldScript = doc.createElement("script");
+  oldScript.src = "/crane/resources/script-inserted-log.js?name=old&pipe=trickle(d1)";
+  doc.body.appendChild(oldScript);
+  const xhr = new win.XMLHttpRequest();
+  xhr.open("GET", "/common/slow.py?delay=1500");
+  const replacement = new Promise((resolve, reject) => {
+    xhr.onabort = () => {
+      const script = doc.createElement("script");
+      script.src = "/crane/resources/script-inserted-log.js?name=replacement";
+      script.onload = resolve;
+      script.onerror = () => reject(new Error("replacement script failed"));
+      doc.body.appendChild(script);
+    };
+    xhr.send();
+  });
+  win.stop();
+  await replacement;
+  assert_array_equals(win.order, ["replacement"]);
+  await new Promise(resolve => t.step_timeout(resolve, 1200));
+  assert_array_equals(win.order, ["replacement"], "the old script response stays canceled");
+}, "window.stop preserves a script fetch started during XHR abort dispatch");
+</script>

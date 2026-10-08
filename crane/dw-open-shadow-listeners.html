@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.open erases shadow-including event listeners</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  const host = doc.createElement('div');
+  doc.body.appendChild(host);
+  const root = host.attachShadow({mode: 'closed'});
+  const child = doc.createElement('button');
+  root.appendChild(child);
+  let calls = 0;
+  root.addEventListener('probe', () => ++calls);
+  child.addEventListener('probe', () => ++calls);
+  child.onclick = () => ++calls;
+  doc.open();
+  root.dispatchEvent(new Event('probe'));
+  child.dispatchEvent(new Event('probe'));
+  child.dispatchEvent(new Event('click'));
+  assert_equals(calls, 0, 'Every shadow-inclusive descendant loses its listeners and handlers');
+  doc.close();
+}, 'Listeners of a retained closed shadow tree are erased by document.open');
+</script>

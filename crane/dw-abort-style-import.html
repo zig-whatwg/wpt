@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window.stop cancels a style element's critical import</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const style = frame.contentDocument.createElement("style");
+  style.textContent = '@import url("/common/slow.py?delay=500&pipe=header(Content-Type,text/css)");';
+  let loads = 0;
+  style.onload = () => loads++;
+  frame.contentDocument.head.appendChild(style);
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 800));
+  assert_equals(loads, 0);
+}, "window.stop prevents a pending CSS import from later firing load");
+</script>

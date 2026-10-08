@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Track membership follows its direct parent through ancestor removal</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/media.html#text-track-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const media = document.createElement('video');
+  const track = document.createElement('track');
+  track.id = 'captions';
+  const list = media.textTracks;
+  t.add_cleanup(() => media.remove());
+  let added = 0;
+  let removed = 0;
+  list.addEventListener('addtrack', () => ++added);
+  list.addEventListener('removetrack', () => ++removed);
+  const firstAddition = new Promise(resolve => list.addEventListener('addtrack', resolve, {once:true}));
+  media.append(track);
+  await firstAddition;
+  assert_equals(added, 1);
+  document.body.append(media);
+  media.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(track.parentNode, media);
+  assert_equals(list.length, 1);
+  assert_equals(list.getTrackById('captions'), track.track);
+  assert_equals(added, 1, 'Removing an ancestor does not add the track again');
+  assert_equals(removed, 0, 'Removing an ancestor does not remove track membership');
+  const directRemoval = new Promise(resolve => list.addEventListener('removetrack', resolve, {once:true}));
+  track.remove();
+  await directRemoval;
+  assert_equals(list.length, 0);
+  assert_equals(list.getTrackById('captions'), null);
+  assert_equals(added, 1);
+  assert_equals(removed, 1, 'Removing the track itself dispatches one membership event');
+}, 'Ancestor removal preserves track membership without duplicate events');
+</script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A fetch started by an XHR abort listener survives the current stop</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  const oldFetch = frame.contentWindow.fetch("/common/slow.py?delay=1500").then(
+    () => assert_unreached("old fetch should abort"),
+    error => assert_equals(error.name, "AbortError"));
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  xhr.open("GET", "/common/slow.py?delay=1500");
+  const replacement = new Promise((resolve, reject) => {
+    xhr.onabort = () => frame.contentWindow.fetch("/common/blank.html").then(resolve, reject);
+    xhr.send();
+  });
+  frame.contentWindow.stop();
+  assert_equals((await replacement).status, 200);
+  await oldFetch;
+}, "window.stop snapshots all fetch owners before running XHR abort listeners");
+</script>

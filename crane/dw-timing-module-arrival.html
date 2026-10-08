@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Module graph fetching must not block parser execution</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+window.dwModuleOrder = [];
+window.dwModuleStart = performance.now();
+const moduleArrival = async_test("A slow async module graph executes after a fast deferred classic script");
+addEventListener("load", moduleArrival.step_func_done(() => {
+  assert_array_equals(dwModuleOrder, ["defer", "module"]);
+}));
+</script>
+<script type="module" async src="dw-timing-module-graph.mjs"></script>
+<script defer src="data:text/javascript,window.dwModuleOrder.push('defer')"></script>
+<script>
+test(() => {
+  assert_less_than(performance.now() - dwModuleStart, 500);
+}, "The parser continues while an async module dependency is fetching");
+</script>
+<body>

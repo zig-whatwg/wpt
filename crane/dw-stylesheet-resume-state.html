@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stylesheet completion resumes every stage of a written parser</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const initialLoad = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await initialLoad;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  doc.open();
+  doc.write("<script>window.order=[];<\/script>" +
+    "<link id='sheet' rel='stylesheet' href='/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d1)'>" +
+    "<script>window.order.push('inline');<\/script><p id='after'>after</p>");
+  let sheetEvent = "none";
+  let frameLoaded = false;
+  const sheet = doc.getElementById("sheet");
+  sheet.onload = () => sheetEvent = "load";
+  sheet.onerror = () => sheetEvent = "error";
+  frame.onload = () => frameLoaded = true;
+  doc.close();
+  await new Promise(resolve => t.step_timeout(resolve, 1800));
+  const state = "sheet=" + sheetEvent + ", order=" + JSON.stringify(win.order) +
+    ", after=" + !!doc.getElementById("after") + ", readiness=" + doc.readyState +
+    ", frameLoaded=" + frameLoaded;
+  assert_equals(sheetEvent, "load", state);
+  assert_array_equals(win.order, ["inline"], state);
+  assert_equals(doc.getElementById("after").textContent, "after", state);
+  assert_equals(doc.readyState, "complete", state);
+  assert_true(frameLoaded, state);
+}, "a completed stylesheet resumes its inline script, remaining input, EOF, and document load");
+</script>

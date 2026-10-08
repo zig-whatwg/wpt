@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Written scripts in already ready frames delay their parent load</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<iframe id="closed"></iframe>
+<iframe id="unclosed"></iframe>
+<iframe id="reopened"></iframe>
+<iframe id="removed"></iframe>
+<iframe id="empty"></iframe>
+<script>
+const closedTest = async_test("a written external script and its nested write precede parent load");
+const unclosedTest = async_test("a written script releases parent load without document.close");
+const reopenedTest = async_test("a muted iframe load can start another written script delay");
+const removalTest = async_test("removing a written frame releases its parent load delay");
+const emptyTest = async_test("opening an already ready frame without resources does not delay parent load");
+const writtenScripts = window.writtenScripts = [];
+
+function writeScript(frame, label, delay, close) {
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write('<!doctype html><html data-probe="' + label + '"><body>' +
+      '<script src="/crane/resources/dw-iframe-written-script.js?pipe=trickle(d' + delay + ')\"><\/script>');
+  if (close) doc.close();
+}
+
+writeScript(document.getElementById("closed"), "closed", 0.15, true);
+writeScript(document.getElementById("unclosed"), "unclosed", 0.25, false);
+const reopened = document.getElementById("reopened");
+writeScript(reopened, "first", 0.05, true);
+reopened.onload = () => {
+  if (!writtenScripts.includes("first")) return;
+  reopened.onload = null;
+  writeScript(reopened, "second", 0.3, true);
+};
+const removed = document.getElementById("removed");
+writeScript(removed, "removed", 2, false);
+// This is the last delay to end, so removal itself must wake the parent.
+setTimeout(() => removed.remove(), 600);
+document.getElementById("empty").contentDocument.open();
+
+addEventListener("load", () => {
+  closedTest.step(() => {
+    assert_true(writtenScripts.includes("closed"));
+    assert_true(writtenScripts.includes("closed:nested"));
+  });
+  closedTest.done();
+  unclosedTest.step(() => {
+    assert_true(writtenScripts.includes("unclosed"));
+    assert_equals(document.getElementById("unclosed").contentDocument.readyState, "loading");
+  });
+  unclosedTest.done();
+  reopenedTest.step(() => {
+    assert_true(writtenScripts.includes("first"));
+    assert_true(writtenScripts.includes("second"));
+  });
+  reopenedTest.done();
+  removalTest.step(() => {
+    assert_false(removed.isConnected);
+    assert_false(writtenScripts.includes("removed"));
+  });
+  removalTest.done();
+  emptyTest.step(() => {
+    assert_equals(document.getElementById("empty").contentDocument.readyState, "loading");
+  });
+  emptyTest.done();
+});
+</script>

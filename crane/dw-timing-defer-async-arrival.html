@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parser async scripts execute on response arrival after deferred scripts</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/html/semantics/scripting-1/the-script-element/execution-timing/testlib/testlib.js"></script>
+<script>
+const arrival = async_test("A slow parser async response runs after fast deferred scripts and DOMContentLoaded");
+addEventListener("DOMContentLoaded", arrival.step_func(() => {
+  assert_array_equals(eventOrder, ["external script #2"]);
+}));
+addEventListener("load", arrival.step_func_done(() => {
+  assert_array_equals(eventOrder, ["external script #2", "external script #1"]);
+}));
+</script>
+<script async src="/html/semantics/scripting-1/the-script-element/execution-timing/scripts/include-1.js?pipe=trickle(d1)"></script>
+<script defer src="/html/semantics/scripting-1/the-script-element/execution-timing/scripts/include-2.js"></script>
+<body>

@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stopping a document aborts requests in descendant documents</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const outer = document.createElement("iframe");
+  t.add_cleanup(() => outer.remove());
+  const loaded = new Promise(resolve => outer.onload = resolve);
+  outer.src = "/common/blank.html";
+  document.body.appendChild(outer);
+  await loaded;
+  outer.onload = null;
+  const child = outer.contentDocument.body.appendChild(outer.contentDocument.createElement("iframe"));
+  const grandchild = child.contentDocument.body.appendChild(child.contentDocument.createElement("iframe"));
+  const fetches = [child, grandchild].map(frame => frame.contentWindow.fetch("/common/slow.py?delay=1500").then(
+    () => assert_unreached("descendant fetch should abort"),
+    error => assert_equals(error.name, "AbortError")));
+  const xhrs = [child, grandchild].map(frame => {
+    const xhr = new frame.contentWindow.XMLHttpRequest();
+    xhr.open("GET", new URL("/common/slow.py?delay=1500", location.href).href);
+    return new Promise((resolve, reject) => {
+      xhr.onabort = resolve;
+      xhr.onload = () => reject(new Error("descendant XHR completed"));
+      xhr.onerror = () => reject(new Error("descendant XHR failed without abort"));
+      xhr.send();
+    });
+  });
+  outer.contentWindow.stop();
+  await Promise.all([...fetches, ...xhrs]);
+}, "window.stop aborts XHR and fetch in child and grandchild documents");
+</script>

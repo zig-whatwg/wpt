@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Animation frames visit documents in tree order</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+async function makeFrame(t, container = document.body) {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html><body>ready';
+  container.append(frame);
+  await loaded;
+  return frame;
+}
+const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+promise_test(async t => {
+  const frame = await makeFrame(t);
+  let childRan = false;
+  frame.contentWindow.requestAnimationFrame(() => { childRan = true; });
+  await new Promise(resolve => requestAnimationFrame(() => {
+    frame.remove();
+    requestAnimationFrame(resolve);
+  }));
+  assert_false(childRan, 'parent removal precedes the child turn despite reverse registration');
+}, 'A parent callback runs before a previously registered child callback');
+
+promise_test(async t => {
+  const first = await makeFrame(t);
+  const second = await makeFrame(t);
+  // Creation order also differs from the DOM order after this move.
+  const moved = new Promise(resolve => second.onload = resolve);
+  document.body.insertBefore(second, first);
+  await moved;
+  const seen = [];
+  first.contentWindow.requestAnimationFrame(() => seen.push('first'));
+  second.contentWindow.requestAnimationFrame(() => seen.push('second'));
+  await nextFrame();
+  await nextFrame();
+  assert_array_equals(seen, ['second', 'first']);
+}, 'Sibling document callbacks follow current container tree order');
+
+promise_test(async t => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  const shadow = host.attachShadow({mode: 'closed'});
+  const shadowFrame = await makeFrame(t, shadow);
+  const lightFrame = await makeFrame(t, host);
+  const seen = [];
+  lightFrame.contentWindow.requestAnimationFrame(() => seen.push('light'));
+  shadowFrame.contentWindow.requestAnimationFrame(() => seen.push('shadow'));
+  await nextFrame();
+  await nextFrame();
+  assert_array_equals(seen, ['shadow', 'light']);
+}, 'Sibling documents follow shadow-including order through a closed shadow root');
+</script>

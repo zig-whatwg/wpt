@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reopening a document discards its suspended parser</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-open">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  win.order = [];
+  doc.open();
+  doc.write("<script src='/crane/resources/script-inserted-log.js?name=discarded&pipe=trickle(d1)'><\/script><p id=old>old</p>");
+  doc.open();
+  doc.write('<p id="new">new</p>');
+  assert_equals(doc.getElementById('new').textContent, 'new', 'The replacement parser is not blocked');
+  doc.close();
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_array_equals(win.order, [], 'The discarded parser script never executes');
+  assert_equals(doc.getElementById('old'), null);
+  assert_equals(doc.getElementById('new').textContent, 'new');
+}, 'Open replaces a waiting parser and its pending script cannot affect the replacement');
+</script>

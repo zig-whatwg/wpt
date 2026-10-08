@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Destroyed document fetches end silently</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const events = [];
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  xhr.open("GET", "/common/slow.py?delay=300");
+  xhr.onabort = () => events.push("abort");
+  xhr.onloadend = () => events.push("loadend");
+  xhr.send();
+  frame.contentWindow.fetch("/common/slow.py?delay=300").then(
+    () => events.push("fetch fulfilled"), () => events.push("fetch rejected"));
+  frame.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 600));
+  assert_array_equals(events, []);
+}, "Destroying a document discards its request tasks and leaves its fetch promise unsettled");
+</script>

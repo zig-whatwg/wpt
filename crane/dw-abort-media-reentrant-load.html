@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Media loading started by an abort handler survives window.stop</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const media = frame.contentDocument.createElement("video");
+  media.preload = "auto";
+  frame.contentDocument.body.appendChild(media);
+  const started = new Promise(resolve => media.onloadstart = resolve);
+  media.src = "/common/slow.py?delay=1500";
+  await started;
+  let aborted = false;
+  media.onabort = t.step_func(() => {
+    media.onabort = null;
+    aborted = true;
+    media.src = "/common/slow.py?delay=1600";
+    media.load();
+  });
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_true(aborted);
+  assert_equals(media.networkState, media.NETWORK_LOADING);
+  assert_equals(media.error, null);
+}, "media.load from an abort listener preserves the replacement load");
+</script>

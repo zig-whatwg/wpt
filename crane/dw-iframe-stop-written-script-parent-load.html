@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stopping a written child script releases its parent load delay</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#potentially-delays-the-load-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<iframe id="frame"></iframe>
+<script>
+const test = async_test("stop clears a written script delay in an already ready child");
+window.writtenScripts = [];
+const frame = document.getElementById("frame");
+const doc = frame.contentDocument;
+let stopped = false;
+doc.open();
+doc.write('<!doctype html><html data-probe="canceled"><body>' +
+    '<script src="/crane/resources/dw-iframe-written-script.js?pipe=trickle(d2)\"><\/script>');
+setTimeout(() => {
+  frame.contentWindow.stop();
+  stopped = true;
+}, 100);
+addEventListener("load", () => {
+  test.step(() => {
+    assert_true(stopped, "parent waits until the child's resource delay is canceled");
+    assert_array_equals(writtenScripts, [], "the stopped script never executes");
+  });
+  test.done();
+});
+</script>

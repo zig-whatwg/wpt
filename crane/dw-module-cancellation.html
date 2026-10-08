@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Abort and destroy pending module graphs</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function moduleFrame(t) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  return frame;
+}
+function pendingModule(t, frame, events) {
+  const element = frame.contentDocument.createElement("script");
+  element.type = "module";
+  element.textContent = 'import "/crane/dw-timing-module-dependency.mjs?pipe=trickle(d1)"; window.dwModuleAfterAbort();';
+  frame.contentWindow.dwModuleAfterAbort = () => events.push("evaluated");
+  element.onload = () => events.push("load");
+  element.onerror = () => events.push("error");
+  const start = performance.now();
+  frame.contentDocument.body.appendChild(element);
+  assert_less_than(performance.now() - start, 500,
+    "A pending dependency allows the caller to abort before evaluation");
+}
+promise_test(async t => {
+  const frame = await moduleFrame(t);
+  const events = [];
+  pendingModule(t, frame, events);
+  frame.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 1300));
+  assert_array_equals(events, []);
+}, "stop() cancels a module dependency and discards its delivery and evaluation");
+promise_test(async t => {
+  const frame = await moduleFrame(t);
+  const events = [];
+  pendingModule(t, frame, events);
+  frame.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 1300));
+  assert_array_equals(events, []);
+}, "Removing a frame silently destroys its pending module graph");
+promise_test(async t => {
+  const frame = await moduleFrame(t);
+  const events = [];
+  const pending = frame.contentWindow.eval('import("/crane/dw-timing-module-dependency.mjs?pipe=trickle(d1)")');
+  pending.then(() => events.push("fulfilled"), () => events.push("rejected"));
+  frame.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 1300));
+  assert_array_equals(events, [], "Destroying an import's realm releases its owners without settling the promise");
+}, "Removing a frame silently discards its dynamic import with a parent-realm reaction attached");
+</script>

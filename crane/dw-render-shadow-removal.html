@@ -1,0 +1,33 @@
+<!doctype html>
+<head><meta charset=utf-8>
+<title>Removing a host releases scripts in closed and nested shadow trees</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+const host = document.createElement('div');
+document.head.append(host);
+const shadow = host.attachShadow({mode: 'closed'});
+const nested = document.createElement('span');
+shadow.append(nested);
+const nestedShadow = nested.attachShadow({mode: 'open'});
+const scripts = [shadow, nestedShadow].map((root, index) => {
+  const script = document.createElement('script');
+  script.type = 'module';
+  script.blocking.value = 'render';
+  script.textContent = `import './resources/dw-render-dependency.js?pipe=trickle(d0.8)&shadow-${index}'; window.shadowGraphRan = true;`;
+  root.append(script);
+  return script;
+});
+setTimeout(() => host.remove(), 0);
+</script>
+</head><body>
+<script>
+promise_test(async () => {
+  await new Promise(requestAnimationFrame);
+  assert_false(host.isConnected);
+  assert_false(shadow.isConnected);
+  assert_false(nestedShadow.isConnected);
+  for (const script of scripts) assert_false(script.isConnected);
+  assert_equals(window.shadowGraphRan, undefined, 'host removal released rendering before the module graphs completed');
+}, 'Host removal unblocks closed and nested shadow descendants before execution');
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Aborting a script-created parser updates readiness without normal end events</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#abort-a-parser">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  doc.open();
+  doc.write('<body><div id="kept">kept</div><script>window.abortScriptRan = true;');
+  const readiness = [];
+  let normalEndEvents = 0;
+  doc.addEventListener('readystatechange', () => readiness.push(doc.readyState));
+  doc.addEventListener('DOMContentLoaded', () => ++normalEndEvents);
+  win.addEventListener('load', () => ++normalEndEvents);
+  win.stop();
+  assert_array_equals(readiness, ['interactive', 'complete']);
+  assert_equals(doc.readyState, 'complete');
+  assert_equals(doc.getElementById('kept').textContent, 'kept');
+  assert_equals(win.abortScriptRan, undefined, 'Popping an unfinished script does not execute it');
+  doc.write('<p id="discarded">discarded</p>');
+  doc.close();
+  assert_equals(doc.getElementById('discarded'), null, 'Future input is discarded');
+  assert_array_equals(readiness, ['interactive', 'complete'], 'Close does not finish the aborted parser again');
+  assert_equals(normalEndEvents, 0);
+}, 'Stop aborts the active parser with interactive then complete and no normal end events');
+</script>

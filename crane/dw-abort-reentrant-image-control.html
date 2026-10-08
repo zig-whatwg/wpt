@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An abort listener can start an image request</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.appendChild(frame);
+  await loaded;
+  frame.onload = null;
+  const child = frame.contentWindow;
+  const image = new child.Image();
+  const freshLoad = new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error("fresh image failed"));
+  });
+  const request = new child.XMLHttpRequest();
+  request.onabort = () => image.src = "/images/green.png?pipe=trickle(d0.1)";
+  request.open("GET", "/common/slow.py?delay=1500");
+  request.send();
+  child.stop();
+  await freshLoad;
+  assert_true(image.complete);
+}, "a document abort preserves an image request started by another owner's abort listener");
+</script>

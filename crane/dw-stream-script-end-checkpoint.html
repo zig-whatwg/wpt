@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parser script-end checkpoint runs before script preparation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-incdata">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const type of ['', ' type="module"']) {
+  promise_test(t => new Promise(resolve => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    frame.onload = t.step_func(() => {
+      const win = frame.contentWindow;
+      assert_equals(win.victimRan, undefined, 'The old script was never prepared');
+      assert_equals(frame.contentDocument.body.textContent, 'replacement');
+      resolve();
+    });
+    frame.src = type ? 'resources/dw-stream-checkpoint-module.html' : 'resources/dw-stream-checkpoint-classic.html';
+    document.body.appendChild(frame);
+  }), 'A mutation observer can replace the parser before preparing an upcoming ' + (type ? 'module' : 'classic') + ' script');
+}
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  doc.open();
+  doc.write('<body>');
+  win.order = [];
+  const observer = new win.MutationObserver(() => win.order.push('observer'));
+  observer.observe(doc.body, {childList:true});
+  t.add_cleanup(() => observer.disconnect());
+  doc.write('<script>order.push("script");<\/script>');
+  assert_array_equals(win.order, ['script'], 'A running caller prevents a parser checkpoint');
+  await Promise.resolve();
+  assert_array_equals(win.order, ['script', 'observer']);
+  doc.close();
+}, 'Nested write parsing does not run a microtask checkpoint while the caller script is running');
+
+promise_test(t => new Promise(resolve => {
+  const frame = document.createElement('iframe');
+  const key = '__dwCheckpointUnclosed';
+  window[key] = {
+    victimRan: false,
+    done: t.step_func(() => t.step_timeout(() => {
+      assert_equals(frame.contentDocument.body.textContent, 'replacement');
+      assert_equals(frame.contentDocument.readyState, 'loading', 'The replacement parser still awaits close');
+      assert_false(window[key].victimRan, 'The old script was never prepared');
+      frame.contentDocument.close();
+      resolve();
+    }, 0))
+  };
+  t.add_cleanup(() => { delete window[key]; frame.remove(); });
+  frame.src = 'resources/dw-stream-checkpoint-unclosed.html';
+  document.body.appendChild(frame);
+}), 'The canceled parser does not finish an unclosed replacement document');
+
+promise_test(t => new Promise(resolve => {
+  const frame = document.createElement('iframe');
+  const key = '__dwCheckpointRemoved';
+  window[key] = {
+    victimRan: false,
+    done: t.step_func(() => t.step_timeout(() => {
+      assert_false(frame.isConnected);
+      assert_false(window[key].victimRan, 'The old script was never prepared after frame removal');
+      resolve();
+    }, 0))
+  };
+  t.add_cleanup(() => { delete window[key]; frame.remove(); });
+  frame.src = 'resources/dw-stream-checkpoint-removed.html';
+  document.body.appendChild(frame);
+}), 'A script-end mutation observer can remove the frame and collect before parser preparation');
+</script>

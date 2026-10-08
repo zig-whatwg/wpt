@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Script post-connection observes atomic fragment insertion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="container"></div>
+<script>
+test(() => {
+  window.dwTimingOrder = [];
+  const first = document.createElement("script");
+  const removed = document.createElement("script");
+  const last = document.createElement("script");
+  removed.id = "removed-script";
+  first.textContent = "dwTimingOrder.push('first'); document.getElementById('removed-script').remove();";
+  removed.textContent = "dwTimingOrder.push('removed')";
+  last.textContent = "dwTimingOrder.push('last')";
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(first);
+  fragment.appendChild(removed);
+  fragment.appendChild(last);
+  document.getElementById("container").appendChild(fragment);
+  assert_array_equals(dwTimingOrder, ["first", "last"]);
+}, "A script removed by an earlier atomically inserted script does not prepare");
+</script>

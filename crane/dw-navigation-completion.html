@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Child navigation completion includes document readiness</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const [type, source] of [
+  ["application/xml", "<root/>"],
+  ["application/xhtml+xml", '<html xmlns="http://www.w3.org/1999/xhtml"/>'],
+  ["image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"/>']
+]) {
+  async_test(t => {
+    const url = URL.createObjectURL(new Blob([source], {type}));
+    const outer = document.createElement("iframe");
+    const token = "dw-complete-" + type;
+    const listener = t.step_func(event => {
+      if (event.source !== outer.contentWindow || event.data !== token) return;
+      assert_equals(outer.contentDocument.querySelector("iframe").contentDocument.readyState,
+                    "complete", "The child reaches complete before parent load");
+      t.done();
+    });
+    addEventListener("message", listener);
+    t.add_cleanup(() => {
+      removeEventListener("message", listener);
+      outer.remove();
+      URL.revokeObjectURL(url);
+    });
+    outer.srcdoc = '<!doctype html><script>addEventListener("load", () => parent.postMessage(' +
+      JSON.stringify(token) + ', "*"));<\/script><iframe src="' + url + '"></iframe>';
+    document.body.append(outer);
+  }, type + " child completion releases its parent's load wait");
+}
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  frame.onload = t.step_func_done(() => {
+    assert_not_equals(frame.contentDocument.getElementById("after"), null,
+                      "All input after the stylesheet wait was consumed");
+    assert_equals(frame.contentDocument.readyState, "complete");
+  });
+  frame.src = "/crane/resources/dw-navigation-parser-child.html?id=completion";
+  document.body.append(frame);
+}, "A suspended HTML navigation does not use parserless completion");
+</script>

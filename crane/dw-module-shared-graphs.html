@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Concurrent module graphs share fetching without blocking script</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const key = token();
+  const endpoint = "/html/semantics/scripting-1/the-script-element/module-fetch-tester.py";
+  const url = endpoint + "?key=" + key + "&mode=always-success&pipe=trickle(d1)";
+  const roots = [];
+  const readyByName = new Map();
+  window.dwSharedGraphValues = [];
+  window.dwSharedGraphComplete = (name, value) => {
+    dwSharedGraphValues.push([name, value]);
+    readyByName.get(name)();
+  };
+  t.add_cleanup(() => {
+    delete window.dwSharedGraphComplete;
+    delete window.dwSharedGraphValues;
+  });
+  function root(name) {
+    const element = document.createElement("script");
+    element.type = "module";
+    element.textContent = `import value from ${JSON.stringify(url)}; window.dwSharedGraphComplete(${JSON.stringify(name)}, value);`;
+    t.add_cleanup(() => element.remove());
+    const ready = new Promise((resolve, reject) => {
+      // Inline modules signal completion through evaluation; execute-script
+      // step 8 fires load only for scripts from an external file.
+      readyByName.set(name, resolve);
+      element.onload = t.unreached_func("An inline module does not fire load");
+      element.onerror = () => reject(new Error("module graph failed"));
+    });
+    document.body.appendChild(element);
+    roots.push(ready);
+  }
+  const start = performance.now();
+  root("first");
+  root("second");
+  assert_less_than(performance.now() - start, 500,
+    "Preparing two inline graphs must leave their shared dependency fetching");
+  const imported = import(url);
+  await Promise.all(roots);
+  assert_equals((await imported).default, "hello");
+  assert_equals(dwSharedGraphValues.length, 2);
+  assert_true(dwSharedGraphValues.every(value => value[1] === "hello"));
+  const count = await fetch(endpoint + "?key=" + key + "&action=stat").then(r => r.text());
+  assert_equals(Number(count), 1, "Both roots and import() coalesce one in-flight module resource");
+}, "Two roots and a dynamic import share one asynchronous module fetch");
+</script>

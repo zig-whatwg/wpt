@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Initial about:blank XHR uses the creator document's base URL</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const base = document.head.appendChild(document.createElement("base"));
+  base.href = new URL("/common/", location.href).href;
+  t.add_cleanup(() => base.remove());
+  // The initial document's about base URL is captured when the frame is created.
+  const second = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => second.remove());
+  assert_equals(second.contentDocument.URL, "about:blank");
+  const xhr = new second.contentWindow.XMLHttpRequest();
+  xhr.open("GET", "blank.html");
+  await new Promise((resolve, reject) => {
+    xhr.onload = resolve;
+    xhr.onerror = () => reject(new Error("relative XHR failed"));
+    xhr.send();
+  });
+  assert_equals(xhr.status, 200);
+  assert_equals(xhr.responseURL, new URL("/common/blank.html", location.href).href);
+}, "Initial about:blank XHR resolves a path-relative URL against the creator's base");
+</script>

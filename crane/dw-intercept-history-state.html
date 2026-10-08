@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Intercepted navigation clears classic state while history API state is preserved</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function historyFrame(t) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.append(frame);
+  await loaded;
+  frame.contentWindow.navigation.onnavigate = event => event.intercept({handler: () => Promise.resolve()});
+  return frame.contentWindow;
+}
+for (const historyMode of ["push", "replace"]) {
+  promise_test(async t => {
+    const child = await historyFrame(t);
+    child.history.replaceState({before: historyMode}, "", "#before");
+    const cachedState = child.history.state;
+    assert_equals(cachedState.before, historyMode);
+    await child.navigation.navigate("#after", {history: historyMode}).committed;
+    assert_equals(child.location.hash, "#after");
+    assert_equals(child.history.state, null, "A navigation without classic state clears it");
+  }, `Intercepted ${historyMode} navigation clears the previous classic history state`);
+}
+promise_test(async t => {
+  const child = await historyFrame(t);
+  child.history.replaceState({before: true}, "", "#before");
+  child.history.pushState({after: true}, "", "#after");
+  assert_equals(child.location.hash, "#after");
+  assert_true(child.history.state.after, "Explicit serialized state survives interception");
+}, "Intercepted history.pushState keeps its explicit classic state");
+for (const value of [undefined, null]) {
+  promise_test(async t => {
+    const child = await historyFrame(t);
+    child.history.replaceState("previous", "", "#before");
+    child.history.pushState(value, "", "#after");
+    assert_equals(child.history.state, value, "A present serialized value remains present");
+  }, `Intercepted history.pushState preserves explicit ${String(value)}`);
+}
+</script>
