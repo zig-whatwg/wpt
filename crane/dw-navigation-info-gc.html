@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Navigation info is collectible after repeated reentrant navigation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigation-api-method-tracker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const ready = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.append(frame);
+  await ready;
+  const nav = frame.contentWindow.navigation;
+  // A separate synchronous activation avoids retaining the final loop's
+  // lexical environment in this async function across its await.
+  const {weak, seen, failures} = makeNavigations(nav);
+  assert_equals(seen, 128, 'every outer and inner navigate event ran');
+  assert_array_equals(failures, [], 'every info identity assertion passed');
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  const live = weak.flatMap((ref, index) => ref.deref() === undefined ? [] : [index]);
+  assert_array_equals(live, [], 'completed trackers release info, including cycles back to navigation');
+}, 'Reentrant navigation info preserves identity across GC and is released after cancellation');
+function makeNavigations(nav) {
+  const weak = [];
+  const failures = [];
+  let seen = 0;
+  for (let i = 0; i < 64; ++i) {
+    const outer = {kind: 'outer', owner: nav};
+    const inner = {kind: 'inner', owner: nav};
+    weak.push(new WeakRef(outer), new WeakRef(inner));
+    // testharness retains step_func callbacks in t.steps; a plain handler
+    // lets completed closures release their info objects before collection.
+    nav.onnavigate = event => {
+      ++seen;
+      try {
+        TestUtils.gc();
+        if (event.info === outer) {
+          const nested = nav.navigate('#inner', {info: inner});
+          nested.committed.catch(() => {});
+          nested.finished.catch(() => {});
+          TestUtils.gc();
+          assert_equals(event.info, outer, 'nested navigation keeps outer info distinct');
+        } else assert_equals(event.info, inner, 'nested navigation receives its own info');
+      } catch (error) { failures.push(String(error)); }
+      event.preventDefault();
+    };
+    const result = nav.navigate('#outer', {info: outer});
+    result.committed.catch(() => {});
+    result.finished.catch(() => {});
+  }
+  nav.onnavigate = null;
+  return {weak, seen, failures};
+}
+</script>
