@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Iframe removal resumes a waiting parser from a later task</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  win.order = [];
+  doc.open();
+  doc.write("<!doctype html><body><iframe id='child'></iframe>" +
+    "<link id='sheet' rel='stylesheet' href='/html/semantics/scripting-1/the-script-element/execution-timing/css/background.css?pipe=trickle(d1)'>" +
+    "<script>order.push('parser')<\/script>");
+  assert_array_equals(win.order, [], 'stylesheet initially blocks the parser');
+  doc.getElementById('sheet').remove();
+  doc.getElementById('child').remove();
+  win.order.push('after');
+  assert_array_equals(win.order, ['after'], 'remove returns before parser script');
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_array_equals(win.order, ['after', 'parser'], 'queued task resumes the parser');
+  doc.close();
+}, 'iframe.remove does not synchronously run a parser whose stylesheet was removed');
+</script>
