@@ -1,0 +1,191 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>WAV playback on the media clock: ready states, play, pause, seek, ended</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#ready-states">
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#playing-the-media-resource">
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#seeking">
+<!--
+  Under the WPT runner's host backend (tests/wpt_runner/wav_backend.zig), which
+  really decodes WAV PCM. Crane plays nothing out loud: the current playback
+  position moves on the media timeline's clock.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+const wav = '/webaudio/resources/sin_440Hz_-6dBFS_1s.wav';
+const wavDuration = 88202 / 88200;
+const recorded = ['loadstart', 'durationchange', 'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough',
+                  'play', 'playing', 'waiting', 'pause', 'ended', 'seeking', 'seeked', 'error'];
+
+function audioFor(t, url) {
+  const audio = document.createElement('audio');
+  audio.events = [];
+  for (const name of recorded) audio.addEventListener(name, () => audio.events.push(name));
+  audio.src = url;
+  document.body.append(audio);
+  t.add_cleanup(() => { audio.removeAttribute('src'); audio.load(); audio.remove(); });
+  return audio;
+}
+const once = (target, name) => new Promise(resolve => target.addEventListener(name, resolve, {once: true}));
+const failOn = (t, audio) => audio.addEventListener('error', t.unreached_func('media error ' + (audio.error && audio.error.code)));
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  await once(audio, 'canplaythrough');
+  assert_array_equals(audio.events, ['loadstart', 'durationchange', 'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough']);
+  assert_equals(audio.readyState, audio.HAVE_ENOUGH_DATA);
+  assert_true(audio.paused);
+  assert_false(audio.ended);
+  assert_equals(audio.currentTime, 0);
+}, 'the whole file arrived: HAVE_ENOUGH_DATA, through canplay and canplaythrough');
+
+promise_test(async t => {
+  // 1,000 bytes, then two seconds before the rest.
+  const audio = audioFor(t, wav + '?pipe=trickle(1000:d2)');
+  failOn(t, audio);
+  await once(audio, 'loadeddata');
+  assert_equals(audio.readyState, audio.HAVE_CURRENT_DATA, 'data at the position, more to come');
+  assert_false(audio.events.includes('canplaythrough'));
+  await once(audio, 'canplaythrough');
+  assert_equals(audio.readyState, audio.HAVE_ENOUGH_DATA);
+}, 'before the end of the stream, data at the position is HAVE_CURRENT_DATA only');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  await once(audio, 'canplaythrough');
+  audio.events.length = 0;
+  const played = audio.play();
+  await played;
+  assert_array_equals(audio.events, ['play', 'playing'], 'no waiting with enough data');
+  assert_false(audio.paused);
+  const start = audio.currentTime;
+  await new Promise(resolve => t.step_timeout(resolve, 300));
+  const later = audio.currentTime;
+  assert_greater_than(later, start, 'the position moves while playing');
+  assert_equals(audio.currentTime, later, 'currentTime is stable within a task');
+  await once(audio, 'ended');
+  assert_true(audio.ended);
+  assert_true(audio.paused);
+  assert_equals(audio.currentTime, audio.duration);
+  assert_equals(audio.readyState, audio.HAVE_CURRENT_DATA, 'no more data in the direction of playback');
+  const tail = audio.events.slice(audio.events.indexOf('pause'));
+  assert_array_equals(tail, ['pause', 'ended']);
+}, 'play: playing, the clock moves, then pause and ended at the end, HAVE_CURRENT_DATA');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  let updates = 0;
+  audio.addEventListener('timeupdate', () => ++updates);
+  await once(audio, 'canplaythrough');
+  await audio.play();
+  await once(audio, 'ended');
+  // A 1-second resource at one timeupdate per 250ms or so.
+  assert_greater_than_equal(updates, 3, 'timeupdate while playing');
+}, 'time marches on: timeupdate during normal playback');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  await once(audio, 'canplaythrough');
+  await audio.play();
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  audio.pause();
+  assert_true(audio.paused);
+  const position = audio.currentTime;
+  assert_greater_than(position, 0);
+  await once(audio, 'pause');
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(audio.currentTime, position, 'paused: the position does not move');
+  assert_false(audio.ended);
+}, 'pause stops the clock at the current playback position');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  await once(audio, 'canplaythrough');
+  audio.events.length = 0;
+  // With HAVE_ENOUGH_DATA, play() notifies about playing at once, which takes
+  // the pending play promises: the pause that follows has none to reject
+  // (internal play steps 3.4, notify about playing step 1).
+  const played = audio.play();
+  audio.pause();
+  await played;
+  await once(audio, 'pause');
+  assert_array_equals(audio.events, ['play', 'playing', 'pause']);
+}, 'play() then pause() with enough data: the play promise resolves, then pause');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  // Before any data, play() waits: the pause rejects its promise.
+  const played = audio.play();
+  audio.pause();
+  await promise_rejects_dom(t, 'AbortError', played);
+}, 'play() then pause() before data rejects the play promise with AbortError');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  await once(audio, 'canplaythrough');
+  audio.events.length = 0;
+  audio.currentTime = 0.5;
+  assert_true(audio.seeking);
+  assert_equals(audio.currentTime, 0.5);
+  await once(audio, 'seeked');
+  assert_false(audio.seeking);
+  assert_array_equals(audio.events, ['seeking', 'seeked']);
+  assert_equals(audio.currentTime, 0.5);
+  audio.currentTime = 5;
+  await once(audio, 'seeked');
+  assert_equals(audio.currentTime, audio.duration, 'a seek past the end clamps to it');
+  assert_true(audio.ended);
+}, 'setting currentTime seeks: seeking, then seeked');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  await once(audio, 'canplaythrough');
+  audio.currentTime = audio.duration - 0.05;
+  await once(audio, 'seeked');
+  await audio.play();
+  await once(audio, 'ended');
+  audio.events.length = 0;
+  const again = audio.play();
+  assert_equals(audio.currentTime, 0, 'play after the end seeks to the start');
+  await again;
+  assert_true(audio.events.includes('seeking'));
+  assert_true(audio.events.includes('playing'));
+  assert_false(audio.ended);
+}, 'play after ended starts again from the beginning');
+
+promise_test(async t => {
+  const audio = audioFor(t, wav);
+  failOn(t, audio);
+  audio.loop = true;
+  await once(audio, 'canplaythrough');
+  audio.currentTime = audio.duration - 0.05;
+  await once(audio, 'seeked');
+  await audio.play();
+  await once(audio, 'seeked');
+  assert_false(audio.ended);
+  assert_false(audio.paused);
+  assert_less_than(audio.currentTime, 0.5, 'looped to the start');
+  assert_false(audio.events.includes('ended'));
+}, 'a loop attribute seeks to the start instead of ending');
+
+promise_test(async t => {
+  // The header and one byte of a 16-bit sample: metadata, then no sample frame.
+  const audio = audioFor(t, wav + '?pipe=slice(0,45)');
+  await once(audio, 'error');
+  assert_true(audio.events.includes('loadedmetadata'));
+  assert_false(audio.events.includes('loadeddata'));
+  assert_equals(audio.error.code, MediaError.MEDIA_ERR_DECODE, 'a decode error, not a network error');
+  assert_equals(audio.readyState, audio.HAVE_METADATA);
+  assert_equals(audio.networkState, audio.NETWORK_IDLE);
+}, 'a decode error after metadata is MEDIA_ERR_DECODE');
+</script>

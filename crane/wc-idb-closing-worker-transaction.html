@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A closing worker's IndexedDB transaction task is discarded as it is queued, and the call that queued it returns</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/workers.html#dom-workerglobalscope-close">
+<link rel="help" href="https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// close() in a worker sets its closing flag and discards its tasks; the task
+// that called it runs on to its end. In Crane a closing worker's event loop
+// drops a task while it is being queued, so IndexedDB's transaction task can
+// be dropped - and freed - before the call that queued it has returned.
+// Before the fix IDBTransaction's attachTransaction and enqueueRequest went
+// on using the freed task (IDBTransaction.TransactionTask.schedule wrote its
+// `queued` bit into it, and the transaction kept it as its task): a crash in
+// the worker's script, or in the worker realm's end when the transaction was
+// freed. IndexedDB/transaction-inflight-worker-terminate.window.js reaches the
+// same state by chance, when Worker.terminate() lands while the worker's
+// script is inside db.transaction().
+
+function closingWorker(t, step) {
+  const worker = new Worker('resources/wc-idb-closing-worker.js');
+  const name = `wc-idb-closing-worker-${step}-${Date.now()}`;
+  t.add_cleanup(() => { indexedDB.deleteDatabase(name); });
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error(`worker error: ${e.message}`));
+    worker.postMessage({ name, step });
+  });
+}
+
+// The worker's thread ends its realm after the task that closed it: give it
+// time to, so a stale task is reached inside this test, not the next file.
+function workerEnd(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 200));
+}
+
+// A request made in a closing worker never completes: its task is discarded.
+// Crane aborts a transaction whose task is discarded (the loop's drop), so
+// objectStore() may throw InvalidStateError and put() TransactionInactiveError;
+// whichever it is, the call returns to script.
+const returnedOrThrew = ['returned', 'InvalidStateError', 'TransactionInactiveError'];
+
+promise_test(async t => {
+  const report = await closingWorker(t, 'transaction-after-close');
+  assert_equals(report.error, undefined, 'the database opened');
+  assert_equals(report.transaction, 'returned', 'transaction() returns in a closing worker');
+  assert_in_array(report.put, returnedOrThrew, 'put() returns to script');
+  await workerEnd(t);
+}, 'transaction() after close(): its task is discarded as it is queued');
+
+promise_test(async t => {
+  const report = await closingWorker(t, 'request-after-close');
+  assert_equals(report.error, undefined, 'the database opened');
+  assert_equals(report.abort, 'returned', 'abort() returns');
+  assert_in_array(report.put, returnedOrThrew, 'put() returns to script');
+  await workerEnd(t);
+}, 'A request after close() queues a waiting transaction\'s task, which is discarded');
+</script>

@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The WPT runner's host media backend: WAV linear PCM, and only that</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#dom-navigator-canplaytype">
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<!--
+  Crane builds in no decoder; a host supplies them (BrowserConfig.media_backend).
+  The WPT runner is a host that really decodes RIFF/WAVE PCM
+  (tests/wpt_runner/wav_backend.zig). These cases hold under that runner; a
+  host with another backend answers differently, and Crane alone answers "".
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+const wav = '/webaudio/resources/sin_440Hz_-6dBFS_1s.wav';
+// 88,202 data bytes of 44.1 kHz mono 16-bit PCM.
+const wavDuration = 88202 / 88200;
+
+test(() => {
+  for (const tag of ['audio', 'video']) {
+    const media = document.createElement(tag);
+    for (const type of ['audio/wav', 'audio/wave', 'audio/x-wav', 'audio/wav;codecs='])
+      assert_equals(media.canPlayType(type), 'maybe', tag + ' ' + type);
+    for (const type of ['audio/wav; codecs="1"', 'audio/x-wav; codecs=1'])
+      assert_equals(media.canPlayType(type), 'probably', tag + ' ' + type);
+    // audio/webm and video/webm: the runner's WebM backend answers them
+    // (wm-webm-backend.html).
+    for (const type of ['audio/wav; codecs="3"', 'audio/wav; codecs="bogus"',
+                        'audio/ogg', 'audio/mpeg', 'video/mp4', 'application/octet-stream', ''])
+      assert_equals(media.canPlayType(type), '', tag + ' ' + type);
+  }
+}, 'canPlayType answers for WAV PCM, and no other WAV codec');
+
+promise_test(async t => {
+  const audio = document.createElement('audio');
+  const source = document.createElement('source');
+  source.type = 'audio/wav';
+  source.src = wav;
+  const events = [];
+  for (const name of ['loadstart', 'durationchange', 'loadedmetadata', 'loadeddata', 'error'])
+    audio.addEventListener(name, () => events.push(name));
+  source.addEventListener('error', () => events.push('source error'));
+  audio.append(source);
+  document.body.append(audio);
+  t.add_cleanup(() => audio.remove());
+  await new Promise((resolve, reject) => {
+    audio.addEventListener('loadeddata', resolve);
+    audio.addEventListener('error', () => reject(new Error('media error')));
+    source.addEventListener('error', () => reject(new Error('source error: ' + events)));
+  });
+  assert_array_equals(events, ['loadstart', 'durationchange', 'loadedmetadata', 'loadeddata']);
+  assert_true(audio.currentSrc.endsWith(wav), 'currentSrc');
+  assert_approx_equals(audio.duration, wavDuration, 1e-9, 'duration');
+  assert_greater_than_equal(audio.readyState, audio.HAVE_CURRENT_DATA);
+  assert_equals(audio.error, null);
+}, 'a <source type="audio/wav"> is fetched and decoded: loadedmetadata, then loadeddata');
+
+promise_test(async t => {
+  const audio = document.createElement('audio');
+  audio.src = wav + '?pipe=header(Content-Type,audio/wav)';
+  t.add_cleanup(() => audio.removeAttribute('src'));
+  await new Promise((resolve, reject) => {
+    audio.onloadeddata = resolve;
+    audio.onerror = () => reject(new Error('media error ' + (audio.error && audio.error.code)));
+  });
+  assert_approx_equals(audio.duration, wavDuration, 1e-9);
+}, 'a src attribute naming a WAV file loads it');
+
+promise_test(async t => {
+  const audio = document.createElement('audio');
+  // An Ogg file: fetched (no type to refuse it by), then not decodable.
+  audio.src = '/media/sound_5.oga';
+  t.add_cleanup(() => audio.removeAttribute('src'));
+  await new Promise((resolve, reject) => {
+    audio.onerror = resolve;
+    audio.onloadedmetadata = () => reject(new Error('an Ogg file was decoded'));
+  });
+  assert_equals(audio.error.code, MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED);
+  assert_equals(audio.readyState, audio.HAVE_NOTHING);
+}, 'a resource the backend does not decode fails with MEDIA_ERR_SRC_NOT_SUPPORTED');
+
+promise_test(async t => {
+  const audio = document.createElement('audio');
+  const source = document.createElement('source');
+  // audio/ogg: no backend of the runner plays it (audio/webm is the WebM
+  // backend's since wm-webm-backend.html).
+  source.type = 'audio/ogg';
+  source.src = '/media/sound_5.oga';
+  audio.append(source);
+  await new Promise(resolve => source.onerror = resolve);
+  // The source's error task runs before the algorithm resumes at a stable
+  // state and finds no further candidate (children steps 10-22).
+  assert_equals(audio.networkState, audio.NETWORK_LOADING);
+  await new Promise(resolve => step_timeout(resolve, 0));
+  assert_equals(audio.networkState, audio.NETWORK_NO_SOURCE);
+  assert_equals(audio.error, null);
+  assert_equals(audio.readyState, audio.HAVE_NOTHING);
+}, 'a <source> whose type the backend cannot play is refused before fetch');
+</script>

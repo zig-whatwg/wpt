@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Value iterators are the realm's Array.prototype functions</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#define-the-iteration-methods">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="root" class="  a  a b "><p id="p1"></p>text<p id="p2"></p></div>
+<form id="form"><input type="radio" name="r" value="1"><input type="radio" name="r" value="2"></form>
+<iframe id="frame" srcdoc="<span class='x y'>s</span>"></iframe>
+<script>
+// WebIDL 3.7.9 "define the iteration methods" step 1: an interface with an
+// indexed property getter gets %Array.prototype.values% as its
+// %Symbol.iterator% (DefineMethodProperty: not enumerable); with a value
+// iterator (iterable<V>) also %Array.prototype.entries%, keys, values and
+// forEach (CreateDataPropertyOrThrow: writable, enumerable, configurable).
+// The same function objects as the realm's Array.prototype's.
+
+const valueIterators = [
+  ["NodeList", () => document.getElementById("root").childNodes],
+  ["NodeList (static)", () => document.querySelectorAll("#root p")],
+  ["DOMTokenList", () => document.getElementById("root").classList],
+  ["DOMTokenList (relList)", () => document.createElement("a").relList],
+];
+
+for (const name of ["NodeList", "DOMTokenList"]) {
+  test(() => {
+    const proto = self[name].prototype;
+    for (const key of ["entries", "keys", "values", "forEach"]) {
+      const desc = Object.getOwnPropertyDescriptor(proto, key);
+      assert_not_equals(desc, undefined, key);
+      assert_equals(desc.value, Array.prototype[key], key + " identity");
+      assert_true(desc.writable, key + " writable");
+      assert_true(desc.enumerable, key + " enumerable");
+      assert_true(desc.configurable, key + " configurable");
+    }
+    const iter = Object.getOwnPropertyDescriptor(proto, Symbol.iterator);
+    assert_equals(iter.value, Array.prototype[Symbol.iterator], "@@iterator identity");
+    assert_equals(iter.value, Array.prototype.values, "@@iterator is values");
+    assert_true(iter.writable, "@@iterator writable");
+    assert_false(iter.enumerable, "@@iterator enumerable");
+    assert_true(iter.configurable, "@@iterator configurable");
+  }, name + ".prototype holds the realm's Array.prototype functions");
+}
+
+test(() => {
+  const proto = RadioNodeList.prototype;
+  assert_false(Object.prototype.hasOwnProperty.call(proto, "forEach"), "own forEach");
+  assert_equals(proto.forEach, Array.prototype.forEach, "forEach");
+  assert_equals(proto.entries, Array.prototype.entries, "entries");
+  assert_equals(proto.keys, Array.prototype.keys, "keys");
+  assert_equals(proto.values, Array.prototype.values, "values");
+  assert_equals(proto[Symbol.iterator], Array.prototype.values, "@@iterator");
+  const radios = document.getElementById("form").elements.namedItem("r");
+  const seen = [];
+  radios.forEach((input, index, list) => seen.push(input.value + index + (list === radios)));
+  assert_array_equals(seen, ["10true", "21true"]);
+}, "RadioNodeList inherits NodeList's value iterator");
+
+for (const [name, make] of valueIterators) {
+  test(() => {
+    const list = make();
+    const values = Array.from({ length: list.length }, (_, i) => list[i]);
+    const seen = [];
+    const thisArg = {};
+    list.forEach(function (value, index, object) {
+      assert_equals(this, thisArg, "thisArg");
+      assert_equals(object, list, "the list");
+      seen.push([index, value]);
+    }, thisArg);
+    assert_equals(seen.length, list.length, "one call per index");
+    seen.forEach(([index, value], i) => {
+      assert_equals(index, i);
+      assert_equals(value, values[i]);
+    });
+  }, name + ": forEach invokes its callback with value, index and list");
+
+  test(() => {
+    const list = make();
+    const values = Array.from({ length: list.length }, (_, i) => list[i]);
+    const arrayIteratorProto = Object.getPrototypeOf([][Symbol.iterator]());
+    for (const it of [list.keys(), list.values(), list.entries(), list[Symbol.iterator]()]) {
+      assert_equals(Object.getPrototypeOf(it), arrayIteratorProto, "an array iterator");
+    }
+    assert_array_equals([...list.keys()], values.map((_, i) => i), "keys");
+    assert_array_equals([...list.values()], values, "values");
+    assert_array_equals([...list], values, "@@iterator");
+    const entries = [...list.entries()];
+    assert_equals(entries.length, values.length, "entries");
+    entries.forEach(([k, v], i) => { assert_equals(k, i); assert_equals(v, values[i]); });
+  }, name + ": keys, values, entries and @@iterator are array iterators");
+}
+
+test(() => {
+  const list = document.getElementById("root").classList;
+  let calls = 0;
+  assert_throws_js(RangeError, () => list.forEach(() => { calls++; throw new RangeError("stop"); }));
+  assert_equals(calls, 1);
+  assert_throws_js(TypeError, () => list.forEach());
+  assert_throws_js(TypeError, () => list.forEach({}));
+}, "forEach rethrows its callback's exception and needs a callable");
+
+test(() => {
+  // Array.prototype.forEach reads the length once, then skips indices that
+  // are no longer present: a live NodeList that shrinks mid-iteration.
+  const root = document.createElement("div");
+  root.append(document.createElement("a"), document.createElement("b"), document.createElement("c"));
+  const seen = [];
+  root.childNodes.forEach((node) => {
+    seen.push(node.localName);
+    if (node.localName === "a") root.lastChild.remove();
+  });
+  assert_array_equals(seen, ["a", "b"]);
+}, "forEach over a live NodeList follows Array.prototype.forEach");
+
+async_test((t) => {
+  const frame = document.getElementById("frame");
+  const check = t.step_func_done(() => {
+    const w = frame.contentWindow;
+    const list = w.document.querySelector("span").classList;
+    assert_equals(w.DOMTokenList.prototype.forEach, w.Array.prototype.forEach, "the frame's own");
+    assert_not_equals(w.DOMTokenList.prototype.forEach, Array.prototype.forEach, "not this realm's");
+    assert_equals(w.NodeList.prototype[Symbol.iterator], w.Array.prototype.values, "frame NodeList @@iterator");
+    assert_array_equals([...list], ["x", "y"]);
+  });
+  if (frame.contentDocument && frame.contentDocument.readyState === "complete" &&
+      frame.contentDocument.querySelector("span")) check();
+  else frame.onload = check;
+}, "each realm's prototypes hold that realm's Array.prototype functions");
+
+test(() => {
+  // Interfaces with a value iterator that Crane exposes besides NodeList and
+  // DOMTokenList (CSS Typed OM, CSS Font Loading, WebXR).
+  for (const name of ["CSSUnparsedValue", "CSSNumericArray", "CSSTransformValue",
+                      "FontFacePalettes", "FontFacePalette", "XRInputSourceArray"]) {
+    if (!(name in self)) continue;
+    const proto = self[name].prototype;
+    for (const key of ["entries", "keys", "values", "forEach"]) {
+      assert_equals(proto[key], Array.prototype[key], name + "." + key);
+    }
+    assert_equals(proto[Symbol.iterator], Array.prototype.values, name + " @@iterator");
+  }
+}, "every exposed value iterator interface holds the Array.prototype functions");
+</script>
