@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>[HTMLConstructor] keeps a NewTarget prototype that is %Object.prototype%</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane (CE-S1): V8 gives the receiver %Object.prototype% of NewTarget's realm
+// when NewTarget.prototype is not an object, and the binding now takes the
+// interface fallback then. A NewTarget whose prototype really IS
+// %Object.prototype% must keep it (HTML 3.2.3 step 10: Get(NewTarget,
+// "prototype") is an Object, so it is the prototype).
+test(() => {
+  function F() { return Reflect.construct(HTMLElement, [], new.target); }
+  F.prototype = Object.prototype;
+  customElements.define('lf1-object-proto', F);
+  const element = new F();
+  assert_equals(Object.getPrototypeOf(element), Object.prototype);
+  const localName = Object.getOwnPropertyDescriptor(Element.prototype, 'localName').get;
+  assert_equals(localName.call(element), 'lf1-object-proto', 'it is the element, with only its prototype changed');
+}, 'an autonomous custom element whose NewTarget.prototype is Object.prototype');
+
+test(() => {
+  let reads = 0;
+  function G() { return Reflect.construct(HTMLElement, [], new.target); }
+  const P = new Proxy(G, { get(target, key) { if (key === 'prototype') { reads++; return Object.prototype; } return target[key]; } });
+  customElements.define('lf1-object-proto-proxy', P);
+  reads = 0;
+  const element = new P();
+  assert_equals(Object.getPrototypeOf(element), Object.prototype);
+  assert_greater_than_equal(reads, 1);
+}, 'a proxy NewTarget answering Object.prototype keeps it');
+</script>

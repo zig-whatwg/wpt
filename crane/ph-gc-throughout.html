@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: collections throughout a parse change nothing the parser builds</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#tree-construction">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Collections forced throughout a deep parse - with foster parenting, the
+// adoption agency, and reactions that remove the current node and put it
+// back - must leave exactly the tree an undisturbed parse makes. And a
+// customized built-in wrapped at its creation is held from creation to its
+// first insertion attempt, through a collection its own reaction's microtask
+// runs (parser holds design, H2, S3 and S10).
+async function frame(t, source) {
+  const iframe = document.createElement('iframe');
+  t.add_cleanup(() => iframe.remove());
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  iframe.srcdoc = source;
+  document.body.appendChild(iframe);
+  await loaded;
+  return iframe.contentWindow;
+}
+
+function deepMarkup() {
+  let markup = '';
+  for (let i = 0; i < 150; ++i) {
+    markup += '<div class=d' + i + '><x-churn></x-churn><x-gc></x-gc><b><p>t' + i + '</b>x' + i + '</p>' +
+      '<table><tr><td>c' + i + '</td></tr>foster' + i + '</table><i><s>' + i + '</i></s>';
+  }
+  return markup + '<span id=end>end</span>';
+}
+
+// x-churn detaches its parent - the current node - and keeps only a WeakRef
+// to it. The next element's constructor, a later job, collects garbage while
+// only the parser holds the detached div, then puts it back where it was.
+const churning = '<!doctype html><script>' +
+  'let n = 0, detached = null, from = null;' +
+  'customElements.define("x-churn", class extends HTMLElement {' +
+  '  connectedCallback() {' +
+  '    if (this.churned) return;' +
+  '    this.churned = true;' +
+  '    const p = this.parentNode, gp = p && p.parentNode;' +
+  '    if (!gp) return;' +
+  '    gp.removeChild(p);' +
+  '    detached = new WeakRef(p);' +
+  '    from = gp;' +
+  '  } });' +
+  'customElements.define("x-gc", class extends HTMLElement {' +
+  '  constructor() {' +
+  '    super();' +
+  '    if (!detached) return;' +
+  '    if (++n % 3 === 0) TestUtils.gc();' +
+  '    const p = detached.deref();' +
+  '    detached = null;' +
+  '    if (p) from.appendChild(p);' +
+  '  } });' +
+  '<\/script><body>';
+const quiet = '<!doctype html><script>' +
+  'customElements.define("x-churn", class extends HTMLElement {});' +
+  'customElements.define("x-gc", class extends HTMLElement {});' +
+  '<\/script><body>';
+
+promise_test(async t => {
+  const markup = deepMarkup();
+  const disturbed = await frame(t, churning + markup);
+  const undisturbed = await frame(t, quiet + markup);
+  disturbed.TestUtils.gc();
+  assert_true(!!disturbed.document.getElementById('end'), 'the disturbed parse reached the end');
+  assert_equals(disturbed.document.body.innerHTML, undisturbed.document.body.innerHTML);
+}, 'Collections and detach-and-reinsert reactions throughout a deep parse change nothing it builds');
+
+promise_test(async t => {
+  const w = await frame(t, '<!doctype html><script>' +
+    'class XB extends HTMLElement {' +
+    '  static observedAttributes = ["data-a"];' +
+    '  constructor() { super(); this.mark = "kept"; }' +
+    '  attributeChangedCallback() { TestUtils.gc(); queueMicrotask(() => { TestUtils.gc(); }); } }' +
+    'customElements.define("x-b", XB, { extends: "b" });' +
+    'window.XB = XB;' +
+    '<\/script><body><p><b is=x-b data-a=1 id=xb>bold</b></p>' +
+    '<b is=x-b data-a=2 id=formatting><p id=block>misnested</b>after</p>');
+  const xb = w.document.getElementById('xb');
+  assert_true(!!xb, 'the customized built-in was inserted');
+  assert_true(xb instanceof w.XB);
+  assert_equals(xb.mark, 'kept');
+  const block = w.document.getElementById('block');
+  const replacement = block.querySelector('b');
+  assert_true(!!replacement, 'the adoption agency made a replacement for the formatting element');
+  assert_true(replacement instanceof w.XB, 'the replacement is a customized built-in');
+  assert_equals(replacement.mark, 'kept');
+}, 'A customized built-in is held from its creation to its insertion, adoption agency replacements included');
+</script>

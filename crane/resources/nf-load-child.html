@@ -1,0 +1,7 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nf-parent-load-with-last-child: a child whose srcdoc grandchild posts from its onload</title>
+<script>
+onmessage = e => parent.postMessage({ msg: e.data, readyState: document.readyState }, '*');
+</script>
+<iframe srcdoc="<script>onload = () => parent.postMessage('grandchild loaded', '*');</script>"></iframe>

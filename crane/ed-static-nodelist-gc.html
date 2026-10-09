@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a static NodeList keeps the nodes it holds</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-collection-static">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A static NodeList is a snapshot: its nodes stay its nodes whatever happens
+// to the tree they came from. Blink's StaticNodeList traces
+// HeapVector<Member<Node>>; WebKit's StaticNodeList holds Vector<Ref<Node>>.
+// Crane once held them as bare pointers: when the detached tree they were
+// in was collected, its teardown freed nodes the list still named, and
+// list[0] answered from a freed or reissued slot.
+//
+// querySelectorAll does not wrap the nodes it finds, and nothing of the
+// trees below but the list survives the function that makes them.
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(document.createElement('span'), document.createTextNode('x'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const list = (() => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p><span id=ed-a>a</span></p><span id=ed-b>b</span>';
+    return root.querySelectorAll('span');
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].id, 'ed-a', 'the first span');
+  assert_equals(list[0].textContent, 'a');
+  assert_equals(list[1].id, 'ed-b', 'the second span');
+  assert_equals(list[0].parentNode.localName, 'p', 'the first span keeps its parent');
+  assert_equals(list[0].parentNode.parentNode.localName, 'div', 'and its tree');
+}, 'querySelectorAll on a detached tree keeps the tree\'s nodes after the root is let go');
+
+promise_test(async t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<b id=ed-c>c</b><b id=ed-d>d</b>';
+  const list = host.querySelectorAll('b');
+  (() => {
+    // The nodes leave the document in a detached tree script does not keep.
+    const holder = document.createElement('section');
+    holder.append(...host.childNodes);
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].id, 'ed-c');
+  assert_equals(list[1].id, 'ed-d');
+  assert_equals(list[0].parentNode.localName, 'section', 'the nodes keep the tree they moved to');
+  host.remove();
+}, 'querySelectorAll keeps nodes that leave the document after the snapshot');
+
+promise_test(async t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<em>e</em>';
+  const list = host.querySelectorAll('em');
+  host.innerHTML = '';
+  await collect(t);
+  assert_equals(list.length, 1);
+  assert_equals(list[0].localName, 'em');
+  assert_equals(list[0].textContent, 'e');
+  assert_equals(list[0].parentNode, null, 'removed by innerHTML');
+  host.remove();
+}, 'querySelectorAll keeps nodes removed by innerHTML');
+
+promise_test(async t => {
+  const list = (() => {
+    const root = document.createElement('div');
+    root.innerHTML = '<a>1</a><a>2</a><a>3</a>';
+    return root.querySelectorAll('a');
+  })();
+  await collect(t);
+  assert_array_equals([...list].map(n => n.textContent), ['1', '2', '3'], 'iteration visits every kept node');
+  assert_array_equals(Array.from({ length: list.length }, (_, i) => list.item(i).localName), ['a', 'a', 'a'], 'item() too');
+}, 'a kept static list iterates its own nodes');
+</script>

@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame's document completes loading with its last child frame's load (Blink and Gecko)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Blink FrameLoader::DidFinishNavigation calls parent->CheckCompleted() and
+// Gecko nsDocLoader::NotifyDoneWithOnload calls the parent's
+// ChildDoneWithOnload: the parent's load fires in the task its last child
+// finished loading in, before any task the child's load handler queued.
+// HTML's "the end" spins the event loop at step 8 and queues step 9, which
+// lands after a message the grandchild posted from its onload and the child
+// forwarded. grandparent_session_aboutsrcdoc.sub.window.html depends on it.
+// (Crane still runs the grandchild's container load event steps as a task of
+// their own, after the grandchild's onload message: read in the child when it
+// forwards, readyState is "interactive" there, where Blink and Gecko - which
+// fire the frame element's load inside the child's load - say "complete".)
+function forwarded(t, iframe) {
+  return new Promise(resolve => {
+    addEventListener('message', function listener(e) {
+      if (!e.data || e.data.msg !== 'grandchild loaded' || e.source !== iframe.contentWindow) return;
+      removeEventListener('message', listener);
+      // Read when the forwarded message arrives here, as
+      // grandparent_session_aboutsrcdoc's navigation on that message reads
+      // the frame's completely-loaded state.
+      resolve(iframe.contentDocument.readyState);
+    });
+  });
+}
+
+promise_test(async t => {
+  const iframe = document.createElement('iframe');
+  const message = forwarded(t, iframe);
+  iframe.src = 'resources/nf-load-child.html';
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  assert_equals(await message, 'complete', 'the child completed loading before its forwarded message arrived');
+}, 'A fetched frame whose srcdoc child finished loading has completely loaded when that child\'s forwarded onload message arrives');
+
+promise_test(async t => {
+  const grandchild = `<script>onload = () => parent.postMessage('grandchild loaded', '*');<\/script>`;
+  const child = `<script>
+      onmessage = e => parent.postMessage({ msg: e.data, readyState: document.readyState }, '*');
+    <\/script><iframe srcdoc="${grandchild.replace(/"/g, '&quot;')}"></iframe>`;
+  const iframe = document.createElement('iframe');
+  const message = forwarded(t, iframe);
+  iframe.srcdoc = child;
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  assert_equals(await message, 'complete', 'the child completed loading before its forwarded message arrived');
+}, 'A srcdoc frame whose srcdoc child finished loading has completely loaded when that child\'s forwarded onload message arrives');
+</script>

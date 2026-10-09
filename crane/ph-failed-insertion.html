@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: an element whose parser insertion fails stays on the stack, and survives a collection</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Insert an HTML element" inserts and then pushes. A reaction that moves the
+// body into the new element makes the insertion a hierarchy error: the
+// element is pushed anyway, parentless, with the old body inside it. The
+// parser roots the element it could not insert (parser holds design, H3 and
+// S2), so a collection cannot free it while later content goes into it.
+async function frame(t, source) {
+  const iframe = document.createElement('iframe');
+  t.add_cleanup(() => iframe.remove());
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  iframe.srcdoc = source;
+  document.body.appendChild(iframe);
+  await loaded;
+  return iframe.contentWindow;
+}
+
+promise_test(async t => {
+  const w = await frame(t, '<!doctype html><script>' +
+    'customElements.define("x-swallow", class extends HTMLElement {' +
+    '  static observedAttributes = ["a"];' +
+    '  attributeChangedCallback() { this.appendChild(document.body); } });' +
+    'customElements.define("x-gc", class extends HTMLElement {' +
+    '  constructor() { super(); TestUtils.gc(); TestUtils.gc(); } });' +
+    'customElements.define("x-stash", class extends HTMLElement {' +
+    '  constructor() { super(); window.stash = this; } });' +
+    '<\/script><body><p id=before>before</p>' +
+    '<x-swallow a=1><x-gc></x-gc><x-stash></x-stash><p id=late></p></x-swallow>');
+  assert_true(!!w.stash, 'the stash element was created');
+  const swallow = w.stash.parentNode;
+  assert_true(!!swallow, 'the stash was inserted');
+  assert_equals(swallow.localName, 'x-swallow');
+  assert_equals(swallow.parentNode, null, 'the failed insertion left it parentless');
+  const oldBody = swallow.firstChild;
+  assert_equals(oldBody.localName, 'body');
+  assert_true(!!oldBody.querySelector('#before'), 'the old body keeps the content before it');
+  assert_true(Array.from(swallow.children).some(child => child.id === 'late'), 'later content lands in the element');
+}, 'A reaction that swallows the body makes insertion fail; the element and the body survive a collection');
+</script>

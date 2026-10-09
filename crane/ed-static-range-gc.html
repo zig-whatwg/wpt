@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a StaticRange keeps its boundary containers</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-staticrange">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A StaticRange's start and end containers are its for as long as it lives.
+// Blink's StaticRange traces Member<Node> start_container_ and
+// end_container_; WebKit's holds Ref<Node>. Crane once kept bare pointers, so
+// a container script let go was freed under the range.
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(document.createTextNode('churn'), document.createElement('b'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const range = (() => {
+    const start = document.createTextNode('start');
+    const end = document.createElement('div');
+    start.ed = 'start';
+    end.ed = 'end';
+    return new StaticRange({ startContainer: start, startOffset: 1, endContainer: end, endOffset: 0 });
+  })();
+  await collect(t);
+  assert_equals(range.startContainer.nodeType, Node.TEXT_NODE);
+  assert_equals(range.startContainer.data, 'start', 'the start container');
+  assert_equals(range.startContainer.ed, 'start', 'with its expando');
+  assert_equals(range.startOffset, 1);
+  assert_equals(range.endContainer.localName, 'div', 'the end container');
+  assert_equals(range.endContainer.ed, 'end', 'with its expando');
+  assert_equals(range.endOffset, 0);
+  assert_false(range.collapsed);
+}, 'a StaticRange keeps containers script let go');
+
+promise_test(async t => {
+  const range = (() => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>x</p>';
+    const text = root.firstChild.firstChild;
+    return new StaticRange({ startContainer: text, startOffset: 0, endContainer: text, endOffset: 1 });
+  })();
+  await collect(t);
+  assert_equals(range.startContainer.data, 'x');
+  assert_equals(range.startContainer.parentNode.localName, 'p', 'the container keeps its tree');
+  assert_equals(range.endContainer, range.startContainer);
+  assert_true(range.collapsed === false);
+}, 'a StaticRange keeps a container inside a detached tree script let go');
+</script>

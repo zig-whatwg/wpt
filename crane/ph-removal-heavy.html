@@ -1,0 +1,630 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Removal-heavy live parse benchmark</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>const phStart = performance.now(); let phRemovals = 0;</script>
+<body>
+<div class="level0"><p>level 0 <b>bold</b></p>
+<div class="level1"><p>level 1 <b>bold</b></p>
+<div class="level2"><p>level 2 <b>bold</b></p>
+<div class="level3"><p>level 3 <b>bold</b></p>
+<div class="level4"><p>level 4 <b>bold</b></p>
+<div class="level5"><p>level 5 <b>bold</b></p>
+<div class="level6"><p>level 6 <b>bold</b></p>
+<div class="level7"><p>level 7 <b>bold</b></p>
+<div class="level8"><p>level 8 <b>bold</b></p>
+<div class="level9"><p>level 9 <b>bold</b></p>
+<div class="level10"><p>level 10 <b>bold</b></p>
+<div class="level11"><p>level 11 <b>bold</b></p>
+<div class="level12"><p>level 12 <b>bold</b></p>
+<div class="level13"><p>level 13 <b>bold</b></p>
+<div class="level14"><p>level 14 <b>bold</b></p>
+<div class="level15"><p>level 15 <b>bold</b></p>
+<div class="level16"><p>level 16 <b>bold</b></p>
+<div class="level17"><p>level 17 <b>bold</b></p>
+<div class="level18"><p>level 18 <b>bold</b></p>
+<div class="level19"><p>level 19 <b>bold</b></p>
+<div class="level20"><p>level 20 <b>bold</b></p>
+<div class="level21"><p>level 21 <b>bold</b></p>
+<div class="level22"><p>level 22 <b>bold</b></p>
+<div class="level23"><p>level 23 <b>bold</b></p>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<script>
+(function () {
+  // Scripts remove and re-append nodes while the parser is live, deep in the
+  // stack of open elements: every removal runs the parser's removing steps.
+  const box = document.createElement('div');
+  document.currentScript.parentNode.appendChild(box);
+  for (let i = 0; i < 500; ++i) box.appendChild(document.createElement('span'));
+  for (let round = 0; round < 4; ++round) {
+    for (const child of Array.from(box.children)) { child.remove(); box.appendChild(child); ++phRemovals; }
+  }
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 200; ++i) fragment.appendChild(document.createElement('i'));
+  phRemovals += box.children.length;
+  box.replaceChildren(fragment);
+  box.remove();
+  ++phRemovals;
+})();
+</script>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<script>
+(function () {
+  // Scripts remove and re-append nodes while the parser is live, deep in the
+  // stack of open elements: every removal runs the parser's removing steps.
+  const box = document.createElement('div');
+  document.currentScript.parentNode.appendChild(box);
+  for (let i = 0; i < 500; ++i) box.appendChild(document.createElement('span'));
+  for (let round = 0; round < 4; ++round) {
+    for (const child of Array.from(box.children)) { child.remove(); box.appendChild(child); ++phRemovals; }
+  }
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 200; ++i) fragment.appendChild(document.createElement('i'));
+  phRemovals += box.children.length;
+  box.replaceChildren(fragment);
+  box.remove();
+  ++phRemovals;
+})();
+</script>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<script>
+(function () {
+  // Scripts remove and re-append nodes while the parser is live, deep in the
+  // stack of open elements: every removal runs the parser's removing steps.
+  const box = document.createElement('div');
+  document.currentScript.parentNode.appendChild(box);
+  for (let i = 0; i < 500; ++i) box.appendChild(document.createElement('span'));
+  for (let round = 0; round < 4; ++round) {
+    for (const child of Array.from(box.children)) { child.remove(); box.appendChild(child); ++phRemovals; }
+  }
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 200; ++i) fragment.appendChild(document.createElement('i'));
+  phRemovals += box.children.length;
+  box.replaceChildren(fragment);
+  box.remove();
+  ++phRemovals;
+})();
+</script>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<script>
+(function () {
+  // Scripts remove and re-append nodes while the parser is live, deep in the
+  // stack of open elements: every removal runs the parser's removing steps.
+  const box = document.createElement('div');
+  document.currentScript.parentNode.appendChild(box);
+  for (let i = 0; i < 500; ++i) box.appendChild(document.createElement('span'));
+  for (let round = 0; round < 4; ++round) {
+    for (const child of Array.from(box.children)) { child.remove(); box.appendChild(child); ++phRemovals; }
+  }
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 200; ++i) fragment.appendChild(document.createElement('i'));
+  phRemovals += box.children.length;
+  box.replaceChildren(fragment);
+  box.remove();
+  ++phRemovals;
+})();
+</script>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<section class="sample"><p>A &amp; B <b>bold</b></p><ul><li>one<li>two</ul></section>
+<script>
+(function () {
+  // Scripts remove and re-append nodes while the parser is live, deep in the
+  // stack of open elements: every removal runs the parser's removing steps.
+  const box = document.createElement('div');
+  document.currentScript.parentNode.appendChild(box);
+  for (let i = 0; i < 500; ++i) box.appendChild(document.createElement('span'));
+  for (let round = 0; round < 4; ++round) {
+    for (const child of Array.from(box.children)) { child.remove(); box.appendChild(child); ++phRemovals; }
+  }
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 200; ++i) fragment.appendChild(document.createElement('i'));
+  phRemovals += box.children.length;
+  box.replaceChildren(fragment);
+  box.remove();
+  ++phRemovals;
+})();
+</script>
+</div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div>
+<script>
+const phElapsed = performance.now() - phStart;
+test(() => {
+  assert_equals(document.querySelectorAll('section').length, 500);
+  assert_equals(phRemovals, 5 * (500 * 4 + 500 + 1));
+}, 'Removal-heavy live parse: ' + phElapsed.toFixed(3) + ' ms for ' + phRemovals + ' removals');
+</script>

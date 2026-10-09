@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A template's content survives a collection however the template was made</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<template id="lf1-parsed"><b>p</b></template>
+<script>
+// Crane (PR-M1): a template's content fragment is owned by its live template,
+// not by an edge between their wrappers. `new X()` for a customized built-in
+// template used to replace the template's wrapper - and the edge with it - so
+// the fragment was freed under the template. TestUtils.gc() is Crane's
+// synchronous full collection; the fragments made afterwards reissue any
+// freed slot, so a dangling `content` reads one of them.
+function collect() {
+  TestUtils.gc();
+  for (let i = 0; i < 1000; i++) document.createDocumentFragment();
+  TestUtils.gc();
+}
+
+test(() => {
+  class X extends HTMLTemplateElement {}
+  customElements.define('lf1-x-t', X, { extends: 'template' });
+  const t = new X();
+  t.content.append('a');
+  collect();
+  assert_true(t instanceof X, 'the template is still an X');
+  assert_equals(t.content.nodeType, Node.DOCUMENT_FRAGMENT_NODE);
+  assert_equals(t.content.textContent, 'a');
+  assert_equals(t.content, t.content, 'content keeps its identity');
+  assert_equals(t.customElementRegistry, customElements);
+}, 'a customized built-in template made by new keeps its content');
+
+test(() => {
+  class Y extends HTMLTemplateElement {}
+  customElements.define('lf1-y-t', Y, { extends: 'template' });
+  const t = new Y();
+  t.content.expando = 'kept';
+  collect();
+  assert_equals(t.content.expando, 'kept', 'the content keeps its wrapper while the template does');
+}, 'a customized built-in template made by new keeps its content wrapper');
+
+test(() => {
+  const outer = document.createElement('template');
+  outer.innerHTML = '<template id=inner><b>x</b></template>';
+  const copy = outer.cloneNode(true);
+  collect();
+  const inner = copy.content.firstChild;
+  assert_equals(inner.localName, 'template');
+  assert_equals(inner.content.textContent, 'x');
+}, 'a cloned template keeps its nested template contents');
+
+test(() => {
+  const d = document.createElement('div');
+  d.innerHTML = '<template><template>x</template></template><template>y</template>';
+  collect();
+  assert_equals(d.firstChild.content.firstChild.content.textContent, 'x');
+  assert_equals(d.lastChild.content.textContent, 'y');
+}, 'templates parsed by innerHTML keep their contents');
+
+test(() => {
+  let c = document.createElement('template').content;
+  c.append('kept');
+  collect();
+  assert_equals(c.textContent, 'kept');
+  c.appendChild(document.createElement('i'));
+  assert_equals(c.childNodes.length, 2);
+}, 'a template content outlives its dropped template while script holds it');
+
+test(() => {
+  document.querySelector('#lf1-parsed').content.expando = 'parsed';
+  collect();
+  assert_equals(document.querySelector('#lf1-parsed').content.expando, 'parsed');
+  assert_equals(document.querySelector('#lf1-parsed').content.textContent, 'p');
+}, 'an expando on a parsed template\'s content, set through querySelector with no script hold, survives a collection');
+
+test(() => {
+  (() => {
+    const parse = document.createElement('div');
+    parse.innerHTML = '<template id="lf1-inserted">i</template>';
+    document.body.append(parse.firstChild);
+  })();
+  document.querySelector('#lf1-inserted').content.expando = 'inserted';
+  collect();
+  assert_equals(document.querySelector('#lf1-inserted').content.expando, 'inserted');
+  document.querySelector('#lf1-inserted').remove();
+}, 'an expando on an inserted template\'s content, set through querySelector with no script hold, survives a collection');
+
+test(() => {
+  class Z extends HTMLElement {}
+  customElements.define('lf1-z', Z);
+  const parent = document.createElement('div');
+  document.body.append(parent);
+  (() => { const z = new Z(); z.expando = 7; parent.append(z); })();
+  collect();
+  assert_true(parent.firstChild instanceof Z, 'the element keeps its class');
+  assert_equals(parent.firstChild.expando, 7, 'and its expandos');
+  parent.remove();
+}, 'a custom element made by new keeps its wrapper once inserted');
+</script>

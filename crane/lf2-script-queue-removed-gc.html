@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>A queued script removed from the document and unreferenced still executes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-in-order-as-soon-as-possible">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// DW-N3's condition (the integrator, 2026-10-08). The script queues keep
+// their elements alive in browsers - Blink's ScriptRunner and
+// HTMLParserScriptRunner trace their PendingScripts, WebKit's PendingScript
+// holds a Ref to its element - so a script in the list of scripts that will
+// execute in order as soon as possible, or in the set of scripts that will
+// execute as soon as possible, still runs after it is removed from the
+// document and nothing else references it. Crane keeps it by the queue's
+// execution root (script_element.State.execution_root); erasing a destroyed
+// element from the queues must never stand in for that.
+window.lf2Log = [];
+const src = (name, delay) => `lf2-script-queue-log.js?name=${name}&pipe=trickle(d${delay})`;
+const named = (script, name) => (script.setAttribute('data-name', name), script);
+const wait = (t, ms) => new Promise(resolve => t.step_timeout(resolve, ms));
+
+promise_test(async t => {
+  assert_true(!!self.TestUtils && typeof TestUtils.gc === 'function', 'Crane exposes synchronous TestUtils.gc');
+  lf2Log.length = 0;
+  // The first is slower: the in-order list must still run it first.
+  for (const [name, delay] of [['first', 1.2], ['second', 0.1]]) {
+    const script = named(document.createElement('script'), name);
+    script.async = false;
+    script.src = src(name, delay);
+    document.head.appendChild(script);
+    script.remove();
+  }
+  TestUtils.gc();
+  await wait(t, 600);
+  TestUtils.gc();
+  await wait(t, 2000);
+  assert_array_equals(lf2Log, ['first', 'second']);
+}, 'in-order scripts removed after insertion and unreferenced still execute, in order');
+
+promise_test(async t => {
+  lf2Log.length = 0;
+  (() => {
+    const script = named(document.createElement('script'), 'async');
+    script.async = true;
+    script.src = src('async', 0.5);
+    document.head.appendChild(script);
+    script.remove();
+  })();
+  TestUtils.gc();
+  await wait(t, 250);
+  TestUtils.gc();
+  await wait(t, 1500);
+  assert_array_equals(lf2Log, ['async']);
+}, 'an async script removed after insertion and unreferenced still executes');
+</script>

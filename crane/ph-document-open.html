@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: document.write and document.open while the parser holds a detached tree</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#opening-the-input-stream">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A nested write's custom element removes the current node, and a later one
+// collects: the written content still lands in the removed node. And when a
+// reaction opens the document while the old parser runs, the old parser -
+// still unwinding - roots the old tree only until it is
+// released, after which the old document element is garbage (parser holds
+// design, H8 and S4). (The open comes from a reaction to the old parser's own
+// insertion: a frame's parse runs inside the parent's script here, so its
+// script end-tag checkpoint does not run observers.)
+async function frame(t, source) {
+  const iframe = document.createElement('iframe');
+  t.add_cleanup(() => iframe.remove());
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  iframe.srcdoc = source;
+  document.body.appendChild(iframe);
+  await loaded;
+  return iframe.contentWindow;
+}
+
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const w = await frame(t, '<!doctype html><script>' +
+    'customElements.define("x-remove-current", class extends HTMLElement {' +
+    '  connectedCallback() { document.getElementById("cur").remove(); } });' +
+    'customElements.define("x-gc", class extends HTMLElement {' +
+    '  constructor() { super(); TestUtils.gc(); TestUtils.gc(); } });' +
+    'customElements.define("x-stash", class extends HTMLElement {' +
+    '  constructor() { super(); window.stash = this; } });' +
+    'document.write("<div id=cur><x-remove-current></x-remove-current><x-gc></x-gc>' +
+    '<x-stash></x-stash><p id=after></p></div>");' +
+    '<\/script>');
+  assert_true(!!w.stash, 'the stash element was created');
+  const cur = w.stash.parentNode;
+  assert_true(!!cur, 'the stash was inserted');
+  assert_equals(cur.id, 'cur');
+  assert_false(cur.isConnected);
+  assert_true(!!cur.querySelector('#after'));
+}, 'Inside a nested write, a removed current node survives a collection and receives the rest of the write');
+
+promise_test(async t => {
+  const w = await frame(t, '<!doctype html><script>' +
+    'customElements.define("x-open", class extends HTMLElement {' +
+    '  connectedCallback() {' +
+    '    if (window.opened) return;' +
+    '    window.opened = true;' +
+    '    window.oldHtml = new WeakRef(document.documentElement);' +
+    '    document.open();' +
+    '    document.write("<p id=fresh>fresh</p>");' +
+    '    document.close();' +
+    '  } });' +
+    '<\/script><body><div id=old><x-open></x-open><p id=old-late></p></div>');
+  assert_true(w.opened, 'the reaction opened the document while the old parser ran');
+  assert_true(!!w.document.getElementById('fresh'), 'the new parser wrote the new tree');
+  assert_equals(w.document.getElementById('old-late'), null, 'the old parser stopped');
+  await nextTask(t);
+  w.TestUtils.gc();
+  w.TestUtils.gc();
+  await nextTask(t);
+  w.TestUtils.gc();
+  assert_equals(w.oldHtml.deref(), undefined, 'the old parser released the old tree');
+}, 'A reaction opens the document while the old parser holds its tree; the old tree is collected once that parser is gone');
+</script>

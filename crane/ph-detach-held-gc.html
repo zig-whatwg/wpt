@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a tree script detaches from under the parser survives a collection until the parser is done with it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-stack-of-open-elements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The parser keeps inserting into the elements on its stack of open elements
+// after script removes them: in every browser, later content lands in the
+// removed element, and script that reaches it sees its expandos. Crane's
+// parser holds those elements natively and, when script detaches a tree that
+// contains one, roots that tree's root until it is done (parser holds design,
+// H1, H6 and S7). Each case collects garbage while only the parser holds the
+// detached tree.
+async function frame(t, source) {
+  const iframe = document.createElement('iframe');
+  t.add_cleanup(() => iframe.remove());
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  iframe.srcdoc = source;
+  document.body.appendChild(iframe);
+  await loaded;
+  return iframe.contentWindow;
+}
+
+function openFrame(t) {
+  const iframe = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => iframe.remove());
+  const doc = iframe.contentDocument;
+  doc.open();
+  return { win: iframe.contentWindow, doc };
+}
+
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const w = await frame(t, '<!doctype html><script>' +
+    'customElements.define("x-remove-ancestor", class extends HTMLElement {' +
+    '  connectedCallback() { const a = document.getElementById("a"); a.tag = 1; a.remove(); } });' +
+    'customElements.define("x-gc", class extends HTMLElement {' +
+    '  constructor() { super(); TestUtils.gc(); TestUtils.gc(); } });' +
+    'customElements.define("x-stash", class extends HTMLElement {' +
+    '  constructor() { super(); window.stash = this; } });' +
+    '<\/script><body><div id=a><x-remove-ancestor></x-remove-ancestor><x-gc></x-gc>' +
+    '<x-stash></x-stash><p id=late></p></div>');
+  assert_true(!!w.stash, 'the stash element was created');
+  const a = w.stash.parentNode;
+  assert_true(!!a, 'the stash was inserted');
+  assert_equals(a.id, 'a');
+  assert_equals(a.tag, 1, 'the removed element keeps its expando');
+  assert_false(a.isConnected);
+  assert_true(!!a.querySelector('#late'), 'later content lands in the removed element');
+}, 'A reaction removes the current node, a constructor collects, and the parser keeps building into it');
+
+promise_test(async t => {
+  const { win, doc } = openFrame(t);
+  doc.write('<!doctype html><body><div id=a><span id=s>');
+  let weak;
+  (function () {
+    weak = new win.WeakRef(doc.getElementById('s'));
+  })();
+  await nextTask(t);
+  // Replace all removes the held tree; script keeps no reference to it.
+  doc.body.innerHTML = '';
+  await nextTask(t);
+  win.TestUtils.gc();
+  win.TestUtils.gc();
+  doc.write('late</span></div>');
+  doc.close();
+  const s = weak.deref();
+  assert_true(!!s, 'the detached tree survived the collection');
+  assert_equals(s.textContent, 'late');
+  assert_equals(s.parentNode.id, 'a');
+}, 'A suspended parser keeps a tree script detached across tasks and a collection');
+
+promise_test(async t => {
+  const { win, doc } = openFrame(t);
+  doc.write('<!doctype html><body><div id=m><span id=s>');
+  let weak;
+  (function () {
+    // A Document nothing else reaches: the moved tree is all that keeps it.
+    const other = doc.implementation.createHTMLDocument('');
+    other.body.appendChild(doc.getElementById('m'));
+    weak = new win.WeakRef(other);
+  })();
+  await nextTask(t);
+  win.TestUtils.gc();
+  win.TestUtils.gc();
+  doc.write('<p id=late></p></span></div>');
+  doc.close();
+  const other = weak.deref();
+  assert_true(!!other, 'the other document survived through the held tree');
+  const m = other.getElementById('m');
+  assert_true(!!m, 'the moved element is in the other document');
+  assert_equals(m.parentNode, other.body);
+  assert_true(!!other.getElementById('late'), 'later content lands in the moved element');
+}, 'A held element moved into a collectible document keeps it alive while the parser builds into it');
+</script>

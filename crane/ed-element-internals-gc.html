@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: an element's ElementInternals lives as long as the element</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/custom-elements.html#dom-attachinternals">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// attachInternals() gives an element its ElementInternals for the element's
+// whole life: :state(), form validation, form submission and form reset read
+// it through the element. Blink's ElementRareData traces
+// Member<ElementInternals>; WebKit's ElementRareData holds
+// RefPtr<ElementInternals>. Script can drop the internals and keep the
+// element, or keep the element where its realm ends.
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+}
+
+class EdFace extends HTMLElement {
+  static formAssociated = true;
+  constructor() {
+    super();
+    const internals = this.attachInternals();
+    internals.states.add('ed-on');
+    internals.setFormValue('ed-value');
+    internals.setValidity({ customError: true }, 'ed-invalid');
+  }
+}
+customElements.define('ed-face', EdFace);
+
+function churn() {
+  const kept = [];
+  for (let i = 0; i < 300; i++) {
+    const other = new EdFace();
+    kept.push(other);
+  }
+  return kept;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const face = new EdFace();
+  await collect(t);
+  const others = churn();
+  await collect(t);
+  assert_true(face.matches(':state(ed-on)'), ':state() reads the element\'s internals');
+  assert_false(face.matches(':valid'), 'its validity is its own');
+  const form = document.body.appendChild(document.createElement('form'));
+  face.setAttribute('name', 'f');
+  form.append(face);
+  assert_equals(new FormData(form).get('f'), 'ed-value', 'its form value is its own');
+  form.remove();
+  assert_equals(others.length, 300);
+}, 'an element keeps its internals when script keeps only the element');
+
+promise_test(async t => {
+  const tree = (() => {
+    const root = document.createElement('div');
+    root.append(document.createElement('p'));
+    root.firstChild.append(new EdFace());
+    return root.firstChild;
+  })();
+  await collect(t);
+  churn();
+  await collect(t);
+  assert_true(tree.firstChild.matches(':state(ed-on)'), 'the element inside a held detached tree keeps its internals');
+}, 'an element inside a detached tree keeps its internals');
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement('iframe'));
+  const win = frame.contentWindow;
+  win.eval(`
+    class Face extends HTMLElement {
+      static formAssociated = true;
+      constructor() { super(); this.attachInternals().states.add('ed-frame'); }
+    }
+    customElements.define('ed-frame-face', Face);
+    window.made = new Face();
+  `);
+  const face = win.made;
+  document.body.append(face);
+  frame.remove();
+  await collect(t);
+  churn();
+  await collect(t);
+  assert_true(face.matches(':state(ed-frame)'), 'the adopted element keeps the internals its frame made');
+  face.remove();
+}, 'an element adopted out of a removed frame keeps the internals its frame made');
+</script>

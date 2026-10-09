@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attachShadow's customElementRegistry member takes only a CustomElementRegistry</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane (CE2-M1): ShadowRootInit's customElementRegistry is a
+// `CustomElementRegistry?` member. WebIDL converts an interface-typed value
+// by checking that it implements the interface, so any other platform object
+// is a TypeError - it used to be read as a registry through an unchecked
+// state cast (and answer NotSupportedError, or write through garbage).
+const host = () => document.createElement('div');
+
+test(() => {
+  assert_throws_js(TypeError, () => host().attachShadow({ mode: 'open', customElementRegistry: document.body }));
+}, 'an element is not a CustomElementRegistry');
+
+test(() => {
+  assert_throws_js(TypeError, () => host().attachShadow({ mode: 'open', customElementRegistry: document.createTextNode('') }));
+}, 'a text node is not a CustomElementRegistry');
+
+test(() => {
+  assert_throws_js(TypeError, () => host().attachShadow({ mode: 'open', customElementRegistry: new DocumentFragment() }));
+}, 'a fragment is not a CustomElementRegistry');
+
+test(() => {
+  assert_throws_js(TypeError, () => host().attachShadow({ mode: 'open', customElementRegistry: {} }));
+}, 'a plain object is not a CustomElementRegistry');
+
+test(() => {
+  const h = host();
+  assert_throws_js(TypeError, () => h.attachShadow({ mode: 'open', customElementRegistry: document.body }));
+  // Nothing was attached: the host still takes a shadow root.
+  const root = h.attachShadow({ mode: 'open' });
+  assert_equals(root.customElementRegistry, customElements);
+  root.innerHTML = '<span></span>';
+  assert_equals(root.firstChild.localName, 'span');
+}, 'a rejected registry attaches nothing');
+
+test(() => {
+  const registry = new CustomElementRegistry();
+  const root = host().attachShadow({ mode: 'open', customElementRegistry: registry });
+  assert_equals(root.customElementRegistry, registry);
+  const nulled = host().attachShadow({ mode: 'open', customElementRegistry: null });
+  assert_equals(nulled.customElementRegistry, null);
+}, 'a real registry and null are still taken');
+</script>

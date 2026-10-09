@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Mutation throughput with and without a form-associated custom element defined</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// lf2 (CE2-S1). Once any formAssociated definition existed, every children
+// change, every removal and every id/form/disabled attribute change walked
+// and allocated the whole tree to refresh form owners. Each phase runs the
+// same operations on a 3,000-element connected document: first with nothing
+// defined, then with one formAssociated definition, then with one defined
+// form-associated element that has a form attribute (an ID-target observer).
+const SIZE = 3000;
+const OPS = 2000;
+const filler = document.createElement('div');
+for (let i = 0; i < SIZE; i++) filler.appendChild(document.createElement('span'));
+document.body.appendChild(filler);
+const target = document.body.appendChild(document.createElement('div'));
+
+function time(fn) {
+  const start = performance.now();
+  fn();
+  return performance.now() - start;
+}
+function appendRemove() {
+  for (let i = 0; i < OPS; i++) document.body.appendChild(document.createElement('div')).remove();
+}
+function setId() {
+  for (let i = 0; i < OPS; i++) target.setAttribute('id', 'id' + i);
+}
+function appendWithId() {
+  for (let i = 0; i < OPS; i++) {
+    const div = document.createElement('div');
+    div.id = 'x' + i;
+    document.body.appendChild(div).remove();
+  }
+}
+function phase(label) {
+  const a = time(appendRemove);
+  const b = time(setId);
+  const c = time(appendWithId);
+  test(() => {
+    assert_equals(document.body.children.length >= 2, true);
+  }, `${label}: appendChild+remove ${a.toFixed(1)} ms, setAttribute('id') ${b.toFixed(1)} ms, append with id ${c.toFixed(1)} ms (${OPS} each, ${SIZE}-element document)`);
+}
+
+phase('no definition');
+customElements.define('lf2-timing-face', class extends HTMLElement { static formAssociated = true; });
+phase('formAssociated defined, no instance');
+const face = document.createElement('lf2-timing-face');
+face.setAttribute('form', 'nowhere');
+document.body.appendChild(face);
+phase('one form-associated element with a form attribute');
+</script>

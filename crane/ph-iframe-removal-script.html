@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: removing a held tree whose iframe runs script in its removing steps</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Removing an iframe unloads its document synchronously, inside the DOM
+// remove algorithm (browsers fire pagehide and unload there). When the
+// removed tree also holds the parser's open elements, the parser must have
+// rooted the tree's root before the iframe's script can collect garbage
+// (parser holds design, risk 2: the rescue runs at the removal root, before
+// any descendant's removing steps).
+function openFrame(t) {
+  const iframe = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => iframe.remove());
+  const doc = iframe.contentDocument;
+  doc.open();
+  return { win: iframe.contentWindow, doc };
+}
+
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const { win, doc } = openFrame(t);
+  doc.write('<!doctype html><body><div id=a><iframe id=inner></iframe><span id=s>');
+  let weak;
+  let unloaded = 0;
+  (function () {
+    weak = new win.WeakRef(doc.getElementById('s'));
+    const inner = doc.getElementById('inner').contentWindow;
+    inner.addEventListener('unload', () => {
+      ++unloaded;
+      // Reach the removed tree if the frame still can, then collect.
+      const element = inner.frameElement;
+      if (element && element.parentNode) element.parentNode.tag = 1;
+      win.TestUtils.gc();
+      win.TestUtils.gc();
+    });
+  })();
+  await nextTask(t);
+  // Replace all removes #a: no script reference to it but the WeakRef's.
+  doc.body.innerHTML = '';
+  await nextTask(t);
+  win.TestUtils.gc();
+  doc.write('late</span></div>');
+  doc.close();
+  const s = weak.deref();
+  assert_true(!!s, 'the removed tree survived the iframe\'s collection');
+  assert_equals(s.textContent, 'late');
+  assert_equals(s.parentNode.id, 'a');
+  assert_equals(s.parentNode.querySelector('iframe').id, 'inner');
+}, 'An iframe in a held tree runs script and collects garbage inside the removal; the tree survives');
+</script>

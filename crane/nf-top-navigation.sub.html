@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>A cross-origin frame navigating its top-level traversable without user activation (Firefox and Safari)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/common/utils.js"></script>
+<script>
+// Gecko BrowsingContext::CheckFramebusting and WebKit
+// Document::isNavigationBlockedByThirdPartyIFrameRedirectBlocking refuse it;
+// Chrome does not. Crane takes each exception by the 2-of-3 majority
+// (html.user_activation.topNavigationBlocked).
+const host = get_host_info();
+const here = new URL('resources/', location.href).pathname;
+const SAME = host.HTTP_ORIGIN;
+const CROSS = host.HTTP_REMOTE_ORIGIN;          // cross-origin, same site
+const NOT_SAME_SITE = host.HTTP_NOTSAMESITE_ORIGIN;
+
+function run(t, { how, frameOrigin = CROSS, destOrigin = NOT_SAME_SITE, activation = 'none', sandbox }) {
+  const token = self.token();
+  const dest = `${destOrigin}${here}nf-top-nav-dest.html?token=${token}`;
+  const frame = `${frameOrigin}${here}nf-top-nav-frame.html?` +
+      new URLSearchParams({ token, how, dest, activation });
+  let popup = `${here}nf-top-nav-popup.html?` +
+      new URLSearchParams(sandbox === undefined ? { frame } : { frame, sandbox });
+  if (how === 'back') {
+    popup = `${here}nf-top-nav-back-start.html?` +
+        new URLSearchParams({ token, next: new URL(popup, location.href).href });
+  }
+  return new Promise(resolve => {
+    addEventListener('message', function listener(e) {
+      if (!e.data || e.data.token !== token) return;
+      removeEventListener('message', listener);
+      resolve(e.data.msg);
+    });
+    const w = open(popup);
+    t.add_cleanup(() => w.close());
+  });
+}
+
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'location' }), 'Denied');
+}, 'Blocked: the Location setter throws a SecurityError');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'link' }), 'Stayed');
+}, 'Blocked: a link with target=_top does nothing');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'form' }), 'Stayed');
+}, 'Blocked: a form with target=_top does nothing');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'open' }), 'Stayed');
+}, 'Blocked: window.open(url, "_top") does nothing');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'location', activation: 'transient' }), 'Allowed');
+}, 'Allowed: the frame has transient activation (all three)');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'location', activation: 'sticky' }), 'Allowed');
+}, 'Allowed: the frame has sticky activation only (WebKit and Chrome; Gecko refuses)');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'location', frameOrigin: SAME }), 'Allowed');
+}, 'Allowed: the frame is same origin with top (all three)');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'location', destOrigin: CROSS }), 'Allowed');
+}, 'Allowed: the destination is same site with top (WebKit and Chrome; Gecko refuses)');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'location', sandbox: 'allow-scripts allow-top-navigation' }), 'Allowed');
+}, 'Allowed: a frame sandboxed with allow-top-navigation whose parent is top (all three)');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'link', frameOrigin: SAME }), 'Allowed');
+}, 'Allowed: a same-origin frame\'s link with target=_top navigates top');
+promise_test(async t => {
+  assert_equals(await run(t, { how: 'back' }), 'Back');
+}, 'Not checked: a cross-origin frame\'s history.back() traverses top (a traversal, not a navigation a document starts)');
+</script>

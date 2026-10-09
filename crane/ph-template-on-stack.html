@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a template on the stack of open elements keeps receiving its contents after script removes it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// While a template's contents are parsed, the elements on the stack of open
+// elements are in the template's contents, whose host is the template. When
+// script removes the template, the parser's held nodes are under it through
+// that host edge, so the parser roots the template (parser holds design,
+// H10 and S5). The template owns its contents natively.
+function openFrame(t) {
+  const iframe = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => iframe.remove());
+  const doc = iframe.contentDocument;
+  doc.open();
+  return { win: iframe.contentWindow, doc };
+}
+
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const { win, doc } = openFrame(t);
+  doc.write('<!doctype html><body><template id=t><div id=in>');
+  let weak;
+  (function () { weak = new win.WeakRef(doc.getElementById('t')); })();
+  await nextTask(t);
+  (function () { doc.getElementById('t').remove(); })();
+  win.TestUtils.gc();
+  win.TestUtils.gc();
+  await nextTask(t);
+  win.TestUtils.gc();
+  doc.write('<span id=s></span></div></template>');
+  doc.close();
+  const template = weak.deref();
+  assert_true(!!template, 'the removed template survived');
+  assert_true(!!template.content.querySelector('#in #s'), 'later content lands in its contents');
+}, 'A removed template whose contents are being parsed survives a collection');
+
+promise_test(async t => {
+  const { win, doc } = openFrame(t);
+  doc.write('<!doctype html><body><div id=host><template id=t><div id=in>');
+  let weak;
+  (function () { weak = new win.WeakRef(doc.getElementById('t').content.querySelector('#in')); })();
+  await nextTask(t);
+  // Replace all of the template's ancestor: script never touches the template.
+  doc.body.innerHTML = '';
+  await nextTask(t);
+  win.TestUtils.gc();
+  win.TestUtils.gc();
+  doc.write('<span id=s></span></div></template></div>');
+  doc.close();
+  const inner = weak.deref();
+  assert_true(!!inner, 'the held element in the contents survived');
+  assert_true(!!inner.querySelector('#s'));
+  const fragment = inner.parentNode;
+  assert_equals(fragment.nodeType, Node.DOCUMENT_FRAGMENT_NODE);
+}, 'Removing an ancestor of a template on the stack keeps the template and its contents');
+</script>

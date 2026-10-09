@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nf-top-navigation: the popup's first entry, which a cross-origin frame goes back to</title>
+<script>
+// ?token=&next=<the popup page holding the frame>
+const params = new URLSearchParams(location.search);
+if (window.name !== 'nf-visited') {
+  window.name = 'nf-visited';
+  addEventListener('load', () => setTimeout(() => { location.href = params.get('next'); }, 0));
+} else {
+  opener.postMessage({ token: params.get('token'), msg: 'Back' }, '*');
+}
+</script>

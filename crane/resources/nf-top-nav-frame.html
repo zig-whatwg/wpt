@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nf-top-navigation: a frame that navigates its top-level traversable</title>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+// ?token=&how=location|link|form|open|back&dest=<URL>&activation=none|transient|sticky
+const params = new URLSearchParams(location.search);
+const token = params.get('token');
+const dest = params.get('dest');
+const report = msg => top.opener.postMessage({ token, msg }, '*');
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+addEventListener('load', async () => {
+  const activation = params.get('activation');
+  if (activation !== 'none') {
+    test_driver.set_test_context(top.opener);
+    await test_driver.bless('activation for nf-top-navigation');
+    // Past the transient activation duration (5 s): sticky activation only.
+    if (activation === 'sticky') await sleep(5600);
+  }
+  // A navigation that is refused leaves the frame where it is: say so.
+  setTimeout(() => report('Stayed'), 2000);
+  const how = params.get('how');
+  try {
+    if (how === 'location') {
+      top.location = dest;
+    } else if (how === 'link') {
+      const a = document.createElement('a');
+      a.href = dest;
+      a.target = '_top';
+      document.body.append(a);
+      a.click();
+    } else if (how === 'form') {
+      const form = document.createElement('form');
+      form.action = dest;
+      form.method = 'get';
+      form.target = '_top';
+      const input = document.createElement('input');
+      input.name = 'token';
+      input.value = token;
+      form.append(input);
+      document.body.append(form);
+      form.submit();
+    } else if (how === 'open') {
+      window.open(dest, '_top');
+    } else if (how === 'back') {
+      // A traversal of the joint session history: not a navigation the
+      // check sees (Gecko: LoadIsFromSessionHistory).
+      history.back();
+    }
+  } catch (e) {
+    report(e.name === 'SecurityError' ? 'Denied' : 'Threw ' + e.name);
+  }
+});
+</script>

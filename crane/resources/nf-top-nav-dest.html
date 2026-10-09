@@ -1,0 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nf-top-navigation: the destination, which says it was reached</title>
+<script>
+opener.postMessage({ token: new URLSearchParams(location.search).get('token'), msg: 'Allowed' }, '*');
+</script>

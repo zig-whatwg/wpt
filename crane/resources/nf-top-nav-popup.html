@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nf-top-navigation: a popup holding the frame that navigates it</title>
+<body>
+<script>
+// ?frame=<frame page URL, absolute, with its own query>&sandbox=<attribute value or absent>
+const params = new URLSearchParams(location.search);
+const iframe = document.createElement('iframe');
+if (params.has('sandbox')) iframe.setAttribute('sandbox', params.get('sandbox'));
+iframe.src = params.get('frame');
+document.body.append(iframe);
+</script>

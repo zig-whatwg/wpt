@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: at the end of parsing the parser lets go of the trees it held</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#stop-parsing">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Stop parsing" pops every open element. A detached tree the parser rooted
+// while it was building into it is garbage once the parser is released, as
+// in Blink and WebKit; while the parser runs, later content lands in it
+// (parser holds design, 5.3 "Release", 5.6 EOF).
+async function frame(t, source) {
+  const iframe = document.createElement('iframe');
+  t.add_cleanup(() => iframe.remove());
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  iframe.srcdoc = source;
+  document.body.appendChild(iframe);
+  await loaded;
+  return iframe.contentWindow;
+}
+
+function openFrame(t) {
+  const iframe = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => iframe.remove());
+  const doc = iframe.contentDocument;
+  doc.open();
+  return { win: iframe.contentWindow, doc };
+}
+
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const { win, doc } = openFrame(t);
+  doc.write('<!doctype html><body><div id=a><span id=s>');
+  let weak;
+  (function () { weak = new win.WeakRef(doc.getElementById('s')); })();
+  await nextTask(t);
+  doc.body.innerHTML = '';
+  await nextTask(t);
+  win.TestUtils.gc();
+  win.TestUtils.gc();
+  assert_true(!!weak.deref(), 'the parser holds the detached tree while it runs');
+  await nextTask(t);
+  doc.write('done</span></div>');
+  doc.close();
+  await nextTask(t);
+  win.TestUtils.gc();
+  win.TestUtils.gc();
+  await nextTask(t);
+  win.TestUtils.gc();
+  assert_equals(weak.deref(), undefined, 'the finished parser released the tree');
+}, 'document.close() ends the parser, and the detached tree it held is collected');
+
+promise_test(async t => {
+  const w = await frame(t, '<!doctype html><script>' +
+    'customElements.define("x-gc", class extends HTMLElement {' +
+    '  constructor() { super(); TestUtils.gc(); TestUtils.gc(); } });' +
+    '<\/script><body><div id=a><script>' +
+    'window.weak = new WeakRef(document.getElementById("a"));' +
+    'document.body.innerHTML = "";' +
+    '<\/script><x-gc></x-gc><span id=late>late</span></div>');
+  (function () {
+    const a = w.weak.deref();
+    assert_true(!!a, 'the removed element survived the collection during parsing');
+    assert_true(!!a.querySelector('#late'), 'later content landed in it');
+  })();
+  await nextTask(t);
+  w.TestUtils.gc();
+  w.TestUtils.gc();
+  await nextTask(t);
+  w.TestUtils.gc();
+  assert_equals(w.weak.deref(), undefined, 'the finished parser released it');
+}, 'A navigation parser keeps a removed element through a collection, then releases it at its end');
+</script>

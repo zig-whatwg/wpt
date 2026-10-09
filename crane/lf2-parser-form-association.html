@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The parser associates listed elements through the form element pointer</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Defined before the markup below is parsed, so the parser creates it
+// synchronously as a form-associated custom element.
+customElements.define('lf2-pfa-face', class extends HTMLElement {
+  static formAssociated = true;
+  constructor() { super(); this.internals = this.attachInternals(); }
+});
+</script>
+<body>
+<!-- Misnested: </div> closes the form, the form element pointer stays set. -->
+<div><form id="misnested"></div><input id="misnested-input"><lf2-pfa-face id="misnested-face"></lf2-pfa-face>
+<!-- A form in a table is popped at once; the controls in the cells are not
+     its descendants. -->
+<table><form id="tabled"><tr><td><input id="tabled-input"><select id="tabled-select"></select></td></tr></form></table>
+<script>
+// "Create an element for a token" step 15 associates a form-associated
+// element that is not a form-associated custom element with the form element
+// pointer's form (Chrome, Firefox and Safari do). Crane derives every form
+// owner from the tree (form_associated.zig's stated deviation), so the
+// non-descendant controls read null - this file is red until the parser
+// association lands (queued after lane pholds merges).
+const misnested = document.getElementById('misnested');
+const tabled = document.getElementById('tabled');
+
+test(() => {
+  const input = document.getElementById('misnested-input');
+  assert_false(misnested.contains(input), 'precondition: not a descendant');
+  assert_equals(input.form, misnested);
+  assert_true(Array.from(misnested.elements).includes(input));
+}, 'misnested markup: the input after </div> is associated with the form');
+
+test(() => {
+  const input = document.getElementById('tabled-input');
+  const select = document.getElementById('tabled-select');
+  assert_false(tabled.contains(input), 'precondition: not a descendant');
+  assert_equals(input.form, tabled);
+  assert_equals(select.form, tabled);
+}, 'a form in a table: the controls in its cells are associated with it');
+
+test(() => {
+  const face = document.getElementById('misnested-face');
+  assert_true(face.internals instanceof ElementInternals, 'precondition: created as a form-associated custom element');
+  assert_equals(face.internals.form, null);
+}, 'a form-associated custom element is not associated through the form element pointer (step 15 excludes it)');
+
+test(() => {
+  const input = document.getElementById('misnested-input');
+  misnested.remove();
+  assert_equals(input.form, null);
+  document.body.appendChild(misnested);
+}, 'removing the form resets a parser-associated control that is not its descendant');
+</script>

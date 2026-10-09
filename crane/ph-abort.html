@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: aborting a parser that holds a detached tree</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#abort-a-parser">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "Abort a parser" pops the stack of open elements. A tree the parser rooted
+// because script detached it stays rooted only until the parser is released:
+// afterwards it is garbage like any other unreachable tree. An abort from a
+// reaction while the parser is still on the native stack must not leave it
+// reading freed nodes (parser holds design, 5.6).
+function openFrame(t) {
+  const iframe = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => iframe.remove());
+  const doc = iframe.contentDocument;
+  doc.open();
+  return { win: iframe.contentWindow, doc };
+}
+
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const { win, doc } = openFrame(t);
+  doc.write('<!doctype html><body><div id=a><span id=s>');
+  let weak;
+  (function () { weak = new win.WeakRef(doc.getElementById('s')); })();
+  await nextTask(t);
+  doc.body.innerHTML = '';
+  await nextTask(t);
+  win.TestUtils.gc();
+  assert_true(!!weak.deref(), 'the parser holds the detached tree');
+  win.stop();
+  await nextTask(t);
+  win.TestUtils.gc();
+  win.TestUtils.gc();
+  await nextTask(t);
+  win.TestUtils.gc();
+  assert_equals(weak.deref(), undefined, 'the aborted parser released the tree');
+}, 'window.stop() ends a suspended parser, and the tree it held is collected');
+
+test(t => {
+  const { win, doc } = openFrame(t);
+  // Written synchronously: an aborted document never fires its frame's load.
+  doc.write('<!doctype html><script>' +
+    'customElements.define("x-remove-and-stop", class extends HTMLElement {' +
+    '  connectedCallback() { document.getElementById("a").remove(); window.stop(); TestUtils.gc(); } });' +
+    'customElements.define("x-gc", class extends HTMLElement {' +
+    '  constructor() { super(); TestUtils.gc(); } });' +
+    '<\/script><body><div id=a><b><x-remove-and-stop></x-remove-and-stop><x-gc></x-gc>' +
+    '<p id=after>never parsed</p></b></div><p id=tail></p>');
+  assert_equals(doc.getElementById('after'), null);
+  assert_equals(doc.getElementById('tail'), null);
+  win.TestUtils.gc();
+  doc.close();
+}, 'A reaction removes the current subtree and stops the parser while it is on the native stack');
+</script>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a top-level page's document is the one its load made, from its first script to its load event</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-browsing-context">
+<script>
+// Taken before testharness.js runs: what the page's own first script sees.
+// The load made this document ("create and initialize a Document object"
+// step 9) and made it the window's (step 10) before its parser ran - it is
+// no longer the realm's initial about:blank document, which the first load
+// replaces.
+window.parseTime = {
+  document,
+  sameAsWindowDocument: window.document === document,
+  defaultView: document.defaultView,
+  readyState: document.readyState,
+  compatMode: document.compatMode,
+  contentType: document.contentType,
+  characterSet: document.characterSet,
+  url: document.URL,
+  href: location.href,
+  hasBody: document.body !== null,
+  headIsParsed: document.head !== null && document.head.parentNode === document.documentElement,
+};
+</script>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="probe">probe</div>
+<script>
+test(() => {
+  assert_true(parseTime.sameAsWindowDocument, "window.document is the document the script runs in");
+  assert_equals(parseTime.defaultView, window, "its defaultView is the window");
+  assert_equals(document, parseTime.document, "later scripts see the same document");
+}, "the page's first script runs in the document its load made, the window's");
+
+test(() => {
+  assert_equals(parseTime.readyState, "loading", "readiness while parsing");
+  assert_equals(parseTime.compatMode, "CSS1Compat", "a doctype gives no-quirks mode, not the initial about:blank's quirks");
+  assert_equals(parseTime.contentType, "text/html");
+  assert_equals(parseTime.characterSet, "UTF-8");
+  assert_false(parseTime.hasBody, "the body is not parsed yet");
+  assert_true(parseTime.headIsParsed, "the head being parsed is the document's");
+}, "the load's document is a new one: loading, no-quirks, being parsed - nothing of the initial about:blank");
+
+test(() => {
+  assert_equals(parseTime.url, parseTime.href, "document.URL is the page's URL");
+  assert_not_equals(parseTime.url, "about:blank");
+  assert_equals(document.URL, location.href);
+}, "the load's document has the page's URL from its first script");
+
+test(() => {
+  assert_equals(document.getElementById("probe").ownerDocument, document);
+  assert_equals(document.getElementById("probe").textContent, "probe");
+  assert_equals(document.body.parentNode, document.documentElement);
+}, "the parsed tree belongs to the window's document");
+
+test(() => {
+  assert_equals(performance.getEntriesByType("navigation").length, 1, "one navigation timing entry");
+  assert_equals(history.length, 1);
+  assert_not_equals(navigation.currentEntry, null, "the navigation API sees the page's entry");
+  assert_equals(navigation.entries().length, 1);
+  assert_equals(navigation.currentEntry.url, location.href);
+}, "the page's session history entry and navigation entry are its document's");
+
+async_test(t => {
+  window.addEventListener("load", t.step_func_done(() => {
+    assert_equals(window.document, parseTime.document, "load fires for the same document");
+    assert_equals(document.readyState, "complete");
+    assert_equals(document.defaultView, window);
+  }));
+}, "the load event comes for the document the page was parsed into");
+
+test(() => {
+  customElements.define("nd-element", class extends HTMLElement {});
+  const element = document.createElement("nd-element");
+  assert_true(element instanceof HTMLElement);
+  assert_equals(element.constructor, customElements.get("nd-element"));
+}, "the window's custom element registry is the page document's");
+</script>

@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>connectedCallback and adoptedCallback for a custom element whose registry is null</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-insert">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// CE2-S3. The cached DOM text gates insert step 7.7.3 (connectedCallback) on
+// a non-null custom element registry; an element adopted into a document with
+// no registry (new Document(), createHTMLDocument) has one. Chrome, Edge and
+// Firefox enqueue connectedCallback for such an element anyway (wpt.fyi:
+// custom-elements/connected-callbacks.html 40/40, adopted-callback.html
+// 71/71), and Crane follows the browsers.
+const log = [];
+class LF2XA extends HTMLElement {
+  connectedCallback() { log.push('connected'); }
+  disconnectedCallback() { log.push('disconnected'); }
+  adoptedCallback() { log.push('adopted'); }
+}
+customElements.define('lf2-x-a', LF2XA);
+
+test(() => {
+  log.length = 0;
+  const doc = new Document();
+  const element = new LF2XA();
+  doc.appendChild(element);
+  assert_array_equals(log, ['adopted', 'connected']);
+  assert_equals(element.ownerDocument, doc);
+}, 'appending a custom element to new Document() enqueues adoptedCallback, then connectedCallback');
+
+test(() => {
+  log.length = 0;
+  const doc = document.implementation.createHTMLDocument('');
+  const element = new LF2XA();
+  doc.body.appendChild(element);
+  assert_array_equals(log, ['adopted', 'connected']);
+  element.remove();
+  assert_array_equals(log, ['adopted', 'connected', 'disconnected']);
+  doc.body.appendChild(element);
+  assert_array_equals(log, ['adopted', 'connected', 'disconnected', 'connected']);
+}, 'inserting into a createHTMLDocument document enqueues connectedCallback each time');
+
+test(() => {
+  log.length = 0;
+  const doc = document.implementation.createHTMLDocument('');
+  const element = new LF2XA();
+  doc.adoptNode(element);
+  assert_array_equals(log, ['adopted']);
+  doc.body.appendChild(element);
+  assert_array_equals(log, ['adopted', 'connected']);
+}, 'adoptNode into a document with no registry enqueues adoptedCallback; a later insertion enqueues connectedCallback');
+
+test(() => {
+  log.length = 0;
+  const doc = document.implementation.createHTMLDocument('');
+  const container = doc.createElement('div');
+  container.appendChild(new LF2XA());
+  assert_array_equals(log, ['adopted']);
+  doc.body.appendChild(container);
+  assert_array_equals(log, ['adopted', 'connected']);
+}, 'a custom descendant of an inserted subtree gets connectedCallback in a document with no registry');
+
+test(() => {
+  log.length = 0;
+  const doc = new Document();
+  const element = doc.createElement('lf2-x-a');
+  doc.appendChild(element);
+  assert_false(element instanceof LF2XA, 'no registry: never upgraded');
+  assert_array_equals(log, []);
+}, 'an undefined element in a document with no registry is not upgraded on insertion');
+</script>

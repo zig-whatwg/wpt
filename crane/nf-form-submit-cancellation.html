@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Which form submissions cancel a planned navigation (Blink and WebKit)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Blink HTMLFormElement::PrepareForSubmission cancels the form's last
+// submission (cancel_last_submission_) only for a submission that fires the
+// submit event; submitFromJavaScript does not. Frame::ScheduleFormSubmission
+// keeps one pending form submission per frame. WebKit's submitIfPossible and
+// NavigationScheduler match.
+function frame(t, name) {
+  const iframe = document.createElement('iframe');
+  iframe.name = name;
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  return iframe;
+}
+function form(t, target) {
+  const f = document.createElement('form');
+  f.action = '/common/blank.html';
+  f.target = target;
+  const input = document.createElement('input');
+  input.name = 'q';
+  f.append(input);
+  f.input = input;
+  document.body.append(f);
+  t.add_cleanup(() => f.remove());
+  return f;
+}
+function loaded(iframe) {
+  return new Promise(resolve => iframe.addEventListener('load', resolve, { once: true }));
+}
+function query(iframe) {
+  return new URL(iframe.contentWindow.location.href).searchParams.get('q');
+}
+
+promise_test(async t => {
+  const a = frame(t, 'nf-a1'), b = frame(t, 'nf-b1');
+  const f = form(t, 'nf-a1');
+  const aLoaded = loaded(a), bLoaded = loaded(b);
+  f.input.value = 'a'; f.submit();
+  f.target = 'nf-b1';
+  f.input.value = 'b'; f.submit();
+  await Promise.all([aLoaded, bLoaded]);
+  assert_equals(query(a), 'a');
+  assert_equals(query(b), 'b');
+}, 'submit() to another frame does not cancel the planned navigation before it');
+
+promise_test(async t => {
+  const a = frame(t, 'nf-a2');
+  const f = form(t, 'nf-a2');
+  const aLoaded = loaded(a);
+  f.input.value = '1'; f.submit();
+  f.input.value = '2'; f.submit();
+  await aLoaded;
+  assert_equals(query(a), '2', 'the first load is the second submission');
+}, 'a second submit() to the same frame replaces the first');
+
+promise_test(async t => {
+  const a = frame(t, 'nf-a3'), b = frame(t, 'nf-b3');
+  const f = form(t, 'nf-a3');
+  let aLoads = 0;
+  a.addEventListener('load', () => aLoads++);
+  const bLoaded = loaded(b);
+  f.input.value = 'a'; f.submit();
+  f.target = 'nf-b3';
+  f.input.value = 'b'; f.requestSubmit();
+  await bLoaded;
+  assert_equals(query(b), 'b');
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(aLoads, 0, 'the submit() before requestSubmit() was cancelled');
+}, 'requestSubmit() cancels the form\'s last planned navigation, whatever it targets');
+
+promise_test(async t => {
+  const a = frame(t, 'nf-a4'), b = frame(t, 'nf-b4'), c = frame(t, 'nf-c4');
+  const f = form(t, 'nf-a4');
+  let bLoads = 0;
+  b.addEventListener('load', () => bLoads++);
+  const aLoaded = loaded(a), cLoaded = loaded(c);
+  f.input.value = 'a'; f.submit();
+  f.target = 'nf-b4';
+  f.input.value = 'b'; f.submit();
+  f.target = 'nf-c4';
+  f.input.value = 'c'; f.requestSubmit();
+  await Promise.all([aLoaded, cLoaded]);
+  assert_equals(query(a), 'a', 'the earlier submit() still navigates');
+  assert_equals(query(c), 'c');
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(bLoads, 0, 'the last submit() was cancelled');
+}, 'requestSubmit() cancels only the last planned navigation');
+</script>

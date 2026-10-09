@@ -1,0 +1,176 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a MutationRecord keeps the nodes it names</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-mutationrecord">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A MutationRecord names its target, its added and removed nodes and their
+// two siblings, and hands each to script for as long as script holds the
+// record (or one of its NodeLists) - queued, delivered, or taken. Blink's
+// MutationRecord traces Member<Node> target_, previous_sibling_ and
+// next_sibling_ and Member<StaticNodeList> added_nodes_ / removed_nodes_,
+// and a StaticNodeList traces HeapVector<Member<Node>>. Crane once held them
+// as bare pointers: a removed node that script let go was freed by the next
+// collection, and the record answered from its freed or reissued slot.
+//
+// Each node below is made inside a function frame, so the record is the only
+// thing left that names it. TestUtils.gc() collects synchronously, teardown
+// included; the churn reissues any freed slot to a node of the same type, so
+// a dangling read answers with the wrong node. A record still queued is
+// collected around without a task turn (`collectNow`): a turn would run the
+// notify microtask and deliver it.
+
+function collectNow() {
+  TestUtils.gc();
+  const churn = [];
+  for (let i = 0; i < 2000; i++) {
+    churn.push(document.createTextNode('churn'), document.createElement('i'));
+  }
+  TestUtils.gc();
+  return churn.length;
+}
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) {
+    churn.push(document.createTextNode('churn'), document.createElement('i'));
+  }
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+function observed() {
+  const parent = document.body.appendChild(document.createElement('div'));
+  const mo = new MutationObserver(() => {});
+  mo.observe(parent, { childList: true, attributes: true, subtree: true });
+  return { parent, mo };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const { parent, mo } = observed();
+  (() => {
+    const text = document.createTextNode('removed');
+    text.ed = 'mine';
+    parent.appendChild(text);
+    parent.removeChild(text);
+  })();
+  collectNow();
+  const records = mo.takeRecords();
+  assert_equals(records.length, 2, 'one record for the append, one for the removal');
+  const node = records[1].removedNodes[0];
+  assert_equals(node.nodeType, Node.TEXT_NODE, 'the removed node is a text node');
+  assert_equals(node.data, 'removed', 'it is the removed node');
+  assert_equals(node.ed, 'mine', 'with its expando');
+  assert_equals(records[0].addedNodes[0], node, 'the append record names the same node');
+  parent.remove();
+}, 'a queued record keeps its removed node until takeRecords()');
+
+promise_test(async t => {
+  const parent = document.body.appendChild(document.createElement('div'));
+  let delivered = null;
+  const mo = new MutationObserver(records => { delivered = records; });
+  mo.observe(parent, { childList: true });
+  (() => {
+    const span = document.createElement('span');
+    span.ed = 'delivered';
+    parent.appendChild(span);
+    span.remove();
+  })();
+  await new Promise(r => t.step_timeout(r, 0));
+  assert_not_equals(delivered, null, 'the callback ran');
+  await collect(t);
+  assert_equals(delivered.length, 2);
+  const node = delivered[1].removedNodes[0];
+  assert_equals(node.localName, 'span', 'the removed node is the span');
+  assert_equals(node.ed, 'delivered', 'with its expando');
+  assert_equals(delivered[0].addedNodes[0], node);
+  mo.disconnect();
+  parent.remove();
+}, 'a delivered record script keeps holds its removed node');
+
+promise_test(async t => {
+  const { parent, mo } = observed();
+  (() => {
+    const before = document.createElement('b');
+    const middle = document.createElement('i');
+    const after = document.createElement('u');
+    before.ed = 'before';
+    after.ed = 'after';
+    parent.append(before, middle, after);
+    mo.takeRecords();
+    middle.remove();
+    before.remove();
+    after.remove();
+  })();
+  collectNow();
+  const records = mo.takeRecords();
+  assert_equals(records.length, 3);
+  const first = records[0];
+  assert_equals(first.removedNodes[0].localName, 'i', 'the removed node');
+  assert_equals(first.previousSibling.localName, 'b', 'previousSibling');
+  assert_equals(first.previousSibling.ed, 'before', 'previousSibling keeps its expando');
+  assert_equals(first.nextSibling.localName, 'u', 'nextSibling');
+  assert_equals(first.nextSibling.ed, 'after', 'nextSibling keeps its expando');
+  assert_equals(records[1].removedNodes[0], first.previousSibling);
+  assert_equals(records[2].removedNodes[0], first.nextSibling);
+  parent.remove();
+}, 'a record keeps its siblings after they leave the tree');
+
+promise_test(async t => {
+  const mo = new MutationObserver(() => {});
+  (() => {
+    const target = document.createElement('div');
+    target.ed = 'target';
+    mo.observe(target, { attributes: true, attributeOldValue: true });
+    target.setAttribute('data-ed', '1');
+  })();
+  collectNow();
+  const records = mo.takeRecords();
+  assert_equals(records.length, 1);
+  const record = records[0];
+  assert_equals(record.type, 'attributes');
+  assert_equals(record.target.localName, 'div', 'the target is the div');
+  assert_equals(record.target.ed, 'target', 'with its expando');
+  assert_equals(record.target.getAttribute('data-ed'), '1');
+  assert_equals(record.addedNodes.length, 0);
+  assert_equals(record.removedNodes.length, 0);
+  assert_equals(record.addedNodes, record.addedNodes, 'addedNodes is [SameObject]');
+}, 'a queued attributes record keeps its target after script lets it go');
+
+promise_test(async t => {
+  const { parent, mo } = observed();
+  (() => {
+    const text = document.createTextNode('only-the-list');
+    parent.appendChild(text);
+    text.remove();
+  })();
+  const list = mo.takeRecords()[1].removedNodes;
+  await collect(t);
+  assert_equals(list.length, 1);
+  assert_equals(list[0].data, 'only-the-list', 'the list keeps its node with the record gone');
+  assert_equals(list.item(0), list[0]);
+  parent.remove();
+}, 'a removedNodes list script keeps without its record keeps its node');
+
+promise_test(async t => {
+  const { parent, mo } = observed();
+  (() => {
+    const text = document.createTextNode('disconnected');
+    parent.appendChild(text);
+    text.remove();
+  })();
+  mo.disconnect();
+  collectNow();
+  await collect(t);
+  assert_array_equals(mo.takeRecords(), [], 'disconnect() emptied the queue');
+  parent.remove();
+}, 'records disconnect() drops let their nodes go');
+</script>

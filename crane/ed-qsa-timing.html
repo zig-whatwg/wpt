@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane timing: querySelectorAll('*') over 10,000 elements</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=ed-host></div>
+<script>
+// Timing page for the static NodeList holder (lane edges): every round
+// replaces a 10,000-element subtree of the document by innerHTML - parsed,
+// so no element has a wrapper - and times querySelectorAll('*') over it,
+// (a) reading only .length, (b) then visiting every node. The times are in
+// the subtest names; both subtests always pass.
+const rounds = 10;
+const markup = '<section><p><b>x</b><i>y</i></p><ul><li>1</li><li>2</li><li>3</li></ul></section>'.repeat(1250);
+const host = document.getElementById('ed-host');
+function measure(visit) {
+  let total = 0, count = 0;
+  for (let i = 0; i < rounds; i++) {
+    host.innerHTML = markup;
+    const t0 = performance.now();
+    const list = host.querySelectorAll('*');
+    count = list.length;
+    if (visit) { let n = 0; for (const node of list) if (node.nodeType === 1) n++; count = n; }
+    total += performance.now() - t0;
+  }
+  host.innerHTML = '';
+  return { ms: total, count };
+}
+const a = measure(false);
+const b = measure(true);
+test(() => { assert_equals(a.count, 10000); }, 'qsa length: ' + a.ms.toFixed(1) + ' ms for ' + rounds + ' rounds');
+test(() => { assert_equals(b.count, 10000); }, 'qsa iterate: ' + b.ms.toFixed(1) + ' ms for ' + rounds + ' rounds');
+</script>
