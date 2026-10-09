@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A slotted node whose slot left its tree and was collected routes nothing through it</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// DOM remove step 10: a slot that leaves its shadow tree loses its assigned
+// nodes, and they stop naming it. Crane keeps a slottable's assigned slot as
+// a weak reference; this pins that nothing reads it once the slot is gone.
+// The slot is collected, then 2,000 slots that log "wrong" when an event
+// reaches them take the freed memory; an event dispatched at the slotted
+// node must reach its host and none of them.
+promise_test(async () => {
+  const log = [];
+  const host = document.body.appendChild(document.createElement('div'));
+  const child = host.appendChild(document.createElement('span'));
+  child.id = 'kept';
+  const shadow = host.attachShadow({mode: 'open'});
+  host.addEventListener('ping', () => log.push('host'));
+  (function () {
+    const wrapper = shadow.appendChild(document.createElement('div'));
+    const slot = wrapper.appendChild(document.createElement('slot'));
+    slot.addEventListener('ping', () => log.push('old slot'));
+    assert_equals(child.assignedSlot, slot, 'assigned before the removal');
+    wrapper.remove();
+    assert_equals(child.assignedSlot, null, 'unassigned by the removal');
+    // The removed slot is still alive here: an assigned slot the removal
+    // left behind would route the event into the detached slot instead.
+    child.dispatchEvent(new Event('ping', {bubbles: true}));
+    assert_array_equals(log, ['host'], 'the path right after the removal');
+    log.length = 0;
+  })();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  const impostors = [];
+  for (let i = 0; i < 2000; i++) {
+    const slot = document.createElement('slot');
+    slot.addEventListener('ping', () => log.push('wrong'));
+    impostors.push(slot);
+  }
+  child.dispatchEvent(new Event('ping', {bubbles: true}));
+  assert_array_equals(log, ['host'], 'the path once the slot is collected');
+  assert_equals(child.assignedSlot, null);
+  assert_equals(impostors.length, 2000);
+}, 'the event path of a node whose slot was removed and collected skips the slot');
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A signaled slot fires slotchange though script dropped it before the microtask</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// DOM 4.2.2.5: signal a slot change appends the slot to the agent's signal
+// slots, and notify mutation observers fires slotchange at each of them. A
+// collection between the two must not lose the event: Blink keeps the list
+// as traced Members, WebKit as Refs.
+promise_test(async () => {
+  const log = [];
+  (function () {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({mode: 'open'});
+    const slot = shadow.appendChild(document.createElement('slot'));
+    slot.addEventListener('slotchange', event => log.push(event.type + ':' + event.bubbles));
+    shadow.addEventListener('slotchange', () => log.push('shadow root'));
+    host.appendChild(document.createElement('span'));
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_array_equals(log, [], 'not fired synchronously');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert_array_equals(log, ['slotchange:true', 'shadow root']);
+}, 'slotchange fires at a slot nothing but its pending event holds, and bubbles to its shadow root');
+</script>

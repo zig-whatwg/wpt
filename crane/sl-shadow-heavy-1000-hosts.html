@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Slot assignment over 1,000 shadow hosts: timing page</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="root"></div>
+<script>
+// Identical inputs before and after, and the timed work is DOM mutation only,
+// so a runner without slot assignment runs the same page; the measurements
+// are in the result name so the journal keeps them. Each round builds 1,000
+// hosts with a named and a default slot from a template, fills them, moves a
+// child between slots by renaming it, removes and re-inserts a slot, and
+// removes the hosts. Each sample runs in a task of its own, so its
+// slotchange events are delivered before the next one starts.
+const template = document.createElement('template');
+template.innerHTML = '<header><slot name="title"></slot></header><main><slot></slot></main><footer>f</footer>';
+const root = document.getElementById('root');
+function build() {
+  const hosts = [];
+  for (let i = 0; i < 1000; i++) {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({mode: 'open'});
+    shadow.appendChild(template.content.cloneNode(true));
+    const title = document.createElement('h2');
+    title.slot = 'title';
+    title.textContent = 't' + i;
+    host.appendChild(title);
+    for (let j = 0; j < 4; j++) host.appendChild(document.createElement('p'));
+    host.appendChild(document.createTextNode('x'));
+    root.appendChild(host);
+    hosts.push(host);
+  }
+  return hosts;
+}
+function mutate(hosts) {
+  for (const host of hosts) {
+    host.lastElementChild.slot = 'title';
+    const main = host.shadowRoot.querySelector('main');
+    const slot = main.firstChild;
+    slot.remove();
+    main.appendChild(slot);
+  }
+  for (const host of hosts) host.remove();
+}
+promise_test(async () => {
+  const samples = [];
+  for (let sample = 0; sample < 6; sample++) {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const start = performance.now();
+    mutate(build());
+    if (sample > 0) samples.push(Math.round(performance.now() - start));
+  }
+  // The measurements, in a subtest of their own that passes wherever the
+  // page runs.
+  test(() => {}, 'Shadow-heavy DOM mutation, 1000 hosts/sample, ms=' + samples.join(','));
+  const hosts = build();
+  let assigned = 0;
+  for (const host of hosts) {
+    for (const slot of host.shadowRoot.querySelectorAll('slot')) assigned += slot.assignedNodes().length;
+  }
+  mutate(hosts);
+  // 1 title + 4 paragraphs + 1 text node per host.
+  assert_equals(assigned, 6000);
+  assert_equals(root.childNodes.length, 0);
+}, 'Slot assignment over 1000 shadow hosts');
+</script>
