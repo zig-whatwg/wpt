@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Resource selection waits for a task, not the parser's microtask checkpoint</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<!--
+  HTML's resource selection "awaits a stable state" (a microtask). The parser
+  performs a microtask checkpoint before running an inline script, so by the
+  spec text a parsed <source> with no src fails before the script below can
+  give it one. Chrome, Firefox and Safari all run the selection after the
+  current task instead (Chromium ScheduleNextSourceChild's 0-delay timer,
+  Gecko RunInStableState, WebKit a queued task), and
+  content-security-policy/media-src/media-src-7_1_2.sub.html depends on it
+  (all three pass it 3/3 on wpt.fyi). Crane follows the browsers. Needs the
+  runner's WebM backend (tests/wpt_runner/webm_backend.zig).
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+const parsed = async_test('a parsed <source> given its src by a later script is fetched and played, with no error first');
+const events = [];
+</script>
+<video id=video>
+  <source id=source type="video/webm"
+          onerror="events.push('source error'); parsed.step(() => assert_unreached('source error before its src was set: ' + events))">
+</video>
+<!-- As in content-security-policy/media-src/media-src-7_1_2.sub.html: another
+     media element with an event handler attribute, given a src by the parser,
+     between the source and the
+     script that gives the source its src. -->
+<video id=other src="/media/movie_5.webm" onerror="void 0"></video>
+<script>
+const video = document.getElementById('video');
+video.addEventListener('loadstart', () => events.push('loadstart'));
+video.addEventListener('loadeddata', parsed.step_func_done(() => {
+  events.push('loadeddata');
+  assert_array_equals(events, ['loadstart', 'loadeddata']);
+  assert_true(video.currentSrc.endsWith('/media/movie_5.webm'), 'currentSrc');
+}));
+video.addEventListener('error', parsed.unreached_func('media error'));
+document.getElementById('source').src = '/media/movie_5.webm';
+
+promise_test(async t => {
+  const video = document.createElement('video');
+  const source = document.createElement('source');
+  source.type = 'video/webm';
+  video.append(source);
+  document.body.append(video);
+  t.add_cleanup(() => video.remove());
+  // Inserted, and so selecting; the src arrives in the same task.
+  source.src = '/media/test-v-128k-320x240-24fps-8kfr.webm';
+  await new Promise((resolve, reject) => {
+    video.addEventListener('loadeddata', resolve);
+    source.addEventListener('error', () => reject(new Error('source error')));
+  });
+  assert_true(video.currentSrc.endsWith('.webm'));
+}, 'a source given its src in the task that inserted it is selected');
+</script>

@@ -1,0 +1,133 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The WPT runner's host media backend: WebM (VP8, VP9, Vorbis, Opus)</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#dom-navigator-canplaytype">
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-resource">
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#dom-video-videowidth">
+<!--
+  Crane builds in no decoder; a host supplies them (BrowserConfig.media_backend).
+  The WPT runner is a host that reads WebM (tests/wpt_runner/webm_backend.zig):
+  it demuxes the container and validates each track's first frame, decoding no
+  pixels or samples. These cases hold under that runner; Crane alone answers "".
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/media.js></script>
+<body>
+<script>
+function watch(media, names) {
+  const events = [];
+  for (const name of names) media.addEventListener(name, () => events.push(name));
+  return events;
+}
+
+function until(media, name) {
+  return new Promise((resolve, reject) => {
+    media.addEventListener(name, resolve, {once: true});
+    media.addEventListener('error', () => reject(new Error('media error ' + (media.error && media.error.code))), {once: true});
+  });
+}
+
+test(() => {
+  for (const tag of ['audio', 'video']) {
+    const media = document.createElement(tag);
+    for (const type of ['video/webm', 'audio/webm', 'video/webm;codecs='])
+      assert_equals(media.canPlayType(type), 'maybe', tag + ' ' + type);
+    for (const type of ['video/webm; codecs="vp8, vorbis"', 'video/webm; codecs="vp9, opus"', 'video/webm; codecs="vp9.0"',
+                        'video/webm; codecs="vp09.00.10.08"', 'audio/webm; codecs="opus"', 'audio/webm; codecs="vorbis"'])
+      assert_equals(media.canPlayType(type), 'probably', tag + ' ' + type);
+    for (const type of ['video/webm; codecs="av01.0.04M.08"', 'audio/webm; codecs="vp8"', 'video/webm; codecs="bogus"',
+                        'video/mp4', 'audio/ogg', 'video/x-matroska'])
+      assert_equals(media.canPlayType(type), '', tag + ' ' + type);
+  }
+}, 'canPlayType answers for WebM with the codecs this host validates');
+
+test(() => {
+  assert_true(getVideoURI('/media/movie_5').endsWith('.webm'));
+}, 'common/media.js picks the .webm resources');
+
+promise_test(async t => {
+  const video = document.createElement('video');
+  const events = watch(video, ['loadstart', 'durationchange', 'resize', 'loadedmetadata', 'loadeddata']);
+  assert_equals(video.videoWidth, 0, 'videoWidth before metadata');
+  video.src = '/media/movie_5.webm';
+  document.body.append(video);
+  t.add_cleanup(() => video.remove());
+  await until(video, 'loadeddata');
+  assert_array_equals(events, ['loadstart', 'durationchange', 'resize', 'loadedmetadata', 'loadeddata']);
+  assert_approx_equals(video.duration, 5.008, 0.001, 'duration');
+  assert_equals(video.videoWidth, 320, 'videoWidth');
+  assert_equals(video.videoHeight, 240, 'videoHeight');
+  assert_greater_than_equal(video.readyState, video.HAVE_CURRENT_DATA);
+}, 'a VP9 + Opus video: durationchange, resize, loadedmetadata, loadeddata; its duration and size');
+
+promise_test(async t => {
+  const video = document.createElement('video');
+  const source = document.createElement('source');
+  source.type = 'video/webm';
+  source.src = '/media/test-v-128k-320x240-24fps-8kfr.webm';
+  video.append(source);
+  document.body.append(video);
+  t.add_cleanup(() => video.remove());
+  await until(video, 'loadeddata');
+  assert_true(video.currentSrc.endsWith('.webm'), 'currentSrc');
+  assert_approx_equals(video.duration, 2, 0.001, 'duration');
+  assert_equals(video.videoWidth, 320);
+}, 'a <source type="video/webm"> (VP8) is selected, fetched and played');
+
+promise_test(async t => {
+  const audio = document.createElement('audio');
+  audio.src = '/media/test-a-128k-44100Hz-1ch.webm';
+  document.body.append(audio);
+  t.add_cleanup(() => audio.remove());
+  await until(audio, 'loadeddata');
+  assert_approx_equals(audio.duration, 2.023, 0.001, 'duration');
+}, 'a Vorbis audio/webm plays in an audio element');
+
+promise_test(async t => {
+  const video = document.createElement('video');
+  const events = watch(video, ['resize', 'loadedmetadata']);
+  video.src = '/media/test-a-128k-44100Hz-1ch.webm';
+  document.body.append(video);
+  t.add_cleanup(() => video.remove());
+  await until(video, 'loadeddata');
+  assert_array_equals(events, ['loadedmetadata'], 'no resize for a resource with no video');
+  assert_equals(video.videoWidth, 0);
+  assert_equals(video.videoHeight, 0);
+}, 'an audio-only WebM in a video element: no resize, a 0x0 size');
+
+promise_test(async t => {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.src = '/media/2x2-green.webm';
+  document.body.append(video);
+  t.add_cleanup(() => video.remove());
+  await until(video, 'canplaythrough');
+  assert_equals(video.videoWidth, 2);
+  await video.play();
+  await until(video, 'ended');
+  assert_true(video.ended);
+  assert_approx_equals(video.currentTime, video.duration, 0.001);
+}, 'a WebM plays to its end');
+
+promise_test(async t => {
+  const bytes = new Uint8Array(await (await fetch('/media/test-v-128k-320x240-24fps-8kfr.webm')).arrayBuffer());
+  // Break the first VP8 key frame's start code 9d 01 2a.
+  let at = -1;
+  for (let i = 0; i + 2 < bytes.length; i++) {
+    if (bytes[i] == 0x9d && bytes[i + 1] == 0x01 && bytes[i + 2] == 0x2a) { at = i; break; }
+  }
+  assert_greater_than(at, 0, 'found the start code');
+  bytes[at] = 0x9e;
+  const url = URL.createObjectURL(new Blob([bytes], {type: 'video/webm'}));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const video = document.createElement('video');
+  const events = watch(video, ['loadeddata', 'error']);
+  video.src = url;
+  document.body.append(video);
+  t.add_cleanup(() => video.remove());
+  await new Promise(resolve => video.addEventListener('error', resolve, {once: true}));
+  assert_false(events.includes('loadeddata'), 'no loadeddata');
+  assert_in_array(video.error.code, [MediaError.MEDIA_ERR_DECODE, MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED]);
+}, 'a WebM whose first frame is broken is an error, never loadeddata');
+</script>

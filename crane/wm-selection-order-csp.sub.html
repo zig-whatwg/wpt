@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta http-equiv="Content-Security-Policy" content="script-src * 'unsafe-inline'; media-src 'self';">
+<title>A parsed source given a blocked src by a later script reports its CSP violation</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<!--
+  The shape of content-security-policy/media-src/media-src-7_1_2.sub.html, with
+  the order made explicit: the parsed <source> has no src until the script at
+  the end gives it a cross-origin one. Its resource selection must run after
+  that, so the source's fetch is attempted and blocked - a violation, then the
+  source's error - as in Chrome, Firefox and Safari (all pass 7_1_2 3/3).
+  Needs the runner's WebM backend (video/webm is a type it can play).
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+const blocked = location.protocol + '//{{domains[www2]}}:{{ports[http][0]}}/media/A4.webm';
+const order = [];
+const t = async_test('the parsed source is selected after the script gives it a src: violation, then error');
+window.addEventListener('securitypolicyviolation', t.step_func(e => {
+  order.push('violation ' + e.violatedDirective);
+  assert_equals(e.blockedURI, blocked);
+}));
+</script>
+<video id=v>
+  <source id=s type="video/webm"
+          onerror="order.push('source error'); t.step(() => assert_array_equals(order, ['violation media-src', 'source error'])); t.done()">
+</video>
+<video id=other onerror="void 0">
+<script>
+document.getElementById('s').src = blocked;
+</script>
