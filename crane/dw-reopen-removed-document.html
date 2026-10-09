@@ -1,0 +1,43 @@
+<!doctype html>
+<title>A retained document can be reopened after its frame is removed</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const frame = document.body.appendChild(document.createElement('iframe'));
+  const doc = frame.contentDocument;
+  frame.remove();
+  assert_equals(doc.open(), doc);
+  doc.close();
+}, 'An empty reopened document closes after its frame is removed');
+
+test(() => {
+  const frame = document.body.appendChild(document.createElement('iframe'));
+  const doc = frame.contentDocument;
+  frame.remove();
+  doc.open();
+  doc.write('<p id="written">retained document</p>');
+  assert_equals(doc.getElementById('written').textContent, 'retained document');
+  doc.close();
+}, 'A reopened document parses writes after its frame is removed');
+
+test(t => {
+  const frame = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  let scriptCalls = 0;
+  frame.contentWindow.reportReopenedScript = () => { ++scriptCalls; };
+  const markup = '<script>reportReopenedScript()<\/script><p id="after">after script</p>';
+  doc.open();
+  doc.write(markup);
+  doc.close();
+  assert_equals(scriptCalls, 1, 'positive control: the connected document runs the script');
+  frame.remove();
+  doc.open();
+  doc.write(markup);
+  assert_equals(scriptCalls, 1, 'the removed browsing context does not run script');
+  assert_equals(doc.getElementById('after').textContent, 'after script');
+  doc.close();
+}, 'A reopened removed-frame document parses past inert script elements');
+</script>
