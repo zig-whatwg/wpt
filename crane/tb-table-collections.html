@@ -1,0 +1,96 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Live table collections and indices</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const table = document.createElement('table');
+  const rows = table.rows, bodies = table.tBodies;
+  assert_equals(rows, table.rows);
+  assert_equals(bodies, table.tBodies);
+  const foot = document.createElement('tfoot');
+  const body = document.createElement('tbody');
+  const head = document.createElement('thead');
+  table.append(foot, body, head);
+  const f = foot.insertRow(), b = body.insertRow(), h = head.insertRow();
+  const direct = document.createElement('tr');
+  table.insertBefore(direct, body);
+  assert_array_equals(Array.from(rows), [h, direct, b, f]);
+  assert_array_equals(Array.from(bodies), [body]);
+  assert_equals(h.rowIndex, 0);
+  assert_equals(direct.sectionRowIndex, 1);
+  assert_equals(b.rowIndex, 2);
+  assert_equals(f.rowIndex, 3);
+  head.append(b);
+  assert_array_equals(Array.from(rows), [h, b, direct, f]);
+  assert_equals(b.sectionRowIndex, 1);
+  table.removeChild(head);
+  assert_array_equals(Array.from(rows), [direct, f]);
+  assert_equals(b.rowIndex, -1);
+  assert_equals(b.sectionRowIndex, 1);
+}, 'Table rows use section order and collections and indices follow moves');
+test(() => {
+  const table = document.createElement('table');
+  const section = document.createElement('tbody');
+  const row = document.createElement('tr');
+  table.append(section); section.append(row);
+  const nested = document.createElement('div');
+  const hiddenRow = document.createElement('tr');
+  nested.append(hiddenRow); section.append(nested);
+  table.append(document.createElementNS('urn:test', 'tbody'));
+  section.append(document.createElementNS('urn:test', 'tr'));
+  row.append(document.createElementNS('urn:test', 'td'));
+  const th = document.createElement('th'); row.append(th);
+  const td = row.insertCell();
+  assert_equals(table.tBodies.length, 1);
+  assert_equals(table.rows.length, 1);
+  assert_equals(section.rows.length, 1);
+  assert_equals(row.cells.length, 2);
+  assert_equals(th.cellIndex, 0);
+  assert_equals(td.cellIndex, 1);
+  assert_equals(hiddenRow.rowIndex, -1);
+  assert_equals(hiddenRow.sectionRowIndex, -1);
+  row.removeChild(th);
+  assert_equals(th.cellIndex, -1);
+  assert_equals(td.cellIndex, 0);
+}, 'Collections ignore nested rows and foreign-namespace lookalikes');
+test(() => {
+  const table = document.createElement('table');
+  const before = table.createTBody();
+  const foot = table.createTFoot();
+  const after = table.createTBody();
+  assert_equals(after.previousSibling, before);
+  assert_equals(after.nextSibling, foot);
+  assert_not_equals(before, after);
+}, 'createTBody inserts after the last body even before a following foot');
+test(() => {
+  const table = document.createElement('table');
+  const row = table.insertRow();
+  assert_equals(row.parentNode, table.tBodies[0]);
+  const foot = table.createTFoot();
+  const f = foot.insertRow();
+  assert_equals(table.insertRow().parentNode, foot);
+  assert_equals(table.insertRow(1).nextSibling, f);
+  assert_throws_dom('IndexSizeError', () => table.insertRow(-2));
+  assert_throws_dom('IndexSizeError', () => table.insertRow(table.rows.length + 1));
+  while (table.rows.length) table.deleteRow(-1);
+  table.deleteRow(-1);
+  assert_throws_dom('IndexSizeError', () => table.deleteRow(0));
+}, 'Table row insertion chooses the correct section and validates indices');
+for (const tag of ['tbody', 'thead', 'tfoot', 'tr']) test(() => {
+  const root = document.createElement(tag);
+  const insert = tag === 'tr' ? 'insertCell' : 'insertRow';
+  const remove = tag === 'tr' ? 'deleteCell' : 'deleteRow';
+  const list = tag === 'tr' ? root.cells : root.rows;
+  root[remove](-1);
+  assert_throws_dom('IndexSizeError', () => root[remove](0));
+  assert_throws_dom('IndexSizeError', () => root[insert](-2));
+  const a = root[insert](), b = root[insert](0), c = root[insert](2);
+  assert_array_equals(Array.from(list), [b, a, c]);
+  root[remove](1);
+  assert_array_equals(Array.from(list), [b, c]);
+  assert_throws_dom('IndexSizeError', () => root[remove](2));
+  assert_throws_dom('IndexSizeError', () => root[insert](3));
+}, tag + ' insert/delete uses a live direct-child collection');
+</script>

@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated table caption getter regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const table = document.createElement('table');
+  const caption = document.createElement('caption');
+  table.appendChild(caption);
+  assert_equals(table.caption, caption);
+}, 'caption returns its first caption child');
+</script>

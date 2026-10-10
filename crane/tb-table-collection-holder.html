@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Table collections keep their roots alive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const property of ['rows', 'tBodies', 'cells', 'sectionRows']) test(() => {
+  let table = document.createElement('table');
+  let body = table.createTBody();
+  let row = body.insertRow();
+  row.insertCell().textContent = 'kept cell';
+  const collection = property === 'cells' ? row.cells :
+    property === 'sectionRows' ? body.rows : table[property];
+  table = body = row = null;
+  TestUtils.gc(); TestUtils.gc();
+  assert_equals(collection.length, 1);
+  assert_equals(collection[0].textContent, 'kept cell');
+  const first = collection[0];
+  if (property === 'cells') first.parentNode.insertCell();
+  else if (property === 'tBodies') first.parentNode.createTBody();
+  else first.parentNode.insertRow();
+  TestUtils.gc();
+  assert_equals(collection.length, 2);
+  assert_equals(collection[0], first);
+}, property + ' remains live when it is the only retained script reference');
+</script>

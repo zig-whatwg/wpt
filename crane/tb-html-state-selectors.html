@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTML link, disclosure, media and heading selectors</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  for (const tag of ['a', 'area']) {
+    const element = document.createElement(tag);
+    assert_false(element.matches(':link, :any-link'));
+    element.href = ''; assert_true(element.matches(':link')); assert_true(element.matches(':any-link'));
+    assert_false(element.matches(':visited'));
+  }
+  const link = document.createElement('link'); link.href = 'x';
+  assert_false(link.matches(':any-link'));
+}, 'link pseudo-classes use a and area href, with no observable visited history');
+test(() => {
+  for (const tag of ['details', 'dialog']) {
+    const element = document.createElement(tag);
+    assert_false(element.matches(':open'));
+    element.setAttribute('open', ''); assert_true(element.matches(':open'));
+    element.removeAttribute('open'); assert_false(element.matches(':open'));
+  }
+}, 'open follows details and dialog open attributes');
+test(t => {
+  const element = document.createElement('div');
+  element.popover = 'manual'; document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_false(element.matches(':popover-open'));
+  element.showPopover(); assert_true(element.matches(':popover-open'));
+  element.hidePopover(); assert_false(element.matches(':popover-open'));
+}, 'popover-open follows the owning element visibility state');
+test(() => {
+  const media = document.createElement('video');
+  assert_true(media.matches(':paused'));
+  assert_false(media.matches(':playing, :seeking, :buffering, :muted, :volume-locked'));
+  media.muted = true; assert_true(media.matches(':muted'));
+  media.muted = false; assert_false(media.matches(':muted'));
+  assert_false(document.createElement('div').matches(':paused, :playing, :muted'));
+}, 'media pseudo-classes read media interfaces and exclude other elements');
+test(() => {
+  for (let n = 1; n <= 6; n++) {
+    const heading = document.createElement('h' + n);
+    assert_true(heading.matches(':heading'));
+    assert_true(heading.matches(':heading(' + n + ')'));
+    try { assert_equals(heading.matches(':heading(1, 3, +5)'), n % 2 === 1); } catch (e) { assert_unreached(':heading(1, 3, +5): ' + e); }
+    try { assert_false(heading.matches(':heading(0, -1, 7)')); } catch (e) { assert_unreached(':heading(0, -1, 7): ' + e); }
+  }
+  assert_false(document.createElement('div').matches(':heading'));
+}, 'heading and heading(integer list) match native heading levels');
+test(() => {
+  const input = document.createElement('input'); input.autocomplete = 'on';
+  assert_false(input.matches(':autofill, :-webkit-autofill'));
+}, 'Crane has no autofill state');
+</script>

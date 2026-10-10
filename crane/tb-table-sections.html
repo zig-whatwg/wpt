@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTML table section creation and replacement</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const htmlNS = 'http://www.w3.org/1999/xhtml';
+test(() => {
+  const table = document.createElement('table');
+  const caption = document.createElement('caption');
+  table.append(caption);
+  assert_equals(table.caption, caption);
+}, 'Isolated: caption is the first HTML caption child');
+test(() => {
+  const table = document.createElement('table');
+  table.append(document.createTextNode('text'));
+  const colgroup = document.createElement('colgroup');
+  const body = document.createElement('tbody');
+  table.append(colgroup, body);
+  const head = table.createTHead();
+  const foot = table.createTFoot();
+  const caption = table.createCaption();
+  assert_equals(table.firstChild, caption);
+  assert_equals(head.previousSibling, colgroup);
+  assert_equals(head.nextSibling, body);
+  assert_equals(table.lastChild, foot);
+  assert_equals(table.createCaption(), caption);
+  assert_equals(table.createTHead(), head);
+  assert_equals(table.createTFoot(), foot);
+  assert_equals(caption.ownerDocument, document);
+  assert_equals(head.namespaceURI, htmlNS);
+}, 'Creators preserve identity and insert at the specified positions');
+test(() => {
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const foot = document.createElement('tfoot');
+  table.tHead = head;
+  table.tFoot = foot;
+  assert_throws_dom('HierarchyRequestError', () => table.tHead = foot);
+  assert_throws_dom('HierarchyRequestError', () => table.tFoot = head);
+  assert_equals(table.tHead, head);
+  assert_equals(table.tFoot, foot);
+  table.tHead = null;
+  table.tFoot = null;
+  assert_equals(head.parentNode, null);
+  assert_equals(foot.parentNode, null);
+}, 'Invalid section assignment throws before removing the old section');
+test(() => {
+  const table = document.createElement('table');
+  for (const tag of ['caption', 'thead', 'tfoot']) {
+    const foreign = document.createElementNS('urn:test', tag);
+    const first = document.createElement(tag);
+    const second = document.createElement(tag);
+    table.append(foreign, first, second);
+    const name = tag === 'caption' ? 'caption' : tag === 'thead' ? 'tHead' : 'tFoot';
+    assert_equals(table[name], first);
+    table['delete' + name[0].toUpperCase() + name.slice(1)]();
+    assert_equals(table[name], second);
+    assert_equals(foreign.parentNode, table);
+  }
+}, 'Getters and deleters select only the first matching HTML child');
+test(() => {
+  const xml = document.implementation.createDocument(null, 'root');
+  const table = xml.createElementNS(htmlNS, 'table');
+  for (const method of ['createCaption', 'createTHead', 'createTFoot', 'createTBody']) {
+    const child = table[method]();
+    assert_equals(child.namespaceURI, htmlNS);
+    assert_equals(child.ownerDocument, xml);
+  }
+}, 'Table creators use the HTML namespace in an XML document');
+</script>
+<script>
+test(() => {
+  const table = document.createElement('table');
+  for (const attribute of ['caption', 'tHead', 'tFoot']) {
+    for (const value of [document.createElement('div'), document.createTextNode('x'), {}]) {
+      assert_throws_js(TypeError, () => table[attribute] = value, attribute);
+    }
+  }
+  const head = table.createTHead();
+  assert_throws_dom('HierarchyRequestError', () => table.tHead = document.createElement('tfoot'));
+  assert_equals(table.tHead, head);
+  table.tHead = null;
+  assert_equals(table.tHead, null);
+}, 'Table interface-typed setters reject wrong brands before running mutation steps');
+</script>

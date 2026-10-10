@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CommandEvent values, retargeting and retained source</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const event = new CommandEvent('command');
+  assert_equals(event.type, 'command');
+  assert_equals(event.command, '');
+  assert_equals(event.source, null);
+  assert_false(event.bubbles);
+  assert_false(event.cancelable);
+  assert_false(event.isTrusted);
+}, 'CommandEvent constructor defaults include its Event base');
+test(() => {
+  assert_throws_js(TypeError, () => new CommandEvent('command', {source: document.createTextNode('x')}));
+  assert_throws_js(TypeError, () => new CommandEvent('command', {source: {}}));
+}, 'CommandEvent source is an Element, not an arbitrary object or Node');
+test(() => {
+  const source = document.createElement('button');
+  const event = new CommandEvent('custom', {command: '--MiXeD', source, bubbles: true, cancelable: true, composed: true});
+  assert_equals(event.command, '--MiXeD');
+  assert_equals(event.source, source);
+  assert_true(event.bubbles);
+  assert_true(event.cancelable);
+  assert_true(event.composed);
+  event.preventDefault();
+  assert_true(event.defaultPrevented);
+}, 'CommandEvent preserves command text and EventInit');
+test(() => {
+  const host = document.createElement('div');
+  const shadow = host.attachShadow({mode: 'closed'});
+  const source = document.createElement('button');
+  shadow.append(source);
+  const event = new CommandEvent('command', {command: '--test', source, bubbles: true, composed: true});
+  let inside, outside;
+  shadow.addEventListener('command', e => inside = e.source);
+  host.addEventListener('command', e => outside = e.source);
+  source.dispatchEvent(event);
+  assert_equals(inside, source);
+  assert_equals(outside, host);
+  assert_equals(event.source, host);
+}, 'source retargets against currentTarget inside and outside a shadow root');
+test(() => {
+  const host = document.createElement('div');
+  const shadow = host.attachShadow({mode: 'closed'});
+  const source = document.createElement('button'); shadow.append(source);
+  const event = new CommandEvent('command', {source});
+  let inside, outside;
+  shadow.addEventListener('command', e => inside = e.source);
+  host.addEventListener('command', e => outside = e.source);
+  shadow.dispatchEvent(event); assert_equals(inside, source);
+  host.dispatchEvent(event); assert_equals(outside, host);
+  assert_equals(event.source, host);
+}, 'source getter retargets when currentTarget changes between shadow and host');
+test(() => {
+  let source = document.createElement('button');
+  source.textContent = 'kept source';
+  const target = document.createElement('div');
+  let kept;
+  target.addEventListener('command', event => kept = event);
+  target.dispatchEvent(new CommandEvent('command', {source, command: '--keep'}));
+  source = null;
+  TestUtils.gc(); TestUtils.gc();
+  assert_equals(kept.source.textContent, 'kept source');
+  assert_equals(kept.command, '--keep');
+}, 'A listener retaining the event retains its source');
+</script>

@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTML form pseudo-classes use current control state</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t, html) {
+  const root = document.createElement('div');
+  root.innerHTML = html;
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+function ids(root, selector) { return Array.from(root.querySelectorAll(selector), e => e.id); }
+test(t => {
+  const root = fixture(t, '<input id="a" type="checkbox" checked><input id="b" type="radio"><select multiple><option id="o" selected>one</option></select>');
+  assert_array_equals(ids(root, ':checked'), ['a', 'o']);
+  root.querySelector('#a').checked = false;
+  root.querySelector('#b').checked = true;
+  root.querySelector('#o').selected = false;
+  assert_array_equals(ids(root, ':checked'), ['b']);
+  assert_array_equals(ids(root, ':default'), ['a', 'o']);
+  assert_true(root.querySelector('#b').matches(':CHECKED'));
+}, 'checked is live state, default is the initial checked/selected attribute');
+test(t => {
+  const root = fixture(t, '<button id="external" form="tb-default-form" disabled>external</button><form id="tb-default-form"><button id="first">one</button><input id="second" type="submit"></form>');
+  assert_array_equals(ids(root, ':default'), ['external']);
+  root.querySelector('#external').remove();
+  assert_array_equals(ids(root, ':default'), ['first']);
+  root.querySelector('#first').type = 'button';
+  assert_array_equals(ids(root, ':default'), ['second']);
+}, 'default submit button follows form ownership and tree order, including disabled buttons');
+test(t => {
+  const root = fixture(t, '<input id="c" type="checkbox"><input id="r1" type="radio" name="g"><input id="r2" type="radio" name="g"><input id="alone" type="radio"><progress id="p"></progress>');
+  root.querySelector('#c').indeterminate = true;
+  assert_array_equals(ids(root, ':indeterminate'), ['c', 'r1', 'r2', 'alone', 'p']);
+  root.querySelector('#r2').checked = true;
+  root.querySelector('#p').value = 1;
+  assert_array_equals(ids(root, ':indeterminate'), ['c', 'alone']);
+  root.querySelector('#c').type = 'text';
+  assert_false(root.querySelector('#c').matches(':indeterminate'));
+}, 'indeterminate reads checkbox state, radio groups and progress value presence');
+test(t => {
+  const root = fixture(t, '<fieldset id="fs" disabled><legend><input id="exempt"></legend><input id="blocked"></fieldset><select><optgroup disabled id="og"><option id="option">x</option></optgroup></select><div disabled id="div"></div>');
+  assert_true(root.querySelector('#exempt').matches(':enabled'));
+  for (const id of ['fs', 'blocked', 'og', 'option']) assert_true(root.querySelector('#' + id).matches(':disabled'), id);
+  assert_false(root.querySelector('#div').matches(':enabled, :disabled'));
+}, 'enabled and disabled use HTML categories, fieldset legend exemptions and optgroups');
+test(t => {
+  const root = fixture(t, '<form id="tb-validation-form"><fieldset id="fs"><input id="control" required></fieldset></form><input id="external" form="tb-validation-form" required>');
+  const form = root.querySelector('form'), fieldset = root.querySelector('fieldset'), control = root.querySelector('#control');
+  let invalid = 0;
+  root.addEventListener('invalid', () => invalid++, true);
+  assert_true(form.matches(':invalid'));
+  assert_true(fieldset.matches(':invalid'));
+  assert_true(control.matches(':invalid'));
+  control.value = 'ok';
+  assert_true(control.matches(':valid'));
+  assert_true(fieldset.matches(':valid'));
+  assert_true(form.matches(':invalid'));
+  root.querySelector('#external').disabled = true;
+  assert_true(form.matches(':valid'));
+  control.setCustomValidity('bad');
+  assert_true(control.matches(':invalid'));
+  control.readOnly = true;
+  assert_false(control.matches(':valid, :invalid'));
+  assert_equals(invalid, 0);
+}, 'validation matching observes constraints and associated controls without invalid events');
+test(t => {
+  const root = fixture(t, '<input id="input" required><textarea id="ta"></textarea><select id="select" required></select><input id="hidden" type="hidden" required><div id="div"></div>');
+  assert_true(root.querySelector('#input').matches(':required'));
+  assert_true(root.querySelector('#ta').matches(':optional'));
+  assert_true(root.querySelector('#select').matches(':required'));
+  assert_false(root.querySelector('#hidden').matches(':required'));
+  assert_true(root.querySelector('#hidden').matches(':optional'));
+  assert_false(root.querySelector('#div').matches(':required, :optional'));
+}, 'required and optional follow supported control types, including hidden input fallback');
+test(t => {
+  const root = fixture(t, '<input id="text"><input id="check" type="checkbox"><input id="ro" readonly><textarea id="ta"></textarea><div contenteditable><span id="edit"></span><span id="fixed" contenteditable="false"></span></div>');
+  for (const id of ['text', 'ta', 'edit']) assert_true(root.querySelector('#' + id).matches(':read-write'), id);
+  for (const id of ['check', 'ro', 'fixed']) assert_true(root.querySelector('#' + id).matches(':read-only'), id);
+  root.querySelector('#text').disabled = true;
+  assert_true(root.querySelector('#text').matches(':read-only'));
+}, 'read-write follows mutable inputs, textareas and editing hosts');
+test(t => {
+  const root = fixture(t, '<input id="input" placeholder="hint"><textarea id="ta" placeholder="hint"></textarea><input id="button" type="submit" placeholder="hint">');
+  assert_array_equals(ids(root, ':placeholder-shown'), ['input', 'ta']);
+  root.querySelector('#input').value = 'value';
+  root.querySelector('#ta').value = 'value';
+  assert_array_equals(ids(root, ':placeholder-shown'), []);
+  root.querySelector('#button').type = 'text';
+  root.querySelector('#button').value = '';
+  assert_true(root.querySelector('#button').matches(':placeholder-shown'));
+  root.querySelector('#button').placeholder = '';
+  assert_true(root.querySelector('#button').matches(':placeholder-shown'), 'empty placeholder still counts');
+  root.querySelector('#button').removeAttribute('placeholder');
+  assert_false(root.querySelector('#button').matches(':placeholder-shown'));
+}, 'placeholder-shown follows control type and current empty value');
+test(t => {
+  const root = fixture(t, '<input id="n" type="number" min="2" max="5"><input id="bad" type="number" min="not-a-number"><input id="range" type="range">');
+  const n = root.querySelector('#n');
+  assert_true(n.matches(':in-range'));
+  n.value = '1'; assert_true(n.matches(':out-of-range'));
+  n.value = '3'; assert_true(n.matches(':in-range'));
+  n.readOnly = true; assert_false(n.matches(':in-range, :out-of-range'));
+  assert_false(root.querySelector('#bad').matches(':in-range, :out-of-range'));
+  assert_true(root.querySelector('#range').matches(':in-range'));
+}, 'range matching requires a valid bound and a constraint-validation candidate');
+test(t => {
+  const root = fixture(t, '<input id="date" type="date" min="2024-02-29"><input id="time" type="time" min="23:00" max="01:00"><input id="bad" type="date" min="2023-02-29">');
+  const date = root.querySelector('#date'), time = root.querySelector('#time');
+  date.value = '2024-02-28'; assert_true(date.matches(':out-of-range'));
+  date.value = '2024-03-01'; assert_true(date.matches(':in-range'));
+  date.disabled = true; assert_false(date.matches(':in-range, :out-of-range'));
+  assert_false(root.querySelector('#bad').matches(':in-range, :out-of-range'));
+  time.value = '00:30'; assert_true(time.matches(':in-range'));
+  time.value = '12:00'; assert_true(time.matches(':out-of-range'));
+}, 'range matching uses owner date parsing and periodic time bounds');
+</script>

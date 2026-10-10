@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTML directionality selectors</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.createElement('div');
+  root.dir = 'ltr';
+  root.innerHTML = '<div dir="rtl"><span></span></div>';
+  const span = root.querySelector('span');
+  assert_true(span.matches(':dir(rtl)'));
+  assert_false(span.matches(':dir(ltr)'));
+  root.firstChild.dir = 'ltr';
+  assert_true(span.matches(':DIR(ltr)'));
+}, 'The nearest explicit direction ends the ancestor walk');
+test(() => {
+  for (const tag of ['input', 'textarea']) {
+    const control = document.createElement(tag);
+    control.dir = 'auto';
+    control.value = '  שלום'; assert_true(control.matches(':dir(rtl)'), tag);
+    control.value = '  hello'; assert_true(control.matches(':dir(ltr)'), tag);
+  }
+  const bdi = document.createElement('bdi');
+  bdi.textContent = 'שלום'; assert_true(bdi.matches(':dir(rtl)'));
+}, 'Auto directionality reads live control values and bdi text');
+test(() => {
+  const div = document.createElement('div');
+  div.dir = 'auto';
+  div.innerHTML = '<script>Latin</' + 'script><bdi>Latin</bdi><span dir="ltr">Latin</span>שלום';
+  assert_true(div.matches(':dir(rtl)'));
+  const doc = document.implementation.createDocument('http://www.w3.org/1999/xhtml', 'div');
+  doc.documentElement.setAttribute('dir', 'auto');
+  doc.documentElement.appendChild(doc.createCDATASection('שלום'));
+  assert_true(doc.documentElement.matches(':dir(rtl)'));
+  div.textContent = '';
+  const foreign = document.createElementNS('urn:foreign', 'bdi'); foreign.textContent = 'שלום';
+  div.append(foreign);
+  assert_true(div.matches(':dir(rtl)'), 'foreign local names are not HTML directionality exclusions');
+}, 'Contained text skips isolated subtrees and includes CDATA Text nodes');
+test(() => {
+  const host = document.createElement('div');
+  const shadow = host.attachShadow({mode: 'open'});
+  const slot = document.createElement('slot');
+  slot.dir = 'auto'; slot.textContent = 'fallback'; shadow.append(slot);
+  host.append(document.createTextNode('שלום'));
+  assert_true(slot.matches(':dir(rtl)'));
+  host.textContent = 'Latin'; assert_true(slot.matches(':dir(ltr)'));
+  host.textContent = '';
+  const isolated = document.createElement('span'); isolated.dir = 'rtl'; isolated.textContent = 'שלום';
+  host.append(isolated);
+  assert_true(slot.matches(':dir(ltr)'));
+}, 'An auto slot examines assigned nodes and excludes roots with their own direction');
+</script>

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Table numeric and scope reflection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ['td', 'th', 'col', 'colgroup']) {
+  const attributes = tag === 'td' || tag === 'th' ? [['colSpan', 'colspan', 1, 1000], ['rowSpan', 'rowspan', 0, 65534]] : [['span', 'span', 1, 1000]];
+  for (const [name, attr, min, max] of attributes) test(() => {
+    const e = document.createElement(tag);
+    assert_equals(e[name], 1);
+    for (const [raw, expected] of [['-1', 1], ['garbage', 1], ['0', min], ['0002x', 2], [String(max + 1), max]]) {
+      e.setAttribute(attr, raw);
+      assert_equals(e[name], expected, raw);
+    }
+    e[name] = max + 10;
+    assert_equals(e[name], max);
+    assert_equals(e.getAttribute(attr), String(max + 10));
+    e[name] = 0;
+    assert_equals(e[name], min);
+  }, tag + '.' + name + ' reflects its clamped integer range');
+}
+for (const tag of ['td', 'th']) test(() => {
+  const e = document.createElement(tag);
+  for (const [value, expected] of [['ROW', 'row'], ['col', 'col'], ['rowgroup', 'rowgroup'], ['COLGROUP', 'colgroup'], ['auto', ''], [' row ', '']]) {
+    e.scope = value;
+    assert_equals(e.getAttribute('scope'), value);
+    assert_equals(e.scope, expected);
+  }
+}, tag + '.scope reflects only known values without rewriting the content attribute');
+</script>

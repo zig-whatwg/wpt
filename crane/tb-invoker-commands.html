@@ -1,0 +1,127 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Button command target reflection and activation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const root = document.createElement('div');
+  const button = document.createElement('button'); button.type = 'button';
+  const target = document.createElement('div'); target.id = 'tb-command-target';
+  root.append(button, target); document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return {root, button, target};
+}
+test(t => {
+  const {root, button, target} = fixture(t);
+  button.setAttribute('commandfor', target.id);
+  assert_equals(button.commandForElement, target);
+  target.id = 'changed'; assert_equals(button.commandForElement, null);
+  button.commandForElement = target;
+  assert_equals(button.getAttribute('commandfor'), '');
+  assert_equals(button.commandForElement, target);
+  button.setAttribute('commandfor', '');
+  assert_equals(button.commandForElement, null);
+  button.commandForElement = target;
+  target.remove(); assert_equals(button.commandForElement, null);
+  root.append(target); assert_equals(button.commandForElement, target);
+  button.commandForElement = null;
+  assert_false(button.hasAttribute('commandfor'));
+}, 'commandForElement has a live ID association and resettable explicit weak target');
+test(t => {
+  const {root, button, target} = fixture(t);
+  const host = document.createElement('div'); root.append(host);
+  const shadow = host.attachShadow({mode: 'open'});
+  const inner = document.createElement('button'); shadow.append(inner);
+  inner.commandForElement = target;
+  assert_equals(inner.commandForElement, target);
+  inner.setAttribute('commandfor', target.id);
+  assert_equals(inner.commandForElement, null);
+  button.commandForElement = inner;
+  assert_equals(button.commandForElement, null);
+}, 'Explicit references may cross to ancestor trees, string IDs stay in their root');
+test(t => {
+  const {button, target} = fixture(t);
+  button.commandForElement = target; button.command = '--MiXeD';
+  let event;
+  target.addEventListener('command', e => event = e);
+  button.click();
+  assert_true(event instanceof CommandEvent);
+  assert_equals(event.command, '--MiXeD');
+  assert_equals(event.source, button);
+  assert_true(event.isTrusted);
+  assert_true(event.cancelable);
+  assert_false(event.bubbles);
+  assert_false(event.composed);
+  event = null; button.disabled = true; button.click(); assert_equals(event, null);
+}, 'Custom invoker command fires a trusted cancelable CommandEvent with its source');
+test(t => {
+  const {button, target} = fixture(t);
+  button.commandForElement = target;
+  let count = 0; target.addEventListener('command', () => count++);
+  button.command = 'unknown'; button.click(); assert_equals(count, 0);
+  button.command = 'show-modal'; button.click(); assert_equals(count, 0);
+  button.command = 'SHOW-POPOVER'; button.click(); assert_equals(count, 1);
+  assert_equals(button.command, 'show-popover');
+  target.addEventListener('command', e => assert_equals(e.command, 'SHOW-POPOVER'), {once: true});
+  button.click();
+}, 'Unknown and unsupported commands do not dispatch; popover validity ignores current state');
+test(t => {
+  const {button, target} = fixture(t);
+  target.popover = 'manual'; button.commandForElement = target;
+  button.command = 'show-popover'; button.click(); assert_true(target.matches(':popover-open'));
+  button.click(); assert_true(target.matches(':popover-open'));
+  button.command = 'toggle-popover'; button.click(); assert_false(target.matches(':popover-open'));
+  button.click(); assert_true(target.matches(':popover-open'));
+  button.command = 'hide-popover'; button.click(); assert_false(target.matches(':popover-open'));
+}, 'Popover built-ins show, hide and toggle the target');
+test(t => {
+  const {button, target} = fixture(t);
+  target.popover = 'manual'; button.commandForElement = target; button.command = 'show-popover';
+  target.addEventListener('command', e => e.preventDefault(), {once: true});
+  button.click(); assert_false(target.matches(':popover-open'));
+  target.addEventListener('command', () => target.remove(), {once: true});
+  button.click(); assert_false(target.matches(':popover-open'));
+}, 'Canceling command or disconnecting its target prevents the built-in action');
+test(t => {
+  const {root, button, target} = fixture(t);
+  const form = document.createElement('form'); root.append(form); form.append(button);
+  button.commandForElement = target; button.command = '--test';
+  let commands = 0, submits = 0;
+  target.addEventListener('command', () => commands++);
+  form.addEventListener('submit', e => { submits++; e.preventDefault(); });
+  button.removeAttribute('type'); button.click(); assert_equals(commands, 0);
+  button.type = 'submit'; button.click(); assert_equals(submits, 1); assert_equals(commands, 0);
+  button.type = 'button'; button.click(); assert_equals(commands, 1);
+}, 'Form submit and Auto behavior precede command activation');
+test(t => {
+  const {root, button} = fixture(t);
+  (() => { const target = document.createElement('div'); root.append(target); button.commandForElement = target; target.remove(); })();
+  TestUtils.gc(); TestUtils.gc();
+  assert_equals(button.commandForElement, null);
+  const replacement = document.createElement('div'); replacement.id = 'replacement'; root.append(replacement);
+  button.setAttribute('commandfor', 'replacement');
+  assert_equals(button.commandForElement, replacement);
+}, 'An explicit command target is weak and can be replaced by an ID association after collection');
+for (const remove of [true, false]) {
+  test(t => {
+    const root = document.createElement('div'); document.body.append(root);
+    t.add_cleanup(() => root.remove());
+    const button = document.createElement('button'); button.type = 'button';
+    root.append(button);
+    let target = document.createElement('div'); target.popover = 'manual';
+    root.append(target); button.commandForElement = target; button.command = 'show-popover';
+    let event;
+    target.addEventListener('command', e => {
+      event = e;
+      if (remove) target.remove();
+      target = null;
+      TestUtils.gc(); TestUtils.gc();
+    }, {once: true});
+    button.click();
+    assert_true(event instanceof CommandEvent);
+    assert_equals(event.target.matches(':popover-open'), !remove);
+  }, 'Command target survives listener GC and built-in action respects connectedness: remove=' + remove);
+}
+</script>
