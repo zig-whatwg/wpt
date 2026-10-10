@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: every kind of tree mutation keeps the tree intact (refcount step 3, tree links)</title>
+<link rel=help href="https://dom.spec.whatwg.org/#mutation-algorithms">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=log></div>
+<script>
+"use strict";
+// Step 3 of the reference-counting migration (tmp/plans/refcount-design.md
+// section 7): every parent write goes through one setter, and insert, remove,
+// move and adopt keep the reference counts along the host-including chain
+// (shadow roots, template contents) and the Document's two counts. The counts
+// decide nothing yet, so script cannot see them: this page exercises every
+// mutation kind once, and its assertions are the ordinary tree's. Run it
+// under the runner's CRANE_REFCOUNT_CHECK=1, which checks the counts after
+// every mutation and logs "refcount: ..." on any mismatch: zero is the bar.
+
+function tree(doc, depth) {
+  const root = doc.createElement("div");
+  let at = root;
+  for (let i = 0; i < depth; i++) {
+    const child = doc.createElement("span");
+    child.appendChild(doc.createTextNode("t" + i));
+    at.appendChild(child);
+    at = child;
+  }
+  return root;
+}
+
+test(() => {
+  const host = document.body.appendChild(document.createElement("section"));
+  const a = tree(document, 4);
+  host.appendChild(a);
+  const b = host.insertBefore(tree(document, 3), a);
+  host.replaceChild(tree(document, 2), b);
+  host.removeChild(a);
+  assert_equals(a.parentNode, null);
+  assert_equals(host.childNodes.length, 1);
+  host.remove();
+}, "appendChild, insertBefore, replaceChild, removeChild");
+
+test(() => {
+  const host = document.body.appendChild(document.createElement("section"));
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 5; i++) fragment.appendChild(tree(document, 2));
+  host.append(fragment, "text", tree(document, 1));
+  assert_equals(host.childNodes.length, 7);
+  host.prepend(tree(document, 1));
+  host.replaceChildren(tree(document, 3), tree(document, 1));
+  assert_equals(host.childNodes.length, 2);
+  host.firstChild.before(tree(document, 1));
+  host.lastChild.after(tree(document, 1));
+  host.lastChild.replaceWith(tree(document, 2));
+  host.textContent = "gone";
+  assert_equals(host.childNodes.length, 1);
+  host.remove();
+}, "fragments, ParentNode and ChildNode, textContent");
+
+test(() => {
+  const host = document.body.appendChild(document.createElement("section"));
+  host.innerHTML = "<p><b>1</b><i>2</i></p><ul><li>a<li>b</ul>";
+  host.innerHTML = "<p>again</p>";
+  host.firstChild.outerHTML = "<div><span>x</span></div>";
+  host.insertAdjacentHTML("beforeend", "<em>y</em>");
+  assert_equals(host.children.length, 2);
+  host.remove();
+}, "innerHTML, outerHTML, insertAdjacentHTML");
+
+test(() => {
+  const host = document.body.appendChild(document.createElement("section"));
+  const from = host.appendChild(document.createElement("div"));
+  const to = host.appendChild(document.createElement("div"));
+  const moved = from.appendChild(tree(document, 3));
+  if (typeof to.moveBefore === "function") {
+    to.moveBefore(moved, null);
+    assert_equals(moved.parentNode, to);
+    from.moveBefore(moved, null);
+    assert_equals(moved.parentNode, from);
+  }
+  host.remove();
+}, "moveBefore");
+
+test(() => {
+  const other = document.implementation.createHTMLDocument("other");
+  const detached = tree(document, 3);
+  other.adoptNode(detached);
+  assert_equals(detached.ownerDocument, other);
+  other.body.appendChild(detached);
+  const connected = document.body.appendChild(tree(document, 2));
+  other.body.appendChild(connected);
+  assert_equals(connected.ownerDocument, other);
+  document.body.appendChild(connected);
+  assert_equals(connected.ownerDocument, document);
+  connected.remove();
+  document.importNode(other.body, true);
+}, "adoptNode, a cross-document append, importNode");
+
+test(() => {
+  const host = document.body.appendChild(document.createElement("div"));
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.appendChild(tree(document, 3));
+  shadow.innerHTML = "<slot></slot><p>in shadow</p>";
+  host.appendChild(tree(document, 1));
+  const inner = shadow.lastChild.attachShadow ? shadow.appendChild(document.createElement("div")) : null;
+  if (inner) inner.attachShadow({ mode: "closed" }).appendChild(tree(document, 2));
+  host.remove();
+  document.body.appendChild(host);
+  const other = document.implementation.createHTMLDocument("other");
+  other.body.appendChild(host);
+  assert_equals(shadow.ownerDocument, other);
+  host.remove();
+}, "shadow trees: attach, mutate inside, move the host, adopt it");
+
+test(() => {
+  const template = document.createElement("template");
+  template.innerHTML = "<p><b>x</b></p><template><i>nested</i></template>";
+  template.content.appendChild(tree(document, 2));
+  document.body.appendChild(template);
+  const clone = template.content.cloneNode(true);
+  document.body.appendChild(clone);
+  template.content.firstChild.remove();
+  const other = document.implementation.createHTMLDocument("other");
+  other.body.appendChild(template);
+  assert_equals(template.ownerDocument, other);
+  template.remove();
+}, "template contents: parse into them, clone, adopt the template");
+
+test(() => {
+  const div = document.createElement("div");
+  div.innerHTML = "<p>1</p><p>2</p>";
+  div.normalize();
+  const text = div.appendChild(document.createTextNode("abcdef"));
+  text.splitText(3);
+  div.normalize();
+  const range = document.createRange();
+  range.selectNodeContents(div);
+  const extracted = range.extractContents();
+  assert_equals(div.childNodes.length, 0);
+  div.appendChild(extracted);
+  range.selectNodeContents(div);
+  range.deleteContents();
+  range.insertNode(tree(document, 2));
+  range.surroundContents(document.createElement("b"));
+}, "normalize, splitText, Range extract/delete/insert/surround");
+</script>
