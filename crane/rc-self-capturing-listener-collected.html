@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a detached node whose listener closes over it is collectable (refcount decision D7)</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-listener">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Decision D7: event listeners and observer callbacks are values traced from
+// their target's (observer's) wrapper, not strong native roots. A listener
+// only fires while its target is reachable, so a closure over its own detached
+// target must not keep that target alive: Blink traces the listener from the
+// target, WebKit's JSEventListener holds JSC::Weak and is marked from the
+// target's wrapper (visitJSFunctionInGCThread). Crane today clones the
+// callback into an OWNED strong Global: root -> closure -> wrapper -> tree,
+// so the tree lives until its realm ends. RED until the migration's step 8.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+// Makes `count` detached trees whose listener (made by `attach`) captures the
+// tree's own root, and returns how many were collected after dropping them.
+async function collectedAfterDrop(t, count, attach) {
+  const refs = [];
+  (() => {
+    for (let i = 0; i < count; i++) {
+      const root = document.createElement("div");
+      root.appendChild(document.createElement("span"));
+      attach(root);
+      refs.push(new WeakRef(root));
+    }
+  })();
+  let alive = count;
+  for (let i = 0; i < 5 && alive > 0; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+    alive = refs.filter(r => r.deref() !== undefined).length;
+  }
+  return count - alive;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const collected = await collectedAfterDrop(t, 20, root => root.addEventListener("x", () => root));
+  assert_equals(collected, 20, "every tree was collected");
+}, "addEventListener: a closure over its own detached target does not keep it alive");
+
+promise_test(async t => {
+  const collected = await collectedAfterDrop(t, 20, root => { root.onclick = () => root; });
+  assert_equals(collected, 20, "every tree was collected");
+}, "an on* handler that closes over its own detached target does not keep it alive");
+
+promise_test(async t => {
+  const collected = await collectedAfterDrop(t, 20, root => {
+    root.firstChild.addEventListener("x", () => root);
+  });
+  assert_equals(collected, 20, "every tree was collected");
+}, "a listener on a descendant that closes over the tree's root does not keep the tree alive");
+
+promise_test(async t => {
+  const collected = await collectedAfterDrop(t, 20, root => {
+    const observer = new MutationObserver(() => root);
+    observer.observe(root, { childList: true, subtree: true });
+  });
+  assert_equals(collected, 20, "every tree was collected");
+}, "a MutationObserver callback that closes over the observed detached node does not keep it alive");
+
+// The listener still fires while its target is reachable.
+promise_test(async t => {
+  const root = document.createElement("div");
+  let fired = 0;
+  root.addEventListener("x", () => { fired++; });
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  root.dispatchEvent(new Event("x"));
+  assert_equals(fired, 1, "a held target's listener survives collections");
+}, "a listener of a reachable target survives collection");
+</script>

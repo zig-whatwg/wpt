@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a held node keeps its whole tree, ancestors included (refcount decision D1)</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-tree">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Decision D1 of the reference-counting migration (tmp/plans/refcount-decisions.md):
+// a node something holds keeps its WHOLE tree, ancestors and root included.
+//
+// Two kinds of hold, and the browsers split on the second:
+//
+// 1. SCRIPT holds the node (a wrapper it can reach). Every browser keeps the
+//    tree. WebKit's own LayoutTests say so: fast/dom/gc-3.html "verifies that
+//    DOM nodes are retained because a wrapper exists for a descendant. A
+//    wrapper need not exist for the node itself or for an ancestor" and its
+//    expected output is "parent node exists" (WebKit bug 88834; the opaque-
+//    root rule of JSNodeCustom.cpp: a reachable wrapper keeps the node's whole
+//    tree). Crane keeps it today with wrapper tree edges; the migration must
+//    keep it when counts decide lifetimes. GREEN today.
+//
+// 2. Only NATIVE code holds the node (a static NodeList's or a MutationRecord's
+//    node, no wrapper for it in script). Chrome (Node::Trace visits the
+//    parent) and Firefox (a child owns its parent) keep the tree. WebKit
+//    holds a Ref<Node> instead, lets an unreferenced ancestor die and leaves
+//    the held node a new root (removeDetachedChildrenInContainer's
+//    refCount() > 1 branch), so its parentNode reads null. Golden rule 2: the
+//    majority of the three browsers wins, so Crane keeps the tree. Crane
+//    keeps it today through lane nodeholds' rescue; the migration replaces
+//    that with `subtree_holds`, and this part is what pins it. GREEN today.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// ---- Part 1: script holds the node ----------------------------------------
+
+// WebKit's fast/dom/gc-3.html, with the output turned into assertions.
+function scriptHeldDescendant() {
+  const host = document.body.appendChild(document.createElement("div"));
+  host.innerHTML = "<span id=rc-a><span id=rc-b><span id=rc-c>original span</span></span></span>";
+  const b = host.querySelector("#rc-b");
+  b.rc = "B";
+  host.innerHTML = "<span>replacement content</span>";
+  host.remove();
+  return b;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const b = scriptHeldDescendant();
+  await collect(t);
+  assert_equals(b.rc, "B", "the held node's expando");
+  assert_not_equals(b.parentNode, null, "its parent exists");
+  assert_equals(b.parentNode.id, "rc-a", "and is the old parent");
+  assert_equals(b.parentNode.parentNode, null, "the old parent is the tree's root");
+  assert_equals(b.firstChild.id, "rc-c", "its child exists");
+  assert_equals(b.firstChild.textContent, "original span");
+}, "script-held part: a held descendant keeps its ancestors and its subtree (WebKit gc-3)");
+
+// The held node is the DEEPEST one, and the tree's other branches have
+// expandos that must survive too: identity of unheld wrappers in the tree.
+function scriptHeldDeepest() {
+  const root = document.createElement("section");
+  root.rc = "root";
+  const middle = root.appendChild(document.createElement("div"));
+  middle.rc = "middle";
+  const leaf = middle.appendChild(document.createElement("em"));
+  root.appendChild(document.createElement("p")).rc = "sibling";
+  return leaf;
+}
+
+promise_test(async t => {
+  const leaf = scriptHeldDeepest();
+  await collect(t);
+  const middle = leaf.parentNode;
+  const root = middle.parentNode;
+  assert_equals(middle.rc, "middle");
+  assert_equals(root.rc, "root");
+  assert_equals(root.lastChild.rc, "sibling", "a branch nothing in script holds keeps its expando");
+}, "script-held part: every wrapper of the tree keeps its identity");
+
+// ---- Part 2: only native code holds the node ------------------------------
+
+// querySelectorAll makes no wrapper for the elements it finds: the list holds
+// them natively. The tree that held them is dropped by script.
+function nativeHeldByList() {
+  const root = document.createElement("div");
+  root.innerHTML = "<p id=rc-p><span id=rc-s>s</span></p><b id=rc-q>q</b>";
+  return root.querySelectorAll("span");
+}
+
+promise_test(async t => {
+  const list = nativeHeldByList();
+  await collect(t);
+  assert_equals(list.length, 1);
+  const span = list[0];
+  assert_equals(span.id, "rc-s");
+  assert_equals(span.parentNode.id, "rc-p", "the held node's parent exists");
+  const root = span.parentNode.parentNode;
+  assert_not_equals(root, null, "and the parent's parent: the whole tree");
+  assert_equals(root.localName, "div");
+  assert_equals(root.lastChild.id, "rc-q", "with a branch nothing holds");
+}, "native-hold part: a static NodeList's node keeps its tree (Chrome, Firefox; Safari lets the ancestors die)");
+
+// A delivered MutationRecord holds its target natively. The observed node is
+// deep inside a tree script dropped.
+function nativeHeldByRecord() {
+  const root = document.createElement("section");
+  const mid = root.appendChild(document.createElement("div"));
+  const inner = mid.appendChild(document.createElement("i"));
+  const observer = new MutationObserver(() => {});
+  observer.observe(inner, { attributes: true });
+  inner.setAttribute("rc", "1");
+  return observer.takeRecords();
+}
+
+promise_test(async t => {
+  const records = nativeHeldByRecord();
+  await collect(t);
+  assert_equals(records.length, 1);
+  const target = records[0].target;
+  assert_equals(target.localName, "i");
+  assert_equals(target.parentNode.localName, "div", "the record's target keeps its parent");
+  assert_equals(target.parentNode.parentNode.localName, "section", "and the tree's root");
+}, "native-hold part: a MutationRecord's target keeps its tree");
+</script>

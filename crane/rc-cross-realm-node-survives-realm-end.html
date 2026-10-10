@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node of a removed frame's document stays usable from another realm</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js">
+// The frame's realm ENDS when it navigates away (removal only detaches it).
+function loaded(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+promise_test(async t => {
+  const { frame, el } = await frameNode(t);
+  const sibling = el.parentNode.appendChild(el.ownerDocument.createElement("b"));
+  const done = loaded(frame);
+  frame.src = "/common/blank.html?rc-cross-realm";
+  await done;
+  await collect(t);
+  assert_equals(el.localName, "p", "the node of the replaced document still answers");
+  assert_equals(el.rc, "kept", "with its expando");
+  assert_equals(el.parentNode.localName, "body", "its tree is intact");
+  assert_equals(sibling.parentNode, el.parentNode);
+  assert_not_equals(el.ownerDocument, frame.contentDocument, "its document is the old one");
+  assert_equals(el.ownerDocument.documentElement.localName, "html");
+  frame.remove();
+}, "an element of a navigated-away frame's old document survives that realm's end");
+</script>
+<script src="/resources/testharnessreport.js">
+// The frame's realm ENDS when it navigates away (removal only detaches it).
+function loaded(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+promise_test(async t => {
+  const { frame, el } = await frameNode(t);
+  const sibling = el.parentNode.appendChild(el.ownerDocument.createElement("b"));
+  const done = loaded(frame);
+  frame.src = "/common/blank.html?rc-cross-realm";
+  await done;
+  await collect(t);
+  assert_equals(el.localName, "p", "the node of the replaced document still answers");
+  assert_equals(el.rc, "kept", "with its expando");
+  assert_equals(el.parentNode.localName, "body", "its tree is intact");
+  assert_equals(sibling.parentNode, el.parentNode);
+  assert_not_equals(el.ownerDocument, frame.contentDocument, "its document is the old one");
+  assert_equals(el.ownerDocument.documentElement.localName, "html");
+  frame.remove();
+}, "an element of a navigated-away frame's old document survives that realm's end");
+</script>
+<body>
+<script>
+"use strict";
+// A node script holds keeps its native object alive whatever happens to the
+// realm it was made in: Blink and WebKit keep the node (and its document)
+// when the frame goes. Crane today passes all three cases below (measured on
+// main 2a3f07d8d6): a held wrapper keeps its realm's objects until it is
+// collected. With reference counting the wrapper owns a reference to the node,
+// and the realm's end hands surviving wrappers to the agent instead of
+// severing them (design 2.1); these must stay GREEN through step 7, which
+// changes exactly that.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+async function frameNode(t) {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const doc = frame.contentDocument;
+  const el = doc.body.appendChild(doc.createElement("p"));
+  el.textContent = "from the frame";
+  el.rc = "kept";
+  return { frame, el };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { frame, el } = await frameNode(t);
+  frame.remove();
+  await collect(t);
+  assert_equals(el.localName, "p", "the node still answers");
+  assert_equals(el.textContent, "from the frame");
+  assert_equals(el.rc, "kept", "with its expando");
+  assert_equals(el.parentNode.localName, "body", "its tree is intact");
+  assert_equals(el.ownerDocument.documentElement.localName, "html", "and its document");
+}, "an element of a removed frame's document survives the frame's realm");
+
+promise_test(async t => {
+  const { frame, el } = await frameNode(t);
+  const sibling = el.parentNode.appendChild(el.ownerDocument.createElement("b"));
+  frame.remove();
+  await collect(t);
+  el.appendChild(sibling);
+  assert_equals(el.lastChild, sibling, "the node can still be mutated");
+  document.body.appendChild(el);
+  assert_equals(el.ownerDocument, document, "and adopted into the parent's document");
+  el.remove();
+}, "a node of a removed frame can be mutated and adopted afterwards");
+
+// The frame's realm ENDS when it navigates away (removal only detaches it).
+function loaded(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+promise_test(async t => {
+  const { frame, el } = await frameNode(t);
+  const sibling = el.parentNode.appendChild(el.ownerDocument.createElement("b"));
+  const done = loaded(frame);
+  frame.src = "/common/blank.html?rc-cross-realm";
+  await done;
+  await collect(t);
+  assert_equals(el.localName, "p", "the node of the replaced document still answers");
+  assert_equals(el.rc, "kept", "with its expando");
+  assert_equals(el.parentNode.localName, "body", "its tree is intact");
+  assert_equals(sibling.parentNode, el.parentNode);
+  assert_not_equals(el.ownerDocument, frame.contentDocument, "its document is the old one");
+  assert_equals(el.ownerDocument.documentElement.localName, "html");
+  frame.remove();
+}, "an element of a navigated-away frame's old document survives that realm's end");
+</script>

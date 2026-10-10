@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a document held only through a node still in it keeps its tree</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The control for rc-document-held-through-detached-node.html: the same
+// windowless document, script keeping a node that is still IN the document's
+// tree. Every wrapper of the tree is kept by the tree edges, so the document
+// is kept today (decision D6's other half: it must stay so). GREEN.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const node = (() => {
+    const doc = document.implementation.createHTMLDocument("rc-d6b");
+    const p = doc.body.appendChild(doc.createElement("p"));
+    p.rc = "p";
+    return p;
+  })();
+  await collect(t);
+  const doc = node.ownerDocument;
+  assert_equals(doc.title, "rc-d6b");
+  assert_equals(doc.body.firstChild, node);
+  assert_equals(doc.documentElement.localName, "html");
+  assert_equals(node.rc, "p");
+}, "a windowless document is kept by a node still in it");
+</script>

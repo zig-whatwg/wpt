@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a document held only through a detached node of it keeps its tree (refcount decision D6)</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Decision D6: a document whose only remaining holds are detached nodes of it
+// keeps its tree. Blink does (a held detached node reaches ownerDocument, and
+// the document traces its documentElement); WebKit can tear the document down
+// to a husk when only nodes reference it (Document::removedLastRef), so this
+// follows Blink.
+//
+// The document has no window (createHTMLDocument), so nothing but the node
+// holds it. Script keeps only a node that was removed from the document.
+//
+// RED on main: the runner CRASHES (SIGSEGV in template_registry's lookup,
+// reached from Node.ownerDocument's getter): the detached node's raw
+// owner_document points into a freed document. Reference counting fixes it
+// (`foreign_holds`, design section 1.5).
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function detachedNodeOfWindowlessDocument() {
+  const doc = document.implementation.createHTMLDocument("rc-d6");
+  doc.body.id = "rc-body";
+  doc.body.rc = "body";
+  doc.documentElement.rc = "html";
+  const node = doc.body.appendChild(doc.createElement("p"));
+  node.textContent = "detached";
+  node.remove();
+  return node;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const node = detachedNodeOfWindowlessDocument();
+  await collect(t);
+  const doc = node.ownerDocument;
+  assert_not_equals(doc, null);
+  assert_equals(doc.title, "rc-d6", "the document is intact");
+  assert_not_equals(doc.documentElement, null, "its tree is kept");
+  assert_equals(doc.documentElement.rc, "html", "with its expando");
+  assert_equals(doc.body.id, "rc-body");
+  assert_equals(doc.body.rc, "body");
+  const fresh = doc.createElement("i");
+  doc.body.appendChild(fresh);
+  assert_equals(doc.body.lastChild, fresh, "the document still works");
+  assert_equals(node.textContent, "detached");
+}, "a windowless document is kept by a detached node of it, with its whole tree");
+</script>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a delivered MutationRecord's node keeps its wrapper identity</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-mutationrecord">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// A record's addedNodes/removedNodes/target are the same objects script saw:
+// WebKit's ChildListRecord::visitNodesInGCThread adds each node's opaque root
+// to the record wrapper's marking, so an expando on a node survives while the
+// record is reachable even if script holds nothing else. Blink traces
+// Member<Node>. Crane: nodeholds' rescue keeps the node's tree; the
+// migration's keepOpaqueRoot must keep the wrappers in it.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function recordOfAddedNode() {
+  const host = document.createElement("div");
+  const observer = new MutationObserver(() => {});
+  observer.observe(host, { childList: true });
+  const added = host.appendChild(document.createElement("b"));
+  added.rc = "added";
+  host.appendChild(document.createElement("i")).rc = "second";
+  return observer.takeRecords();
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const records = recordOfAddedNode();
+  await collect(t);
+  assert_equals(records.length, 2);
+  assert_equals(records[0].addedNodes[0].rc, "added", "the added node's expando");
+  assert_equals(records[1].addedNodes[0].rc, "second");
+  assert_equals(records[0].target.lastChild, records[1].addedNodes[0], "the target's tree is the same one");
+}, "expandos survive on nodes only a record holds");
+
+function recordOfRemovedNode() {
+  const host = document.createElement("div");
+  const child = host.appendChild(document.createElement("u"));
+  const observer = new MutationObserver(() => {});
+  observer.observe(host, { childList: true });
+  child.rc = "removed";
+  host.removeChild(child);
+  return observer.takeRecords();
+}
+
+promise_test(async t => {
+  const records = recordOfRemovedNode();
+  await collect(t);
+  assert_equals(records[0].removedNodes[0].rc, "removed", "the removed node's expando");
+  assert_equals(records[0].removedNodes[0].parentNode, null);
+}, "an expando survives on a removed node only a record holds");
+</script>
