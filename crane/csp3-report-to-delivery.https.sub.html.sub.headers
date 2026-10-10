@@ -1,0 +1,5 @@
+Set-Cookie: csp3-report-to={{$id:uuid()}}; Path=/crane/; Secure
+Set-Cookie: csp3-report-to-legacy={{$legacy:uuid()}}; Path=/crane/; Secure
+Content-Security-Policy: img-src 'none'; report-to csp3 ignored-second-token; report-uri /reporting/resources/report.py?reportID={{$legacy}}
+Reporting-Endpoints: csp3="/reporting/resources/report.py?op=put&reportID={{$id}}"
+Cache-Control: no-store

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Report-only prefetch checks default-src without enforcing it</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const url = 'http://{{hosts[alt][www]}}:{{ports[http][0]}}/images/green.png?csp3-report-only';
+  const reports = [];
+  const listener = e => {
+    if (e.blockedURI === url) reports.push(e);
+  };
+  document.addEventListener('securitypolicyviolation', listener);
+  t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', listener));
+  const link = document.createElement('link');
+  link.rel = 'prefetch';
+  link.href = url;
+  t.add_cleanup(() => link.remove());
+  await new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = () => reject(new Error('A report-only policy must not block the prefetch'));
+    document.head.append(link);
+  });
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(reports.length, 1);
+  assert_equals(reports[0].effectiveDirective, 'default-src');
+  assert_equals(reports[0].disposition, 'report');
+}, 'Report-only default-src reports a prefetch even when img-src allows its URL');
+</script>

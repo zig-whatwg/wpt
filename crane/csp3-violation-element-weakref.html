@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'none'">
+<title>A queued CSP violation holds its detached element until dispatch</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#report-violation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  assert_true(!!self.TestUtils && typeof TestUtils.gc === 'function');
+  const weak = (() => {
+    const element = document.createElement('div');
+    element.id = 'csp3-weak-target';
+    document.body.appendChild(element);
+    return new WeakRef(element);
+  })();
+  t.add_cleanup(() => document.getElementById('csp3-weak-target')?.remove());
+  // WeakRef construction keeps its target alive until this job ends. Leave
+  // that job while the tree still owns the element, before testing the hold.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  let dispatched = false;
+  const delivered = new Promise(resolve => {
+    const listener = t.step_func(event => {
+      if (event.effectiveDirective !== 'style-src-attr') return;
+      document.removeEventListener('securitypolicyviolation', listener);
+      dispatched = true;
+      assert_equals(event.target, document, 'The disconnected target retargets to the document');
+      resolve();
+    });
+    document.addEventListener('securitypolicyviolation', listener);
+    t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', listener));
+  });
+  (() => {
+    const element = document.getElementById('csp3-weak-target');
+    element.setAttribute('style', 'color: red');
+    element.remove();
+  })();
+  // Do not deref before collection: that would itself keep the element alive.
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_false(dispatched, 'The violation task has not run');
+  assert_not_equals(weak.deref(), undefined, 'Only the queued violation holds the removed element');
+  await delivered;
+  // Leave both dispatch and deref's kept-alive job before testing release.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(weak.deref(), undefined, 'Dispatch releases the queued element hold');
+}, 'The violation task retains and then releases its detached element');
+</script>

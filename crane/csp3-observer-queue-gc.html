@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="img-src 'none'; report-to csp3">
+<title>CSP reports retain their registered observer and buffered data</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function violate(t, suffix) {
+  const url = new URL('/images/green.png?csp3=' + suffix, location.href).href;
+  const event = new Promise(resolve => {
+    const listener = e => {
+      if (e.blockedURI !== url) return;
+      document.removeEventListener('securitypolicyviolation', listener);
+      resolve(e);
+    };
+    document.addEventListener('securitypolicyviolation', listener);
+    t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', listener));
+  });
+  let image = new Image();
+  image.src = url;
+  image = null;
+  return {url, event};
+}
+
+promise_test(async t => {
+  assert_true(!!self.TestUtils && typeof TestUtils.gc === 'function',
+              'Crane exposes TestUtils.gc');
+  let callbackReports;
+  const delivered = new Promise(resolve => {
+    let observer = new ReportingObserver(t.step_func((reports, registered) => {
+      assert_true(registered instanceof ReportingObserver);
+      registered.disconnect();
+      callbackReports = reports;
+      assert_array_equals(registered.takeRecords(), []);
+      resolve();
+    }), {types: ['csp-violation']});
+    observer.observe();
+    observer = null;
+  });
+  TestUtils.gc();
+  TestUtils.gc();
+  const violation = violate(t, 'registered');
+  await delivered;
+  assert_equals(callbackReports.length, 1);
+  const report = callbackReports[0];
+  assert_equals(report.type, 'csp-violation');
+  assert_equals(report.url, location.href);
+  assert_equals(report.body.blockedURL, violation.url);
+  assert_equals(report.body.effectiveDirective, 'img-src');
+  assert_equals(report.body.disposition, 'enforce');
+  assert_equals(report.body.statusCode, 200);
+  assert_equals(JSON.parse(JSON.stringify(report)).body.blockedURL, violation.url);
+}, 'A registered ReportingObserver survives GC without script references');
+
+promise_test(async t => {
+  const violation = violate(t, 'buffered');
+  await violation.event;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  let calls = 0;
+  const observer = new ReportingObserver(t.step_func(reports => {
+    ++calls;
+    assert_array_equals(reports, [], 'The queued callback sees the drained queue');
+  }),
+      {types: ['csp-violation'], buffered: true});
+  t.add_cleanup(() => observer.disconnect());
+  observer.observe();
+  const reports = observer.takeRecords();
+  const report = reports.find(r => r.body.blockedURL === violation.url);
+  assert_true(!!report, 'The buffer retained the earlier violation');
+  assert_equals(report.body.documentURL, location.href);
+  assert_equals(report.body.sample, '');
+  assert_array_equals(observer.takeRecords(), [], 'takeRecords drains the queue');
+  observer.disconnect();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(calls, 1, 'Chrome and Safari call back even after takeRecords drains the queue');
+}, 'A buffered observer receives earlier reports and takeRecords drains them');
+
+promise_test(async t => {
+  const violation = violate(t, 'disconnected-collected');
+  await violation.event;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  let calls = 0;
+  let observer = new ReportingObserver(() => ++calls,
+      {types: ['csp-violation'], buffered: true});
+  observer.observe();
+  observer.disconnect();
+  observer = null;
+  TestUtils.gc();
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(calls, 0, 'The task weakly refers to a disconnected observer');
+}, 'A disconnected observer without script references is not retained by its task');
+
+promise_test(async t => {
+  const violation = violate(t, 'disconnected-held');
+  await violation.event;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  let callbackReports;
+  const delivered = new Promise(resolve => {
+    callbackReports = {resolve};
+  });
+  const observer = new ReportingObserver(reports => {
+    callbackReports.reports = reports;
+    callbackReports.resolve();
+  }, {types: ['csp-violation'], buffered: true});
+  observer.observe();
+  observer.disconnect();
+  TestUtils.gc();
+  await delivered;
+  assert_true(callbackReports.reports.some(r => r.body.blockedURL === violation.url));
+  assert_array_equals(observer.takeRecords(), []);
+}, 'A disconnected observer still held by script receives its queued reports');
+</script>

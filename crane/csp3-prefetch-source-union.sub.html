@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Prefetch uses a policy's fetch source union and performs a real request</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; img-src http://{{domains[www2]}}:{{ports[http][0]}}">
+<script>
+promise_test(async t => {
+  const link = document.createElement('link');
+  assert_true(link.relList.supports('prefetch'));
+  link.rel = 'prefetch';
+  link.href = get_host_info().OTHER_ORIGIN + '/common/dummy.xml?csp3=allowed';
+  t.add_cleanup(() => link.remove());
+  const loaded = new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = () => reject(new Error('Allowed prefetch failed'));
+  });
+  document.head.appendChild(link);
+  await loaded;
+  assert_greater_than(performance.getEntriesByName(link.href, 'resource').length, 0,
+                      'The real prefetch produced a resource timing entry');
+}, 'An img-src match permits a prefetch despite default-src none');
+
+promise_test(async t => {
+  const link = document.createElement('link');
+  assert_true(link.relList.supports('prefetch'));
+  link.rel = 'prefetch';
+  link.href = get_host_info().REMOTE_ORIGIN + '/common/dummy.xml?csp3=blocked';
+  t.add_cleanup(() => link.remove());
+  const violation = new Promise(resolve => {
+    const listener = e => {
+      if (e.blockedURI !== link.href) return;
+      document.removeEventListener('securitypolicyviolation', listener);
+      resolve(e);
+    };
+    document.addEventListener('securitypolicyviolation', listener);
+    t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', listener));
+  });
+  const failed = new Promise((resolve, reject) => {
+    link.onerror = resolve;
+    link.onload = () => reject(new Error('Blocked prefetch loaded'));
+  });
+  document.head.appendChild(link);
+  const [event] = await Promise.all([violation, failed]);
+  assert_equals(event.effectiveDirective, 'default-src');
+}, 'A prefetch matching no source fails and reports default-src');
+</script>

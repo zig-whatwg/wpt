@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSP hashes are delivered from complete classic and module responses</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const id = document.cookie.split(';').map(s => s.trim())
+      .find(s => s.startsWith('csp3-hash=')).slice('csp3-hash='.length);
+  let observed = 0;
+  const observer = new ReportingObserver(() => ++observed, {types: ['csp-hash'], buffered: true});
+  observer.observe();
+  t.add_cleanup(() => observer.disconnect());
+  const targets = [
+    new URL('/reporting/resources/comment.js?csp3=classic', location.href).href,
+    new URL('/reporting/resources/comment.js?csp3=module', location.href).href,
+    'https://{{hosts[alt][www]}}:{{ports[https][0]}}/reporting/resources/comment.js?csp3=opaque'
+  ];
+  for (let i = 0; i < targets.length; ++i) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = targets[i] + '#private-fragment';
+      if (i === 1) script.type = 'module';
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+      t.add_cleanup(() => script.remove());
+    });
+  }
+  const found = new Map();
+  for (let attempt = 0; attempt < 8 && found.size < 3; ++attempt) {
+    const reports = await (await fetch('/reporting/resources/report.py?reportID=' + id +
+        '&op=retrieve_report&timeout=1')).json();
+    for (const report of reports) {
+      if (report.type === 'csp-hash' && targets.includes(report.body.subresourceURL)) {
+        found.set(report.body.subresourceURL, report);
+      }
+    }
+  }
+  assert_equals(found.size, 3);
+  for (let i = 0; i < targets.length; ++i) {
+    const body = found.get(targets[i]).body;
+    assert_equals(body.hash, i === 2 ? '' : 'sha256-1XF/E08XndkoxwN6eIa5J89hYn3OVZ/UyB8BrU5jgzk=');
+    assert_equals(body.documentURL, location.href);
+    assert_equals(body.type, 'subresource');
+    assert_equals(body.destination, 'script');
+  }
+  assert_equals(observed, 0, 'Hash reports are invisible to ReportingObserver');
+  assert_array_equals(observer.takeRecords(), []);
+}, 'Classic, module and opaque scripts send the requested hash without observer notifications');
+</script>

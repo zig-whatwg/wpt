@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'nonce-csp3'; script-src 'self' 'unsafe-inline'">
+<title>Link resource requests carry the element nonce</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const rel of ['stylesheet', 'preload']) {
+  promise_test(t => new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = rel;
+    link.as = 'style';
+    link.nonce = 'csp3';
+    link.href = '/content-security-policy/style-src/resources/allowed.css?csp3=' + rel;
+    link.onload = resolve;
+    link.onerror = () => reject(new Error('A matching nonce permits this stylesheet request'));
+    t.add_cleanup(() => link.remove());
+    document.head.appendChild(link);
+  }), rel + ' carries a nonce into CSP request checks');
+}
+</script>

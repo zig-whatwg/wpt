@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'none'">
+<title>CSP violation tasks retain their element and choose the target when run</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function nextViolation(t) {
+  return new Promise(resolve => {
+    const listener = event => {
+      if (event.effectiveDirective !== 'style-src-attr') return;
+      document.removeEventListener('securitypolicyviolation', listener);
+      resolve(event);
+    };
+    document.addEventListener('securitypolicyviolation', listener);
+    t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', listener));
+  });
+}
+
+promise_test(async t => {
+  assert_true(!!self.TestUtils && typeof TestUtils.gc === 'function');
+  const event = nextViolation(t);
+  let target = document.createElement('div');
+  document.body.appendChild(target);
+  target.setAttribute('style', 'color: red');
+  target.remove();
+  target = null;
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals((await event).target, document);
+}, 'A queued violation survives collection after its element is removed');
+
+promise_test(async t => {
+  const event = nextViolation(t);
+  let target = document.createElement('div');
+  target.id = 'csp3-reconnected';
+  document.body.appendChild(target);
+  target.setAttribute('style', 'color: blue');
+  target.remove();
+  document.body.appendChild(target);
+  target = null;
+  TestUtils.gc();
+  TestUtils.gc();
+  const delivered = await event;
+  assert_equals(delivered.target.id, 'csp3-reconnected');
+  assert_true(delivered.target.isConnected);
+  delivered.target.remove();
+}, 'Reconnecting before the task runs makes the element the violation target');
+</script>

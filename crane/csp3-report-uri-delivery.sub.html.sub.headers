@@ -1,0 +1,3 @@
+Set-Cookie: csp3-report-uri={{$id:uuid()}}; Path=/crane/
+Content-Security-Policy: img-src 'none'; report-uri /reporting/resources/report.py?op=put&reportID={{$id}}
+Cache-Control: no-store

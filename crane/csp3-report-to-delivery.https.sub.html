@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSP report-to batches native reports for Reporting-Endpoints</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const cookie = document.cookie.split(';').map(x => x.trim())
+      .find(x => x.startsWith('csp3-report-to='));
+  assert_true(!!cookie);
+  const id = cookie.slice('csp3-report-to='.length);
+  const urls = [1, 2].map(n => new URL('/images/green.png?csp3-report-to=' + n, location.href).href);
+  for (const url of urls) {
+    const image = new Image();
+    image.src = url;
+  }
+  const root = '/reporting/resources/report.py?reportID=' + id;
+  const reports = await (await fetch(root + '&op=retrieve_report&timeout=5&min_count=2')).json();
+  assert_equals(reports.length, 2, 'Both reports reached the endpoint');
+  assert_array_equals(reports.map(r => r.body.blockedURL), urls);
+  for (const report of reports) {
+    assert_equals(report.type, 'csp-violation');
+    assert_equals(report.url, location.href);
+    assert_equals(report.body.documentURL, location.href);
+    assert_equals(report.body.effectiveDirective, 'img-src');
+    assert_equals(report.body.disposition, 'enforce');
+    assert_equals(report.metadata.content_type, 'application/reports+json');
+    assert_equals(report.user_agent, navigator.userAgent);
+    assert_greater_than_equal(report.age, 0);
+  }
+  const count = await (await fetch(root + '&op=retrieve_count')).json();
+  assert_equals(count.report_count, 1, 'Queued reports to one endpoint are batched');
+  const legacyId = document.cookie.split(';').map(x => x.trim())
+      .find(x => x.startsWith('csp3-report-to-legacy=')).slice('csp3-report-to-legacy='.length);
+  const legacy = await (await fetch('/reporting/resources/report.py?reportID=' +
+      legacyId + '&op=retrieve_report&timeout=0.5')).json();
+  assert_array_equals(legacy, [], 'report-to suppresses report-uri');
+}, 'Reporting-Endpoints receives one application/reports+json POST for two violations');
+</script>

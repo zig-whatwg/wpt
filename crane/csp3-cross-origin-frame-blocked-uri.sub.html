@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="frame-src 'none'">
+<title>CSP cross-origin frame reports redact paths</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const violation = new Promise(resolve => {
+    document.addEventListener('securitypolicyviolation', resolve, {once: true});
+  });
+  const origin = get_host_info().HTTP_REMOTE_ORIGIN;
+  frame.src = origin + '/common/blank.html?secret=private#fragment';
+  document.body.append(frame);
+  const event = await violation;
+  assert_equals(event.effectiveDirective, 'frame-src');
+  assert_equals(event.blockedURI, origin);
+}, 'A cross-origin frame-src violation exposes the origin without its path or query');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const violation = new Promise(resolve => {
+    document.addEventListener('securitypolicyviolation', resolve, {once: true});
+  });
+  const address = location.origin + '/common/blank.html?visible=same-origin';
+  frame.src = address + '#fragment';
+  document.body.append(frame);
+  const event = await violation;
+  assert_equals(event.effectiveDirective, 'frame-src');
+  assert_equals(event.blockedURI, address);
+}, 'A same-origin frame-src violation preserves path and query but removes the fragment');
+</script>
