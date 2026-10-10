@@ -1,0 +1,99 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: the parser's form element pointer association, and what resets it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#reset-the-form-owner">
+<!--
+  Lane parser2 item 5. "Create an element for a token" step 15 associates a
+  form-associated element (not a form-associated custom element) with the
+  form element pointer's form; "reset the form owner" undoes it when the
+  control's removal leaves it in another tree than its form, or its form
+  attribute changes; Blink (HTMLFormElement::RemovedFrom) and WebKit
+  (HTMLFormElement::removingSteps) also reset it when the FORM is removed.
+  Companion of lf2-parser-form-association.html.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<!-- Each block ends with </form>, which clears the form element pointer: a
+     second form start tag is ignored while it is set. -->
+<div id="d1"><form id="f1"></div><input id="i1"><input id="i2"><select id="s1"></select><output id="o1"></output>
+<template id="tp"><div><form id="ftp"></div><input id="itp"></template></form>
+<div id="d2"><form id="f2"></div><input id="i3" form="elsewhere"><button id="b3"></button></form>
+<table id="t3"><form id="f3"><input id="i4" type="text"><tr><td><textarea id="ta4"></textarea></td></tr></table></form>
+<div id="d4"><div><form id="f4"></div><input id="i5"></div></form>
+<script>
+const f1 = document.getElementById('f1');
+const f2 = document.getElementById('f2');
+const f3 = document.getElementById('f3');
+
+test(() => {
+  for (const id of ['i1', 'i2', 's1', 'o1']) {
+    const control = document.getElementById(id);
+    assert_false(f1.contains(control), id + ' is not a descendant');
+    assert_equals(control.form, f1, id);
+  }
+  assert_array_equals(Array.from(f1.elements).map(e => e.id), ['i1', 'i2', 's1', 'o1']);
+}, 'misnested markup: the controls after </div> are associated with the form');
+
+test(() => {
+  assert_equals(document.getElementById('i3').form, null, 'a form attribute naming no form');
+  assert_equals(document.getElementById('b3').form, f2);
+}, 'a listed element with a form attribute is not associated through the pointer');
+
+test(() => {
+  const input = document.getElementById('i4');
+  assert_equals(input.parentNode, document.body, 'precondition: foster-parented before the table');
+  assert_equals(input.form, f3);
+  assert_equals(document.getElementById('ta4').form, f3);
+}, 'a control foster-parented out of a table in which the form was parsed is associated with it');
+
+test(() => {
+  const content = document.getElementById('tp').content;
+  assert_equals(content.querySelector('#itp').form, null);
+}, 'template contents get no association');
+
+test(() => {
+  const div = document.createElement('div');
+  div.innerHTML = '<div><form id="fi"></div><input id="ii">';
+  assert_equals(div.querySelector('#ii').form, null);
+}, 'the fragment parser makes no association');
+
+test(() => {
+  const doc = new DOMParser().parseFromString('<div><form id="fd"></div><input id="id">', 'text/html');
+  assert_equals(doc.getElementById('id').form, doc.getElementById('fd'));
+}, 'DOMParser associates through the form element pointer too');
+
+test(() => {
+  const input = document.getElementById('i2');
+  input.setAttribute('form', 'nothing');
+  assert_equals(input.form, null);
+  input.removeAttribute('form');
+  assert_equals(input.form, null, 'the association does not come back');
+}, 'a form attribute set later resets the form owner for good');
+
+test(() => {
+  const input = document.getElementById('i1');
+  input.remove();
+  assert_equals(input.form, null, 'removed');
+  document.body.appendChild(input);
+  assert_equals(input.form, null, 'not re-associated by insertion');
+}, 'removing the control resets its form owner');
+
+test(() => {
+  const d4 = document.getElementById('d4');
+  const f4 = document.getElementById('f4');
+  const input = document.getElementById('i5');
+  assert_equals(input.form, f4, 'precondition');
+  // Removing an ancestor of both keeps them in one tree.
+  d4.remove();
+  assert_equals(input.form, f4, 'removed together');
+  document.body.appendChild(d4);
+  assert_equals(input.form, f4, 'inserted together');
+  // The form leaving the control's tree resets it (Blink, WebKit).
+  f4.remove();
+  assert_equals(input.form, null, 'the form removed');
+  d4.firstChild.appendChild(f4);
+  assert_equals(input.form, null, 'not re-associated');
+}, 'a control removed with its form keeps it; removing the form alone resets it');
+</script>

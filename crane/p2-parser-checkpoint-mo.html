@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: the microtask checkpoint before a parser-inserted script delivers mutation records</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag">
+<!--
+  HTML "text" insertion mode, an end tag whose tag name is "script": "If the
+  JavaScript execution context stack is empty, perform a microtask
+  checkpoint." Records the parser queued for its own insertions after one
+  script are delivered, in one callback, before the next script runs.
+  Lane parser2 item 1.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+var calls = [];
+var observer = new MutationObserver(function (records) {
+  var added = [];
+  for (var record of records)
+    for (var node of record.addedNodes)
+      added.push(node.nodeType === 1 ? node.localName + (node.id ? '#' + node.id : '') : '#' + node.nodeType);
+  calls.push(added);
+});
+observer.observe(document.body, { childList: true });
+var promiseRan = false;
+Promise.resolve().then(function () { promiseRan = true; });
+</script>
+<div id="first"></div>
+<script>
+var seenBySecond = calls.slice();
+var promiseBeforeSecond = promiseRan;
+</script>
+<p id="second"></p>
+<script>
+var seenByThird = calls.slice();
+test(function () {
+  assert_true(promiseBeforeSecond);
+}, 'a microtask the previous script queued has run before the next script');
+test(function () {
+  assert_equals(seenBySecond.length, 1, 'one callback before the second script');
+  assert_true(seenBySecond[0].includes('div#first'), 'it names the parsed div: ' + JSON.stringify(seenBySecond));
+  assert_equals(seenBySecond[0][seenBySecond[0].length - 1], 'script', 'the script element itself, last');
+}, 'records for parser insertions are delivered before the next parser-inserted script');
+test(function () {
+  assert_equals(seenByThird.length, 2, 'a second callback before the third script');
+  assert_true(seenByThird[1].includes('p#second'), JSON.stringify(seenByThird));
+  assert_false(seenByThird[1].includes('div#first'), 'the first batch is not delivered again');
+}, 'each parser-inserted script gets its own checkpoint');
+</script>
+</body>

@@ -15,6 +15,10 @@ customElements.define('lf2-pfa-face', class extends HTMLElement {
 <body>
 <!-- Misnested: </div> closes the form, the form element pointer stays set. -->
 <div><form id="misnested"></div><input id="misnested-input"><lf2-pfa-face id="misnested-face"></lf2-pfa-face>
+<!-- An end tag "form" clears the form element pointer (it is not in scope:
+     a parse error, but the pointer is cleared first); while it is set, the
+     next form start tag is ignored and "tabled" would never be created. -->
+</form>
 <!-- A form in a table is popped at once; the controls in the cells are not
      its descendants. -->
 <table><form id="tabled"><tr><td><input id="tabled-input"><select id="tabled-select"></select></td></tr></form></table>
