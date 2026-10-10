@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An aborted or rejected keepalive fetch holds none of its fetch group's budget</title>
+<meta name="help" href="https://fetch.spec.whatwg.org/#http-network-or-cache-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// A request's bytes count while it is in flight: an aborted fetch is
+// terminated, and its bytes come back at once (Blink releases them in
+// ResourceFetcher::HandleLoaderError, WebKit in
+// KeepaliveRequestTracker::notifyFinished). A rejected one never held any.
+const quota = 65536;
+const slow = '/fetch/api/resources/trickle.py?count=1&ms=500';
+
+function keepalive(size, init = {}) {
+  return fetch(slow, {keepalive: true, method: 'POST', body: '*'.repeat(size), ...init})
+    .then(response => response.text());
+}
+
+promise_test(async t => {
+  const controller = new AbortController();
+  const aborted = keepalive(quota, {signal: controller.signal});
+  await promise_rejects_js(t, TypeError, keepalive(1));
+  controller.abort();
+  await promise_rejects_dom(t, 'AbortError', aborted);
+  // The whole budget is free again, before the aborted request would have
+  // finished.
+  await keepalive(quota);
+}, 'aborting a keepalive fetch returns its bytes');
+
+promise_test(async t => {
+  // Over the quota alone: rejected, and it holds nothing.
+  await promise_rejects_js(t, TypeError, keepalive(quota + 1));
+  await keepalive(quota);
+}, 'a keepalive fetch over the quota holds none of it');
+
+promise_test(async t => {
+  const first = keepalive(quota - 10);
+  await promise_rejects_js(t, TypeError, keepalive(11));
+  // The rejected request took nothing: exactly what is left still fits.
+  await Promise.all([first, keepalive(10)]);
+}, 'a rejected keepalive fetch leaves the rest of the budget as it was');
+</script>

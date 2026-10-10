@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Each global's fetch group has its own 64 KiB keepalive budget</title>
+<meta name="help" href="https://fetch.spec.whatwg.org/#http-network-or-cache-fetch">
+<meta name="help" href="https://fetch.spec.whatwg.org/#fetch-groups">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Fetch step 8.10 sums the in-flight keepalive bodies of the request's
+// client's fetch group, and every environment settings object has its own
+// fetch group. The browsers count per document and per worker global:
+// Blink's ResourceFetcher, WebKit's CachedResourceLoader tracker and Gecko's
+// load group.
+const quota = 65536;
+const slow = '/fetch/api/resources/trickle.py?count=1&ms=500';
+
+function keepalive(target, size) {
+  return target.fetch(slow, {keepalive: true, method: 'POST', body: '*'.repeat(size)})
+    .then(response => response.text());
+}
+
+promise_test(async t => {
+  const full = keepalive(window, quota);
+  // The window's budget is used up: one more byte is a network error.
+  await promise_rejects_js(t, TypeError, keepalive(window, 1));
+
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.appendChild(frame);
+  await loaded;
+  // The frame's fetch group is its own.
+  await keepalive(frame.contentWindow, quota);
+  await full;
+}, 'a frame has its own keepalive budget while its parent\'s is full');
+
+promise_test(async t => {
+  const full = keepalive(window, quota);
+  const source = `
+    fetch(${JSON.stringify(location.origin + slow)}, {keepalive: true, method: 'POST', body: '*'.repeat(${quota})})
+      .then(r => r.text()).then(() => postMessage('sent'), e => postMessage('rejected: ' + e.name));`;
+  const worker = new Worker(URL.createObjectURL(new Blob([source], {type: 'text/javascript'})));
+  t.add_cleanup(() => worker.terminate());
+  const message = await new Promise(resolve => worker.onmessage = e => resolve(e.data));
+  assert_equals(message, 'sent', 'the worker\'s fetch group is its own');
+  await full;
+}, 'a worker has its own keepalive budget while its owner\'s is full');
+
+promise_test(async t => {
+  const full = keepalive(window, quota);
+  // A keepalive request without a body holds no budget and needs none.
+  await fetch('/common/blank.html', {keepalive: true}).then(r => r.text());
+  await full;
+  // Once the full one is done, its bytes are back.
+  await keepalive(window, quota);
+}, 'a bodiless keepalive fetch is not counted, and a finished one returns its bytes');
+</script>
