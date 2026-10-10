@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>insertAdjacentHTML context, positions, mutation records and reactions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const position of ['beforebegin','afterbegin','beforeend','afterend']) test(() => {
+  const parent = document.createElement('div');
+  parent.innerHTML = '<span><b>old</b></span>';
+  const target = parent.firstChild;
+  target.insertAdjacentHTML(position.toUpperCase(), '<i>new</i><em>last</em>');
+  const expected = {
+    beforebegin:'<i>new</i><em>last</em><span><b>old</b></span>',
+    afterbegin:'<span><i>new</i><em>last</em><b>old</b></span>',
+    beforeend:'<span><b>old</b><i>new</i><em>last</em></span>',
+    afterend:'<span><b>old</b></span><i>new</i><em>last</em>'
+  }[position];
+  assert_equals(parent.innerHTML, expected);
+}, `${position} accepts ASCII case-insensitive position and keeps fragment order`);
+test(() => {
+  const fragment = document.createDocumentFragment();
+  const target = document.createElement('span');
+  fragment.append(target);
+  target.insertAdjacentHTML('beforebegin', '<p>before</p>');
+  target.insertAdjacentHTML('afterend', '<p>after</p>');
+  assert_array_equals(Array.from(fragment.childNodes, node => node.localName), ['p','span','p']);
+}, 'a DocumentFragment parent uses an HTML body as the parsing context');
+test(() => {
+  const template = document.createElement('template');
+  template.insertAdjacentHTML('beforeend', '<b>child</b>');
+  assert_equals(template.childNodes.length, 1);
+  assert_equals(template.content.childNodes.length, 0);
+}, 'insertAdjacentHTML inserts into template itself without innerHTML redirection');
+test(() => {
+  const target = document.createElement('div');
+  const observer = new MutationObserver(() => {});
+  observer.observe(target, {childList:true});
+  target.insertAdjacentHTML('beforeend', '<i></i><b></b>');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1);
+  assert_equals(records[0].addedNodes.length, 2);
+  observer.disconnect();
+}, 'inserting one fragment queues one childList record');
+test(t => {
+  const parent = document.createElement('div');
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  const seen = [];
+  customElements.define('fm-adjacent-child', class extends HTMLElement {
+    connectedCallback() { seen.push(parent.children.length); }
+  });
+  parent.insertAdjacentHTML('beforeend', '<fm-adjacent-child></fm-adjacent-child><fm-adjacent-child></fm-adjacent-child>');
+  assert_array_equals(seen, [2,2]);
+}, 'insertAdjacentHTML finishes fragment insertion before connected reactions');
+</script>

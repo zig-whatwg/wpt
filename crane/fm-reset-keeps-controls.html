@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form reset retains its control snapshot across output reactions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const form = document.createElement('form');
+  const output = document.createElement('output');
+  let input = document.createElement('input');
+  input.defaultValue = 'default'; input.value = 'dirty';
+  const weak = new WeakRef(input);
+  let reactions = 0;
+  let valueInReaction;
+  customElements.define('fm-reset-disconnector', class extends HTMLElement {
+    disconnectedCallback() {
+      reactions++;
+      valueInReaction = form.lastElementChild.value;
+      form.lastElementChild.remove();
+      TestUtils.gc(); TestUtils.gc();
+    }
+  });
+  output.append(document.createElement('fm-reset-disconnector'));
+  form.append(output, input);
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  input = null;
+  // Leave WeakRef construction's kept-alive job before the reset callback.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  form.reset();
+  assert_equals(reactions, 1, 'reset replaces the output descendants');
+  assert_equals(valueInReaction, 'default', 'reactions run after all controls have reset');
+  const retained = weak.deref();
+  if (retained) assert_equals(retained.value, 'default');
+}, 'Output disconnection reactions run after the complete reset loop');
+</script>

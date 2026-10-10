@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form reset preserves custom errors and live validity objects</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#resetting-a-form">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ['input', 'button', 'select', 'textarea', 'output', 'fieldset', 'object']) {
+  test(() => {
+    const form = document.createElement('form');
+    const control = document.createElement(tag);
+    form.append(control);
+    if (tag === 'input' || tag === 'textarea') control.value = 'dirty';
+    control.setCustomValidity('persistent error');
+    const validity = control.validity;
+    form.reset();
+    assert_equals(control.validity, validity);
+    assert_true(validity.customError);
+    assert_false(validity.valid);
+    control.setCustomValidity('');
+    assert_false(validity.customError);
+  }, `${tag}: reset preserves a custom error and the validity object's identity`);
+}
+</script>

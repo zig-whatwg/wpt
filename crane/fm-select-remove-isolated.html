@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated select.remove(index) regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const select = document.createElement('select');
+  select.add(new Option('first'));
+  select.add(new Option('second'));
+  select.remove(0);
+  assert_equals(select.length, 1);
+  assert_equals(select.item(0).text, 'second');
+}, 'remove(0) removes the first option');
+</script>

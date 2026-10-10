@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Object custom validity remains live although object is barred</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/test-only-api.js"></script>
+<script>
+test(() => {
+  const object = document.createElement('object');
+  const validity = object.validity;
+  assert_true(validity instanceof ValidityState);
+  assert_equals(object.validity, validity);
+  assert_true(validity.valid);
+  object.setCustomValidity('first\r\nsecond');
+  assert_true(validity.customError);
+  assert_false(validity.valid);
+  assert_false(object.willValidate);
+  assert_equals(object.validationMessage, '');
+  object.addEventListener('invalid', () => assert_unreached('object is barred'));
+  assert_true(object.checkValidity());
+  assert_true(object.reportValidity());
+  object.setCustomValidity('');
+  assert_true(validity.valid);
+}, 'Object has a SameObject live validity, but never validates');
+
+promise_test(async () => {
+  const validity = (() => {
+    const object = document.createElement('object');
+    object.setCustomValidity('retained');
+    return object.validity;
+  })();
+  await TestUtils.gc();
+  await TestUtils.gc();
+  assert_true(validity.customError);
+  assert_false(validity.valid);
+}, 'Retained object validity keeps its control alive');
+</script>

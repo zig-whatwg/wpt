@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input valueAsDate uses Date internal slots and UTC conversions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [type, value, iso] of [
+  ['date', '2020-02-29', '2020-02-29T00:00:00.000Z'],
+  ['month', '2020-02', '2020-02-01T00:00:00.000Z'],
+  ['week', '2020-W01', '2019-12-30T00:00:00.000Z'],
+  ['time', '23:59:58.123', '1970-01-01T23:59:58.123Z'],
+]) {
+  test(() => {
+    const input = document.createElement('input'); input.type = type;
+    input.value = value;
+    const date = input.valueAsDate;
+    assert_true(date instanceof Date);
+    assert_equals(date.toISOString(), iso);
+    assert_not_equals(input.valueAsDate, date, 'each getter creates a Date');
+    date.setTime(0);
+    assert_equals(input.value, value, 'the Date does not mutate the control');
+    const assigned = new Date(iso);
+    assigned.valueOf = () => { throw new Error('must read Date internal slot'); };
+    assigned.getTime = assigned.valueOf;
+    input.valueAsDate = assigned;
+    assert_equals(input.value, value);
+    input.valueAsDate = new Date(NaN);
+    assert_equals(input.value, '');
+    assert_equals(input.valueAsDate, null);
+    input.value = value;
+    input.valueAsDate = null;
+    assert_equals(input.value, '');
+    assert_throws_js(TypeError, () => { input.valueAsDate = {}; });
+    assert_throws_js(TypeError, () => { input.valueAsDate = new Proxy(new Date(), {}); });
+  }, `${type}: Date values round-trip through the type's UTC algorithm`);
+}
+for (const type of ['text', 'number', 'datetime-local', 'checkbox', 'file']) {
+  test(() => {
+    const input = document.createElement('input'); input.type = type;
+    assert_equals(input.valueAsDate, null);
+    assert_throws_dom('InvalidStateError', () => { input.valueAsDate = new Date(); });
+    assert_throws_dom('InvalidStateError', () => { input.valueAsDate = null; });
+  }, `${type}: valueAsDate does not apply`);
+}
+</script>

@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated insertAdjacentHTML invalid position regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => assert_throws_dom('SyntaxError', () => document.createElement('div').insertAdjacentHTML('invalid', 'text')), 'An invalid insertAdjacentHTML position throws SyntaxError');
+</script>

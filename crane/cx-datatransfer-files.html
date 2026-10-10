@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: new DataTransfer(), items.add() and files</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/dnd.html#the-datatransfer-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// What script needs to build a FileList: new DataTransfer(), items.add(file)
+// and files - one live FileList ([SameObject]; Blink's DataTransfer::files_,
+// WebKit's m_fileList and Gecko's mFiles are rebuilt in place on every
+// change to the item list).
+
+test(() => {
+  const dt = new DataTransfer();
+  assert_equals(dt.dropEffect, 'none');
+  assert_equals(dt.effectAllowed, 'none');
+  assert_true(dt.items instanceof DataTransferItemList);
+  assert_equals(dt.items, dt.items, 'items is [SameObject]');
+  assert_true(dt.files instanceof FileList);
+  assert_equals(dt.files, dt.files, 'files is [SameObject]');
+  assert_equals(dt.items.length, 0);
+  assert_equals(dt.files.length, 0);
+}, 'a new DataTransfer has an empty drag data store in read/write mode');
+
+test(() => {
+  const dt = new DataTransfer();
+  const files = dt.files;
+  const a = new File(['a'], 'a.txt');
+  const b = new File(['b'], 'b.txt');
+  const item = dt.items.add(a);
+  assert_true(item instanceof DataTransferItem);
+  assert_equals(item.kind, 'file');
+  assert_equals(item.getAsFile(), a, 'getAsFile returns the File added');
+  assert_equals(files.length, 1, 'files is live');
+  assert_equals(files[0], a);
+  dt.items.add(b);
+  assert_equals(dt.files, files, 'still the same FileList');
+  assert_equals(files.length, 2);
+  assert_equals(files.item(1), b);
+  assert_equals(files[2], undefined);
+  assert_equals(files.item(2), null);
+}, 'items.add(File) adds to files, live and the same object');
+
+test(() => {
+  const dt = new DataTransfer();
+  const item = dt.items.add('hello', 'Text/Plain');
+  assert_equals(item.kind, 'string');
+  assert_equals(item.type, 'text/plain');
+  assert_equals(item.getAsFile(), null);
+  assert_equals(dt.items.length, 1);
+  assert_equals(dt.files.length, 0, 'a text item is not a file');
+  assert_throws_dom('NotSupportedError', () => dt.items.add('again', 'text/plain'));
+  assert_equals(dt.items.add('<b>', 'text/html').type, 'text/html');
+  assert_equals(dt.items.length, 2);
+}, 'items.add(data, type) adds a text item, one per type');
+
+test(() => {
+  const dt = new DataTransfer();
+  const file = new File([], 'f', { type: 'Image/PNG' });
+  const item = dt.items.add(file);
+  assert_equals(item.type, 'image/png', 'the type, ASCII lowercase');
+  assert_equals(item.kind, 'file');
+}, 'a file item takes the File\'s type, lowercased');
+
+test(() => {
+  const dt = new DataTransfer();
+  const files = dt.files;
+  const f = new File(['x'], 'x');
+  dt.items.add('text', 'text/plain');
+  const fileItem = dt.items.add(f);
+  dt.items.remove(5);
+  assert_equals(dt.items.length, 2, 'removing an index past the end does nothing');
+  dt.items.remove(1);
+  assert_equals(dt.items.length, 1);
+  assert_equals(files.length, 0, 'the removed File leaves files');
+  assert_equals(fileItem.kind, '', 'a removed item is disabled');
+  assert_equals(fileItem.type, '');
+  assert_equals(fileItem.getAsFile(), null);
+  dt.items.add(f);
+  dt.items.add(f);
+  assert_equals(files.length, 2, 'the same File twice is two entries');
+  dt.items.clear();
+  assert_equals(dt.items.length, 0);
+  assert_equals(files.length, 0);
+  assert_equals(dt.files, files);
+}, 'remove() and clear() empty files in place');
+
+test(() => {
+  const dt = new DataTransfer();
+  dt.dropEffect = 'copy';
+  assert_equals(dt.dropEffect, 'copy');
+  dt.dropEffect = 'bogus';
+  assert_equals(dt.dropEffect, 'copy', 'other values are ignored');
+  dt.effectAllowed = 'copyMove';
+  assert_equals(dt.effectAllowed, 'copyMove');
+  dt.effectAllowed = 'nope';
+  assert_equals(dt.effectAllowed, 'copyMove');
+}, 'dropEffect and effectAllowed');
+
+test(() => {
+  const dt = new DataTransfer();
+  assert_throws_js(TypeError, () => dt.items.add({}), 'with one argument only add(File) applies, and {} is not a File');
+  assert_throws_js(TypeError, () => dt.items.add(new Blob(['x'])), 'nor is a Blob');
+}, 'add() with one argument needs a File');
+</script>

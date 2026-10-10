@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URL input validity follows successful browser URL parsing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const value of ['https:example.com', 'https://example.com/a b', 'https://example.com/%', 'http://0x7f.1/']) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = 'url';
+    input.value = value;
+    assert_false(input.validity.typeMismatch);
+    assert_true(input.checkValidity());
+    assert_equals(input.value, value);
+  }, `Recoverable URL validation errors: ${value}`);
+}
+for (const value of ['relative', 'https://[invalid]/', 'https://example.com:99999/']) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = 'url';
+    input.value = value;
+    assert_true(input.validity.typeMismatch);
+  }, `URL parse failure: ${value}`);
+}
+</script>

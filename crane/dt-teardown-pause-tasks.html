@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane timing: collected trees torn down between tasks (lane defertd)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=dt-host></div>
+<script>
+// Timing page for deferred teardown (lane defertd), the event loop's side:
+// each round is a task of its own (setTimeout 0). A round replaces a tree of
+// about 10,000 nodes under one <div> by innerHTML (untimed), then walks every
+// element of the new tree - wrapping each one - 100 elements per timed unit;
+// the largest gap between two units is the round's worst pause. Between
+// rounds the loop is free to tear the collected trees down; the gap from one
+// round's end to the next round's start shows what that costs the next task.
+//
+// The numbers are in the subtest name; it passes.
+const rounds = 20;
+const markup = '<div>' + '<section><p><b>x</b><i>y</i></p><ul><li>1</li><li>2</li><li>3</li></ul></section>'.repeat(769) + '</div>';
+const host = document.getElementById('dt-host');
+
+function walk(list) {
+  const t0 = performance.now();
+  let prev = t0, max = 0, over5 = 0, count = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].nodeType === 1) count++;
+    if (i % 100 === 99) {
+      const now = performance.now();
+      const d = now - prev;
+      if (d > max) max = d;
+      if (d > 5) over5++;
+      prev = now;
+    }
+  }
+  return { ms: performance.now() - t0, max, over5, count };
+}
+
+async_test(t => {
+  let i = 0, timed = 0, untimed = 0, max = 0, over5 = 0, gapTotal = 0, gapMax = 0, lastEnd = 0, count = 0;
+  const start = performance.now();
+  function round() {
+    const s0 = performance.now();
+    if (lastEnd) {
+      const gap = s0 - lastEnd;
+      gapTotal += gap;
+      if (gap > gapMax) gapMax = gap;
+    }
+    host.innerHTML = markup;
+    const list = host.getElementsByTagName('*');
+    untimed += performance.now() - s0;
+    const r = walk(list);
+    timed += r.ms;
+    if (r.max > max) max = r.max;
+    over5 += r.over5;
+    count = r.count;
+    lastEnd = performance.now();
+    if (++i < rounds) { setTimeout(t.step_func(round), 0); return; }
+    host.innerHTML = '';
+    const wall = performance.now() - start;
+    t.name = 'tasks: timed ' + timed.toFixed(1) + ' ms, max pause ' + max.toFixed(2) + ' ms, pauses > 5 ms ' + over5 +
+      ', untimed ' + untimed.toFixed(1) + ' ms, between rounds ' + gapTotal.toFixed(1) + ' ms (max ' + gapMax.toFixed(2) +
+      ' ms), wall ' + wall.toFixed(1) + ' ms (' + rounds + ' rounds)';
+    assert_equals(count, 769 * 8 + 1);
+    t.done();
+  }
+  setTimeout(t.step_func(round), 0);
+}, 'tasks');
+</script>

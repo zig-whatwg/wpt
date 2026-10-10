@@ -1,0 +1,154 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native form constraints follow the control state</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const type of ['text', 'search', 'url', 'email', 'tel', 'password', 'date', 'month', 'week', 'time', 'datetime-local', 'number']) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = type;
+    input.required = true;
+    const validity = input.validity;
+    assert_true(validity.valueMissing);
+    input.disabled = true;
+    assert_false(validity.valueMissing);
+    input.disabled = false;
+    input.readOnly = true;
+    assert_false(validity.valueMissing);
+    input.readOnly = false;
+    assert_true(validity.valueMissing);
+    assert_false(input.checkValidity());
+    assert_not_equals(input.validationMessage, '');
+  }, `${type}: valueMissing follows mutability, required, and the empty value`);
+}
+
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.required = true;
+  const validity = input.validity;
+  input.disabled = true;
+  assert_true(validity.valueMissing);
+  assert_false(input.willValidate);
+  input.indeterminate = true;
+  assert_true(validity.valueMissing);
+  input.checked = true;
+  assert_false(validity.valueMissing);
+}, 'Checkbox missingness is independent of disabled and indeterminate');
+
+test(() => {
+  const tree = document.createElement('div');
+  const a = document.createElement('input');
+  const b = document.createElement('input');
+  for (const input of [a, b]) { input.type = 'radio'; input.name = 'group'; tree.append(input); }
+  a.required = true;
+  a.disabled = true;
+  const validity = b.validity;
+  assert_true(a.validity.valueMissing);
+  assert_true(validity.valueMissing);
+  a.checked = true;
+  assert_false(validity.valueMissing);
+  a.remove();
+  assert_false(validity.valueMissing);
+  b.required = true;
+  assert_true(validity.valueMissing);
+  b.name = '';
+  assert_false(validity.valueMissing);
+}, 'Radio missingness reads the current group, including required disabled members');
+
+test(() => {
+  const textarea = document.createElement('textarea');
+  textarea.required = true;
+  const validity = textarea.validity;
+  assert_true(validity.valueMissing);
+  textarea.defaultValue = 'initial';
+  assert_false(validity.valueMissing);
+  textarea.value = '';
+  assert_true(validity.valueMissing);
+  textarea.readOnly = true;
+  assert_false(validity.valueMissing);
+}, 'Textarea missingness follows its API value and mutability');
+
+test(() => {
+  const select = document.createElement('select');
+  select.required = true;
+  const validity = select.validity;
+  assert_true(validity.valueMissing);
+  const first = document.createElement('option');
+  first.value = '';
+  select.append(first);
+  first.selected = true;
+  assert_true(validity.valueMissing);
+  select.size = 2;
+  assert_false(validity.valueMissing);
+  select.size = 1;
+  select.multiple = true;
+  assert_false(validity.valueMissing);
+  select.multiple = false;
+  const group = document.createElement('optgroup');
+  select.append(group);
+  group.append(first);
+  first.selected = true;
+  assert_false(validity.valueMissing);
+  select.multiple = true;
+  first.selected = false;
+  assert_true(validity.valueMissing);
+}, 'Select missingness distinguishes no selection from a placeholder label option');
+
+for (const [type, min, max, below, above] of [
+  ['number', '1', '3', '0', '4'],
+  ['date', '2020-01-02', '2020-01-03', '2020-01-01', '2020-01-04'],
+  ['month', '2020-02', '2020-03', '2020-01', '2020-04'],
+  ['week', '2020-W02', '2020-W03', '2020-W01', '2020-W04'],
+  ['time', '01:00', '03:00', '00:00', '04:00'],
+  ['datetime-local', '2020-01-02T01:00', '2020-01-03T01:00', '2020-01-01T01:00', '2020-01-04T01:00'],
+]) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = type;
+    input.min = min;
+    input.max = max;
+    input.step = 'any';
+    const validity = input.validity;
+    input.value = below;
+    assert_true(validity.rangeUnderflow);
+    assert_false(validity.rangeOverflow);
+    input.value = above;
+    assert_false(validity.rangeUnderflow);
+    assert_true(validity.rangeOverflow);
+    input.disabled = true;
+    assert_true(validity.rangeOverflow);
+    input.value = min;
+    assert_true(validity.valid);
+  }, `${type}: live range flags use the type's numeric conversion`);
+}
+
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'time'; input.min = '23:00'; input.max = '01:00';
+  const validity = input.validity;
+  input.value = '12:00';
+  assert_true(validity.rangeUnderflow);
+  assert_true(validity.rangeOverflow);
+  input.value = '00:00';
+  assert_false(validity.rangeUnderflow);
+  assert_false(validity.rangeOverflow);
+}, 'A reversed time range is missing the open interval between max and min');
+
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'number'; input.min = '0.1'; input.step = '0.2';
+  const validity = input.validity;
+  input.value = '0.3';
+  assert_false(validity.stepMismatch);
+  input.value = '0.4';
+  assert_true(validity.stepMismatch);
+  input.step = 'AnY';
+  assert_false(validity.stepMismatch);
+  input.removeAttribute('min'); input.setAttribute('value', '0.4'); input.step = '1';
+  assert_false(validity.stepMismatch);
+  input.value = '1.5';
+  assert_true(validity.stepMismatch);
+}, 'Step mismatch uses min, value attribute, and any with decimal tolerance');
+</script>

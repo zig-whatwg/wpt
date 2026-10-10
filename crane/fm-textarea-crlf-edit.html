@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Textarea editing uses normalized API value offsets</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+for (const source of ['value', 'textContent']) {
+  for (const action of ['type', 'backspace', 'maxlength']) {
+    promise_test(async t => {
+      const ta = document.createElement('textarea');
+      document.body.append(ta);
+      t.add_cleanup(() => ta.remove());
+      ta[source] = 'a\r\nb';
+      assert_equals(ta.value, 'a\nb');
+      await test_driver.click(ta);
+      ta.setSelectionRange(3, 3);
+      if (action === 'maxlength') ta.maxLength = 4;
+      await test_driver.send_keys(ta, action === 'backspace' ? '\uE003' : 'X');
+      assert_equals(ta.value, action === 'backspace' ? 'a\n' : 'a\nbX');
+      assert_equals(ta.selectionStart, action === 'backspace' ? 2 : 4);
+    }, `${source}: CRLF ${action} uses API value offsets`);
+  }
+}
+</script>

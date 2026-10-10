@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane pre-batch deletion preserves beforeinput value changes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+for (const tag of ['input', 'textarea']) {
+  for (const replacement of ['uvwxyz', 'q', '']) {
+    promise_test(async t => {
+      const control = document.createElement(tag);
+      document.body.append(control);
+      t.add_cleanup(() => control.remove());
+      control.value = 'abc';
+      await test_driver.click(control);
+      control.setSelectionRange(2, 2);
+      control.addEventListener('beforeinput', () => { control.value = replacement; }, {once: true});
+      await test_driver.send_keys(control, '\uE003');
+      // Pins Crane pre-batch behavior (Q33); browser range policy unverified.
+      // The pending deletion range [1, 2] is applied to the live value,
+      // with endpoints clamped when the listener shortened it.
+      assert_equals(control.value, replacement === 'uvwxyz' ? 'uwxyz' : replacement);
+      assert_equals(control.selectionStart, Math.min(1, replacement.length));
+    }, `${tag}: Backspace retains beforeinput replacement ${JSON.stringify(replacement)}`);
+  }
+}
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS.supports uses the shared CSS Color 4 literal grammar</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#color-type">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const value of [
+  '#abcdef', 'rgb(1, 2, 3)', 'rgba(1, 2, 3, .5)', 'red',
+  'crimson', 'rebeccapurple', 'rgb(none 50% 0 / 25%)',
+  'hsl(150deg 100 53.5)', 'hwb(150 20% 10%)',
+  'lab(50% 0 0)', 'lch(50 0 30)', 'oklab(.5 0 0)', 'oklch(.5 .1 30)',
+  'color(display-p3 .5 0 0)', 'color(rec2020 .5 .5 .5)',
+  'color(xyz-d50 .2 .3 .4)'
+]) test(() => {
+  assert_true(CSS.supports('color', value));
+  assert_true(CSS.supports(`(color: ${value})`));
+}, `Literal color is supported: ${value}`);
+
+for (const value of [
+  'rgb(1,2)', 'lab(', '#gggggg', 'not-a-color',
+  'rgb(1, 2 3)', 'rgb(1 2 3, .5)', 'rgb(1, 2%, 3)',
+  'hsl(0, 100, 50)', 'hwb(0, 0%, 0%)', 'color(unknown 1 0 0)'
+]) test(() => {
+  assert_false(CSS.supports('color', value));
+  assert_false(CSS.supports(`(color: ${value})`));
+}, `Invalid literal color is rejected: ${value}`);
+</script>

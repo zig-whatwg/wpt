@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Required text input has a live valueMissing flag</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const input = document.createElement('input');
+  const validity = input.validity;
+  input.required = true;
+  assert_true(validity.valueMissing);
+  input.value = 'filled';
+  assert_false(validity.valueMissing);
+}, 'An existing validity object follows required and value changes');
+</script>

@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A retained native ValidityState keeps its control alive</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#dom-cva-validity">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ['input', 'button', 'select', 'textarea', 'output', 'fieldset']) {
+  promise_test(async () => {
+    const validity = (() => {
+      const control = document.createElement(tag);
+      control.setCustomValidity('must survive collection');
+      return control.validity;
+    })();
+    await TestUtils.gc();
+    await TestUtils.gc();
+    assert_true(validity.customError);
+    assert_false(validity.valid);
+    assert_false(validity.badInput);
+  }, `${tag}: validity remains readable after every script reference to its control is dropped`);
+}
+</script>

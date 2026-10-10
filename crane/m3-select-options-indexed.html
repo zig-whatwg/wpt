@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>HTMLOptionsCollection inherits HTMLCollection's indexed getter and has its own indexed setter</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#htmloptionscollection">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<select id=s><option>a</option><option>b</option></select>
+<script>
+"use strict";
+const select = document.getElementById("s");
+
+test(() => {
+  const options = select.options;
+  assert_true(options instanceof HTMLOptionsCollection);
+  assert_equals(options[0], select.querySelectorAll("option")[0]);
+  assert_equals(options[1], select.querySelectorAll("option")[1]);
+  assert_equals(options[2], undefined);
+  assert_true(1 in options);
+  assert_false(2 in options);
+  assert_array_equals(Object.keys(options), ["0", "1"]);
+}, "options[i] reads the select's options");
+
+test(() => {
+  const options = select.options;
+  const c = new Option("c");
+  options[2] = c;
+  assert_equals(options.length, 3);
+  assert_equals(options[2], c);
+  assert_equals(select.lastElementChild, c);
+  const d = new Option("d");
+  options[0] = d;
+  assert_equals(options[0], d, "replaces the option at that index");
+  assert_equals(options.length, 3);
+  options[1] = null;
+  assert_equals(options.length, 2, "null removes the option");
+  const d2 = Object.getOwnPropertyDescriptor(options, 0);
+  assert_equals(d2.value, d);
+  assert_true(d2.writable, "an indexed setter makes it writable");
+}, "options[i] = option writes through the indexed setter");
+</script>

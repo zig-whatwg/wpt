@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native form controls expose live custom validity</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#the-constraint-validation-api">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ['input', 'button', 'select', 'textarea', 'output', 'fieldset']) {
+  test(() => {
+    const control = document.createElement(tag);
+    const validity = control.validity;
+    assert_true(validity instanceof ValidityState);
+    assert_equals(control.validity, validity, 'validity is SameObject');
+    assert_true(validity.valid);
+    assert_false(validity.customError);
+    control.setCustomValidity('first\rsecond\r\nthird\nfourth\u0000\ud800');
+    assert_true(validity.customError, 'existing ValidityState sees the new error');
+    assert_false(validity.valid);
+    if (control.willValidate) {
+      assert_equals(control.validationMessage, 'first\nsecond\nthird\nfourth\u0000\ud800');
+    } else {
+      assert_equals(control.validationMessage, '', 'barred controls have no validation message');
+    }
+    control.setCustomValidity('');
+    assert_false(validity.customError, 'existing ValidityState sees the cleared error');
+    assert_true(validity.valid);
+    assert_equals(control.validationMessage, '');
+  }, `${tag}: live custom validity normalizes only CR and CRLF`);
+}
+
+for (const tag of ['input', 'button', 'select', 'textarea']) {
+  test(() => {
+    const control = document.createElement(tag);
+    control.setCustomValidity('retained error');
+    const validity = control.validity;
+    control.setAttribute('disabled', '');
+    assert_false(control.willValidate);
+    assert_true(validity.customError, 'disabled does not clear validity state');
+    assert_false(validity.valid);
+    assert_equals(control.validationMessage, '');
+    assert_true(control.checkValidity());
+    control.removeAttribute('disabled');
+    assert_true(control.willValidate);
+    assert_equals(control.validationMessage, 'retained error');
+    assert_false(control.checkValidity());
+  }, `${tag}: disabling bars validation without clearing the custom error`);
+}
+</script>

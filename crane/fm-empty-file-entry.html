@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An unselected file control contributes an empty File</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const form = document.createElement('form');
+  const input = document.createElement('input');
+  input.type = 'file'; input.name = 'upload';
+  form.append(input);
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const data = new FormData(form);
+  const file = data.get('upload');
+  assert_true(file instanceof File);
+  assert_equals(file.name, '');
+  assert_equals(file.type, 'application/octet-stream');
+  assert_equals(file.size, 0);
+  assert_equals(await file.text(), '');
+  TestUtils.gc(); TestUtils.gc();
+  assert_equals(data.get('upload'), file);
+}, 'An empty file selection is submitted as an empty File with the specified MIME type');
+</script>

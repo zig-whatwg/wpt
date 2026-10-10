@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane timing: collected trees torn down inside a synchronous script (lane defertd)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=dt-host></div>
+<script>
+// Timing page for deferred teardown (lane defertd). Every round replaces a
+// tree of about 10,000 nodes by innerHTML (untimed: one native call), then
+// walks every element of the new tree - wrapping each one - 100 elements per
+// timed unit. The walk's allocations make the collections; a collection
+// collects the wrappers of the trees earlier rounds replaced, and wherever
+// the native teardown of those trees runs shows up as the largest gap between
+// two units. The rounds of a shape run in ONE task: the event loop gets no
+// turn between them (each shape is a task of its own, so one shape's garbage
+// is not the next one's).
+//
+//   one-root    - one <div> holding the whole tree: one collected root a round
+//   many-roots  - 769 top-level <section>s (13 nodes each): 769 roots a round
+//   one-root+gc - one-root with TestUtils.gc() between rounds, outside the
+//                 timed walk (no collection's cost lands in it)
+//
+// The numbers are in the subtest names; every subtest passes.
+const rounds = 10;
+const section = '<section><p><b>x</b><i>y</i></p><ul><li>1</li><li>2</li><li>3</li></ul></section>';
+const host = document.getElementById('dt-host');
+
+function walk(list) {
+  const t0 = performance.now();
+  let prev = t0, max = 0, over5 = 0, count = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].nodeType === 1) count++;
+    if (i % 100 === 99) {
+      const now = performance.now();
+      const d = now - prev;
+      if (d > max) max = d;
+      if (d > 5) over5++;
+      prev = now;
+    }
+  }
+  return { ms: performance.now() - t0, max, over5, count };
+}
+
+function measure(shape, gcBetween) {
+  const markup = shape === 'one-root' ? '<div>' + section.repeat(769) + '</div>' : section.repeat(769);
+  let timed = 0, untimed = 0, max = 0, over5 = 0, count = 0;
+  for (let i = 0; i < rounds; i++) {
+    const s0 = performance.now();
+    host.innerHTML = markup;
+    if (gcBetween && self.TestUtils) TestUtils.gc();
+    const list = host.getElementsByTagName('*');
+    untimed += performance.now() - s0;
+    const r = walk(list);
+    timed += r.ms;
+    if (r.max > max) max = r.max;
+    over5 += r.over5;
+    count = r.count;
+  }
+  host.innerHTML = '';
+  return { timed, untimed, max, over5, count };
+}
+
+function name(label, r) {
+  return label + ': timed ' + r.timed.toFixed(1) + ' ms, max pause ' + r.max.toFixed(2) +
+    ' ms, pauses > 5 ms ' + r.over5 + ', untimed ' + r.untimed.toFixed(1) + ' ms (' + rounds + ' rounds)';
+}
+
+const shapes = [['one-root', false, 769 * 8 + 1], ['many-roots', false, 769 * 8], ['one-root+gc', true, 769 * 8 + 1]];
+async_test(t => {
+  let k = 0;
+  function next() {
+    const [label, gc, expected] = shapes[k++];
+    const r = measure(label === 'many-roots' ? 'many-roots' : 'one-root', gc);
+    test(() => { assert_equals(r.count, expected); }, name(label, r));
+    if (k < shapes.length) setTimeout(t.step_func(next), 0);
+    else t.done();
+  }
+  setTimeout(t.step_func(next), 0);
+}, 'shapes, one task each');
+</script>

@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input pattern validation uses intrinsic UnicodeSets expressions</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#attr-input-pattern">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [pattern, value, mismatch] of [
+  ['[A-Z]+', 'ABC', false], ['[A-Z]+', 'xABC', true], ['[A-Z]+', 'ABCx', true],
+  ['', 'anything', true], ['', '', false], ['[A-Z]+', '', false],
+  ['[[A-Z]&&[A-M]]+', 'ABC', false],
+  ['[[A-Z]&&[A-M]]+', 'Z', true],
+  ['[[a-z]--[aeiou]]+', 'bcdf', false], ['[[a-z]--[aeiou]]+', 'ae', true],
+  [')x|y(', 'z', false], ['[', 'z', false],
+]) {
+  test(() => {
+    const input = document.createElement('input');
+    input.pattern = pattern;
+    input.value = value;
+    assert_equals(input.validity.patternMismatch, mismatch);
+  }, `pattern ${JSON.stringify(pattern)} against ${JSON.stringify(value)}`);
+}
+
+test(() => {
+  const input = document.createElement('input');
+  input.value = 'abc';
+  const validity = input.validity;
+  input.pattern = 'abc';
+  assert_false(validity.patternMismatch);
+  input.pattern = 'def';
+  assert_true(validity.patternMismatch);
+  input.pattern = '(';
+  assert_false(validity.patternMismatch);
+  input.pattern = 'def';
+  input.removeAttribute('pattern');
+  assert_false(validity.patternMismatch);
+}, 'An existing validity object follows pattern replacement, invalidation, and removal');
+
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'email'; input.multiple = true; input.pattern = '.+@example\\.com';
+  input.value = 'first@example.com,second@example.com';
+  assert_false(input.validity.patternMismatch);
+  input.value = 'first@example.com,second@other.com';
+  assert_true(input.validity.patternMismatch);
+}, 'Multiple email addresses are matched individually');
+
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'number'; input.value = '2'; input.pattern = 'a';
+  assert_false(input.validity.patternMismatch);
+}, 'Pattern does not apply to number inputs');
+
+test(() => {
+  const input = document.createElement('input');
+  input.pattern = '[A-Z]+'; input.value = 'lowercase';
+  const Original = RegExp;
+  const exec = Original.prototype.exec;
+  const match = Original.prototype[Symbol.match];
+  let calls = 0;
+  let mismatch;
+  const poison = () => { ++calls; throw new Error('page regexp code must not run'); };
+  try {
+    self.RegExp = poison;
+    Original.prototype.exec = poison;
+    Original.prototype[Symbol.match] = poison;
+    mismatch = input.validity.patternMismatch;
+  } finally {
+    self.RegExp = Original;
+    Original.prototype.exec = exec;
+    Original.prototype[Symbol.match] = match;
+  }
+  assert_equals(calls, 0);
+  assert_true(mismatch);
+}, 'Pattern matching does not invoke page-overridable regular-expression builtins');
+</script>

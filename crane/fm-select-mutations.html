@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Select collection mutations use the complete option algorithms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const select = document.createElement('select');
+  select.add(new Option('first'));
+  select.add(new Option('second'));
+  select.remove(0);
+  assert_equals(select.length, 1);
+  assert_equals(select.item(0).text, 'second');
+  select.remove(-1);
+  select.remove(10);
+  assert_equals(select.length, 1);
+}, 'select.remove(index) removes the indexed option and ignores out-of-range indices');
+test(() => {
+  const select = document.createElement('select');
+  select.add(new Option('named earlier'));
+  select.item(0).setAttribute('name', 'match');
+  select.add(new Option('id later'));
+  select.item(1).id = 'match';
+  assert_equals(select.namedItem('match'), select.item(0));
+}, 'namedItem finds the first id or name match in tree order');
+if (!location.search.includes('skip-large-growth')) test(() => {
+  const select = document.createElement('select');
+  select.add(new Option('original'));
+  select.length = 100001;
+  assert_equals(select.length, 1);
+}, 'length growth above 100000 returns without changing the list');
+promise_test(async () => {
+  const select = document.createElement('select');
+  const observer = new MutationObserver(() => {});
+  observer.observe(select, {childList:true});
+  select.length = 3;
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1);
+  assert_equals(records[0].addedNodes.length, 3);
+  assert_equals(select.length, 3);
+  observer.disconnect();
+}, 'length growth appends a fragment as one tree mutation');
+</script>
+<script>
+test(t => {
+  const select = document.createElement('select');
+  const seen = [];
+  customElements.define('fm-shrink-option', class extends HTMLOptionElement {
+    disconnectedCallback() { seen.push(select.length); }
+  }, {extends:'option'});
+  for (let i = 0; i < 3; i++) select.append(document.createElement('option', {is:'fm-shrink-option'}));
+  document.body.append(select);
+  t.add_cleanup(() => select.remove());
+  select.length = 0;
+  assert_array_equals(seen, [0, 0, 0]);
+}, 'length shrink queues all option disconnection reactions until every removal is finished');
+</script>

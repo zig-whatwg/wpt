@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a FocusEvent keeps its relatedTarget</title>
+<link rel=help href="https://w3c.github.io/uievents/#dom-focusevent-relatedtarget">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "relatedTarget: the value it was initialized to." The event holds it for as
+// long as the event lives: Blink's FocusEvent is a UIEvent whose related
+// target is a traced Member<EventTarget> (Event::Trace); WebKit's
+// FocusEvent holds RefPtr<EventTarget> m_relatedTarget. Crane kept a
+// generation-checked link, so a target only the event held was collected and
+// relatedTarget read null.
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(document.createTextNode('churn'), document.createElement('b'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const event = (() => {
+    const target = document.createElement('button');
+    target.cx = 'related';
+    return new FocusEvent('focus', { relatedTarget: target });
+  })();
+  await collect(t);
+  assert_not_equals(event.relatedTarget, null, 'the related target is still there');
+  assert_equals(event.relatedTarget.localName, 'button');
+  assert_equals(event.relatedTarget.cx, 'related', 'with its expando');
+}, 'a constructed FocusEvent keeps a detached relatedTarget script let go');
+
+promise_test(async t => {
+  const event = (() => {
+    const target = document.createElement('span');
+    target.cx = 'cycle';
+    const e = new FocusEvent('blur', { relatedTarget: target });
+    target.keptEvent = e;
+    return e;
+  })();
+  await collect(t);
+  assert_not_equals(event.relatedTarget, null);
+  assert_equals(event.relatedTarget.cx, 'cycle', 'the related target, with its expando');
+  assert_equals(event.relatedTarget.keptEvent, event, 'and the cycle through the event');
+}, 'a relatedTarget that keeps its event is kept by it');
+
+promise_test(async t => {
+  const holder = {};
+  (() => {
+    const a = document.createElement('input');
+    const b = document.createElement('input');
+    b.cx = 'next';
+    document.body.append(a, b);
+    a.focus();
+    a.addEventListener('blur', e => { holder.event = e; }, { once: true });
+    b.focus();
+    a.remove();
+    b.remove();
+  })();
+  assert_not_equals(holder.event, undefined, 'blur fired');
+  assert_equals(holder.event.relatedTarget && holder.event.relatedTarget.cx, 'next', 'blur names the element gaining focus');
+  await collect(t);
+  assert_not_equals(holder.event.relatedTarget, null, 'still there after collection');
+  assert_equals(holder.event.relatedTarget.cx, 'next', 'with its expando');
+}, 'a fired blur event keeps the element gaining focus after it is removed');
+
+test(() => {
+  const event = new FocusEvent('focus');
+  assert_equals(event.relatedTarget, null);
+  const target = document.createElement('div');
+  assert_equals(new FocusEvent('focus', { relatedTarget: target }).relatedTarget, target);
+  assert_equals(new FocusEvent('focus', { relatedTarget: window }).relatedTarget, window);
+}, 'relatedTarget is what the event was initialized to');
+</script>

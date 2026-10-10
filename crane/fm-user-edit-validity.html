@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>User edits and script assignments have different constraint effects</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+for (const tag of ['input', 'textarea']) {
+  promise_test(async t => {
+    const control = document.createElement(tag);
+    document.body.append(control);
+    t.add_cleanup(() => control.remove());
+    control.minLength = 3;
+    control.maxLength = 4;
+    control.value = 'a';
+    const validity = control.validity;
+    assert_false(validity.tooShort, 'script assignment is not a user edit');
+    await test_driver.click(control);
+    control.setSelectionRange(1, 1);
+    const events = [];
+    control.addEventListener('beforeinput', () => events.push(`before:${control.value}`));
+    control.addEventListener('input', () => events.push(`after:${control.value}`));
+    await test_driver.send_keys(control, 'b');
+    assert_true(validity.tooShort);
+    assert_array_equals(events, ['before:a', 'after:ab']);
+    await test_driver.send_keys(control, 'cdX');
+    assert_equals(control.value, 'abcd', 'typing is limited by maxlength');
+    assert_false(validity.tooLong);
+    control.maxLength = 2;
+    assert_true(validity.tooLong, 'a previously typed value now exceeds the limit');
+    control.value = 'abcd';
+    assert_false(validity.tooLong, 'even assigning the same value is a script write');
+    control.setSelectionRange(4, 4);
+    await test_driver.send_keys(control, '\uE003');
+    assert_equals(control.value, 'abc');
+    assert_true(validity.tooLong, 'deleting from a script-set long value is a user edit');
+    control.setRangeText('xy', 0, 3);
+    assert_false(validity.tooShort, 'script setRangeText clears user-edit provenance');
+  }, `${tag}: length constraints distinguish user edits, script writes, and changed limits`);
+}
+
+promise_test(async t => {
+  const input = document.createElement('input');
+  input.type = 'number';
+  document.body.append(input);
+  t.add_cleanup(() => input.remove());
+  const validity = input.validity;
+  await test_driver.click(input);
+  await test_driver.send_keys(input, '1.e');
+  assert_equals(input.value, '');
+  assert_true(validity.badInput);
+  await test_driver.send_keys(input, '\uE003');
+  assert_equals(input.value, '1', 'backspace edits the retained raw text 1.e to 1.');
+  assert_false(validity.badInput);
+  input.value = '1.e';
+  assert_equals(input.value, '');
+  assert_false(validity.badInput, 'script writes sanitize without badInput');
+  await test_driver.send_keys(input, '2e');
+  assert_true(validity.badInput);
+  await test_driver.send_keys(input, '3');
+  assert_equals(input.valueAsNumber, 2000, 'the next digit completes the preserved exponent');
+  assert_false(validity.badInput);
+}, 'Number input keeps incomplete editor text across edits and clears it on script writes');
+
+promise_test(async t => {
+  const input = document.createElement('input');
+  input.type = 'number';
+  document.body.append(input);
+  t.add_cleanup(() => input.remove());
+  await test_driver.click(input);
+  await test_driver.send_keys(input, '1e');
+  assert_equals(input.value, '');
+  assert_true(input.validity.badInput);
+  await test_driver.send_keys(input, '5');
+  assert_equals(input.value, '1e5');
+  assert_false(input.validity.badInput);
+  input.value = '';
+  await test_driver.send_keys(input, '1e');
+  await test_driver.send_keys(input, '\uE003');
+  assert_equals(input.value, '1');
+  assert_false(input.validity.badInput);
+  await test_driver.send_keys(input, 'e');
+  assert_true(input.validity.badInput);
+  input.value = '2';
+  await test_driver.send_keys(input, '3');
+  assert_equals(input.value, '23', 'script assignment replaces the editor text');
+}, 'Number editing reads its raw exponent and a script write ends that raw text');
+</script>

@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Indexed option writes retain their bounds and binding</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Run only after the exhausted-allocator native guard test passes. Never run
+// this fixture against an unguarded baseline: a sparse write could allocate
+// billions of dummy options. Native coverage also calls the u32 maximum.
+for (const surface of ['select', 'options']) {
+  test(() => {
+    const select = document.createElement('select');
+    const target = surface === 'select' ? select : select.options;
+    const option = new Option('ordinary append');
+    target[0] = option;
+    assert_equals(select.length, 1);
+    assert_equals(select.item(0), option);
+    assert_equals(option.parentNode, select);
+  }, `${surface}: an ordinary indexed write mutates the option list`);
+  for (const index of [100000, 4000000000]) {
+    test(() => {
+      const select = document.createElement('select');
+      const original = new Option('original');
+      select.add(original);
+      const target = surface === 'select' ? select : select.options;
+      const option = new Option('oversized append');
+      target[index] = option;
+      assert_equals(select.length, 1);
+      assert_equals(select.item(0), original);
+      assert_equals(option.parentNode, null);
+      // An unbound setter creates an expando and is not evidence of a cap.
+      assert_false(Object.hasOwn(target, String(index)));
+    }, `${surface}: sparse index ${index} is a no-op without an expando`);
+  }
+}
+</script>

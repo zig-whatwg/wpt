@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form validation snapshots native and custom controls in tree order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const method of ['checkValidity', 'reportValidity']) {
+  test(t => {
+    const host = document.createElement('div');
+    host.innerHTML = '<input form="fm-owner"><form id="fm-owner"><input><button></button><select></select><textarea></textarea><input disabled><output></output></form>';
+    document.body.append(host);
+    t.add_cleanup(() => host.remove());
+    const form = host.querySelector('form');
+    const controls = Array.from(host.querySelectorAll('input,button,select,textarea,output'));
+    const seen = [];
+    for (const [index, control] of controls.entries()) {
+      control.setCustomValidity('invalid');
+      control.addEventListener('invalid', event => {
+        seen.push(index);
+        event.preventDefault();
+        control.setCustomValidity('');
+        if (index === 0) {
+          // The invalid list was captured before any event. Removing and
+          // repairing a later control cannot remove it from that list.
+          controls[1].remove();
+          controls[1].setCustomValidity('');
+          TestUtils.gc();
+        }
+      });
+    }
+    assert_false(form[method]());
+    assert_array_equals(seen, [0, 1, 2, 3, 4]);
+    assert_true(form[method](), 'the next invocation observes the repairs');
+  }, `form.${method} snapshots invalid candidates before dispatch, including external controls`);
+}
+
+test(t => {
+  const form = document.createElement('form');
+  form.innerHTML = '<input required><button type="submit"></button>';
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const input = form.querySelector('input');
+  const events = [];
+  form.addEventListener('submit', event => { events.push('submit'); event.preventDefault(); });
+  input.addEventListener('invalid', event => { events.push('invalid'); event.preventDefault(); });
+  form.requestSubmit();
+  assert_array_equals(events, ['invalid']);
+  input.value = 'ready';
+  form.requestSubmit();
+  assert_array_equals(events, ['invalid', 'submit']);
+  input.value = '';
+  form.noValidate = true;
+  form.requestSubmit();
+  assert_array_equals(events, ['invalid', 'submit', 'submit']);
+}, 'requestSubmit validates native controls unless novalidate bypasses validation');
+</script>

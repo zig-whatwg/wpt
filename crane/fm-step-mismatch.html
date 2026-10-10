@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Numeric step constraints retain the fractional remainder at large quotients</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [value, step, min, expected] of [
+  ['17', '3e-15', '', true],
+  ['-17', '3e-15', '', true],
+  ['-12345678.9', '1e-12', '', false],
+  ['0.3', '0.1', '', false],
+  ['0.31', '0.1', '', true],
+  ['0.3', '0.2', '0.1', false],
+  ['0.4', '0.2', '0.1', true],
+  ['0.3000000001', '0.1', '', false],
+]) test(() => {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = step;
+  if (min) input.min = min;
+  input.value = value;
+  assert_equals(input.validity.stepMismatch, expected);
+}, `value=${value}, step=${step}, min=${min || 'absent'}`);
+</script>

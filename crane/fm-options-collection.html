@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Select collections stay live and retain their owner</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const select = document.createElement('select');
+  const options = select.options;
+  const selected = select.selectedOptions;
+  assert_true(options instanceof HTMLOptionsCollection);
+  assert_equals(select.options, options);
+  assert_equals(select.selectedOptions, selected);
+  const first = new Option('first', '1');
+  select.append(first);
+  assert_equals(options.length, 1);
+  assert_equals(options.item(0), first);
+  assert_equals(selected.length, 1);
+  assert_equals(selected.item(0), first);
+  const second = new Option('second', '2');
+  options.add(second);
+  options.selectedIndex = 1;
+  assert_equals(select.value, '2');
+  assert_equals(selected.item(0), second);
+  options.remove(0);
+  assert_equals(options.length, 1);
+  assert_equals(options.selectedIndex, 0);
+  select.selectedIndex = -1;
+  assert_equals(select.selectedIndex, -1);
+  assert_equals(select.value, '');
+  select.value = 'nonexistent';
+  assert_equals(select.selectedIndex, -1);
+  select.selectedIndex = 0;
+  assert_equals(select.value, '2');
+  second.selected = false;
+  assert_equals(select.selectedIndex, 0, 'option.selected asks for reset');
+  options.length = 3;
+  assert_equals(select.length, 3);
+  options.length = 0;
+  assert_equals(selected.length, 0);
+}, 'The options collection has its specified brand and delegates live mutations');
+
+for (const property of ['options', 'selectedOptions']) {
+  test(() => {
+    let held;
+    (() => {
+      const select = document.createElement('select');
+      select.marker = property;
+      const option = new Option('held', 'v', true, true);
+      option.marker = 42;
+      select.append(option);
+      held = select[property];
+    })();
+    TestUtils.gc(); TestUtils.gc();
+    assert_equals(held.length, 1);
+    assert_equals(held.item(0).marker, 42);
+    assert_equals(held.item(0).parentElement.marker, property);
+    if (property === 'options') {
+      held.add(new Option('added', 'x'));
+      assert_equals(held.length, 2);
+    }
+  }, `A retained ${property} collection holds its select and option wrappers`);
+}
+</script>

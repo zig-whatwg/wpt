@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SubmitEvent keeps its submitter alive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const cycle of [false, true]) promise_test(async t => {
+  let submitter = document.createElement('button');
+  submitter.marker = 42;
+  const event = new SubmitEvent('submit', {submitter});
+  if (cycle) submitter.event = event;
+  submitter = null;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc(); TestUtils.gc();
+  assert_not_equals(event.submitter, null);
+  assert_equals(event.submitter.marker, 42);
+  if (cycle) assert_equals(event.submitter.event, event);
+}, `retained SubmitEvent holds a detached submitter, cycle=${cycle}`);
+</script>

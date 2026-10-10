@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a static NodeList holds its nodes wherever their trees go</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-collection-static">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane nodeholds (tmp/plans/lane-nodeholds-handoff.md). A static list holds
+// its nodes natively (Blink: HeapVector<Member<Node>>) and roots, from the
+// list, only the root of a tree holding one of them that is not a document
+// with a window: a detached tree, a shadow tree whose host left, template
+// contents, a document made by script.
+
+async function collect(t) {
+  for (let i = 0; i < 2; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(document.createElement('span'), document.createElement('p'), document.createTextNode('x'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const list = (() => {
+    const doc = document.implementation.createHTMLDocument('t');
+    doc.body.innerHTML = '<p id=w1>1</p><p id=w2>2</p>';
+    doc.ed = 'doc';
+    return doc.querySelectorAll('p');
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].id, 'w1');
+  assert_equals(list[1].id, 'w2');
+  assert_equals(list[0].ownerDocument.ed, 'doc', 'its document, with its expando');
+  assert_equals(list[1].parentNode, list[0].ownerDocument.body);
+}, 'a list from a document with no window keeps that document');
+
+promise_test(async t => {
+  const list = (() => {
+    const host = document.body.appendChild(document.createElement('div'));
+    const shadow = host.attachShadow({ mode: 'closed' });
+    shadow.innerHTML = '<span>s1</span><span>s2</span>';
+    const found = shadow.querySelectorAll('span');
+    host.remove();
+    return found;
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].textContent, 's1');
+  assert_equals(list[1].textContent, 's2');
+  const root = list[0].getRootNode();
+  assert_true(root instanceof ShadowRoot, 'its shadow root');
+  assert_equals(root.host.localName, 'div', 'and its host');
+}, 'a list keeps a shadow tree whose host leaves the document');
+
+promise_test(async t => {
+  const list = (() => {
+    const template = document.createElement('template');
+    template.innerHTML = '<q>t1</q><q>t2</q>';
+    return template.content.querySelectorAll('q');
+  })();
+  await collect(t);
+  assert_array_equals([...list].map(n => n.textContent), ['t1', 't2']);
+}, 'a list keeps the contents of a template script let go');
+
+promise_test(async t => {
+  const weak = [];
+  (() => {
+    const root = document.createElement('div');
+    root.innerHTML = '<a></a><a></a>';
+    root.list = root.querySelectorAll('a');
+    weak.push(new WeakRef(root), new WeakRef(root.list));
+  })();
+  await new Promise(r => t.step_timeout(r, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_array_equals(weak.map(ref => ref.deref() === undefined), [true, true], 'both collected');
+}, 'a list and the tree that names it are collected together');
+
+promise_test(async t => {
+  let el = document.body.appendChild(document.createElement('mark'));
+  const list = document.body.querySelectorAll('mark');
+  const weak = [];
+  for (let i = 0; i < 100; i++) {
+    const d = document.createElement('div');
+    weak.push(new WeakRef(d));
+    d.append(el);
+    document.body.append(d);
+    d.remove();
+  }
+  const last = new WeakRef(el.parentNode);
+  el = null;
+  await new Promise(r => t.step_timeout(r, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  const alive = weak.filter(ref => ref.deref() !== undefined).length;
+  assert_less_than_equal(alive, 70, 'trees the node only passed through are let go');
+  assert_not_equals(last.deref(), undefined, 'the tree the node is in now is kept');
+  assert_equals(list[0].parentNode, last.deref());
+}, 'a held node moved through many detached trees does not keep them all');
+</script>

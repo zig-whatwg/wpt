@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>File input selection and ownership</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const input = document.createElement('input');
+  assert_equals(input.files, null);
+  input.type = 'file';
+  const files = input.files;
+  assert_true(files instanceof FileList);
+  assert_equals(input.files, files);
+  assert_equals(files.length, 0);
+  input.required = true;
+  assert_true(input.validity.valueMissing);
+  input.files = null;
+  assert_equals(input.files, files);
+  assert_throws_dom('InvalidStateError', () => { input.value = 'file.txt'; });
+  input.value = '';
+  assert_equals(input.files, files, 'empty value keeps the FileList');
+  const form = document.createElement('form');
+  form.append(input);
+  form.reset();
+  assert_equals(input.files, files, 'reset keeps the FileList');
+  assert_equals(files.length, 0);
+  input.type = 'text';
+  assert_equals(input.files, null);
+  input.type = 'file';
+  assert_not_equals(input.files, files, 'changing type creates a new selection');
+}, 'File input exposes a stable empty FileList only in the filename mode');
+
+test(() => {
+  const input = document.createElement('input'); input.type = 'file';
+  (() => {
+    const source = document.createElement('input'); source.type = 'file';
+    source.files.marker = 42;
+    input.files = source.files;
+    assert_equals(input.files, source.files, 'the list is shared, not copied');
+    input.files = null;
+    assert_equals(input.files, source.files, 'null assignment has no effect');
+  })();
+  TestUtils.gc(); TestUtils.gc();
+  assert_equals(input.files.marker, 42, 'the assigned wrapper stays alive');
+  assert_throws_js(TypeError, () => { input.files = []; });
+}, 'An input retains the assigned FileList wrapper when its original input is collected');
+
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'file'; input.required = true;
+  (() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['payload'], 'chosen.txt', {type: 'text/plain'}));
+    input.files = transfer.files;
+    assert_equals(input.files, transfer.files);
+  })();
+  TestUtils.gc(); TestUtils.gc();
+  assert_equals(input.files[0].name, 'chosen.txt');
+  assert_equals(input.value, 'C:\\fakepath\\chosen.txt');
+  assert_false(input.validity.valueMissing);
+  const retained = input.files[0];
+  input.value = '';
+  assert_equals(input.files.length, 0);
+  TestUtils.gc();
+  assert_equals(retained.name, 'chosen.txt');
+  assert_true(input.validity.valueMissing);
+}, 'Input retains an assigned selection and clearing it preserves an externally held File');
+</script>

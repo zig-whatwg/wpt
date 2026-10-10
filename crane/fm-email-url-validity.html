@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Email and URL type mismatch follow the sanitized value</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [type, value, multiple, mismatch] of [
+  ['email', '', false, false], ['email', 'a@b', false, false],
+  ['email', '..a..@example.com', false, false], ['email', 'user+tag@a-b.example', false, false],
+  ['email', 'missing-at', false, true], ['email', 'a@-b', false, true],
+  ['email', 'a@b-', false, true], ['email', 'a@b..c', false, true],
+  ['email', 'a@' + 'x'.repeat(63), false, false], ['email', 'a@' + 'x'.repeat(64), false, true],
+  ['email', 'user@é.example', false, true], ['email', 'a@b,c@d', false, true],
+  ['email', 'a@b, c@d', true, false], ['email', 'a@b,', true, true],
+  ['email', 'a@b,,c@d', true, true], ['email', '', true, false],
+  ['url', '', false, false], ['url', '/relative', false, true],
+  ['url', 'https://example.com/path', false, false], ['url', 'mailto:user@example.com', false, false],
+  ['url', 'https://[invalid]/', false, true], ['url', 'custom:opaque', false, false],
+]) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = type; input.multiple = multiple;
+    const validity = input.validity;
+    input.value = value;
+    assert_equals(validity.typeMismatch, mismatch);
+    input.disabled = true;
+    assert_equals(validity.typeMismatch, mismatch);
+    input.value = '';
+    assert_false(validity.typeMismatch);
+  }, `${type} ${JSON.stringify(value)} multiple=${multiple}`);
+}
+</script>

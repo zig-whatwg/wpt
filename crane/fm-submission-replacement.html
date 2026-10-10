@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form submission replacement independently of insertAdjacentHTML</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+let frameCounter = 0;
+function setup(t, submitterType) {
+  const host = document.createElement('div');
+  const name = 'fm-submit-frame-' + frameCounter++;
+  host.innerHTML = `<iframe name="${name}"></iframe><form action="/common/blank.html" target="${name}"><input name="field" value="initial">${submitterType === 'input' ? '<input type="submit">' : '<button>submit</button>'}</form>`;
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  return [host.firstElementChild, host.lastElementChild];
+}
+function result(frame) {
+  return new Promise(resolve => frame.onload = () => {
+    if (frame.contentWindow.location.href !== 'about:blank') resolve(new URL(frame.contentWindow.location.href).searchParams.get('field'));
+  });
+}
+for (const type of ['input', 'button']) {
+  promise_test(async t => {
+    const [frame, form] = setup(t, type);
+    const input = form.firstElementChild;
+    const submitter = form.lastElementChild;
+    submitter.onclick = () => {
+      input.value = 'first'; form.submit();
+      input.value = 'second'; form.submit();
+      input.value = 'default';
+    };
+    const loaded = result(frame);
+    submitter.click();
+    assert_equals(await loaded, 'default');
+  }, `${type}: default submission supersedes earlier submit() calls`);
+  promise_test(async t => {
+    const [frame, form] = setup(t, type);
+    const input = form.firstElementChild;
+    const submitter = form.lastElementChild;
+    form.onsubmit = event => {
+      input.value = 'explicit'; form.submit();
+      input.value = 'cancelled'; event.preventDefault();
+    };
+    const loaded = result(frame);
+    form.requestSubmit(submitter);
+    assert_equals(await loaded, 'explicit');
+  }, `${type}: cancelling requestSubmit preserves an explicit submit() from its handler`);
+}
+</script>

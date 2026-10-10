@@ -1,0 +1,21 @@
+<!doctype html>
+<title>Readonly input is barred independently of editability</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const type of ['color', 'file', 'submit']) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = type;
+    input.setCustomValidity('custom');
+    input.readOnly = true;
+    assert_false(input.willValidate);
+    assert_true(input.validity.customError);
+    assert_equals(input.validationMessage, '');
+    assert_true(input.checkValidity());
+    input.readOnly = false;
+    assert_true(input.willValidate);
+    assert_false(input.checkValidity());
+  }, `${type}: readonly bars validation even when it does not prevent editing`);
+}
+</script>

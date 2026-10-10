@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a ToggleEvent keeps its source</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interaction.html#dom-toggleevent-source">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "The source getter steps are to return the result of retargeting source
+// against this's currentTarget." The event holds source for as long as it
+// lives: Blink's ToggleEvent::Trace visits source_ (Member<Element>). Crane
+// kept a generation-checked link, so a source only the event held was
+// collected and source read null.
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(document.createTextNode('churn'), document.createElement('b'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const event = (() => {
+    const source = document.createElement('button');
+    source.cx = 'source';
+    return new ToggleEvent('toggle', { oldState: 'closed', newState: 'open', source });
+  })();
+  await collect(t);
+  assert_not_equals(event.source, null, 'the source is still there');
+  assert_equals(event.source.localName, 'button');
+  assert_equals(event.source.cx, 'source', 'with its expando');
+  assert_equals(event.oldState, 'closed');
+  assert_equals(event.newState, 'open');
+}, 'a ToggleEvent keeps a detached source script let go');
+
+promise_test(async t => {
+  const event = (() => {
+    const source = document.createElement('div');
+    source.cx = 'cycle';
+    const e = new ToggleEvent('beforetoggle', { source });
+    source.keptEvent = e;
+    return e;
+  })();
+  await collect(t);
+  assert_not_equals(event.source, null);
+  assert_equals(event.source.cx, 'cycle', 'the source, with its expando');
+  assert_equals(event.source.keptEvent, event, 'and the cycle through the event');
+}, 'a source that keeps its event is kept by it');
+
+promise_test(async t => {
+  const event = (() => {
+    const host = document.createElement('div');
+    const root = host.attachShadow({ mode: 'open' });
+    const source = document.createElement('button');
+    source.cx = 'shadow';
+    host.cx = 'host';
+    root.append(source);
+    return new ToggleEvent('toggle', { source });
+  })();
+  await collect(t);
+  // Outside dispatch currentTarget is null, so source retargets to its host.
+  assert_not_equals(event.source, null);
+  assert_equals(event.source.cx, 'host', 'the source retargeted against a null currentTarget');
+}, 'a source in a shadow tree script let go is kept, and still retargeted');
+
+test(() => {
+  assert_equals(new ToggleEvent('toggle').source, null);
+  const source = document.createElement('div');
+  assert_equals(new ToggleEvent('toggle', { source }).source, source);
+}, 'source is what the event was initialized to');
+</script>

@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: DataTransferItemList's indexed getter</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/dnd.html#the-datatransferitemlist-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// "The same object must be returned each time a particular item is obtained
+// from this DataTransferItemList object" - Gecko and WebKit do; Blink makes a
+// new DataTransferItem each time. The getter is anonymous
+// (`getter DataTransferItem (unsigned long index)`).
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(new Blob(['churn']), document.createElement('b'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+test(() => {
+  const dt = new DataTransfer();
+  const file = new File([], 'f', { type: 'Image/PNG' });
+  const item = dt.items.add(file);
+  assert_equals(dt.items[0], item, 'the same object every time');
+  assert_equals(dt.items[0], dt.items[0]);
+  assert_equals(dt.items[1], undefined);
+  dt.items.add('text', 'text/plain');
+  assert_equals(dt.items[1].kind, 'string');
+  assert_equals(dt.items[1], dt.items[1]);
+}, 'the indexed getter returns the same DataTransferItem for an item');
+
+promise_test(async t => {
+  const items = (() => {
+    const dt = new DataTransfer();
+    const f = new File(['x'], 'kept.txt');
+    f.cx = 'kept';
+    dt.items.add(f);
+    return dt.items;
+  })();
+  await collect(t);
+  assert_equals(items.length, 1);
+  assert_equals(items[0].kind, 'file');
+  assert_equals(items[0].getAsFile().cx, 'kept');
+}, 'a DataTransferItemList script keeps alone keeps its DataTransfer and Files');
+
+</script>

@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Color input reflection and existing CSS sRGB parsing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const input = document.createElement('input');
+  assert_equals(input.colorSpace, 'limited-srgb');
+  input.colorSpace = 'DISPLAY-P3';
+  assert_equals(input.colorSpace, 'display-p3');
+  assert_equals(input.getAttribute('colorspace'), 'DISPLAY-P3');
+  input.colorSpace = 'invalid';
+  assert_equals(input.colorSpace, 'limited-srgb');
+  input.alpha = true; assert_true(input.hasAttribute('alpha'));
+  input.alpha = false; assert_false(input.hasAttribute('alpha'));
+}, 'colorspace is an enumerated reflection and alpha is a boolean reflection');
+for (const [value, expected] of [
+  ['#AbC', '#aabbcc'], ['  #fF00aA \n', '#ff00aa'], ['red', '#ff0000'],
+  ['#1234', '#112233'], ['#ffffff;', '#000000'], ['#ffffff\0', '#000000'],
+  ['rgb(1,2,3)', '#010203'], ['rgba(255,128,64,0.5)', '#ff8040'],
+  ['rgb(1e100,0,-1e100)', '#ff0000'],
+]) test(() => {
+  const input = document.createElement('input'); input.type = 'color';
+  input.value = value; assert_equals(input.value, expected);
+}, `default color sanitization: ${JSON.stringify(value)}`);
+</script>

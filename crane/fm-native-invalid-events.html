@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native form control validity events</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#check-validity-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ['input', 'button', 'select', 'textarea']) {
+  for (const method of ['checkValidity', 'reportValidity']) {
+    test(() => {
+      const container = document.createElement('div');
+      const control = document.createElement(tag);
+      container.append(control);
+      control.setCustomValidity('invalid');
+      const events = [];
+      container.addEventListener('invalid', () => events.push('bubbled'));
+      control.addEventListener('invalid', event => {
+        events.push(event.type);
+        assert_equals(event.target, control);
+        assert_true(event.cancelable);
+        assert_false(event.bubbles);
+        assert_false(event.composed);
+        event.preventDefault();
+        control.setCustomValidity('');
+      });
+      assert_false(control[method](), 'canceling or repairing in the listener does not change false');
+      assert_array_equals(events, ['invalid']);
+      assert_true(control[method](), 'the repaired control is valid on the next call');
+      assert_array_equals(events, ['invalid']);
+    }, `${tag}.${method}: one non-bubbling cancelable invalid event, then false`);
+  }
+}
+
+for (const tag of ['output', 'fieldset']) {
+  test(() => {
+    const control = document.createElement(tag);
+    control.setCustomValidity('invalid');
+    let count = 0;
+    control.addEventListener('invalid', () => ++count);
+    assert_false(control.willValidate);
+    assert_true(control.validity.customError);
+    assert_false(control.validity.valid);
+    assert_true(control.checkValidity());
+    assert_true(control.reportValidity());
+    assert_equals(count, 0);
+    assert_equals(control.validationMessage, '');
+  }, `${tag}: a custom error does not make a barred control a validation candidate`);
+}
+</script>

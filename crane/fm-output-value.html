@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Output default value override and reset</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const output = document.createElement('output');
+  output.innerHTML = 'a<b>b</b>c';
+  assert_equals(output.type, 'output');
+  assert_equals(output.value, 'abc');
+  assert_equals(output.defaultValue, 'abc');
+  output.defaultValue = 'first';
+  assert_equals(output.value, 'first');
+  output.value = 'second';
+  assert_equals(output.defaultValue, 'first');
+  output.textContent = 'DOM change';
+  assert_equals(output.value, 'DOM change');
+  assert_equals(output.defaultValue, 'first');
+  output.value = 'third';
+  assert_equals(output.defaultValue, 'first');
+  output.defaultValue = 'saved';
+  assert_equals(output.value, 'third');
+  assert_equals(output.defaultValue, 'saved');
+}, 'Output saves its default once and keeps current descendant text as value');
+
+test(t => {
+  const form = document.createElement('form');
+  const output = document.createElement('output');
+  const sibling = document.createElement('output');
+  output.name = 'output';
+  form.append(output, sibling);
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  output.textContent = 'original';
+  output.value = 'changed';
+  output.defaultValue = 'reset value';
+  sibling.innerHTML = '<b>other</b>';
+  assert_equals(output.form, form);
+  form.reset();
+  assert_equals(output.value, 'reset value');
+  assert_equals(output.defaultValue, 'reset value');
+  output.textContent = 'new default';
+  assert_equals(output.defaultValue, 'new default', 'reset clears the override');
+  assert_equals(sibling.defaultValue, 'other');
+  assert_equals(sibling.children.length, 0, 'reset string-replaces even an unmodified output');
+  assert_false(new FormData(form).has('output'));
+}, 'Output reset restores and clears only its own default override');
+</script>

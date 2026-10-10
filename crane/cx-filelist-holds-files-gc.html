@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a FileList keeps its Files</title>
+<link rel=help href="https://w3c.github.io/FileAPI/#filelist-section">
+<link rel=help href="https://html.spec.whatwg.org/multipage/dnd.html#dom-datatransfer-files">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A FileList keeps its Files alive: Blink's FileList holds
+// HeapVector<Member<File>> files_ and traces it (FileList::Trace); WebKit's
+// holds Vector<Ref<File>>. Crane's FileList kept raw pointers and freed every
+// File it held in its own teardown, whoever else held them.
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(document.createTextNode('churn'), document.createElement('b'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const list = (() => {
+    const dt = new DataTransfer();
+    const a = new File(['first body'], 'a.txt', { type: 'text/plain' });
+    const b = new File(['second'], 'b.bin');
+    a.cx = 'a';
+    b.cx = 'b';
+    dt.items.add(a);
+    dt.items.add(b);
+    return dt.files;
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].name, 'a.txt');
+  assert_equals(list[0].cx, 'a', 'the first File, with its expando');
+  assert_equals(list.item(1).name, 'b.bin');
+  assert_equals(list.item(1).cx, 'b', 'the second File, with its expando');
+  assert_equals(list[0].type, 'text/plain');
+  assert_equals(list[0].size, 10);
+  assert_equals(list[1].size, 6);
+}, 'a FileList script keeps alone keeps its Files');
+
+promise_test(async t => {
+  const item = (() => {
+    const dt = new DataTransfer();
+    const f = new File(['y'], 'only.txt', { type: 'TEXT/PLAIN' });
+    f.cx = 'only';
+    return dt.items.add(f);
+  })();
+  await collect(t);
+  assert_equals(item.kind, 'file');
+  assert_equals(item.type, 'text/plain');
+  assert_equals(item.getAsFile().cx, 'only');
+  assert_equals(item.getAsFile().name, 'only.txt');
+}, 'a DataTransferItem script keeps alone keeps its DataTransfer and File');
+
+promise_test(async t => {
+  const dt = new DataTransfer();
+  let item;
+  (() => {
+    const f = new File(['z'], 'z.txt');
+    f.cx = 'z';
+    item = dt.items.add(f);
+  })();
+  await collect(t);
+  assert_equals(dt.files.length, 1);
+  assert_equals(dt.files[0].cx, 'z');
+  assert_equals(item.getAsFile().cx, 'z');
+  dt.items.remove(0);
+  await collect(t);
+  assert_equals(dt.files.length, 0, 'removed from files');
+  assert_equals(item.kind, '', 'a removed item is disabled');
+  assert_equals(item.getAsFile(), null);
+}, 'a DataTransfer script keeps alone keeps its Files until they are removed');
+</script>

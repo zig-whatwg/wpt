@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Select option lists use HTML interface brands</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const namespace of ['http://www.w3.org/2000/svg', 'http://www.w3.org/1998/Math/MathML']) {
+  test(() => {
+    const select = document.createElement('select');
+    const foreign = document.createElementNS(namespace, 'option');
+    select.append(foreign);
+    assert_equals(select.length, 0, 'foreign option is not an HTML option');
+    const real = document.createElement('option');
+    foreign.append(real);
+    assert_equals(select.length, 1, 'foreign option does not prune its subtree');
+    assert_equals(select.item(0), real);
+  }, `Foreign option in ${namespace}`);
+}
+</script>
