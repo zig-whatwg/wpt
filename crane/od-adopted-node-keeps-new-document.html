@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an adopted node keeps its new node document, and only that one</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-adopt">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// Adopt changes a node's node document, and with it what the node keeps:
+// Blink's TreeScopeAdopter moves the traced tree scope, WebKit's
+// Node::moveTreeToNewScope moves the referencing-node count from the old
+// document to the new one. So a node adopted out of a document keeps the new
+// document, and lets the old one go once script does.
+
+function adoptedOut(oldKind, newKind, prepare) {
+  const weak = {};
+  const node = (() => {
+    const oldDoc = odMakeDocument(oldKind);
+    const newDoc = odMakeDocument(newKind);
+    const node = prepare(oldDoc);
+    newDoc.adoptNode(node);
+    weak.oldDoc = new WeakRef(oldDoc);
+    return node;
+  })();
+  return { node, weak };
+}
+
+const odPrepare = {
+  "a removed element": doc => {
+    const p = doc.documentElement.appendChild(doc.createElement("p"));
+    p.remove();
+    return p;
+  },
+  "an element still in its tree": doc => doc.documentElement.appendChild(doc.createElement("p")),
+  "a subtree whose descendants script has seen": doc => {
+    const div = doc.documentElement.appendChild(doc.createElement("div"));
+    div.innerHTML = "<p><b>deep</b></p>";
+    div.firstChild.firstChild.od = "b";
+    return div;
+  },
+};
+
+for (const [what, prepare] of Object.entries(odPrepare)) {
+  promise_test(async t => {
+    const { node, weak } = adoptedOut("createHTMLDocument", "DOMParser", prepare);
+    await odCollect(t);
+    odAssertDocumentKept(node, "DOMParser");
+    assert_equals(weak.oldDoc.deref(), undefined, "the old document is let go");
+    for (const n of node.querySelectorAll("*")) assert_equals(n.ownerDocument, node.ownerDocument);
+  }, `${what}, adopted into another document`);
+}
+
+promise_test(async t => {
+  const { node, weak } = adoptedOut("createHTMLDocument", "createDocument", odPrepare["a subtree whose descendants script has seen"]);
+  const deep = node.querySelector("b");
+  await odCollect(t);
+  // Every node of the subtree keeps the new document, the deep one too.
+  odAssertDocumentKept(deep, "createDocument");
+  assert_equals(deep.od, "b");
+  assert_equals(weak.oldDoc.deref(), undefined, "the old document is let go");
+}, "a descendant of an adopted subtree keeps the new document");
+
+promise_test(async t => {
+  const weak = {};
+  const node = (() => {
+    const first = odMakeDocument("createHTMLDocument");
+    const second = odMakeDocument("createDocument");
+    const third = odMakeDocument("DOMParser");
+    const p = first.createElement("p");
+    second.adoptNode(p);
+    third.adoptNode(p);
+    weak.first = new WeakRef(first);
+    weak.second = new WeakRef(second);
+    return p;
+  })();
+  await odCollect(t);
+  odAssertDocumentKept(node, "DOMParser");
+  assert_equals(weak.first.deref(), undefined, "the first document is let go");
+  assert_equals(weak.second.deref(), undefined, "the second document is let go");
+}, "a node adopted twice keeps the last document only");
+</script>

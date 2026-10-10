@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a live range keeps its boundary containers and their document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-range-root">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// A live range keeps its start and end nodes (Blink: Range::Trace visits
+// start_ and end_, RangeBoundaryPoint::Trace their containers); a live range
+// joins its boundary nodes' document's
+// list of live ranges, and a StaticRange keeps its containers; script holds
+// only the range.
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const range = (() => {
+      const doc = odMakeDocument(kind);
+      const p = doc.documentElement.appendChild(doc.createElement("p"));
+      p.textContent = "boundary";
+      const range = doc.createRange();
+      range.selectNodeContents(p);
+      return range;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(range.startContainer, kind);
+    assert_equals(range.toString(), "boundary");
+    // The document still moves its live ranges: removing the start node
+    // sets the start to (its parent, its index).
+    const p = range.startContainer;
+    const parent = p.parentNode;
+    p.remove();
+    assert_equals(range.startContainer, parent);
+  }, `${kind}: a live range inside a document script let go`);
+
+  promise_test(async t => {
+    const range = (() => {
+      const doc = odMakeDocument(kind);
+      const p = doc.createElement("p");
+      p.textContent = "detached";
+      const range = doc.createRange();
+      range.selectNodeContents(p);
+      return range;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(range.endContainer, kind);
+    assert_equals(range.toString(), "detached");
+  }, `${kind}: a live range in a detached tree`);
+
+  promise_test(async t => {
+    const range = (() => {
+      const doc = odMakeDocument(kind);
+      const text = doc.createTextNode("static");
+      return new StaticRange({ startContainer: text, startOffset: 0, endContainer: text, endOffset: 3 });
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(range.startContainer, kind);
+    assert_equals(range.startContainer.data, "static");
+  }, `${kind}: a StaticRange over a node of a document script let go`);
+}
+</script>

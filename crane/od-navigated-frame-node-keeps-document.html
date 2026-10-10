@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node keeps its document when that document's frame navigates away</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// Lane ownerdoc's audit: a frame that navigates away ends the realm its old
+// document lives in. A node script holds still names that document - one the
+// frame's document made, or one of this realm adopted into it.
+
+function loaded(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+async function navigatedAway(t, prepare) {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const node = (() => {
+    const doc = frame.contentDocument;
+    doc.od = "old frame document";
+    return prepare(doc);
+  })();
+  const done = loaded(frame);
+  frame.src = "/common/blank.html?od-navigated";
+  await done;
+  await odCollect(t);
+  return node;
+}
+
+promise_test(async t => {
+  const node = await navigatedAway(t, doc => {
+    const p = doc.body.appendChild(doc.createElement("p"));
+    p.remove();
+    return p;
+  });
+  const doc = node.ownerDocument;
+  assert_equals(doc.nodeType, Node.DOCUMENT_NODE);
+  assert_equals(doc.od, "old frame document");
+}, "a removed node of a frame's old document");
+
+promise_test(async t => {
+  const node = await navigatedAway(t, doc => doc.adoptNode(document.createElement("p")));
+  const doc = node.ownerDocument;
+  assert_equals(doc.nodeType, Node.DOCUMENT_NODE);
+  assert_equals(doc.od, "old frame document");
+}, "a node of this realm adopted into a frame's old document");
+</script>

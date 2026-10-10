@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an Attr keeps its element and its node document, and follows its element's adoption</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-adopt">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// Lane ownerdoc's audit: "the node document of attributes". An attribute's
+// node document is its element's; adopt sets the node document of each of an
+// element's attributes (DOM, adopt step 3.1.2).
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const attr = (() => {
+      const doc = odMakeDocument(kind);
+      const p = doc.createElement("p");
+      p.setAttribute("data-od", "kept");
+      return p.getAttributeNode("data-od");
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(attr, kind);
+    assert_equals(attr.value, "kept");
+    assert_equals(attr.ownerElement.localName, "p");
+  }, `${kind}: an attribute of an element script let go`);
+
+  promise_test(async t => {
+    const attr = (() => {
+      const doc = odMakeDocument(kind);
+      const p = doc.documentElement.appendChild(doc.createElement("p"));
+      p.setAttribute("data-od", "removed");
+      const attr = p.getAttributeNode("data-od");
+      p.removeAttributeNode(attr);
+      return attr;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(attr, kind);
+    assert_equals(attr.ownerElement, null);
+    assert_equals(attr.value, "removed");
+  }, `${kind}: a removed attribute`);
+}
+
+promise_test(async t => {
+  const weak = {};
+  const attr = (() => {
+    const oldDoc = odMakeDocument("createHTMLDocument");
+    const newDoc = odMakeDocument("DOMParser");
+    const p = oldDoc.createElement("p");
+    p.setAttribute("data-od", "adopted");
+    const attr = p.getAttributeNode("data-od");
+    newDoc.adoptNode(p);
+    weak.oldDoc = new WeakRef(oldDoc);
+    return attr;
+  })();
+  assert_equals(attr.ownerDocument, attr.ownerElement.ownerDocument, "adopt moves the attribute with its element");
+  await odCollect(t);
+  odAssertDocumentKept(attr, "DOMParser");
+  assert_equals(weak.oldDoc.deref(), undefined, "the old document is let go");
+}, "an attribute of an adopted element follows it to the new document");
+</script>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a removed element keeps its node document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// A node removed from its document's tree still names that document; script
+// keeps only the node. Before lane ownerdoc the document was collected and
+// `ownerDocument` read the freed document (SIGSEGV in the template lookup the
+// wrap made).
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const node = (() => {
+      const doc = odMakeDocument(kind);
+      const p = doc.documentElement.appendChild(doc.createElement("p"));
+      p.textContent = "removed";
+      p.remove();
+      return p;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(node, kind);
+    assert_equals(node.parentNode, null);
+    assert_equals(node.textContent, "removed");
+  }, `${kind}: an element made by script and removed`);
+
+  promise_test(async t => {
+    const node = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.documentElement.appendChild(doc.createElement("div"));
+      host.innerHTML = "<p>parsed</p>";
+      // Wrapped while in the tree, then removed.
+      const p = host.firstChild;
+      p.remove();
+      return p;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(node, kind);
+    assert_equals(node.textContent, "parsed");
+  }, `${kind}: a parsed element seen in the tree, then removed`);
+
+  promise_test(async t => {
+    const node = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.documentElement.appendChild(doc.createElement("div"));
+      host.innerHTML = "<section><p>inner</p></section>";
+      // Script sees a descendant; the subtree leaves by a native removal.
+      const p = host.firstChild.firstChild;
+      host.innerHTML = "";
+      return p;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(node, kind);
+    assert_equals(node.parentNode.localName, "section", "its own tree is kept too");
+  }, `${kind}: a descendant of a subtree innerHTML removed`);
+}
+</script>

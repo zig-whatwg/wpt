@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a shadow root script holds keeps its host and its node document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-documentfragment-host">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// Lane ownerdoc's audit of back-links that can outlive their target: a
+// shadow root's host. Blink's ShadowRoot is a DocumentFragment whose host is
+// its parent_or_shadow_host_node_ (traced by Node::Trace); its node document
+// is its host's.
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const shadow = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.documentElement.appendChild(doc.createElement("div"));
+      host.od = "host";
+      const shadow = host.attachShadow({ mode: "open" });
+      shadow.innerHTML = "<span>in the shadow</span>";
+      host.remove();
+      return shadow;
+    })();
+    await odCollect(t);
+    assert_equals(shadow.host.od, "host", "its host, with its expando");
+    odAssertDocumentKept(shadow, kind);
+    odAssertDocumentKept(shadow.firstChild, kind);
+    assert_equals(shadow.host.ownerDocument, shadow.ownerDocument);
+  }, `${kind}: a shadow root whose host left the document`);
+
+  promise_test(async t => {
+    const span = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.createElement("div");
+      host.attachShadow({ mode: "closed" }).innerHTML = "<span>deep</span>";
+      return host.shadowRoot === null ? null : host;
+    })();
+    assert_equals(span, null, "a closed root is not reachable through its host");
+    const node = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.createElement("div");
+      const shadow = host.attachShadow({ mode: "closed" });
+      shadow.innerHTML = "<span>deep</span>";
+      return shadow.firstChild;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(node, kind);
+    assert_true(node.getRootNode() instanceof ShadowRoot, "its shadow root");
+  }, `${kind}: a node in a closed shadow tree of a host never inserted`);
+}
+</script>

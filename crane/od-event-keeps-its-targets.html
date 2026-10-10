@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an event keeps its target and its related target after dispatch</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// An event keeps the target dispatch left it with: script reads event.target
+// after dispatch. Blink: Event::Trace visits target_ and current_target_,
+// MouseEvent/FocusEvent trace related_target_. Before lane ownerdoc the
+// event held its target as a bare pointer.
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const event = (() => {
+      const doc = odMakeDocument(kind);
+      const p = doc.createElement("p");
+      const event = new Event("od");
+      p.dispatchEvent(event);
+      return event;
+    })();
+    await odCollect(t);
+    assert_equals(event.target.localName, "p");
+    odAssertDocumentKept(event.target, kind);
+    assert_equals(event.srcElement, event.target);
+  }, `${kind}: an event dispatched by script at a detached node`);
+
+  promise_test(async t => {
+    const event = (() => {
+      const doc = odMakeDocument(kind);
+      const p = doc.documentElement.appendChild(doc.createElement("p"));
+      let kept = null;
+      p.addEventListener("click", e => { kept = e; });
+      p.click();
+      return kept;
+    })();
+    await odCollect(t);
+    assert_equals(event.type, "click");
+    assert_equals(event.target.localName, "p");
+    odAssertDocumentKept(event.target, kind);
+  }, `${kind}: an event the engine dispatched, kept by a listener`);
+
+  for (const [name, make] of [
+    ["FocusEvent", related => new FocusEvent("focusin", { relatedTarget: related })],
+    ["MouseEvent", related => new MouseEvent("mouseover", { relatedTarget: related })],
+    ["MouseEvent (initMouseEvent)", related => {
+      const event = new MouseEvent("x");
+      event.initMouseEvent("mouseover", true, false, null, 0, 0, 0, 0, 0, false, false, false, false, 0, related);
+      return event;
+    }],
+    ["PointerEvent", related => new PointerEvent("pointerover", { relatedTarget: related })],
+    ["WheelEvent", related => new WheelEvent("wheel", { relatedTarget: related })],
+  ]) {
+    promise_test(async t => {
+      const event = (() => {
+        const doc = odMakeDocument(kind);
+        const p = doc.createElement("p");
+        const event = make(doc.createElement("span"));
+        p.dispatchEvent(event);
+        return event;
+      })();
+      await odCollect(t);
+      assert_equals(event.relatedTarget.localName, "span");
+      odAssertDocumentKept(event.relatedTarget, kind);
+    }, `${kind}: a ${name}'s related target`);
+  }
+}
+</script>

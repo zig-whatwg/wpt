@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node of a removed iframe's document keeps that document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// An iframe's document has a window while the frame is in the document. Once
+// the frame is removed its browsing context is destroyed, and a node of its
+// document that script still holds keeps the document.
+
+function frameDocument() {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  const doc = frame.contentDocument;
+  doc.od = "frame document";
+  doc.documentElement.od = "frame html";
+  return { frame, doc };
+}
+
+function assertFrameDocument(node) {
+  const doc = node.ownerDocument;
+  assert_not_equals(doc, null);
+  assert_equals(doc.nodeType, Node.DOCUMENT_NODE, "ownerDocument is a document");
+  assert_equals(doc.od, "frame document", "the same document, with its expando");
+  assert_equals(doc.documentElement.od, "frame html", "its tree, with its wrappers");
+  const fresh = doc.createElement("i");
+  doc.documentElement.appendChild(fresh);
+  assert_equals(fresh.ownerDocument, doc, "the document still makes nodes");
+}
+
+promise_test(async t => {
+  const node = (() => {
+    const { frame, doc } = frameDocument();
+    const p = doc.body.appendChild(doc.createElement("p"));
+    p.remove();
+    frame.remove();
+    return p;
+  })();
+  await odCollect(t);
+  assertFrameDocument(node);
+}, "a removed element of a removed frame's document");
+
+promise_test(async t => {
+  const node = (() => {
+    const { frame, doc } = frameDocument();
+    const p = doc.body.appendChild(doc.createElement("p"));
+    frame.remove();
+    p.remove();
+    return p;
+  })();
+  await odCollect(t);
+  assertFrameDocument(node);
+}, "an element removed after its frame was");
+
+promise_test(async t => {
+  const node = (() => {
+    const { frame, doc } = frameDocument();
+    const text = doc.createTextNode("never inserted");
+    frame.remove();
+    return text;
+  })();
+  await odCollect(t);
+  assertFrameDocument(node);
+}, "a text node of a removed frame's document, never inserted");
+</script>

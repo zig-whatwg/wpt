@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a removed text node keeps its node document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// Character data names its document as any node does.
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const node = (() => {
+      const doc = odMakeDocument(kind);
+      const text = doc.documentElement.appendChild(doc.createTextNode("removed text"));
+      text.remove();
+      return text;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(node, kind);
+    assert_equals(node.data, "removed text");
+  }, `${kind}: a text node made by script and removed`);
+
+  promise_test(async t => {
+    const node = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.documentElement.appendChild(doc.createElement("div"));
+      host.innerHTML = "parsed text<!--c-->";
+      const text = host.firstChild;
+      const split = text.splitText(6);
+      host.textContent = "";
+      return split;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(node, kind);
+    assert_equals(node.data, " text");
+  }, `${kind}: a split text node a native removal detached`);
+}
+</script>

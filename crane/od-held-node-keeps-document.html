@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node held only natively keeps its node document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// Script keeps a static NodeList or a MutationRecord, never the node: the
+// holder keeps the node (src/dom/node_holds.zig rescues the root of its tree
+// with one wrapper), and the node keeps its document.
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const list = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.createElement("div");
+      host.innerHTML = "<p>one</p><p>two</p>";
+      return host.querySelectorAll("p");
+    })();
+    await odCollect(t);
+    assert_equals(list.length, 2);
+    odAssertDocumentKept(list[1], kind);
+    assert_equals(list[1].textContent, "two");
+  }, `${kind}: a static NodeList over a detached tree`);
+
+  promise_test(async t => {
+    const list = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.documentElement.appendChild(doc.createElement("div"));
+      host.innerHTML = "<section><p>one</p></section><section><p>two</p></section>";
+      const found = host.querySelectorAll("p");
+      // The trees leave by a native removal, never wrapped by script.
+      host.innerHTML = "";
+      return found;
+    })();
+    await odCollect(t);
+    assert_equals(list.length, 2);
+    odAssertDocumentKept(list[0], kind);
+    assert_equals(list[0].parentNode.localName, "section");
+  }, `${kind}: a static NodeList whose nodes a native removal detached`);
+
+  promise_test(async t => {
+    const records = (() => {
+      const doc = odMakeDocument(kind);
+      const host = doc.createElement("div");
+      host.innerHTML = "<p>removed</p>";
+      const mo = new MutationObserver(() => {});
+      mo.observe(host, { childList: true });
+      host.innerHTML = "";
+      return mo.takeRecords();
+    })();
+    await odCollect(t);
+    assert_equals(records.length, 1);
+    const removed = records[0].removedNodes[0];
+    odAssertDocumentKept(removed, kind);
+    assert_equals(removed.textContent, "removed");
+    assert_equals(records[0].target.ownerDocument, removed.ownerDocument);
+  }, `${kind}: a MutationRecord's removed node`);
+}
+</script>

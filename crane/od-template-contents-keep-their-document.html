@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: template contents keep their inert document, and a template keeps its own</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/scripting.html#appropriate-template-contents-owner-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// Lane ownerdoc's audit: a template's contents are owned by the template
+// contents owner document, an inert document its template's document keeps
+// (HTML 4.12.3). Script holding only the contents - or a node inside them -
+// keeps that inert document, whatever becomes of the template's document.
+
+for (const kind of ["createHTMLDocument", "DOMParser"]) {
+  promise_test(async t => {
+    const content = (() => {
+      const doc = odMakeDocument(kind);
+      const template = doc.documentElement.appendChild(doc.createElement("template"));
+      template.innerHTML = "<p>inert</p>";
+      const content = template.content;
+      content.ownerDocument.od = "inert";
+      template.remove();
+      return content;
+    })();
+    await odCollect(t);
+    const inert = content.ownerDocument;
+    assert_equals(inert.nodeType, Node.DOCUMENT_NODE);
+    assert_equals(inert.od, "inert", "the same inert document");
+    assert_equals(content.firstChild.ownerDocument, inert);
+    assert_equals(content.firstChild.textContent, "inert");
+    assert_equals(inert.createElement("i").ownerDocument, inert, "it still works");
+  }, `${kind}: a template's contents, the template and its document let go`);
+
+  promise_test(async t => {
+    const p = (() => {
+      const doc = odMakeDocument(kind);
+      const template = doc.createElement("template");
+      template.innerHTML = "<p>deep</p>";
+      return template.content.firstChild;
+    })();
+    await odCollect(t);
+    assert_equals(p.ownerDocument.nodeType, Node.DOCUMENT_NODE);
+    assert_equals(p.parentNode.nodeType, Node.DOCUMENT_FRAGMENT_NODE);
+    assert_equals(p.parentNode.ownerDocument, p.ownerDocument);
+  }, `${kind}: a node inside a template's contents`);
+
+  promise_test(async t => {
+    const template = (() => {
+      const doc = odMakeDocument(kind);
+      const template = doc.documentElement.appendChild(doc.createElement("template"));
+      template.innerHTML = "<p>x</p>";
+      template.remove();
+      return template;
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(template, kind);
+    assert_not_equals(template.content.ownerDocument, template.ownerDocument);
+    assert_equals(template.content.firstChild.localName, "p");
+  }, `${kind}: a removed template keeps its document and its contents`);
+}
+</script>

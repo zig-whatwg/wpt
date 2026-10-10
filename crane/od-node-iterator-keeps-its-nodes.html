@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a NodeIterator keeps its root and its reference node</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-nodeiterator">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// A NodeIterator script holds keeps its root and its reference node, and
+// through them their tree and document. Blink: NodeIteratorBase::Trace visits
+// root_, NodeIterator::Trace visits reference_ and candidate_. Before lane
+// ownerdoc the iterator held both as bare pointers, and `root` read a freed
+// node after a collection (SIGSEGV in the template lookup of the wrap).
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const iterator = (() => {
+      const doc = odMakeDocument(kind);
+      const div = doc.documentElement.appendChild(doc.createElement("div"));
+      div.innerHTML = "<b>1</b><b>2</b>";
+      return doc.createNodeIterator(div, NodeFilter.SHOW_ELEMENT);
+    })();
+    await odCollect(t);
+    odAssertDocumentKept(iterator.root, kind);
+    assert_equals(iterator.nextNode().localName, "div");
+    assert_equals(iterator.nextNode().textContent, "1");
+  }, `${kind}: a NodeIterator over a document script let go`);
+
+  promise_test(async t => {
+    const iterator = (() => {
+      const doc = odMakeDocument(kind);
+      const div = doc.createElement("div");
+      div.innerHTML = "<i>1</i><i>2</i>";
+      const iterator = doc.createNodeIterator(div, NodeFilter.SHOW_ELEMENT);
+      iterator.nextNode();
+      iterator.nextNode();
+      return iterator;
+    })();
+    await odCollect(t);
+    assert_equals(iterator.referenceNode.textContent, "1", "its reference node");
+    assert_equals(iterator.root.localName, "div");
+    odAssertDocumentKept(iterator.referenceNode, kind);
+    assert_equals(iterator.nextNode().textContent, "2");
+  }, `${kind}: a NodeIterator part way through a detached tree`);
+}
+
+promise_test(async t => {
+  // The removing steps move the reference node out of the root's subtree
+  // when the root's ancestor is removed; the iterator still keeps it.
+  const iterator = (() => {
+    const doc = odMakeDocument("createHTMLDocument");
+    const outer = doc.body.appendChild(doc.createElement("section"));
+    const root = outer.appendChild(doc.createElement("div"));
+    root.innerHTML = "<b>x</b>";
+    const iterator = doc.createNodeIterator(root);
+    iterator.nextNode();
+    iterator.nextNode();
+    outer.remove();
+    return iterator;
+  })();
+  await odCollect(t);
+  assert_not_equals(iterator.referenceNode, null);
+  assert_equals(iterator.referenceNode.nodeType === Node.ELEMENT_NODE || iterator.referenceNode.nodeType === Node.TEXT_NODE, true);
+  odAssertDocumentKept(iterator.root, "createHTMLDocument");
+}, "a NodeIterator whose root's ancestor was removed");
+</script>

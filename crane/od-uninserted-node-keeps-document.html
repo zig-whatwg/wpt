@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node never inserted keeps its node document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<body>
+<script>
+"use strict";
+// A node a document made and nobody inserted - an element, a text node, a
+// comment, a fragment holding a subtree - names that document from creation;
+// script keeps only the node.
+
+const odNodeMakers = {
+  element: doc => doc.createElement("p"),
+  text: doc => doc.createTextNode("text"),
+  comment: doc => doc.createComment("comment"),
+  fragment: doc => {
+    const fragment = doc.createDocumentFragment();
+    fragment.appendChild(doc.createElement("b")).textContent = "in a fragment";
+    return fragment;
+  },
+};
+
+for (const kind of Object.keys(odDocumentMakers)) {
+  for (const nodeKind of Object.keys(odNodeMakers)) {
+    promise_test(async t => {
+      const node = (() => odNodeMakers[nodeKind](odMakeDocument(kind)))();
+      await odCollect(t);
+      odAssertDocumentKept(node, kind);
+      assert_equals(node.parentNode, null);
+    }, `${kind}: ${nodeKind}, never inserted`);
+  }
+}
+</script>
