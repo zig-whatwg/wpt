@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input pattern: Email with multiple matches each non-empty value; other states match the whole value</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#attr-input-pattern">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function input(type, attributes) {
+  const element = document.createElement('input');
+  element.type = type;
+  for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+  return element;
+}
+
+test(() => {
+  const element = input('email', {multiple: '', pattern: '[a-z]+@example\\.com'});
+  element.value = ' first@example.com , second@example.com ';
+  assert_equals(element.value, 'first@example.com,second@example.com');
+  assert_false(element.validity.patternMismatch);
+  element.value = 'first@example.com,Second@example.com';
+  assert_true(element.validity.patternMismatch);
+}, 'Each value of a multiple email input is matched, after whitespace is stripped');
+
+test(() => {
+  // Blink (BaseTextInputType::PatternMismatch) and WebKit
+  // (BaseTextInputType::patternMismatch) skip empty values.
+  const element = input('email', {multiple: '', pattern: '[a-z]+@example\\.com'});
+  element.value = 'first@example.com,';
+  assert_false(element.validity.patternMismatch);
+  element.value = ',first@example.com,,second@example.com';
+  assert_false(element.validity.patternMismatch);
+}, 'An empty value among the values of a multiple email input is not a mismatch');
+
+test(() => {
+  const element = input('email', {multiple: '', pattern: '(['});
+  element.value = 'first@example.com,second@example.com';
+  assert_false(element.validity.patternMismatch);
+}, 'An invalid pattern imposes no constraint on a multiple email input');
+
+test(() => {
+  const element = input('email', {pattern: '[a-z]+@example\\.com'});
+  element.value = 'first@example.com,second@example.com';
+  assert_true(element.validity.patternMismatch);
+}, 'Without multiple, an email input matches its whole value');
+
+test(() => {
+  const element = input('text', {multiple: '', pattern: '[a-z]+'});
+  element.value = 'abc,def';
+  assert_true(element.validity.patternMismatch);
+  element.pattern = '[a-z,]+';
+  assert_false(element.validity.patternMismatch);
+}, 'multiple does not apply to a text input: its whole value is matched');
+
+for (const type of ['text', 'search', 'url', 'tel', 'email', 'password']) {
+  test(() => {
+    const element = input(type, {pattern: 'nomatch'});
+    element.value = type === 'url' ? 'https://example.com/' : type === 'email' ? 'a@example.com' : 'value';
+    assert_true(element.validity.patternMismatch, 'patternMismatch');
+    assert_false(element.validity.valid, 'valid');
+    assert_false(element.checkValidity(), 'checkValidity');
+    assert_true(element.matches(':invalid'), ':invalid');
+    element.removeAttribute('pattern');
+    assert_false(element.validity.patternMismatch, 'patternMismatch without the attribute');
+    assert_true(element.matches(':valid'), ':valid without the attribute');
+  }, `pattern applies to type=${type}, and drives validity, checkValidity and :invalid`);
+}
+
+for (const type of ['date', 'number', 'range', 'color', 'checkbox', 'hidden']) {
+  test(() => {
+    const element = input(type, {pattern: 'nomatch'});
+    assert_false(element.validity.patternMismatch);
+  }, `pattern does not apply to type=${type}`);
+}
+</script>

@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A constructor that throws: the exception reaches script, and later constructions are unaffected</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-interface-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each failing construction runs many times: under `leaks --atExit` this page
+// shows whether a failed construction leaves the receiver V8 made for it
+// behind (Codex row 14 Q16).
+const ROUNDS = 256;
+
+test(() => {
+  const marker = {};
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_throws_exactly(marker, () => new Event('x', { get bubbles() { throw marker; } }));
+  }
+}, 'An argument conversion that throws: its exception is the result');
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_throws_js(TypeError, () => new URL('not a url'));
+  }
+}, 'Constructor steps that fail: the binding throws their TypeError');
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_throws_js(TypeError, () => new Event());
+  }
+}, 'A missing required argument: a TypeError');
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_throws_js(RangeError, () => new TextDecoder('not an encoding'));
+  }
+}, 'Constructor steps that throw a RangeError');
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    try { new Event('x', { get bubbles() { throw 1; } }); } catch (e) {}
+    try { new URL('not a url'); } catch (e) {}
+  }
+  const event = new Event('kept', { bubbles: true });
+  event.expando = 1;
+  assert_equals(event.type, 'kept');
+  assert_true(event.bubbles);
+  assert_equals(event.expando, 1);
+  assert_true(event instanceof Event);
+  const url = new URL('https://example.com/a');
+  assert_equals(url.pathname, '/a');
+}, 'Constructions after many failed ones succeed and keep their identity');
+
+test(() => {
+  class Derived extends Event {}
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_throws_js(TypeError, () => new Derived());
+  }
+  const derived = new Derived('ok');
+  assert_true(derived instanceof Derived);
+  assert_equals(derived.type, 'ok');
+}, 'A subclass whose super() call fails, then one that succeeds');
+</script>
