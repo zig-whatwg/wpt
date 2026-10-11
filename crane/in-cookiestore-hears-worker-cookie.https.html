@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A page's cookieStore hears a cookie its dedicated worker's fetch stored</title>
+<link rel=help href="https://cookiestore.spec.whatwg.org/#process-cookie-changes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Cookie Store "process cookie changes": whenever the user agent's cookie
+// store changes - whoever changed it: here a Set-Cookie that a dedicated
+// worker's fetch stores, on the worker's own thread - every CookieStore
+// whose URL observes the change hears it.
+promise_test(async t => {
+  const name = "in-worker-cookie";
+  await cookieStore.delete(name);
+  t.add_cleanup(() => cookieStore.delete(name));
+  const heard = new Promise(resolve => {
+    cookieStore.addEventListener("change", function listener(event) {
+      const item = event.changed.find(c => c.name === name);
+      if (!item) return;
+      cookieStore.removeEventListener("change", listener);
+      resolve(item);
+    });
+  });
+  const url = `${location.origin}/cookies/resources/set.py?${name}=from-worker;path=/`;
+  const source = `fetch(${JSON.stringify(url)}, { credentials: "include" })` +
+    `.then(r => postMessage(r.status), e => postMessage(String(e)));`;
+  const workerUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  const worker = new Worker(workerUrl);
+  t.add_cleanup(() => {
+    worker.terminate();
+    URL.revokeObjectURL(workerUrl);
+  });
+  const status = await new Promise(resolve => { worker.onmessage = e => resolve(e.data); });
+  assert_equals(status, 200, "the worker's fetch completed");
+  const item = await heard;
+  assert_equals(item.value, "from-worker");
+}, "a cookie a dedicated worker's fetch stored reaches the page's cookieStore change event");
+</script>
