@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Detached collection root remains alive: childnodes</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-collection-live">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const list = (() => {
+    const root = document.createElement('div');
+    root.hdMarker = 'kept root';
+    root.appendChild(document.createElement('span')).id = 'first';
+    root.appendChild(document.createElement('span')).id = 'second';
+    return root.childNodes;
+  })();
+  // Leave the creation job so its temporary engine handles cannot keep root.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  assert_equals(list.length, 2, 'the collection keeps its detached tree');
+  assert_equals(list.item(0).id, 'first');
+  assert_equals(list.item(1).id, 'second');
+  const root = list.item(0).parentNode;
+  assert_equals(root.hdMarker, 'kept root', 'root wrapper identity');
+  root.appendChild(document.createElement('span')).id = 'third';
+  assert_equals(list.length, 3, 'the collection remains live');
+  assert_equals(list.item(2).id, 'third');
+}, 'holding only childnodes keeps the detached root and a live view');
+</script>

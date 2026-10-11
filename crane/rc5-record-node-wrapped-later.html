@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node a record holds keeps its wrapper even when script wraps it only later</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-mutationrecord">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5b (lane rc5), decision D4's gap. A MutationRecord holds the
+// nodes it names; WebKit's ChildListRecord::visitNodesInGCThread adds each
+// node's opaque root to the record wrapper's marking at every collection, so
+// a node's wrapper - made whenever script first reads the node - lives while
+// the record does. Blink traces Member<Node> the same way. Here the removed
+// nodes have NO wrapper when the record is made (innerHTML made them and
+// innerHTML removed them), and script wraps one only later, through the
+// record, sets an expando and drops the wrapper. engine.keepOpaqueRoot
+// alone, which keeps only what is wrapped when it is called, keeps nothing
+// for such a node; while the collector still frees trees (refcount steps 5
+// and 6) that frees the node under the record.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function removedUnwrapped(observed) {
+  const host = observed || document.createElement("div");
+  host.innerHTML = "<u id=rc5-a>a</u><i id=rc5-b>b</i>";
+  const observer = new MutationObserver(() => {});
+  observer.observe(host, { childList: true });
+  host.innerHTML = "";
+  const records = observer.takeRecords();
+  observer.disconnect();
+  return records;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const records = removedUnwrapped(null);
+  await collect(t);
+  (() => { records[0].removedNodes[0].rc5 = "later"; })();
+  await collect(t);
+  assert_equals(records[0].removedNodes.length, 2);
+  assert_equals(records[0].removedNodes[0].id, "rc5-a", "the removed node");
+  assert_equals(records[0].removedNodes[0].rc5, "later", "its expando, set after the record was made");
+  assert_equals(records[0].removedNodes[1].textContent, "b");
+}, "a removed node wrapped only after the record was made keeps its wrapper");
+
+promise_test(async t => {
+  const host = document.body.appendChild(document.createElement("section"));
+  const records = removedUnwrapped(host);
+  host.remove();
+  await collect(t);
+  (() => { records[0].removedNodes[1].rc5 = "second"; })();
+  await collect(t);
+  assert_equals(records[0].removedNodes[1].rc5, "second", "the expando");
+  assert_equals(records[0].removedNodes[1].parentNode, null, "a root of its own");
+}, "the same for nodes removed from a connected element");
+
+promise_test(async t => {
+  const records = removedUnwrapped(null);
+  const list = records[0].removedNodes;
+  await collect(t);
+  (() => { list[0].firstChild.rc5 = "text"; })();
+  await collect(t);
+  assert_equals(list[0].firstChild.rc5, "text", "a node inside the removed tree");
+  assert_equals(list[0].firstChild.data, "a");
+}, "a node inside a held tree, wrapped only later, keeps its wrapper");
+</script>

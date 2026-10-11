@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a [SameObject] sub-object script keeps alone keeps its element</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-domtokenlist">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5h (lane rc5). An element's [SameObject] sub-objects -
+// classList, dataset, attributes - read and write through their
+// element. WebKit forwards a sub-object's reference count to its element
+// (NamedNodeMap::ref() is m_element->ref()); Blink traces the element from
+// the sub-object. Crane forwards it STRUCTURALLY: the binding ties the
+// sub-object's wrapper to its element's wrapper both ways, and the element's
+// wrapper owns the element's counted reference. Script keeps only the
+// sub-object of a detached element here; the element, its expando and its
+// tree must survive.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function detached(build) {
+  const root = document.createElement("section");
+  root.rc5 = "root";
+  const element = root.appendChild(document.createElement("div"));
+  element.rc5 = "element";
+  element.setAttribute("class", "a");
+  element.setAttribute("data-x", "1");
+  return build(element);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const attributes = detached(e => e.attributes);
+  await collect(t);
+  const element = attributes.getNamedItem("class").ownerElement;
+  assert_equals(element.rc5, "element", "the element's wrapper, with its expando");
+  assert_equals(element.parentNode.rc5, "root", "and its tree");
+  assert_equals(attributes.length, 2);
+}, "attributes keeps its element");
+
+promise_test(async t => {
+  const classList = detached(e => e.classList);
+  await collect(t);
+  classList.add("b");
+  assert_equals(classList.value, "a b");
+  assert_true(classList.contains("a"));
+}, "classList keeps its element");
+
+promise_test(async t => {
+  const dataset = detached(e => e.dataset);
+  await collect(t);
+  assert_equals(dataset.x, "1");
+  dataset.y = "2";
+  assert_equals(dataset.y, "2");
+}, "dataset keeps its element");
+
+</script>

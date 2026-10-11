@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document collections retain their detached document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [property, tag, attribute] of [
+  ['images', 'img'], ['embeds', 'embed'], ['plugins', 'embed'], ['forms', 'form'],
+  ['scripts', 'script'], ['links', 'a', 'href'], ['anchors', 'a', 'name'],
+  ['getElementsByName', 'div', 'name']
+]) {
+  test(() => {
+    let collection;
+    (() => {
+      const doc = document.implementation.createHTMLDocument('');
+      const element = doc.body.appendChild(doc.createElement(tag));
+      if (attribute) element.setAttribute(attribute, 'target');
+      element.marker = property;
+      collection = property === 'getElementsByName' ? doc.getElementsByName('target') : doc[property];
+    })();
+    TestUtils.gc(); TestUtils.gc();
+    assert_equals(collection.length, 1);
+    const element = collection.item(0);
+    assert_equals(element.marker, property, 'wrapper identity survives');
+    const second = element.ownerDocument.createElement(tag);
+    if (attribute) second.setAttribute(attribute, 'target');
+    element.parentNode.appendChild(second);
+    assert_equals(collection.length, 2, 'retained tree remains live');
+  }, property + ' alone keeps the detached document and nodes alive');
+}
+</script>

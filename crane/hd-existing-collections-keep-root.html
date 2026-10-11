@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Existing live collections retain their detached root</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+for (const connected of [false, true]) for (const kind of ["children", "childNodes", "classes"]) {
+  promise_test(async () => {
+    const collection = (() => {
+      const root = document.createElement("div");
+      if (connected) document.documentElement.appendChild(root);
+      const child = root.appendChild(document.createElement("span"));
+      child.className = "held";
+      child.marker = kind;
+      const list = kind === "classes" ? root.getElementsByClassName("held") : root[kind];
+      root.remove();
+      return list;
+    })();
+    await garbageCollect();
+    await garbageCollect();
+    assert_equals(collection.length, 1, "the retained root still has its child");
+    const child = collection[0];
+    assert_equals(child.marker, kind, "the original node and wrapper survive");
+    const sibling = child.parentNode.appendChild(document.createElement("span"));
+    sibling.className = "held";
+    assert_equals(collection.length, 2, "the retained collection remains live");
+  }, `${kind} keeps its ${connected ? "removed" : "initially detached"} root alive`);
+}
+</script>
