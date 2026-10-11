@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Accepted beacons retain the extracted body after the caller releases it</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script>
+const endpoint = '/beacon/resources/content-type-and-body.py';
+async function received(id) {
+  for (let attempt = 0; attempt < 100; ++attempt) {
+    const response = await fetch(endpoint + '?cmd=get&id=' + id);
+    if (response.ok) return response.text();
+    await new Promise(resolve => step_timeout(resolve, 50));
+  }
+  assert_unreached('accepted beacon did not reach the server');
+}
+promise_test(async () => {
+  const id = token();
+  let bytes = new Uint8Array([97, 98, 99]);
+  assert_true(navigator.sendBeacon(endpoint + '?cmd=put&id=' + id, bytes));
+  bytes.fill(120);
+  bytes = null;
+  TestUtils.gc();
+  assert_equals(await received(id), ': abc');
+}, 'sendBeacon snapshots a BufferSource before mutation and collection');
+promise_test(async () => {
+  const id = token();
+  let body = new FormData();
+  body.append('upload', new File(['payload'], 'kept.txt', {type: 'text/plain'}));
+  assert_true(navigator.sendBeacon(endpoint + '?cmd=put&id=' + id, body));
+  body = null;
+  TestUtils.gc();
+  const text = await received(id);
+  assert_true(text.startsWith('multipart/form-data; boundary='));
+  assert_true(text.includes('name="upload"; filename="kept.txt"\r\n'));
+  assert_true(text.includes('Content-Type: text/plain\r\n\r\npayload\r\n'));
+}, 'sendBeacon retains serialized File bytes after the FormData is collected');
+promise_test(async () => {
+  const id = token();
+  assert_true(navigator.sendBeacon(endpoint + '?cmd=put&id=' + id, null));
+  TestUtils.gc();
+  assert_equals(await received(id), ': ');
+}, 'sendBeacon accepts a null body without adding Content-Type');
+promise_test(async () => {
+  const id = token();
+  let body = new URLSearchParams({message: 'a b'});
+  assert_true(navigator.sendBeacon(endpoint + '?cmd=put&id=' + id, body));
+  body.set('message', 'changed');
+  body = null;
+  TestUtils.gc();
+  assert_equals(await received(id), 'application/x-www-form-urlencoded;charset=UTF-8: message=a+b');
+}, 'sendBeacon serializes URLSearchParams at the call');
+promise_test(async () => {
+  const id = token();
+  assert_true(navigator.sendBeacon(endpoint + '?cmd=put&id=' + id, 'a'.repeat(65536)));
+  assert_false(navigator.sendBeacon(endpoint + '?cmd=put&id=' + token(), 'b'));
+  const text = await received(id);
+  assert_equals(text, 'text/plain;charset=UTF-8: ' + 'a'.repeat(65536));
+}, 'sendBeacon accepts exactly 64 KiB and rejects another byte in the same task');
+promise_test(async () => {
+  const id = token();
+  const fetching = fetch('/fetch/api/resources/trickle.py?count=1&ms=500', {
+    keepalive: true, method: 'POST', body: 'f'.repeat(49152)
+  }).then(response => response.text());
+  assert_true(navigator.sendBeacon(endpoint + '?cmd=put&id=' + id, 'b'.repeat(16384)));
+  assert_false(navigator.sendBeacon(endpoint + '?cmd=put&id=' + token(), 'x'));
+  const text = await received(id);
+  assert_equals(text, 'text/plain;charset=UTF-8: ' + 'b'.repeat(16384));
+  await fetching;
+}, 'sendBeacon and fetch keepalive share the same in-flight byte budget');
+</script>

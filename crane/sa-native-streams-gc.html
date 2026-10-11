@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native transform state belongs to its stream sides</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function sides(make) {
+  const api = make();
+  return {readable: api.readable, writable: api.writable};
+}
+async function collect(readable) {
+  const reader = readable.getReader(), result = [];
+  for (;;) {
+    const {value, done} = await reader.read();
+    if (done) return result;
+    result.push(value);
+  }
+}
+const compressedHello = new Uint8Array([120,156,203,72,205,201,201,7,0,6,44,2,21]);
+for (const [name, make, input, expected] of [
+  ['TextEncoderStream', () => new TextEncoderStream(), 'hello', [104,101,108,108,111]],
+  ['TextDecoderStream', () => new TextDecoderStream(), new Uint8Array([104,101,108,108,111]), 'hello'],
+  ['DecompressionStream', () => new DecompressionStream('deflate'), compressedHello, [104,101,108,108,111]],
+]) {
+  promise_test(async () => {
+    assert_true(typeof TestUtils.gc === 'function');
+    const stream = sides(make);
+    TestUtils.gc();
+    const received = collect(stream.readable);
+    const writer = stream.writable.getWriter();
+    await writer.write(input);
+    TestUtils.gc();
+    await writer.close();
+    const chunks = await received;
+    if (typeof expected === 'string') assert_equals(chunks.join(''), expected);
+    else assert_array_equals(chunks.flatMap(chunk => Array.from(chunk)), expected);
+  }, name + ' codec survives collection of its API object');
+}
+promise_test(async () => {
+  const stream = sides(() => new CompressionStream('gzip'));
+  TestUtils.gc();
+  const decoded = collect(stream.readable.pipeThrough(new DecompressionStream('gzip')));
+  const writer = stream.writable.getWriter();
+  await writer.write(new Uint8Array([104,101]));
+  TestUtils.gc();
+  await writer.write(new Uint8Array([108,108,111]));
+  await writer.close();
+  const chunks = await decoded;
+  assert_array_equals(chunks.flatMap(chunk => Array.from(chunk)), [104,101,108,108,111]);
+}, 'CompressionStream codec survives collection and keeps history across writes');
+</script>

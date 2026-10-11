@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Encoding stream state and abrupt conversions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function transformed(chunks, transform) {
+  const values = [];
+  const reading = (async () => {
+    const reader = transform.readable.getReader();
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) return values;
+      values.push(value);
+    }
+  })();
+  const writer = transform.writable.getWriter();
+  for (const chunk of chunks) await writer.write(chunk);
+  await writer.close();
+  return reading;
+}
+promise_test(async () => {
+  const values = await transformed(['\ud83d', '', '\ude00', '\ud83d', 'A', '\ud83d'], new TextEncoderStream());
+  assert_array_equals(values.flatMap(v => Array.from(v)), Array.from(new TextEncoder().encode('😀�A�')));
+}, 'Split surrogates join across empty chunks; a non-trailing first unit is restored');
+promise_test(async () => {
+  const values = await transformed([new Uint8Array([0xe2]), new Uint8Array([65,0xe2])], new TextDecoderStream());
+  assert_equals(values.join(''), '�A�');
+}, 'Malformed split UTF-8 preserves the following ASCII byte and flushes pending state');
+promise_test(async t => {
+  const expected = {marker: 'original exception'};
+  const stream = new TextEncoderStream();
+  const writer = stream.writable.getWriter();
+  const reader = stream.readable.getReader();
+  const read = reader.read();
+  const write = writer.write({toString() { TestUtils.gc(); throw expected; }});
+  await Promise.all([
+    promise_rejects_exactly(t, expected, read),
+    promise_rejects_exactly(t, expected, write),
+    promise_rejects_exactly(t, expected, reader.closed),
+    promise_rejects_exactly(t, expected, writer.closed)
+  ]);
+}, 'ToString abrupt completion preserves exception identity under collection');
+promise_test(async t => {
+  const reason = {marker: 'cancel from ToString'};
+  const stream = new TextEncoderStream();
+  const writer = stream.writable.getWriter();
+  const reader = stream.readable.getReader();
+  const read = reader.read();
+  let cancelled;
+  const closed = promise_rejects_exactly(t, reason, writer.closed);
+  const write = writer.write({toString() {
+    cancelled = reader.cancel(reason);
+    TestUtils.gc();
+    return 'payload';
+  }});
+  assert_true((await read).done);
+  // Encoding enqueues after ToString; enqueue on the cancelled readable
+  // throws TypeError. The writable's closed promise retains the cancel reason.
+  // Blink TextEncoderStream::Transformer::Transform follows that order.
+  await promise_rejects_js(t, TypeError, write);
+  await cancelled;
+  await closed;
+}, 'ToString cancellation clears the codec without invalidating the active transform');
+for (const text of ['', '\ud800']) {
+  promise_test(async t => {
+    const reason = {marker: 'cancel without encoded output'};
+    const stream = new TextEncoderStream();
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    const closed = promise_rejects_exactly(t, reason, writer.closed);
+    const read = reader.read();
+    let cancelled;
+    const write = writer.write({toString() {
+      cancelled = reader.cancel(reason);
+      TestUtils.gc();
+      return text;
+    }});
+    assert_true((await read).done);
+    await write;
+    await cancelled;
+    await closed;
+  }, 'ToString cancellation with no encoded output fulfills the active write: ' + JSON.stringify(text));
+}
+</script>

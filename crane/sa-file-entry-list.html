@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selected File objects enter a form's entry list</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const form = document.createElement('form');
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const input = document.createElement('input');
+  input.type = 'file'; input.name = 'upload'; input.multiple = true;
+  form.append(input);
+  const first = new File(['first'], 'one.txt', {type: 'text/plain'});
+  const second = new File(['second'], 'two.bin');
+  const transfer = new DataTransfer();
+  transfer.items.add(first); transfer.items.add(second);
+  input.files = transfer.files;
+  const entries = new FormData(form).getAll('upload');
+  assert_equals(entries.length, 2);
+  assert_equals(entries[0], first);
+  assert_equals(entries[1], second);
+}, 'FormData(form) preserves each selected File identity and order');
+promise_test(async t => {
+  let form = document.createElement('form');
+  document.body.append(form);
+  let input = document.createElement('input');
+  input.type = 'file'; input.name = 'upload';
+  form.append(input);
+  let transfer = new DataTransfer();
+  transfer.items.add(new File(['survives'], 'kept.txt', {type: 'text/plain'}));
+  input.files = transfer.files;
+  const data = new FormData(form);
+  input.value = '';
+  form.remove();
+  input = transfer = form = null;
+  TestUtils.gc();
+  const file = data.get('upload');
+  assert_equals(file.name, 'kept.txt');
+  assert_equals(file.type, 'text/plain');
+  assert_equals(await file.text(), 'survives');
+}, 'Form entry File survives clearing the selection and collecting the form');
+</script>

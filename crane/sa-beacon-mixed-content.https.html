@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Beacon reports immediate mixed-content rejection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+for (const body of [null, 'body']) {
+  promise_test(async t => {
+    const violations = [];
+    const record = event => {
+      if (event.effectiveDirective === 'connect-src') violations.push(event);
+    };
+    document.addEventListener('securitypolicyviolation', record);
+    t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', record));
+    const url = get_host_info().HTTP_REMOTE_ORIGIN + '/beacon/resources/inspect-header.py?cmd=put&header=referer&id=sa-mixed-' + String(body);
+    assert_false(navigator.sendBeacon(url, body));
+    for (let attempt = 0; attempt < 40 && violations.length === 0; ++attempt)
+      await new Promise(resolve => step_timeout(resolve, 10));
+    assert_equals(violations.length, 1);
+    assert_equals(violations[0].disposition, 'report');
+    assert_equals(violations[0].blockedURI, url);
+  }, 'An HTTPS document rejects an insecure beacon with ' + (body === null ? 'no body' : 'a body'));
+}
+</script>

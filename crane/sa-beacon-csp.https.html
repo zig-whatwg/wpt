@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'none'">
+<title>Beacon CSP rejection keeps the asynchronous network-failure return value</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+for (const protocol of ['HTTP', 'HTTPS']) {
+  promise_test(async t => {
+    const violations = [];
+    const record = event => {
+      if (event.effectiveDirective === 'connect-src') violations.push(event);
+    };
+    document.addEventListener('securitypolicyviolation', record);
+    t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', record));
+    const origin = get_host_info()[protocol + '_REMOTE_ORIGIN'];
+    const url = origin + '/beacon/resources/content-type-and-body.py?cmd=put&id=sa-csp-' + protocol;
+    assert_true(navigator.sendBeacon(url, 'blocked'));
+    for (let attempt = 0; attempt < 40 && violations.length === 0; ++attempt)
+      await new Promise(resolve => step_timeout(resolve, 10));
+    assert_equals(violations.length, 1);
+    assert_equals(violations[0].disposition, 'enforce');
+    assert_equals(violations[0].blockedURI, url);
+  }, 'CSP rejection returns true for a ' + protocol + ' beacon');
+}
+</script>

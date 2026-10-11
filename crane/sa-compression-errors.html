@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Compression containers validate checksums and complete single streams</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const zlib = [120,156,203,72,205,201,201,7,0,6,44,2,21];
+const gzip = [31,139,8,0,0,0,0,0,0,3,203,72,205,201,201,7,0,134,166,16,54,5,0,0,0];
+for (const [name, format, bytes] of [
+  ['zlib checksum', 'deflate', zlib.slice(0,-1).concat([20])],
+  ['gzip checksum', 'gzip', gzip.map((v,i) => i === 17 ? v ^ 1 : v)],
+  ['gzip size', 'gzip', gzip.slice(0,-1).concat([1])],
+  ['truncated footer', 'deflate', zlib.slice(0,-1)],
+  ['trailing bytes', 'deflate', zlib.concat([0])],
+  ['second gzip member', 'gzip', gzip.concat(gzip)],
+  ['no compressed stream', 'deflate-raw', []]
+]) {
+  promise_test(async t => {
+    const stream = new DecompressionStream(format);
+    const consumed = new Response(stream.readable).arrayBuffer();
+    const writer = stream.writable.getWriter();
+    const write = writer.write(new Uint8Array(bytes));
+    const close = writer.close();
+    await Promise.all([
+      promise_rejects_js(t, TypeError, consumed),
+      promise_rejects_js(t, TypeError, Promise.all([write, close]))
+    ]);
+  }, name + ' errors both stream sides with TypeError');
+}
+</script>

@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Beacon synchronous validation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const url of ['data:,no', 'about:blank', 'file:///no', 'http://[']) {
+  test(() => assert_throws_js(TypeError, () => navigator.sendBeacon(url, 'x')),
+       'sendBeacon rejects URL ' + url);
+}
+test(() => {
+  assert_false(navigator.sendBeacon('/beacon/resources/beacon.py', 'x'.repeat(65537)));
+}, 'sendBeacon returns false for more than 64 KiB');
+test(() => {
+  assert_throws_js(TypeError, () => navigator.sendBeacon('/beacon/resources/beacon.py', new ReadableStream()));
+}, 'sendBeacon rejects a ReadableStream body');
+</script>

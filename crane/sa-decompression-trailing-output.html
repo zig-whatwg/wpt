@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A complete decompressed prefix precedes the trailing-data error</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const stream = new DecompressionStream('deflate');
+  const reader = stream.readable.getReader();
+  const writer = stream.writable.getWriter();
+  const failedWrite = promise_rejects_js(t, TypeError, writer.write(
+      new Uint8Array([120,156,203,72,205,201,201,7,0,6,44,2,21,0])));
+  const first = await reader.read();
+  assert_false(first.done);
+  assert_array_equals(Array.from(first.value), [104,101,108,108,111]);
+  await promise_rejects_js(t, TypeError, reader.read());
+  await failedWrite;
+}, 'The pending read receives complete output before trailing data errors the stream');
+</script>

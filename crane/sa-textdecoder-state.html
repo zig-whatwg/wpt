@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>TextDecoder processes carried state before ASCII and at EOF</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [label, bytes, replacement] of [
+  ['utf-8', [0xe2], '\ufffd'], ['utf-16le', [0, 0xd8], '\ufffd'],
+  ['shift_jis', [0x81], '\ufffd'], ['iso-2022-jp', [0x1b, 0x28], '\ufffd('],
+]) {
+  test(() => {
+    const decoder = new TextDecoder(label, {fatal: true});
+    assert_equals(decoder.decode(new Uint8Array(bytes), {stream: true}), '');
+    assert_throws_js(TypeError, () => decoder.decode());
+  }, label + ' fatal decoder processes an unfinished sequence at an empty final decode');
+  test(() => {
+    const decoder = new TextDecoder(label);
+    assert_equals(decoder.decode(new Uint8Array(bytes), {stream: true}), '');
+    assert_equals(decoder.decode(), replacement);
+  }, label + ' replacement decoder processes an unfinished sequence at an empty final decode');
+}
+test(() => {
+  const decoder = new TextDecoder();
+  assert_equals(decoder.decode(new Uint8Array([0x41]), {stream: true}), 'A');
+  assert_equals(decoder.decode(new Uint8Array([0xef, 0xbb, 0xbf])), '\ufeff');
+}, 'An initial ASCII chunk settles BOM handling for later chunks');
+test(() => {
+  const decoder = new TextDecoder();
+  assert_equals(decoder.decode(new Uint8Array([0xe2]), {stream: true}), '');
+  assert_equals(decoder.decode(new Uint8Array([0x41])), '\ufffdA');
+}, 'UTF-8 ASCII after a pending sequence still runs the decoder');
+test(() => {
+  const decoder = new TextDecoder('utf-8', {fatal: true});
+  assert_equals(decoder.decode(new Uint8Array([0xe2]), {stream: true}), '');
+  assert_throws_js(TypeError, () => decoder.decode(new Uint8Array([0x41])));
+}, 'UTF-8 fatal mode sees an ASCII byte that invalidates a pending sequence');
+test(() => {
+  const decoder = new TextDecoder();
+  assert_equals(decoder.decode(new Uint8Array([0x41])), 'A');
+  assert_equals(decoder.decode(new Uint8Array([0xef, 0xbb, 0xbf])), '');
+  assert_equals(decoder.decode(new Uint8Array([0x42]), {stream: true}), 'B');
+  assert_equals(decoder.decode(new Uint8Array([0xef, 0xbb]), {stream: true}), '');
+  assert_equals(decoder.decode(new Uint8Array([0xbf])), '\ufeff');
+}, 'Non-stream ASCII decoding resets BOM handling on the next call');
+test(() => {
+  const decoder = new TextDecoder();
+  assert_equals(decoder.decode(new Uint8Array(), {stream: true}), '');
+  assert_equals(decoder.decode(new Uint8Array([0xef, 0xbb, 0xbf])), '');
+  const ignored = new TextDecoder('utf-8', {ignoreBOM: true});
+  assert_equals(ignored.decode(new Uint8Array([0x41]), {stream: true}), 'A');
+  assert_equals(ignored.decode(new Uint8Array([0xef, 0xbb, 0xbf])), '\ufeff');
+}, 'Empty ASCII input and ignoreBOM retain their serialization rules');
+</script>
