@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection composed range snapshots</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-getcomposedranges">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const s = getSelection();
+  s.removeAllRanges();
+  assert_array_equals(s.getComposedRanges(), []);
+  const text = document.createTextNode("snapshot");
+  document.body.append(text);
+  t.add_cleanup(() => { s.removeAllRanges(); text.remove(); });
+  s.setBaseAndExtent(text, 1, text, 5);
+  const ranges = s.getComposedRanges();
+  assert_true(Array.isArray(ranges));
+  assert_equals(ranges.length, 1);
+  assert_true(ranges[0] instanceof StaticRange);
+  assert_equals(ranges[0].startContainer, text);
+  assert_equals(ranges[0].startOffset, 1);
+  assert_equals(ranges[0].endOffset, 5);
+  s.getRangeAt(0).setStart(text, 2);
+  assert_equals(ranges[0].startOffset, 1);
+  assert_equals(s.getComposedRanges()[0].startOffset, 2);
+}, "getComposedRanges returns new StaticRange snapshots in an array");
+</script>

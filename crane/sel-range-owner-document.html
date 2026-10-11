@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Range boundary setters move the live-range registration</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-range-bp-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const method of ["setStart", "setEnd", "selectNodeContents"]) {
+  test(() => {
+    const other = document.implementation.createHTMLDocument("");
+    const node = other.createTextNode("text");
+    other.body.append(node);
+    const range = document.createRange();
+    if (method === "selectNodeContents") range.selectNodeContents(node);
+    else range[method](node, 1);
+    node.remove();
+    assert_equals(range.startContainer, other.body);
+    assert_equals(range.startOffset, 0);
+    assert_equals(range.endContainer, other.body);
+    assert_equals(range.endOffset, 0);
+  }, method + " moves the live range into the boundary node's document");
+}
+</script>

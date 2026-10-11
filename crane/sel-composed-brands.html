@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection composed range options require ShadowRoot objects</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-getcomposedranges">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(t => {
+  const selection = getSelection();
+  selection.removeAllRanges();
+  t.add_cleanup(() => selection.removeAllRanges());
+  for (const empty of [true, false]) {
+    if (!empty) selection.selectAllChildren(document.body);
+    for (const value of [document.body, document, selection, document.createRange(), {}]) {
+      assert_throws_js(TypeError, () => selection.getComposedRanges({shadowRoots: [value]}));
+    }
+  }
+}, "getComposedRanges validates every ShadowRoot argument even for an empty selection");
+</script>

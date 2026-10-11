@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection containsNode excludes absent flat-tree children</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-containsnode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+function fixture(t) {
+  const host = document.createElement("div");
+  host.innerHTML = '<span slot="named">light</span>';
+  const shadow = host.attachShadow({ mode: "closed" });
+  shadow.innerHTML = '<slot name="other"><span>fallback</span></slot>';
+  document.body.append(host);
+  const selection = getSelection();
+  t.add_cleanup(() => { selection.removeAllRanges(); host.remove(); });
+  return { host, slot: shadow.firstChild, light: host.firstChild, selection };
+}
+test(t => {
+  const {host, slot, light, selection} = fixture(t);
+  selection.selectAllChildren(host);
+  for (const node of [light, light.firstChild]) {
+    assert_false(selection.containsNode(node));
+    assert_false(selection.containsNode(node, true));
+  }
+  slot.name = "named";
+  for (const node of [light, light.firstChild]) {
+    assert_true(selection.containsNode(node));
+    assert_true(selection.containsNode(node, true));
+  }
+}, "unassigned light children and text are excluded until assigned, including closed roots");
+test(t => {
+  const {slot, light, selection} = fixture(t);
+  const fallback = slot.firstChild;
+  selection.selectAllChildren(slot);
+  assert_true(selection.containsNode(fallback));
+  assert_true(selection.containsNode(fallback.firstChild));
+  slot.name = "named";
+  assert_false(selection.containsNode(fallback));
+  assert_false(selection.containsNode(fallback.firstChild, true));
+  light.remove();
+  assert_true(selection.containsNode(fallback));
+  assert_true(selection.containsNode(fallback.firstChild, true));
+}, "slot fallback is excluded only while the slot has assigned nodes");
+</script>

@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection method selectionchange scheduling</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = t => new Promise(resolve => t.step_timeout(resolve, 0));
+promise_test(async t => {
+  const node = document.createTextNode("abcdef");
+  document.body.append(node);
+  const s = getSelection();
+  s.removeAllRanges();
+  await tick(t);
+  let events = 0;
+  const listener = t.step_func(event => {
+    ++events;
+    assert_equals(event.target, document);
+    assert_false(event.bubbles);
+    assert_false(event.cancelable);
+    assert_true(event.isTrusted);
+  });
+  document.addEventListener("selectionchange", listener);
+  t.add_cleanup(() => { document.removeEventListener("selectionchange", listener); s.removeAllRanges(); node.remove(); });
+  s.collapse(node, 1);
+  s.extend(node, 4);
+  s.setBaseAndExtent(node, 0, node, 5);
+  assert_equals(events, 0, "queue, not synchronous dispatch");
+  TestUtils.gc();
+  await tick(t);
+  assert_equals(events, 1, "method calls coalesce");
+  s.setBaseAndExtent(node, 0, node, 5);
+  await tick(t);
+  assert_equals(events, 1, "unchanged boundaries do not notify");
+  s.removeAllRanges();
+  await tick(t);
+  assert_equals(events, 2);
+  s.removeAllRanges();
+  await tick(t);
+  assert_equals(events, 2, "empty to empty is unchanged");
+}, "selectionchange is queued, trusted, coalesced and retained through GC");
+promise_test(async t => {
+  const node = document.createTextNode("abcdef");
+  document.body.append(node);
+  const s = getSelection();
+  s.removeAllRanges();
+  await tick(t);
+  let events = 0;
+  const listener = () => { if (++events === 1) s.collapse(node, 2); };
+  document.addEventListener("selectionchange", listener);
+  t.add_cleanup(() => { document.removeEventListener("selectionchange", listener); s.removeAllRanges(); node.remove(); });
+  s.collapse(node, 1);
+  await tick(t);
+  await tick(t);
+  assert_equals(events, 2, "flag clears before dispatch so a listener can queue again");
+}, "a selectionchange listener can schedule the next event");
+</script>

@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A Range leaving the document leaves its Selection</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ["another document", "a detached tree"]) promise_test(async t => {
+  const source = document.createTextNode("source");
+  document.body.append(source);
+  const foreign = document.implementation.createHTMLDocument("");
+  foreign.body.textContent = "foreign";
+  const s = getSelection();
+  s.setBaseAndExtent(source, 1, source, 4);
+  const range = s.getRangeAt(0);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  let ownEvents = 0;
+  let foreignEvents = 0;
+  const ownListener = () => ++ownEvents;
+  const foreignListener = () => ++foreignEvents;
+  document.addEventListener("selectionchange", ownListener);
+  foreign.addEventListener("selectionchange", foreignListener);
+  t.add_cleanup(() => { document.removeEventListener("selectionchange", ownListener); foreign.removeEventListener("selectionchange", foreignListener); s.removeAllRanges(); source.remove(); });
+  const target = mode === "another document" ? foreign.body.firstChild : document.createTextNode("detached");
+  range.setStart(target, 1);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(ownEvents, 1);
+  assert_equals(foreignEvents, 0);
+  assert_equals(s.rangeCount, 0);
+  range.setStart(source, 0);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(ownEvents, 1, "an unassociated Range no longer notifies");
+  assert_equals(foreignEvents, 0);
+  assert_equals(s.rangeCount, 0, "moving back does not restore the association");
+  assert_throws_dom("IndexSizeError", () => s.getRangeAt(0));
+}, "moving a selected Range into " + mode + " clears the association and notifies the original document");
+</script>

@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection collapse validates before changing its existing range</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-collapse">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const text = document.createTextNode("abc");
+  document.body.append(text);
+  const selection = getSelection();
+  t.add_cleanup(() => { selection.removeAllRanges(); text.remove(); });
+  selection.collapse(text, 1);
+  const oldRange = selection.getRangeAt(0);
+  assert_throws_dom("IndexSizeError", () => selection.collapse(text, -1));
+  assert_equals(selection.getRangeAt(0), oldRange);
+  assert_equals(selection.anchorOffset, 1);
+}, "collapse rejects an unsigned offset beyond node length before changing selection");
+</script>

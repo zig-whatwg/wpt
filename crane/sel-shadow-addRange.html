@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>addRange accepts a connected same-root shadow range</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-addrange">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+for (const mode of ["open", "closed"]) test(t => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = host.attachShadow({mode});
+  root.textContent = "abcdef";
+  const node = root.firstChild;
+  const selection = getSelection();
+  selection.removeAllRanges();
+  t.add_cleanup(() => { selection.removeAllRanges(); host.remove(); });
+  const range = document.createRange();
+  range.setStart(node, 1);
+  range.setEnd(node, 4);
+  selection.addRange(range);
+  assert_equals(selection.rangeCount, 1);
+  assert_equals(selection.getRangeAt(0), range);
+  assert_equals(selection.anchorNode, node);
+  assert_equals(selection.anchorOffset, 1);
+  assert_equals(selection.focusNode, node);
+  assert_equals(selection.focusOffset, 4);
+  const composed = selection.getComposedRanges({shadowRoots: [root]})[0];
+  assert_equals(composed.startContainer, node);
+  assert_equals(composed.startOffset, 1);
+  assert_equals(composed.endContainer, node);
+  assert_equals(composed.endOffset, 4);
+}, "addRange keeps a connected " + mode + " shadow range by identity");
+</script>

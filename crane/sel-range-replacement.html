@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Only the currently associated Range notifies Selection</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+promise_test(async t => {
+  const tick = () => new Promise(resolve => t.step_timeout(resolve, 0));
+  const node = document.createTextNode("abcdef");
+  document.body.append(node);
+  const selection = getSelection();
+  selection.collapse(node, 0);
+  await tick();
+  const old = selection.getRangeAt(0);
+  let events = 0;
+  const listener = () => ++events;
+  document.addEventListener("selectionchange", listener);
+  t.add_cleanup(() => { document.removeEventListener("selectionchange", listener); selection.removeAllRanges(); node.remove(); });
+  selection.collapse(node, 1);
+  const current = selection.getRangeAt(0);
+  assert_not_equals(current, old);
+  await tick();
+  assert_equals(events, 1);
+  old.setEnd(node, 4);
+  await tick();
+  assert_equals(events, 1, "replaced range no longer notifies");
+  current.setEnd(node, 3);
+  await tick();
+  assert_equals(events, 2, "replacement range notifies");
+  selection.removeAllRanges();
+  await tick();
+  assert_equals(events, 3);
+  current.setStart(node, 2);
+  await tick();
+  assert_equals(events, 3, "cleared association no longer notifies");
+}, "replacement and removal clear the old Range's selection association");
+</script>

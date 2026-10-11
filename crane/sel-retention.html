@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection keeps its associated Range and boundary nodes</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-addrange">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const s = getSelection();
+  t.add_cleanup(() => s.removeAllRanges());
+  (() => {
+    const node = document.createTextNode("kept selection");
+    document.body.append(node);
+    const range = document.createRange();
+    range.setStart(node, 1);
+    range.setEnd(node, 5);
+    range.selectionMarker = "kept range";
+    s.removeAllRanges();
+    s.addRange(range);
+  })();
+  for (let i = 0; i < 3; ++i) {
+    TestUtils.gc();
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+  assert_equals(s.getRangeAt(0).selectionMarker, "kept range");
+  assert_equals(s.anchorNode.data, "kept selection");
+  assert_equals(s.anchorOffset, 1);
+  assert_equals(s.focusOffset, 5);
+  s.anchorNode.remove();
+}, "Selection retains the same Range after all script references to it are dropped");
+</script>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const selection = (() => {
+    const doc = frame.contentDocument;
+    doc.body.textContent = "foreign selection";
+    const node = doc.body.firstChild;
+    const range = doc.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, 7);
+    const selected = doc.getSelection();
+    selected.addRange(range);
+    return selected;
+  })();
+  for (let i = 0; i < 3; ++i) {
+    TestUtils.gc();
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+  assert_equals(selection.rangeCount, 1);
+  assert_equals(selection.getRangeAt(0).startContainer.data, "foreign selection");
+  assert_equals(selection.anchorNode, selection.getRangeAt(0).startContainer);
+  assert_true(selection.containsNode(selection.anchorNode, true));
+  const old = selection.getRangeAt(0);
+  selection.collapse(document.body, 0);
+  assert_equals(selection.getRangeAt(0), old, "caller realm cannot change the associated document");
+  selection.removeAllRanges();
+}, "an attached foreign realm's selection survives GC and checks its own document");
+</script>

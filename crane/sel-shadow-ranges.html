@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection snapshots rescope nested shadow roots</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-getcomposedranges">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const outer = host.attachShadow({mode: "closed"});
+  const innerHost = document.createElement("span");
+  outer.append(innerHost);
+  const inner = innerHost.attachShadow({mode: "closed"});
+  inner.textContent = "nested";
+  const node = inner.firstChild;
+  const s = getSelection();
+  t.add_cleanup(() => { s.removeAllRanges(); host.remove(); });
+  s.setBaseAndExtent(node, 1, node, 4);
+  assert_equals(s.anchorNode, node);
+  assert_equals(s.focusNode, node);
+  assert_equals(s.rangeCount, 1);
+  const hidden = s.getComposedRanges()[0];
+  assert_equals(hidden.startContainer, document.body);
+  assert_equals(hidden.endOffset, hidden.startOffset + 1);
+  const disclosed = s.getComposedRanges({shadowRoots: [inner]})[0];
+  assert_equals(disclosed.startContainer, node);
+  assert_equals(disclosed.startOffset, 1);
+  const outerOnly = s.getComposedRanges({shadowRoots: [outer]})[0];
+  assert_equals(outerOnly.startContainer, outer);
+  assert_equals(outerOnly.startOffset, 0);
+  assert_equals(outerOnly.endOffset, 1);
+}, "same-root shadow selection exposes live endpoints and rescopes composed ranges");
+</script>

@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection method validation order on ASCII CharacterData</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selection-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const node = document.createTextNode("ABCD");
+  document.body.append(node);
+  const s = getSelection();
+  s.removeAllRanges();
+  t.add_cleanup(() => { s.removeAllRanges(); node.remove(); });
+  return [s, node];
+}
+for (const method of ["collapse", "setPosition"]) {
+  test(t => {
+    const [s, node] = fixture(t);
+    s[method](node, 4);
+    const range = s.getRangeAt(0);
+    for (const offset of [-1, 5, 4294967295]) {
+      assert_throws_dom("IndexSizeError", () => s[method](node, offset));
+      assert_equals(s.getRangeAt(0), range);
+      assert_equals(s.anchorOffset, 4);
+    }
+    assert_throws_dom("InvalidNodeTypeError", () => s[method](document.doctype, -1));
+    assert_throws_dom("IndexSizeError", () => s[method](document.createTextNode("x"), 2));
+    s[method](null, 4294967295);
+    assert_equals(s.rangeCount, 0);
+    assert_equals(s.anchorOffset, 0);
+    assert_equals(s.focusOffset, 0);
+  }, method + " validates ASCII length, checks doctype first and clears null offsets");
+}
+test(t => {
+  const [s, node] = fixture(t);
+  s.collapse(node, 2);
+  const old = s.getRangeAt(0);
+  assert_throws_dom("IndexSizeError", () => s.extend(node, -1));
+  assert_equals(s.getRangeAt(0), old);
+  assert_equals(s.anchorOffset, 2);
+  assert_equals(s.focusOffset, 2);
+  assert_throws_dom("InvalidNodeTypeError", () => s.extend(document.doctype, 0));
+}, "extend validation preserves the existing range");
+test(t => {
+  const [s, node] = fixture(t);
+  s.collapse(node, 2);
+  const old = s.getRangeAt(0);
+  assert_throws_dom("IndexSizeError", () => s.setBaseAndExtent(node, -1, node, 0));
+  assert_throws_dom("IndexSizeError", () => s.setBaseAndExtent(node, 0, node, 5));
+  assert_equals(s.getRangeAt(0), old);
+  assert_equals(s.anchorOffset, 2);
+  assert_equals(s.focusOffset, 2);
+}, "setBaseAndExtent validates both offsets before changing the selection");
+</script>

@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection dependency: Node.getRootNode composed shadow ancestry</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-node-getrootnode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(t => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  const outer = host.attachShadow({mode: "closed"});
+  const innerHost = document.createElement("span");
+  const slot = document.createElement("slot");
+  outer.append(innerHost, slot);
+  const inner = innerHost.attachShadow({mode: "open"});
+  inner.textContent = "nested";
+  const node = inner.firstChild;
+  const light = document.createElement("b");
+  host.append(light);
+  assert_array_equals(slot.assignedNodes(), [light]);
+  assert_equals(node.getRootNode(), inner);
+  assert_equals(node.getRootNode({composed: false}), inner);
+  assert_equals(node.getRootNode({composed: true}), document);
+  assert_equals(inner.getRootNode({composed: true}), document);
+  assert_equals(light.getRootNode(), document);
+  assert_equals(light.getRootNode({composed: true}), document);
+  host.remove();
+  assert_equals(node.getRootNode(), inner);
+  assert_equals(node.getRootNode({composed: true}), host);
+  assert_equals(light.getRootNode(), host);
+  assert_equals(light.getRootNode({composed: true}), host);
+}, "composed root traverses nested hosts, ignores slot assignment, and stops at a detached host");
+</script>

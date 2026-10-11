@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection follows a Range constructed in another document</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-range-bp-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  document.body.append(iframe);
+  await loaded;
+  const parent = document.createElement("div");
+  parent.textContent = "text";
+  document.body.append(parent);
+  const selection = getSelection();
+  t.add_cleanup(() => { selection.removeAllRanges(); parent.remove(); iframe.remove(); });
+  selection.removeAllRanges();
+  const range = iframe.contentDocument.createRange();
+  range.setStart(parent.firstChild, 1);
+  range.setEnd(parent.firstChild, 3);
+  selection.addRange(range);
+  parent.firstChild.remove();
+  assert_equals(range.startContainer, parent);
+  assert_equals(range.startOffset, 0);
+  assert_equals(range.endContainer, parent);
+  assert_equals(selection.anchorNode, parent);
+  assert_equals(selection.rangeCount, 1);
+  assert_equals(selection.getRangeAt(0), range);
+}, "moving Range boundaries into a document registers it for that document's live mutations");
+</script>

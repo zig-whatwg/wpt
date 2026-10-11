@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection checks the associated document in algorithm order</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selection-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const node = document.createTextNode("abc");
+  document.body.append(node);
+  const s = getSelection();
+  t.add_cleanup(() => { s.removeAllRanges(); node.remove(); });
+  s.collapse(node, 1);
+  const old = s.getRangeAt(0);
+  const detached = document.createTextNode("xyz");
+  const foreign = document.implementation.createHTMLDocument("").body;
+  for (const target of [detached, foreign]) {
+    s.collapse(target, 0);
+    assert_equals(s.getRangeAt(0), old);
+    s.extend(target, 4294967295);
+    assert_equals(s.getRangeAt(0), old);
+    s.setBaseAndExtent(target, 0, target, 0);
+    assert_equals(s.getRangeAt(0), old);
+    s.selectAllChildren(target);
+    assert_equals(s.getRangeAt(0), old);
+    assert_false(s.containsNode(target, true));
+    const r = document.createRange();
+    r.selectNodeContents(target);
+    s.removeAllRanges();
+    s.addRange(r);
+    assert_equals(s.rangeCount, 0);
+    s.extend(target, 4294967295);
+    s.addRange(old);
+  }
+}, "detached and foreign nodes do not change the document selection");
+</script>

@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection uses its associated live range</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#definition">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const parent = document.createElement("div");
+  parent.append("abcdef", document.createElement("span"), "uvwxyz");
+  document.body.append(parent);
+  const s = getSelection();
+  s.removeAllRanges();
+  t.add_cleanup(() => { s.removeAllRanges(); parent.remove(); });
+  return [s, parent, parent.firstChild, parent.lastChild];
+}
+test(t => {
+  const [s, parent, a, b] = fixture(t);
+  const range = document.createRange();
+  range.setStart(a, 1); range.setEnd(a, 4);
+  s.addRange(range);
+  const other = document.createRange();
+  other.selectNodeContents(b);
+  s.addRange(other);
+  assert_equals(s.getRangeAt(0), range);
+  range.setEnd(b, 3);
+  assert_equals(s.focusNode, b);
+  assert_equals(s.focusOffset, 3);
+  assert_throws_dom("NotFoundError", () => s.removeRange(other));
+  assert_equals(s.getRangeAt(0), range);
+}, "addRange preserves an existing range and exposes live boundary changes");
+test(t => {
+  const [s, parent, a, b] = fixture(t);
+  s.setBaseAndExtent(b, 4, a, 2);
+  assert_equals(s.direction, "backward");
+  const range = s.getRangeAt(0);
+  assert_equals(range.startContainer, a);
+  assert_equals(range.endContainer, b);
+  range.setStart(a, 1);
+  assert_equals(s.focusOffset, 1);
+  assert_equals(s.anchorNode, b);
+  s.extend(a, 0);
+  assert_not_equals(s.getRangeAt(0), range);
+  assert_equals(range.startOffset, 1);
+  assert_equals(s.anchorNode, b);
+  assert_equals(s.focusOffset, 0);
+}, "backward cross-node selection uses ordered live range boundaries");
+test(t => {
+  const [s, parent, a, b] = fixture(t);
+  s.collapse(a, 2);
+  a.remove();
+  assert_equals(s.anchorNode, parent);
+  assert_equals(s.anchorOffset, 0);
+  assert_equals(s.focusNode, parent);
+}, "collapse creates its live range before a DOM removal even without getRangeAt");
+test(t => {
+  const [s, parent, a, b] = fixture(t);
+  s.setBaseAndExtent(a, 1, a, 3);
+  const range = s.getRangeAt(0);
+  s.deleteFromDocument();
+  assert_equals(s.getRangeAt(0), range);
+  assert_equals(a.data, "adef");
+  assert_equals(s.anchorOffset, 1);
+  assert_equals(s.focusOffset, 1);
+}, "deleteFromDocument preserves the associated range identity");
+test(t => {
+  const [s, parent, a, b] = fixture(t);
+  s.selectAllChildren(a);
+  assert_equals(s.anchorNode, a);
+  assert_equals(s.anchorOffset, 0);
+  assert_equals(s.focusOffset, 0);
+}, "selectAllChildren on CharacterData uses its child count");
+</script>

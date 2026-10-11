@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection change queued from an event continuation precedes its timer</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+promise_test(async t => {
+  const node = document.createTextNode("abc");
+  document.body.append(node);
+  const selection = getSelection();
+  selection.removeAllRanges();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  t.add_cleanup(() => { selection.removeAllRanges(); node.remove(); });
+  const first = new Promise(resolve => document.addEventListener("selectionchange", resolve, {once: true}));
+  selection.collapse(node, 0);
+  await first;
+  let count = 0;
+  const listener = () => ++count;
+  document.addEventListener("selectionchange", listener);
+  t.add_cleanup(() => document.removeEventListener("selectionchange", listener));
+  selection.collapse(node, 1);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(count, 1, "new event queued before the timer must be delivered first");
+}, "selectionchange queued by its previous event's promise continuation runs before its timer");
+</script>

@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection Range argument brands precede method steps</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-removerange">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(t => {
+  const selection = getSelection();
+  selection.removeAllRanges();
+  selection.selectAllChildren(document.body);
+  const range = selection.getRangeAt(0);
+  t.add_cleanup(() => selection.removeAllRanges());
+  for (const value of [selection, document, {}]) {
+    assert_throws_js(TypeError, () => selection.removeRange(value));
+    assert_throws_js(TypeError, () => selection.addRange(value));
+    assert_equals(selection.getRangeAt(0), range);
+  }
+  assert_throws_dom("NotFoundError", () => selection.removeRange(document.createRange()));
+}, "addRange and removeRange reject non-Range arguments before reading their state");
+</script>

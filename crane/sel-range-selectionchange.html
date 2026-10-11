@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Associated live Range mutations schedule selectionchange</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = t => new Promise(resolve => t.step_timeout(resolve, 0));
+promise_test(async t => {
+  const parent = document.createElement("div");
+  parent.textContent = "abcdef";
+  document.body.append(parent);
+  const node = parent.firstChild;
+  const s = getSelection();
+  s.setBaseAndExtent(node, 1, node, 5);
+  const range = s.getRangeAt(0);
+  await tick(t);
+  let events = 0;
+  const listener = () => ++events;
+  document.addEventListener("selectionchange", listener);
+  t.add_cleanup(() => { document.removeEventListener("selectionchange", listener); s.removeAllRanges(); parent.remove(); });
+  range.setStart(node, 2);
+  range.setEnd(node, 4);
+  assert_equals(events, 0);
+  await tick(t);
+  assert_equals(events, 1, "Range setters coalesce");
+  range.setStart(node, 2);
+  range.setEnd(node, 4);
+  await tick(t);
+  assert_equals(events, 1, "unchanged Range boundaries do not notify");
+  node.remove();
+  await tick(t);
+  assert_equals(events, 2, "DOM removal updates the selected Range");
+  assert_equals(s.anchorNode, parent);
+  s.removeAllRanges();
+  await tick(t);
+  const previous = events;
+  range.selectNodeContents(parent);
+  await tick(t);
+  assert_equals(events, previous, "an unselected Range does not notify");
+}, "Range methods and live-range removal notify only while associated");
+</script>
