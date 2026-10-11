@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SubtleCrypto copies BufferSource arguments at the method's own step</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebCrypto 14.3.1-14.3.5 and 14.3.12: each method normalizes its algorithm
+// (step 2, running script getters) and only THEN gets a copy of the bytes held
+// by its BufferSource arguments (WebIDL "get a copy of the bytes held by the
+// buffer source"; a detached buffer copies as empty). The binding hands the
+// impl a reference to the object, not its bytes.
+const subtle = crypto.subtle;
+const iv = new Uint8Array(16);
+const bytesOf = buffer => Array.from(new Uint8Array(buffer));
+
+function aesKey(usages) {
+  return subtle.importKey("raw", new Uint8Array(16).fill(7), "AES-CBC", false, usages);
+}
+
+promise_test(async () => {
+  const key = await aesKey(["encrypt", "decrypt"]);
+  const plain = new TextEncoder().encode("buffer sources");
+  for (const data of [plain, plain.buffer, new DataView(plain.buffer)]) {
+    const ciphertext = await subtle.encrypt({name: "AES-CBC", iv}, key, data);
+    assert_equals(ciphertext.byteLength, 16);
+    const back = await subtle.decrypt({name: "AES-CBC", iv}, key, ciphertext);
+    assert_array_equals(bytesOf(back), Array.from(plain));
+  }
+}, "encrypt and decrypt take a typed array, an ArrayBuffer and a DataView");
+
+promise_test(async () => {
+  const key = await aesKey(["encrypt", "decrypt"]);
+  const whole = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]);
+  const window = new Uint8Array(whole.buffer, 2, 3);
+  const expected = await subtle.encrypt({name: "AES-CBC", iv}, key, new Uint8Array([2, 3, 4]));
+  const actual = await subtle.encrypt({name: "AES-CBC", iv}, key, window);
+  assert_array_equals(bytesOf(actual), bytesOf(expected));
+}, "a view's copy is its own window of the buffer");
+
+promise_test(async () => {
+  const key = await aesKey(["encrypt", "decrypt"]);
+  const data = new Uint8Array([1, 2, 3]);
+  const expected = await subtle.encrypt({name: "AES-CBC", iv}, key, new Uint8Array([9, 9, 9]));
+  const actual = await subtle.encrypt({get name() { data.fill(9); return "AES-CBC"; }, iv}, key, data);
+  assert_array_equals(bytesOf(actual), bytesOf(expected));
+}, "encrypt copies its data after normalize-an-algorithm's getters run");
+
+promise_test(async () => {
+  const key = await aesKey(["encrypt", "decrypt"]);
+  const data = new Uint8Array([1, 2, 3]);
+  const expected = await subtle.encrypt({name: "AES-CBC", iv}, key, new Uint8Array(0));
+  // normalize-an-algorithm reads `name` twice (18.4.4 steps 2 and 6); the
+  // second read must not transfer a detached buffer again.
+  const actual = await subtle.encrypt({get name() { if (!data.buffer.detached) data.buffer.transfer(); return "AES-CBC"; }, iv}, key, data);
+  assert_array_equals(bytesOf(actual), bytesOf(expected));
+}, "encrypt's data, transferred by a getter, copies as empty");
+
+promise_test(async () => {
+  const key = await subtle.importKey("raw", new Uint8Array(32).fill(3), {name: "HMAC", hash: "SHA-256"}, false, ["sign", "verify"]);
+  const data = new Uint8Array([1, 2, 3]);
+  const good = await subtle.sign("HMAC", key, data);
+  const signature = new Uint8Array(good.byteLength);
+  const message = new Uint8Array([0, 0, 0]);
+  const verified = await subtle.verify({get name() { signature.set(new Uint8Array(good)); message.set(data); return "HMAC"; }},
+    key, signature, message);
+  assert_true(verified);
+}, "verify copies its signature and its data after normalize-an-algorithm's getters run");
+
+promise_test(async () => {
+  const key = await subtle.importKey("raw", new Uint8Array(32).fill(3), {name: "HMAC", hash: "SHA-256"}, false, ["sign"]);
+  const data = new Uint8Array([1, 2, 3]);
+  const expected = await subtle.sign("HMAC", key, new Uint8Array([5, 5, 5]));
+  const actual = await subtle.sign({get name() { data.fill(5); return "HMAC"; }}, key, data);
+  assert_array_equals(bytesOf(actual), bytesOf(expected));
+}, "sign copies its data after normalize-an-algorithm's getters run");
+
+promise_test(async () => {
+  const wrapping = await subtle.importKey("raw", new Uint8Array(16).fill(1), "AES-KW", false, ["wrapKey", "unwrapKey"]);
+  const secret = await subtle.importKey("raw", new Uint8Array(16).fill(2), "AES-CBC", true, ["encrypt"]);
+  const wrapped = new Uint8Array(await subtle.wrapKey("raw", secret, wrapping, "AES-KW"));
+  const argument = new Uint8Array(wrapped.length);
+  const unwrapped = await subtle.unwrapKey("raw", argument, wrapping,
+    {get name() { argument.set(wrapped); return "AES-KW"; }}, "AES-CBC", true, ["encrypt"]);
+  assert_array_equals(bytesOf(await subtle.exportKey("raw", unwrapped)), Array(16).fill(2));
+}, "unwrapKey copies its wrapped key after both algorithms are normalized");
+
+promise_test(async t => {
+  const key = await aesKey(["encrypt"]);
+  for (const data of [[1, 2, 3], "abc", {byteLength: 3}, null]) {
+    await promise_rejects_js(t, TypeError, subtle.encrypt({name: "AES-CBC", iv}, key, data));
+  }
+}, "a data argument that is no BufferSource is a TypeError");
+</script>
