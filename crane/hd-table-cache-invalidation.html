@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cached table collections follow mutations and adoption</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ["bodies", "table rows", "section rows", "cells"]) {
+  test(() => {
+    const source = document.implementation.createHTMLDocument("");
+    const destination = document.implementation.createHTMLDocument("");
+    const table = source.body.appendChild(source.createElement("table"));
+    const section = table.appendChild(source.createElement("tbody"));
+    const row = section.appendChild(source.createElement("tr"));
+    const cell = row.appendChild(source.createElement("td"));
+    const [owner, collection, tag, first] = kind === "bodies"
+      ? [table, table.tBodies, "tbody", section]
+      : kind === "table rows" ? [table, table.rows, "tr", row]
+      : kind === "section rows" ? [section, section.rows, "tr", row]
+      : [row, row.cells, "th", cell];
+    const parent = kind === "table rows" ? section : owner;
+    assert_equals(collection.length, 1, "warm length");
+    assert_equals(collection.item(0), first, "warm index");
+    first.id = "before";
+    assert_equals(collection.namedItem("before"), first, "id after warming");
+    first.id = "after";
+    assert_equals(collection.namedItem("before"), null, "old id disappears");
+    assert_equals(collection.namedItem("after"), first, "new id appears");
+    first.removeAttribute("id");
+    first.setAttribute("name", "by-name");
+    assert_equals(collection.namedItem("by-name"), first, "name after warming");
+    first.removeAttribute("name");
+    assert_equals(collection.namedItem("by-name"), null, "name removal");
+    const second = parent.appendChild(source.createElement(tag));
+    assert_array_equals(Array.from(collection), [first, second], "append");
+    parent.insertBefore(second, first);
+    assert_array_equals(Array.from(collection), [second, first], "reorder");
+    destination.body.appendChild(destination.adoptNode(table));
+    assert_equals(table.ownerDocument, destination, "new node document");
+    assert_array_equals(Array.from(collection), [second, first], "adoption");
+    second.remove();
+    assert_array_equals(Array.from(collection), [first], "mutation after adoption");
+    const third = parent.appendChild(destination.createElement(tag));
+    assert_array_equals(Array.from(collection), [first, third], "new document insertion");
+    table.remove();
+    first.remove();
+    assert_array_equals(Array.from(collection), [third], "detached mutation");
+    assert_equals(collection.item(1), null, "out-of-range index after shrink");
+  }, `${kind}: warmed collection follows attributes, moves, adoption and removal`);
+}
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("");
+  const table = doc.createElement("table");
+  const foot = table.appendChild(doc.createElement("tfoot"));
+  const body = table.appendChild(doc.createElement("tbody"));
+  const head = table.appendChild(doc.createElement("thead"));
+  const f = foot.appendChild(doc.createElement("tr"));
+  const b = body.appendChild(doc.createElement("tr"));
+  const h = head.appendChild(doc.createElement("tr"));
+  const rows = table.rows;
+  assert_array_equals(Array.from(rows), [h, b, f], "table order differs from tree order");
+  head.appendChild(b);
+  assert_array_equals(Array.from(rows), [h, b, f], "move into head");
+  body.appendChild(h);
+  assert_array_equals(Array.from(rows), [b, h, f], "move out of head");
+  table.insertBefore(foot, head);
+  assert_array_equals(Array.from(rows), [b, h, f], "foot remains last");
+}, "cached table rows retain head/body/foot ordering after moves");
+</script>

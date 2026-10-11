@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Global attribute reflection and translation inheritance</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  for (const [input, expected] of [['LTR', 'ltr'], ['rTl', 'rtl'], ['AUTO', 'auto'], [' rtl', ''], ['ltr\n', ''], ['invalid', '']]) {
+    element.dir = input;
+    assert_equals(element.getAttribute('dir'), input);
+    assert_equals(element.dir, expected);
+  }
+}, 'dir returns canonical keywords without changing the content attribute');
+test(() => {
+  const parent = document.createElement('div');
+  const child = parent.appendChild(document.createElement('span'));
+  parent.translate = false;
+  for (const value of [null, 'invalid', ' no', 'yes ']) {
+    if (value === null) child.removeAttribute('translate');
+    else child.setAttribute('translate', value);
+    assert_false(child.translate, String(value) + ' inherits');
+  }
+  for (const value of ['', 'YES', 'yEs']) {
+    child.setAttribute('translate', value);
+    assert_true(child.translate, value + ' enables');
+  }
+  parent.translate = true;
+  child.setAttribute('translate', 'NO');
+  assert_false(child.translate, 'ASCII case insensitive no');
+  child.removeAttribute('translate');
+  assert_true(child.translate, 'live ancestor mode');
+}, 'translate handles keywords, invalid inheritance and ancestor mutations');
+test(() => {
+  const parent = document.createElement('div');
+  parent.translate = false;
+  const foreign = parent.appendChild(document.createElementNS('urn:foreign', 'wrapper'));
+  foreign.setAttribute('translate', 'yes');
+  const child = foreign.appendChild(document.createElement('div'));
+  assert_false(child.translate, 'foreign attribute is ignored');
+  child.remove();
+  assert_true(child.translate, 'detached default');
+}, 'translation mode passes through non-HTML ancestors');
+test(() => {
+  const host = document.createElement('div');
+  host.translate = false;
+  const child = host.attachShadow({mode: 'open'}).appendChild(document.createElement('div'));
+  assert_true(child.translate, 'ShadowRoot is not a parent element');
+}, 'translation inheritance stops at a shadow root');
+for (const name of ['title', 'lang']) {
+  test(() => {
+    const parent = document.createElement('div');
+    parent[name] = 'ancestor';
+    const child = parent.appendChild(document.createElement('span'));
+    assert_equals(child[name], '', 'IDL reflection does not inherit');
+    child[name] = 'Mixed CASE\r\nvalue';
+    assert_equals(child.getAttribute(name), 'Mixed CASE\r\nvalue');
+    child.removeAttribute(name);
+    assert_equals(child[name], '');
+  }, name + ' reflects its own content attribute');
+}
+</script>

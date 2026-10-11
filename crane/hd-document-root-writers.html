@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document construction paths link the document element</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function check(doc) {
+  assert_not_equals(doc.documentElement, null);
+  assert_equals(doc.documentElement.parentNode, doc);
+}
+test(() => check(document), "the navigated document has a linked root");
+test(() => check(new DOMParser().parseFromString("<!doctype html><html><body></body></html>", "text/html")), "DOMParser links its root");
+test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  check(frame.contentDocument);
+}, "an iframe initial about:blank document links its root");
+test(t => {
+  const popup = window.open("about:blank");
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  check(popup.document);
+}, "an initial window about:blank document links its root");
+test(t => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write("<!doctype html><html><head><title>written</title></head><body></body></html>");
+  doc.close();
+  check(doc);
+}, "document.open/write links the replacement root");
+</script>

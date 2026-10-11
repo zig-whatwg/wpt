@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>getElementsByName live NodeList and namespace rules</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  const list = doc.getElementsByName('target');
+  assert_true(list instanceof NodeList);
+  assert_false(list instanceof HTMLCollection);
+  assert_equals(list.length, 0);
+  const a = doc.body.appendChild(doc.createElement('div'));
+  a.setAttribute('name', 'target');
+  assert_equals(list.length, 1);
+  assert_equals(list.item(0), a);
+  const b = doc.createElement('custom-name');
+  b.setAttribute('name', 'target');
+  doc.body.insertBefore(b, a);
+  assert_array_equals(Array.from(list), [b, a]);
+  a.setAttribute('name', 'Target');
+  assert_array_equals(Array.from(list), [b]);
+  b.remove();
+  assert_equals(list.length, 0);
+}, 'NodeList stays live after insertion, rename, reordering and removal');
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  const good = doc.body.appendChild(doc.createElement('div'));
+  good.setAttribute('name', 'target');
+  for (const ns of [null, 'urn:foreign', 'http://www.w3.org/2000/svg']) {
+    const foreign = doc.body.appendChild(doc.createElementNS(ns, 'div'));
+    foreign.setAttribute('name', 'target');
+  }
+  const wrong = doc.body.appendChild(doc.createElement('div'));
+  wrong.id = 'target';
+  wrong.setAttributeNS('urn:foreign', 'x:name', 'target');
+  assert_array_equals(Array.from(doc.getElementsByName('target')), [good]);
+}, 'Only HTML elements with null-namespace name attributes match');
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  const list = doc.getElementsByName('');
+  const empty = doc.body.appendChild(doc.createElement('div'));
+  assert_equals(list.length, 0, 'missing name');
+  empty.setAttribute('name', '');
+  assert_array_equals(Array.from(list), [empty]);
+  empty.removeAttribute('name');
+  assert_equals(list.length, 0);
+}, 'Empty query matches an empty name but not a missing attribute');
+</script>

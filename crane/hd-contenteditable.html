@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>contentEditable states, inheritance and setter</title>
+<link rel="help" href="https://html.spec.whatwg.org/#contenteditable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const value of ["true", "TRUE", "", "plaintext-only", "PLAINTEXT-ONLY", "false", "FALSE", "invalid", null]) {
+  test(() => {
+    const root = document.createElement("div");
+    const middle = root.appendChild(document.createElement("div"));
+    const leaf = middle.appendChild(document.createElement("span"));
+    if (value !== null) root.setAttribute("contenteditable", value);
+    const editable = ["true", "TRUE", "", "plaintext-only", "PLAINTEXT-ONLY"].includes(value);
+    assert_equals(root.isContentEditable, editable, "root state");
+    assert_equals(middle.contentEditable, "inherit");
+    assert_equals(leaf.isContentEditable, editable, "inherit through missing attributes");
+    middle.setAttribute("contenteditable", "invalid");
+    assert_equals(leaf.isContentEditable, editable, "invalid values inherit");
+    middle.setAttribute("contenteditable", "false");
+    assert_false(leaf.isContentEditable, "false stops inheritance");
+    leaf.contentEditable = "plaintext-only";
+    assert_true(leaf.isContentEditable, "an explicit host inside a false ancestor");
+  }, `nested editable state ${JSON.stringify(value)}`);
+}
+for (const value of ["true", "TrUe", "false", "FaLsE", "plaintext-only", "PLAINTEXT-ONLY", "inherit", "INHERIT"]) {
+  test(() => {
+    const element = document.createElement("div");
+    element.setAttribute("contenteditable", "false");
+    element.contentEditable = value;
+    const canonical = value.toLowerCase();
+    assert_equals(element.contentEditable, canonical);
+    assert_equals(element.getAttribute("contenteditable"), canonical === "inherit" ? null : canonical);
+  }, `setter canonicalizes ${value}`);
+}
+for (const value of ["", "yes", " true", "true ", "falſe", "plaıntext-only"]) {
+  test(() => {
+    const element = document.createElement("div");
+    element.contentEditable = "false";
+    assert_throws_dom("SyntaxError", () => element.contentEditable = value);
+    assert_equals(element.getAttribute("contenteditable"), "false");
+  }, `invalid setter ${JSON.stringify(value)} is atomic`);
+}
+test(() => {
+  const doc = document.implementation.createHTMLDocument("");
+  assert_false(doc.documentElement.isContentEditable);
+  assert_false(document.createElement("div").isContentEditable);
+  doc.documentElement.contentEditable = "true";
+  assert_true(doc.body.isContentEditable);
+}, "document root defaults to false and its descendants inherit");
+test(() => {
+  const host = document.createElement("div");
+  host.contentEditable = "true";
+  const child = host.appendChild(document.createElement("span"));
+  const shadow = host.attachShadow({mode: "open"});
+  const slot = shadow.appendChild(document.createElement("slot"));
+  assert_true(child.isContentEditable, "light-tree parent supplies state");
+  assert_false(slot.isContentEditable, "inheritance stops at a shadow root");
+}, "editing inheritance uses parent elements");
+test(() => {
+  const element = document.createElement("div");
+  element.setAttributeNS("urn:foreign", "contenteditable", "true");
+  assert_equals(element.contentEditable, "inherit");
+  assert_false(element.isContentEditable);
+}, "foreign contenteditable attribute does not affect the state");
+for (const state of [null, "false", "true"]) {
+  test(t => {
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+    const doc = frame.contentDocument;
+    if (state !== null) doc.documentElement.setAttribute("contenteditable", state);
+    doc.designMode = "on";
+    assert_true(doc.documentElement.isContentEditable, "document child is an editing host");
+    assert_true(doc.body.isContentEditable, "body inherits the editing host");
+    doc.body.contentEditable = "false";
+    assert_false(doc.body.isContentEditable, "descendant false remains an explicit boundary");
+    doc.designMode = "off";
+    assert_equals(doc.documentElement.isContentEditable, state === "true");
+  }, `designMode host with root state ${state}`);
+}
+for (const [namespace, name, expected] of [
+  ["http://www.w3.org/2000/svg", "svg", true],
+  ["http://www.w3.org/2000/svg", "g", false],
+  ["http://www.w3.org/1998/Math/MathML", "math", true],
+  ["http://www.w3.org/1998/Math/MathML", "mrow", false],
+  ["urn:foreign", "svg", false]
+]) {
+  test(() => {
+    const root = document.createElement("div");
+    root.contentEditable = "true";
+    const foreign = root.appendChild(document.createElementNS(namespace, name));
+    const html = foreign.appendChild(document.createElement("span"));
+    assert_equals(html.isContentEditable, expected);
+    html.contentEditable = "true";
+    assert_true(html.isContentEditable, "own editing host wins over foreign parent");
+  }, `inheritance through ${namespace} ${name}`);
+}
+</script>

@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form collections retain their node roots</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+for (const kind of ["elements", "options", "selectedOptions", "labels", "namedControls"]) {
+  promise_test(async () => {
+    const list = (() => {
+      if (kind === "labels") {
+        const label = document.createElement("label");
+        label.marker = kind;
+        const input = label.appendChild(document.createElement("input"));
+        return input.labels;
+      }
+      const owner = document.createElement(kind === "elements" || kind === "namedControls" ? "form" : "select");
+      const child = owner.appendChild(document.createElement(owner.localName === "form" ? "input" : "option"));
+      child.marker = kind;
+      child.name = "group";
+      if (owner.localName === "select") child.selected = true;
+      if (kind === "namedControls") {
+        owner.appendChild(document.createElement("input")).name = "group";
+        return owner.elements.namedItem("group");
+      }
+      return owner[kind];
+    })();
+    await garbageCollect();
+    await garbageCollect();
+    assert_equals(list.length, kind === "namedControls" ? 2 : 1);
+    assert_equals(list[0].marker, kind, "the original wrapper survives");
+    if (kind === "labels") assert_equals(list[0].firstElementChild.localName, "input");
+    else assert_not_equals(list[0].parentNode, null);
+  }, `${kind} retains its detached owner through its collection`);
+}
+</script>

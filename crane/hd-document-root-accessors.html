@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document body and dir use the HTML root</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const HTML = 'http://www.w3.org/1999/xhtml';
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.documentElement.setAttribute('dir', 'RTL');
+  assert_equals(doc.dir, 'rtl');
+  doc.dir = 'AUTO';
+  assert_equals(doc.documentElement.getAttribute('dir'), 'AUTO');
+  assert_equals(doc.dir, 'auto');
+  doc.dir = 'invalid';
+  assert_equals(doc.dir, '');
+  assert_equals(doc.documentElement.getAttribute('dir'), 'invalid');
+}, 'document.dir reflects the current html element and canonicalizes keywords');
+test(() => {
+  const doc = document.implementation.createDocument(null, 'root');
+  const body = doc.documentElement.appendChild(doc.createElementNS(HTML, 'body'));
+  assert_equals(doc.body, null, 'non-html root');
+  doc.dir = 'rtl';
+  assert_equals(doc.dir, '');
+  assert_false(doc.documentElement.hasAttribute('dir'));
+  const root = doc.createElementNS(HTML, 'html');
+  root.appendChild(body);
+  doc.replaceChild(root, doc.documentElement);
+  assert_equals(doc.body, body);
+  doc.dir = 'LTR';
+  assert_equals(doc.dir, 'ltr');
+  assert_equals(root.getAttribute('dir'), 'LTR');
+}, 'root replacement changes body and dir without stale document state');
+test(() => {
+  const doc = document.implementation.createDocument(HTML, 'html');
+  const root = doc.documentElement;
+  root.appendChild(doc.createElementNS(null, 'body'));
+  root.appendChild(doc.createElementNS('urn:foreign', 'frameset'));
+  root.appendChild(doc.createElementNS(HTML, 'BODY'));
+  assert_equals(doc.body, null);
+  const frameset = root.appendChild(doc.createElementNS(HTML, 'frameset'));
+  root.appendChild(doc.createElementNS(HTML, 'body'));
+  assert_equals(doc.body, frameset, 'first body-or-frameset in tree order');
+}, 'body requires exact HTML element names and namespace');
+</script>

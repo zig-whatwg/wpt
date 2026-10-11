@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document collections filter the live HTML tree</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const HTML = 'http://www.w3.org/1999/xhtml';
+const cases = [
+  ['images', 'img'], ['embeds', 'embed'], ['plugins', 'embed'],
+  ['forms', 'form'], ['scripts', 'script'], ['links', 'a', 'href'],
+  ['anchors', 'a', 'name']
+];
+for (const [property, tag, attribute] of cases) {
+  test(() => {
+    const doc = document.implementation.createHTMLDocument('');
+    const collection = doc[property];
+    assert_true(collection instanceof HTMLCollection);
+    assert_equals(collection, doc[property], 'SameObject');
+    assert_equals(collection.length, 0);
+    const element = doc.createElement(tag);
+    if (attribute) element.setAttribute(attribute, '');
+    doc.body.appendChild(element);
+    assert_equals(collection.length, 1, 'append');
+    assert_equals(collection.item(0), element);
+    const first = element.cloneNode();
+    doc.body.insertBefore(first, element);
+    assert_equals(collection.item(0), first, 'tree order');
+    first.remove();
+    element.remove();
+    assert_equals(collection.length, 0, 'remove');
+    assert_equals(collection.item(0), null);
+  }, property + ' remains live across tree changes');
+
+  test(() => {
+    const doc = document.implementation.createHTMLDocument('');
+    const nodes = [doc.createElementNS('urn:foreign', tag),
+      doc.createElementNS(null, tag), doc.createElementNS(HTML, tag.toUpperCase()),
+      doc.createElementNS(HTML, 'p:' + tag)];
+    for (const element of nodes) {
+      if (attribute) element.setAttribute(attribute, '');
+      doc.body.appendChild(element);
+    }
+    assert_equals(doc[property].length, 1, 'namespace and exact local name');
+    assert_equals(doc[property].item(0), nodes[3], 'prefix is irrelevant');
+  }, property + ' selects HTML namespace and exact local names');
+}
+test(() => {
+  const doc = document.implementation.createHTMLDocument('');
+  assert_equals(doc.plugins, doc.embeds);
+}, 'plugins and embeds are the same object');
+for (const [property, tag, attribute] of [['links', 'a', 'href'], ['links', 'area', 'href'], ['anchors', 'a', 'name']]) {
+  test(() => {
+    const doc = document.implementation.createHTMLDocument('');
+    const element = doc.body.appendChild(doc.createElement(tag));
+    element.setAttributeNS('urn:foreign', 'x:' + attribute, '');
+    const collection = doc[property];
+    assert_equals(collection.length, 0, 'namespaced attribute does not match');
+    element.setAttribute(attribute, '');
+    assert_equals(collection.length, 1, 'empty attribute is present');
+    element.removeAttribute(attribute);
+    assert_equals(collection.length, 0, 'attribute removal');
+  }, property + ' tracks null-namespace ' + attribute + ' on ' + tag);
+}
+</script>

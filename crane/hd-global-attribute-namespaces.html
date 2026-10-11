@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Global attribute reflection uses null-namespace attributes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [name, value, reflected] of [
+  ["dir", "RTL", "rtl"], ["translate", false, false],
+  ["title", "title", "title"], ["lang", "fr", "fr"]
+]) {
+  test(() => {
+    const element = document.createElement("div");
+    element.setAttributeNS("urn:other", name, "foreign");
+    element[name] = value;
+    assert_equals(element.getAttributeNS("urn:other", name), "foreign");
+    assert_equals(element.getAttributeNS(null, name), name === "translate" ? "no" : value);
+    assert_equals(element[name], reflected);
+  }, `${name} setter creates the null-namespace attribute beside a foreign attribute`);
+}
+</script>

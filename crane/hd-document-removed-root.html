@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Removing the HTML root updates document accessors</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const parsed of [false, true]) {
+ test(() => {
+    const doc = parsed ? new DOMParser().parseFromString("<!doctype html><html></html>", "text/html") : document.implementation.createHTMLDocument("");
+    const doctype = doc.doctype;
+    assert_not_equals(doctype, null);
+    doc.removeChild(doctype);
+    assert_equals(doc.doctype, null);
+ }, `doctype stops using a removed child (${parsed ? "parsed" : "created"})`);
+ for (const property of ["documentElement", "head", "body", "dir"]) {
+  test(() => {
+    const doc = parsed
+      ? new DOMParser().parseFromString("<!doctype html><html><head></head><body></body></html>", "text/html")
+      : document.implementation.createHTMLDocument("");
+    const root = doc.documentElement;
+    root.dir = "rtl";
+    doc.removeChild(root);
+    assert_equals(doc[property], property === "dir" ? "" : null);
+    if (property === "dir") {
+      doc.dir = "ltr";
+      assert_equals(root.dir, "rtl", "the detached root is not reflected");
+    }
+  }, `${property} stops using a removed document element (${parsed ? "parsed" : "created"})`);
+ }
+}
+</script>

@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Element class queries are live</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.createElement("div");
+  root.className = "a b";
+  const list = root.getElementsByClassName("a b");
+  assert_equals(list.length, 0, "root is excluded");
+  const child = root.appendChild(document.createElement("span"));
+  child.className = "b a";
+  assert_array_equals(Array.from(list), [child], "insertion and class change");
+  child.className = "a";
+  assert_equals(list.length, 0, "removing a required class");
+  child.className = "a b";
+  const before = root.insertBefore(document.createElement("span"), child);
+  before.className = "a b";
+  assert_array_equals(Array.from(list), [before, child], "tree order");
+  before.remove();
+  child.remove();
+  assert_equals(list.length, 0, "removal");
+}, "an Element class query follows tree and class mutations");
+test(() => {
+  const root = document.createElement("div");
+  const empty = root.getElementsByClassName(" \t\n\f\r");
+  const verticalTab = root.getElementsByClassName("\v");
+  const child = root.appendChild(document.createElement("span"));
+  child.className = "\v";
+  assert_equals(empty.length, 0, "the empty token set stays empty");
+  assert_array_equals(Array.from(verticalTab), [child], "vertical tab is a class token");
+}, "an empty ASCII-whitespace query stays empty while other tokens remain live");
+</script>
