@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IDNA rejects a joiner outside its allowed context</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Isolated from url/IdnaTestV2.any.js: C1, LATIN a + ZWNJ + LATIN b.
+test(() => {
+  assert_throws_js(TypeError, () => new URL('https://a\u200Cb/x'));
+}, 'ToASCII rejects ZWNJ between Latin letters');
+</script>

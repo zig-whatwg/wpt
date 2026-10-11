@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URL hosts apply UTS46 to Unicode domains, preserving ASCII compatibility</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [input, output] of [
+  ['XN--8I7CAA', 'xn--8i7caa'], ['xn--', 'xn--'], ['xn--ascii-', 'xn--ascii-'],
+  ['Bücher.de', 'xn--bcher-kva.de'], ['xn--bcher-kva.é', 'xn--bcher-kva.xn--9ca'],
+  ['a\u0308', 'xn--4ca'], ['<\u0338', 'xn--gdh'], ['<\u00ad\u0338', 'xn--gdh'],
+  ['a\u00adb', 'ab'], ['a\u17b4b', 'ab'], ['a\u00b7b', 'xn--ab-0ea'], ['..', '..']
+]) {
+  test(() => assert_equals(new URL(`https://${input}/x`).host, output),
+    `host accepts and normalizes ${JSON.stringify(input)}`);
+}
+for (const input of [
+  'xn--8i7caa.é', 'xn--ascii-.é', 'xn--tešla', 'xn--u-ccb.é',
+  '\u0308a', '\u0903a', '\u20dda', '\u0378', '\ufffd', '\u115f',
+  'a\u200Db', '\u0627\u200C\u0628', '\u0628\u200Ca',
+  'aא', 'אa', 'א-', 'א1١', '1.א', 'a-.א', 'a\u0378b'
+]) {
+  test(() => assert_throws_js(TypeError, () => new URL(`https://${input}/x`)),
+    `host rejects ${JSON.stringify(input)}`);
+  test(() => {
+    const url = new URL('https://original.example/path');
+    url.hostname = input;
+    assert_equals(url.href, 'https://original.example/path');
+  }, `hostname setter retains the old URL for ${JSON.stringify(input)}`);
+}
+for (const input of ['\u0915\u094D\u200C', '\u0915\u094D\u200D',
+                     '\u0628\u200C\u0628', '\u0628\u064E\u200C\u064E\u0628']) {
+  test(() => {
+    const url = new URL(`https://${input}/`);
+    assert_true(url.hostname.startsWith('xn--'));
+    assert_equals(new URL(url.href).href, url.href);
+  }, `host accepts valid ContextJ ${JSON.stringify(input)}`);
+}
+</script>

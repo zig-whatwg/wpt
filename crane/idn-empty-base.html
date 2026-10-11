@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URL APIs distinguish an empty base from an absent base</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// URL Standard: API URL parser parses base whenever it is given.
+test(() => {
+  assert_throws_js(TypeError, () => new URL('about:blank', ''));
+}, 'URL constructor rejects an explicitly empty base');
+test(() => {
+  assert_equals(URL.parse('about:blank', ''), null);
+}, 'URL.parse returns null for an explicitly empty base');
+test(() => {
+  assert_false(URL.canParse('about:blank', ''));
+}, 'URL.canParse returns false for an explicitly empty base');
+test(() => {
+  assert_equals(new URL('about:blank').href, 'about:blank');
+}, 'URL constructor accepts an absolute URL with no base');
+test(() => {
+  assert_equals(URL.parse('about:blank').href, 'about:blank');
+}, 'URL.parse accepts an absolute URL with no base');
+test(() => {
+  assert_true(URL.canParse('about:blank'));
+}, 'URL.canParse accepts an absolute URL with no base');
+</script>
