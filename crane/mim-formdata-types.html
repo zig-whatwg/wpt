@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Body formData uses extracted MIME essence and parsed boundary</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function bodyObject(kind, bytes, type) {
+  const headers = new Headers();
+  if (type !== null) headers.set('Content-Type', type);
+  const body = new Uint8Array(Array.from(bytes, c => c.charCodeAt(0)));
+  return kind === 'Request' ? new Request('/common/blank.html', {method: 'POST', body, headers}) : new Response(body, {headers});
+}
+for (const kind of ['Request', 'Response']) {
+  for (const type of [null, 'text/plain', 'x/application/x-www-form-urlencoded', 'application/x-www-form-urlencoded-invalid']) {
+    for (const bytes of ['', 'a=b']) {
+      promise_test(async t => {
+        await promise_rejects_js(t, TypeError, bodyObject(kind, bytes, type).formData());
+      }, `${kind}: formData rejects ${JSON.stringify(type)} with ${bytes.length} bytes`);
+    }
+  }
+  for (const bytes of ['', 'a=b&c=d']) {
+    promise_test(async () => {
+      const data = await bodyObject(kind, bytes, 'APPLICATION/X-WWW-FORM-URLENCODED;charset=UTF-8').formData();
+      assert_array_equals(Array.from(data.keys()), bytes ? ['a', 'c'] : []);
+      if (bytes) { assert_equals(data.get('a'), 'b'); assert_equals(data.get('c'), 'd'); }
+    }, `${kind}: uppercase URL-encoded MIME with ${bytes.length} bytes`);
+  }
+  for (const type of ['multipart/form-data', 'multipart/form-data;boundary=x']) {
+    promise_test(async t => {
+      await promise_rejects_js(t, TypeError, bodyObject(kind, '', type).formData());
+    }, `${kind}: empty multipart body rejects ${type}`);
+  }
+  for (const [type, boundary] of [
+    ['MULTIPART/FORM-DATA;BOUNDARY=first;boundary=ignored', 'first'],
+    ['multipart/form-data;boundary="a,b;c"', 'a,b;c'],
+    ['text/plain, multipart/form-data;boundary=last', 'last']
+  ]) {
+    promise_test(async () => {
+      const bytes = `--${boundary}\r\nContent-Disposition: form-data; name="field"\r\n\r\nvalue\r\n--${boundary}--\r\n`;
+      const data = await bodyObject(kind, bytes, type).formData();
+      assert_equals(data.get('field'), 'value');
+      assert_equals(Array.from(data).length, 1);
+    }, `${kind}: parsed boundary from ${type}`);
+  }
+}
+</script>

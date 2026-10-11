@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Multipart zero-part close delimiter and truncated openings</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ["Request", "Response"]) {
+  const make = body => kind === "Request"
+    ? new Request(location.href, {method: "POST", body, headers: {"Content-Type": "multipart/form-data;boundary=boundary"}})
+    : new Response(body, {headers: {"Content-Type": "multipart/form-data;boundary=boundary"}});
+  for (const [label, body] of [
+    ["CRLF", "--boundary--\r\n"],
+    ["EOF", "--boundary--"],
+    ["epilogue", "--boundary--\r\nepilogue"],
+  ]) {
+    promise_test(async () => {
+      assert_array_equals(Array.from((await make(body).formData()).entries()), []);
+    }, `${kind} accepts the zero-part closing delimiter with ${label}`);
+  }
+  for (const [label, body] of [
+    ["raw empty bytes", ""],
+    ["bare opening delimiter", "--boundary"],
+    ["opening delimiter and CRLF", "--boundary\r\n"],
+    ["opening delimiter and CRLF then hyphens", "--boundary\r\n--"],
+  ]) {
+    promise_test(async t => {
+      await promise_rejects_js(t, TypeError, make(body).formData());
+    }, `${kind} rejects ${label}`);
+  }
+}
+</script>

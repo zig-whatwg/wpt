@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Multipart header names are ASCII case insensitive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ["Request", "Response"]) {
+  const make = body => kind === "Request"
+    ? new Request(location.href, {method: "POST", body, headers: {"Content-Type": "multipart/form-data;boundary=boundary"}})
+    : new Response(body, {headers: {"Content-Type": "multipart/form-data;boundary=boundary"}});
+  promise_test(async () => {
+    const body = "--boundary\r\ncontent-disposition: form-data; name=\"TextName\"\r\n\r\nTextValue\r\n--boundary--\r\n";
+    const form = await make(body).formData();
+    assert_equals(form.get("TextName"), "TextValue");
+    assert_false(form.has("textname"));
+  }, `${kind} accepts lowercase multipart disposition without lowercasing values`);
+  promise_test(async () => {
+    const body = "--boundary\r\ncOnTeNt-DiSpOsItIoN: form-data; name=\"FileName\"; filename=\"Upload.TXT\"\r\n" +
+      "cOnTeNt-TyPe: Text/Plain; Charset=UTF-8\r\n\r\nFileData\u0000\r\n--boundary--\r\n";
+    const file = (await make(body).formData()).get("FileName");
+    assert_true(file instanceof File);
+    assert_equals(file.name, "Upload.TXT");
+    assert_equals(file.type, "text/plain; charset=utf-8");
+    assert_equals(await file.text(), "FileData\u0000");
+  }, `${kind} accepts mixed-case multipart header names and preserves file metadata`);
+}
+</script>

@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Request and Response extract a MIME type for blob bodies</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Structural browser ties use Fetch's extract-a-MIME-type algorithm.
+// Blob type still uses the browsers' lowercase/printable-ASCII normalization.
+for (const kind of ['Request', 'Response']) {
+  for (const [input, expected] of [
+    ['text/html;charset=gbk;charset=windows-1255', 'text/html;charset=gbk'],
+    ['TEXT/HTML;CHARSET=GBK', 'text/html;charset=gbk'],
+    ['text/plain;charset=gbk, text/html', 'text/html'],
+    ['text/html;charset=gbk;a=b, text/html;x=y', 'text/html;x=y;charset=gbk'],
+    ['text/html;charset=gbk, text/html;charset=utf-8, text/html;x=y', 'text/html;x=y;charset=gbk'],
+    ['text/html;charset=gbk, x/x, text/html;x=y', 'text/html;x=y'],
+    ['text/html, garbage, */*', 'text/html'],
+    ['garbage', ''],
+    ['*/*', ''],
+    ['x/x;\ftest=x;bonus=x', 'x/x;bonus=x'],
+    ['x/x;a="abc\\', 'x/x;a="abc\\\\"'],
+    ['x/x;a="one,two";a=ignored', 'x/x;a="one,two"'],
+    ['x/x;a=\u00ff', ''],
+  ]) {
+    promise_test(async () => {
+      const init = {headers: {'Content-Type': input}};
+      const body = kind === 'Request' ? new Request('about:blank', init) : new Response('body', init);
+      assert_equals((await body.blob()).type, expected);
+    }, kind + ' extracts ' + JSON.stringify(input));
+  }
+}
+promise_test(async () => {
+  const response = new Response(null, {headers: {'Content-Type': 'x/x;a=first;a=second'}});
+  response.headers.set('Content-Type', 'Text/Plain; A=First;A=Second');
+  assert_equals((await response.blob()).type, 'text/plain;a=first');
+}, 'MIME type is taken from the current headers when the body is packaged');
+</script>

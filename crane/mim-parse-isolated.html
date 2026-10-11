@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MIME extraction discards an invalid parameter, preserving valid parameters</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const type = 'x/x;bonus=x;\ftest=x';
+  const response = new Response(null, {headers: {'Content-Type': type}});
+  assert_equals((await response.blob()).type, 'x/x;bonus=x');
+}, 'Response.blob() parses Content-Type and discards a form-feed parameter name');
+</script>

@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HeadersInit copies Headers objects and preserves Content-Type</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ['Request', 'Response']) {
+  for (const form of ['record', 'array', 'Headers']) {
+    test(() => {
+      const type = 'application/x-www-form-urlencoded';
+      const headers = form === 'record' ? {'Content-Type': type} : form === 'array' ? [['Content-Type', type]] : new Headers({'Content-Type': type});
+      const object = kind === 'Request' ? new Request('/common/blank.html', {headers}) : new Response(null, {headers});
+      assert_equals(object.headers.get('Content-Type'), type);
+    }, `${kind} preserves Content-Type from ${form} HeadersInit`);
+  }
+}
+</script>
