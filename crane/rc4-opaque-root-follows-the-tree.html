@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A wrapped node's opaque root follows it through every mutation (refcount step 4)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The host drives node tracing now (engine.joinOpaqueRoot / leaveOpaqueRoot,
+// called by dom.mutation for a wrapped subtree root): every way a wrapped node
+// gains or loses a parent must keep its wrapper - and so its expandos and its
+// identity - while script reaches any node of its tree, as WebKit's opaque
+// roots (JSNodeOwner::isReachableFromOpaqueRoots) and Blink's tracing do.
+// Each case leaves script holding one OTHER node of the tree, collects, and
+// reads the expando back.
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+async function collectTwice() {
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+}
+function marked(name, value) {
+  const node = document.createElement(name);
+  node.mark = value;
+  return node;
+}
+
+promise_test(async () => {
+  let parent = document.createElement("div");
+  parent.appendChild(marked("span", "appended"));
+  const weak = new WeakRef(parent.firstChild);
+  globalThis.keep1 = parent;
+  parent = null;
+  await collectTwice();
+  assert_equals(keep1.firstChild.mark, "appended");
+  assert_equals(keep1.firstChild, weak.deref());
+}, "appendChild: the parent's wrapper keeps the inserted child's");
+
+promise_test(async () => {
+  const fragment = document.createDocumentFragment();
+  fragment.append(marked("b", "first"), marked("i", "second"));
+  globalThis.keep2 = document.createElement("p");
+  keep2.appendChild(fragment);
+  await collectTwice();
+  assert_equals(keep2.firstChild.mark, "first");
+  assert_equals(keep2.lastChild.mark, "second");
+}, "a fragment's wrapped children inserted together are each kept by their new parent");
+
+promise_test(async () => {
+  globalThis.keep3 = document.createElement("section");
+  keep3.append(marked("em", "a"), "text", marked("u", "b"));
+  keep3.prepend(marked("s", "c"));
+  keep3.firstChild.before(marked("q", "d"));
+  await collectTwice();
+  assert_array_equals([...keep3.children].map(e => e.mark), ["d", "c", "a", "b"]);
+}, "append, prepend and before keep each wrapped node they insert");
+
+promise_test(async () => {
+  const oldParent = document.createElement("div");
+  globalThis.keep4 = document.createElement("div");
+  const child = oldParent.appendChild(marked("span", "moved"));
+  keep4.appendChild(child);
+  await collectTwice();
+  assert_equals(keep4.firstChild.mark, "moved");
+  assert_equals(oldParent.firstChild, null);
+}, "a wrapped node moved to another parent is kept by its new parent, not its old one");
+
+promise_test(async () => {
+  globalThis.keep5 = marked("article", "root");
+  const middle = keep5.appendChild(document.createElement("div"));
+  middle.appendChild(marked("span", "leaf"));
+  globalThis.leaf5 = middle.firstChild;
+  middle.remove();
+  globalThis.keep5 = null;
+  await collectTwice();
+  // The removed subtree's root keeps its own subtree; the old root is gone
+  // from it.
+  assert_equals(leaf5.mark, "leaf");
+  assert_equals(leaf5.parentNode.parentNode, null);
+  assert_equals(leaf5.parentNode.firstChild, leaf5);
+}, "a removed wrapped subtree keeps its own wrappers through its new root");
+
+promise_test(async () => {
+  document.body.insertAdjacentHTML("beforeend", "<div id=rc4-a><b></b></div><div id=rc4-b></div>");
+  const b = document.querySelector("#rc4-a b");
+  b.mark = "moveBefore";
+  if (!Node.prototype.moveBefore) return;
+  document.getElementById("rc4-b").moveBefore(b, null);
+  await collectTwice();
+  assert_equals(document.querySelector("#rc4-b b").mark, "moveBefore");
+}, "moveBefore: a connected wrapped node moved within its tree keeps its wrapper");
+
+promise_test(async () => {
+  let doc = document.implementation.createHTMLDocument("rc4");
+  globalThis.keep7 = doc.body.appendChild(marked("main", "in a document"));
+  keep7.appendChild(marked("p", "child"));
+  doc = null;
+  keep7.remove();
+  await collectTwice();
+  assert_equals(keep7.ownerDocument.title, "rc4");
+  assert_equals(keep7.firstChild.mark, "child");
+}, "a removed root keeps its node document, and its children");
+</script>
