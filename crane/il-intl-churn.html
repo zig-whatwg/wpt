@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Intl objects made and dropped by the thousand leave the ones kept answering</title>
+<link rel="help" href="https://tc39.es/ecma402/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each Intl object's internal slots are freed when the collector takes it
+// (lane intlleak). Making tens of thousands drives collections while a few
+// kept ones are used between them: a kept object must keep its own state, and
+// a dropped one's must never be what a kept one reads.
+
+test(() => {
+  const kept = {
+    collator: new Intl.Collator('en', { sensitivity: 'base' }),
+    nf: new Intl.NumberFormat('en', { minimumFractionDigits: 2 }),
+    dtf: new Intl.DateTimeFormat('en', { dateStyle: 'short' }),
+    locale: new Intl.Locale('en-Latn-US'),
+    seg: new Intl.Segmenter('en', { granularity: 'word' }),
+  };
+  const day = kept.dtf.format(0);
+  for (let i = 0; i < 3000; i++) {
+    new Intl.Collator('en');
+    new Intl.NumberFormat('en', { style: 'percent' });
+    new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'long' });
+    new Intl.PluralRules('en', { type: 'ordinal' });
+    new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+    new Intl.ListFormat('en', { type: 'unit' });
+    new Intl.DisplayNames('en', { type: 'language' });
+    new Intl.Segmenter('en', { granularity: 'sentence' });
+    new Intl.Locale('fr-CA').maximize();
+    if (i % 100 === 0) {
+      assert_equals(kept.collator.compare('a', 'A'), 0, `collator, round ${i}`);
+      assert_equals(kept.collator.resolvedOptions().sensitivity, 'base', `collator options, round ${i}`);
+      assert_equals(kept.nf.format(2), '2.00', `number format, round ${i}`);
+      assert_equals(kept.dtf.format(0), day, `date format, round ${i}`);
+      assert_equals(kept.locale.region(), 'US', `locale, round ${i}`);
+      assert_equals(kept.locale.toString(), 'en-Latn-US', `locale tag, round ${i}`);
+      assert_equals(Array.from(kept.seg.segment('x y')).length, 3, `segmenter, round ${i}`);
+    }
+  }
+}, 'Kept Intl objects answer as they did while thousands of others are made and dropped');
+
+test(() => {
+  // A method taken off one object and kept, called on that object after it
+  // is the only thing holding it.
+  let compare = new Intl.Collator('en', { sensitivity: 'base' }).compare;
+  let format = (() => { const nf = new Intl.NumberFormat('en'); return n => nf.format(n); })();
+  for (let i = 0; i < 20000; i++) new Intl.Collator('en');
+  assert_equals(format(1234), '1,234');
+  // Called on its own, its `this` is no collator: it answers 0, as it does
+  // for any object no Collator made.
+  assert_equals(compare('a', 'b'), 0);
+}, 'A method kept apart from its object still runs');
+</script>

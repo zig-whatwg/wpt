@@ -1,0 +1,168 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Intl objects answer every operation, many times over, as they did once</title>
+<link rel="help" href="https://tc39.es/ecma402/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each case runs many times: under `leaks --atExit` this page shows whether
+// an Intl call keeps a handle it made or was given (lane intlleak: every
+// operation kept its receiver's index lookups, its arguments and its result).
+// The answers pin what Crane's Intl gives today: its formatting is CLDR data
+// for 30 locales, not ICU's, and its time zone is the host's.
+const ROUNDS = 64;
+
+test(() => {
+  const dtf = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(typeof dtf.format(0), 'string');
+    assert_equals(dtf.format(0), dtf.format(new Date(0)));
+    assert_equals(dtf.formatToParts(0).length, 11);
+    assert_equals(dtf.formatToParts(0)[0].type, 'year');
+    assert_equals(dtf.resolvedOptions().locale, 'en');
+    assert_equals(dtf.resolvedOptions().dateStyle, 'medium');
+    assert_equals(dtf.resolvedOptions().timeStyle, undefined);
+  }
+}, 'Intl.DateTimeFormat formats, splits into parts and resolves its options');
+
+test(() => {
+  const nf = new Intl.NumberFormat('en');
+  const usd = new Intl.NumberFormat('en', { style: 'currency', currency: 'USD' });
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(nf.format(1234.5), '1,234.5');
+    assert_equals(usd.format(3), '$3.00');
+    assert_array_equals(nf.formatToParts(-1.5).map(p => p.type), ['minusSign', 'integer', 'decimal', 'fraction']);
+    assert_equals(usd.resolvedOptions().currency, 'USD');
+    assert_equals(usd.resolvedOptions().minimumFractionDigits, 2);
+    assert_equals(nf.resolvedOptions().useGrouping, true);
+  }
+}, 'Intl.NumberFormat formats, splits into parts and resolves its options');
+
+test(() => {
+  const collator = new Intl.Collator('en');
+  const base = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(collator.compare('a', 'b'), -1);
+    assert_equals(collator.compare('b', 'a'), 1);
+    assert_equals(collator.compare('a', 'a'), 0);
+    assert_equals(base.compare('a', 'A'), 0);
+    assert_equals(collator.compare('a'), 0, 'one argument');
+    assert_equals(base.resolvedOptions().sensitivity, 'base');
+    assert_equals(base.resolvedOptions().numeric, true);
+    assert_equals(['b', 'a', 'c'].sort((x, y) => collator.compare(x, y)).join(), 'a,b,c');
+  }
+}, 'Intl.Collator compares and resolves its options');
+
+test(() => {
+  const ordinal = new Intl.PluralRules('en', { type: 'ordinal' });
+  const cardinal = new Intl.PluralRules('en');
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(ordinal.select(2), 'two');
+    assert_equals(cardinal.select(1), 'one');
+    assert_equals(cardinal.select(5), 'other');
+    assert_equals(ordinal.resolvedOptions().type, 'ordinal');
+    assert_equals(cardinal.resolvedOptions().pluralCategories.length, 6);
+  }
+}, 'Intl.PluralRules selects and resolves its options');
+
+test(() => {
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  const always = new Intl.RelativeTimeFormat('en');
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(rtf.format(-1, 'day'), 'yesterday');
+    assert_equals(always.format(3, 'weeks'), 'in 3 weeks');
+    assert_equals(always.format(-2, 'hour'), '2 hours ago');
+    assert_throws_js(TypeError, () => always.format(1, 'fortnight'));
+    assert_equals(rtf.resolvedOptions().numeric, 'auto');
+  }
+}, 'Intl.RelativeTimeFormat formats and resolves its options');
+
+test(() => {
+  const lf = new Intl.ListFormat('en');
+  const or = new Intl.ListFormat('en', { type: 'disjunction' });
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(lf.format(['a', 'b', 'c']), 'a, b, and c');
+    assert_equals(or.format(['a', 'b', 'c']), 'a, b, or c');
+    assert_equals(lf.format([]), '');
+    assert_equals(lf.format([1, 2, 3]), '1, 2, and 3');
+    assert_equals(or.resolvedOptions().type, 'disjunction');
+  }
+}, 'Intl.ListFormat formats and resolves its options');
+
+test(() => {
+  const region = new Intl.DisplayNames('en', { type: 'region' });
+  const none = new Intl.DisplayNames('en', { type: 'region', fallback: 'none' });
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(region.of('US'), 'United States');
+    assert_equals(region.of('ZZ'), 'ZZ');
+    assert_equals(none.of('ZZ'), undefined);
+    assert_equals(none.resolvedOptions().fallback, 'none');
+  }
+}, 'Intl.DisplayNames names codes and resolves its options');
+
+test(() => {
+  const words = new Intl.Segmenter('en', { granularity: 'word' });
+  for (let i = 0; i < ROUNDS; i++) {
+    const segments = words.segment('a b');
+    assert_array_equals(Array.from(segments, s => s.segment), ['a', ' ', 'b']);
+    assert_equals(segments.containing(2).segment, 'b');
+    assert_equals(segments.containing(2).index, 2);
+    assert_equals(segments.containing(2).input, 'a b');
+    assert_equals(segments.containing(99), undefined);
+    assert_equals(words.resolvedOptions().granularity, 'word');
+  }
+}, 'Intl.Segmenter segments, iterates, finds the segment containing an index and resolves its options');
+
+test(() => {
+  const locale = new Intl.Locale('en-US', { calendar: 'gregory', numeric: true });
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(locale.baseName(), 'en-US');
+    assert_equals(locale.language(), 'en');
+    assert_equals(locale.script(), undefined);
+    assert_equals(locale.region(), 'US');
+    assert_equals(locale.calendar(), 'gregory');
+    assert_equals(locale.numeric(), true);
+    assert_equals(locale.maximize().baseName(), 'en-Latn-US');
+    assert_equals(locale.maximize().calendar(), 'gregory');
+    assert_equals(new Intl.Locale('en-Latn-US').minimize().toString(), 'en');
+    assert_equals(locale.getWeekInfo().firstDay, 7);
+    assert_array_equals(locale.getWeekInfo().weekend, [6, 7]);
+    assert_equals(locale.getTextInfo().direction, 'ltr');
+    assert_true(locale.getTimeZones().includes('America/New_York'));
+    assert_true(locale.getCalendars().includes('gregory'));
+  }
+}, 'Intl.Locale answers its accessors and methods');
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    for (const C of [Intl.DateTimeFormat, Intl.NumberFormat, Intl.Collator, Intl.PluralRules,
+                     Intl.RelativeTimeFormat, Intl.ListFormat, Intl.DisplayNames, Intl.Segmenter]) {
+      assert_true(C.supportedLocalesOf('en').includes('en'), C.name);
+    }
+    assert_true(Intl.supportedValuesOf('calendar').includes('gregory'));
+    assert_throws_js(RangeError, () => Intl.supportedValuesOf('bogus'));
+  }
+}, 'supportedLocalesOf and Intl.supportedValuesOf answer lists');
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals((1234.5).toLocaleString('en'), '1,234.5');
+    assert_equals((0.5).toLocaleString('en', { style: 'percent' }), '50%');
+    assert_equals(new Date(NaN).toLocaleString(), 'Invalid Date');
+    assert_equals(typeof new Date(0).toLocaleString('en', { dateStyle: 'short' }), 'string');
+    assert_equals(typeof new Date(0).toLocaleDateString('en'), 'string');
+    assert_equals(typeof new Date(0).toLocaleTimeString('en'), 'string');
+  }
+}, 'Number and Date toLocaleString methods format');
+
+test(() => {
+  const collator = new Intl.Collator();
+  assert_false(Object.getOwnPropertyNames(collator).some(name => name.startsWith('__')),
+               'no property of script\'s holds its internal slots');
+  assert_throws_js(TypeError, () => new Intl.NumberFormat().format.call(collator, 1));
+  assert_throws_js(TypeError, () => new Intl.DateTimeFormat().format.call({}, 0));
+  assert_equals(collator.compare.call({}, 'a', 'b'), 0);
+  assert_throws_js(TypeError, () => new Intl.Locale());
+  assert_throws_js(TypeError, () => new Intl.Locale(1));
+}, 'An Intl method finds its internal slots only on an object its constructor made');
+</script>
