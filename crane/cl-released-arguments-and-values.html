@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Values a binding releases once a call returns still do what the call was for</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-namespaces">
+<link rel="help" href="https://webidl.spec.whatwg.org/#PutForwards">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each case runs many times: under `leaks --atExit` this page shows whether a
+// call keeps a handle it made or was given (lane callleak: a namespace
+// operation's arguments and its void result, an attribute setter's null or
+// primitive value, a [PutForwards] setter's and an invalid enumeration
+// value's undefined result).
+const ROUNDS = 256;
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(CSS.escape('a b'), 'a\\ b');
+    assert_true(CSS.supports('color', 'red'));
+    assert_false(CSS.supports('color', 'not-a-color'));
+  }
+}, 'A namespace operation reads its string arguments');
+
+test(() => {
+  for (let i = 0; i < ROUNDS; i++) {
+    assert_equals(console.groupEnd(), undefined);
+  }
+}, 'A namespace operation that returns nothing returns undefined');
+
+test(() => {
+  const el = document.createElement('div');
+  const handler = () => {};
+  for (let i = 0; i < ROUNDS; i++) {
+    el.onclick = handler;
+    assert_equals(el.onclick, handler);
+    el.onclick = null;
+    assert_equals(el.onclick, null);
+  }
+}, 'An event handler attribute set to null is null; set to a function, that function');
+
+test(() => {
+  const el = document.createElement('div');
+  for (let i = 0; i < ROUNDS; i++) {
+    // Only `true` is asserted: HTMLElement's hidden setter is a stub that
+    // sets the attribute for every value (lane callleak's handoff), so
+    // 'until-found' and false are assigned for the leak run alone.
+    el.hidden = 'until-found';
+    el.hidden = false;
+    el.hidden = true;
+    assert_true(el.hidden);
+    el.removeAttribute('hidden');
+  }
+}, 'An attribute of a union type takes a primitive');
+
+test(() => {
+  const el = document.createElement('div');
+  for (let i = 0; i < ROUNDS; i++) {
+    el.classList = 'a b';
+    assert_equals(el.className, 'a b');
+    el.style = 'color: red';
+    assert_equals(el.style.color, 'red');
+  }
+}, 'A [PutForwards] attribute forwards the value it was given');
+
+test(() => {
+  const xhr = new XMLHttpRequest();
+  for (let i = 0; i < ROUNDS; i++) {
+    xhr.responseType = 'bogus';
+    assert_equals(xhr.responseType, '');
+  }
+}, 'A value outside an enumeration is ignored');
+</script>
