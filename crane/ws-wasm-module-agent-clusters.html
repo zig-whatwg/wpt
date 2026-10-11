@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A WebAssembly.Module crosses to a same-site frame and not to a cross-site one</title>
+<!-- WebAssembly Web API section 3: a Module deserializes only in the agent cluster that serialized
+     it. HTML "obtain a similar-origin window agent" keys a window's cluster by its SITE unless it
+     sent Origin-Agent-Cluster (the OAC section: a Module can be sent to a same-site cross-origin
+     document). So a www1 frame receives the module and instantiates it; a frame on another site
+     gets messageerror. A value without a module crosses sites as before, and a module never goes
+     into storage (forStorage: history state is a DataCloneError).
+     Lane wasmser (2026-10-11), from lane serial's ser-wasm-module-agent-clusters.html. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/wasm/serialization/module/resources/test-incrementer.js"></script>
+<body>
+<script>
+// test-incrementer.js fetches incrementer.wasm relative to the page; this page is elsewhere.
+createWasmModule = () => fetch("/wasm/serialization/module/incrementer.wasm")
+  .then(response => response.arrayBuffer())
+  .then(WebAssembly.compile);
+
+function frameAt(origin, path) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    iframe.onload = () => resolve(iframe);
+    iframe.src = origin + path;
+    document.body.append(iframe);
+  });
+}
+
+promise_test(async t => {
+  const iframe = await frameAt(get_host_info().HTTP_REMOTE_ORIGIN,
+                               "/wasm/serialization/module/resources/incrementer-iframe.html");
+  t.add_cleanup(() => iframe.remove());
+  await testSharingViaIncrementerScript(t, window, "window", iframe.contentWindow, "iframe", "*");
+}, "a same-site (www1) frame receives the module and instantiates it");
+
+/// A frame on `origin` that reports what each message became there; resolves once it is ready.
+function reporterAt(origin) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    const replies = [];
+    let waiting = null;
+    window.addEventListener("message", e => {
+      if (e.source !== iframe.contentWindow) return;
+      if (e.data === "loaded") return resolve({ iframe, next });
+      replies.push(e.data);
+      if (waiting) { waiting(replies.shift()); waiting = null; }
+    });
+    function next() {
+      return replies.length ? Promise.resolve(replies.shift()) : new Promise(r => waiting = r);
+    }
+    iframe.src = origin + "/crane/resources/ws-frame-reporter.html";
+    document.body.append(iframe);
+  });
+}
+
+promise_test(async t => {
+  const { iframe, next } = await reporterAt(get_host_info().HTTP_NOTSAMESITE_ORIGIN);
+  t.add_cleanup(() => iframe.remove());
+  iframe.contentWindow.postMessage({ module: await createWasmModule() }, "*");
+  assert_equals(await next(), "messageerror");
+}, "a frame on another site gets messageerror");
+
+promise_test(async t => {
+  const { iframe, next } = await reporterAt(get_host_info().HTTP_NOTSAMESITE_ORIGIN);
+  t.add_cleanup(() => iframe.remove());
+  iframe.contentWindow.postMessage({ module: "not a module" }, "*");
+  assert_equals(await next(), "message:string", "a message without a module crosses sites");
+  iframe.contentWindow.postMessage({ module: await createWasmModule() }, "*");
+  assert_equals(await next(), "messageerror");
+}, "only the message with a module is refused");
+
+promise_test(async t => {
+  const { iframe } = await reporterAt(get_host_info().HTTP_NOTSAMESITE_ORIGIN);
+  t.add_cleanup(() => iframe.remove());
+  const event = new Promise(resolve => {
+    window.onmessageerror = e => resolve("messageerror");
+    window.addEventListener("message", e => { if (e.source === iframe.contentWindow && e.data && "module" in e.data) resolve("message"); });
+  });
+  iframe.contentWindow.postMessage({ send: true }, "*");
+  assert_equals(await event, "messageerror");
+}, "a module a cross-site frame posts to its parent is a messageerror there");
+
+promise_test(async t => {
+  const { iframe, next } = await reporterAt(get_host_info().HTTP_REMOTE_ORIGIN);
+  t.add_cleanup(() => iframe.remove());
+  iframe.contentWindow.postMessage({ module: await createWasmModule() }, "*");
+  assert_equals(await next(), "message:module");
+}, "a same-site frame's message event carries the module");
+test(() => {
+  const module = new WebAssembly.Module(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]));
+  assert_throws_dom("DataCloneError", () => history.replaceState({ module }, ""));
+}, "a module in history state (forStorage) is a DataCloneError");
+
+promise_test(async () => {
+  const module = await createWasmModule();
+  const copy = structuredClone({ a: module, b: [module] });
+  assert_true(copy.a instanceof WebAssembly.Module);
+  assert_not_equals(copy.a, module, "a new module");
+  assert_equals(copy.a, copy.b[0], "one module met twice is one new module");
+  assert_equals(new WebAssembly.Instance(copy.a).exports.increment(41), 42);
+}, "structuredClone of a module is a new module of the same code");
+</script>

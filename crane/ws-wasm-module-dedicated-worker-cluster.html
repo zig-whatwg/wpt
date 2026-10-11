@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A dedicated worker is in its owner's agent cluster, for WebAssembly.Module serialization</title>
+<!-- HTML "obtain a worker/worklet agent" step 3: a dedicated worker's agent is in its owner's agent
+     cluster, where a shared worker's is in a new one (isTopLevel). WebAssembly Web API section 3: a
+     Module deserializes only in the agent cluster that serialized it. So a module crosses between a
+     window and its dedicated worker, and never between a dedicated worker and a shared worker.
+     Lane wasmser (2026-10-11). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const agentScript = "resources/ws-cluster-agent.js";
+const sharedWorkers = [];
+
+/// The next message `target` (a Worker, or a SharedWorker's port) posts.
+function nextReply(target) {
+  return new Promise(resolve => target.addEventListener("message", e => resolve(e.data), { once: true }));
+}
+
+async function command(target, verb, port) {
+  const reply = nextReply(target);
+  target.postMessage(verb, [port]);
+  return reply;
+}
+
+function dedicated(t) {
+  const worker = new Worker(agentScript);
+  t.add_cleanup(() => worker.terminate());
+  return worker;
+}
+
+function shared(t) {
+  // A name of its own: each test gets a new shared worker.
+  const worker = new SharedWorker(agentScript, "ws-cluster-" + sharedWorkers.length);
+  sharedWorkers.push(worker);
+  worker.port.start();
+  return worker.port;
+}
+
+promise_test(async t => {
+  const receiver = dedicated(t);
+  const sender = shared(t);
+  const { port1, port2 } = new MessageChannel();
+  assert_equals(await command(receiver, "receive", port2), "ready");
+  const outcome = nextReply(receiver);
+  assert_equals(await command(sender, "send", port1), "sent");
+  assert_equals(await outcome, "messageerror");
+}, "a dedicated worker refuses a module a shared worker sends");
+
+promise_test(async t => {
+  const receiver = shared(t);
+  const sender = dedicated(t);
+  const { port1, port2 } = new MessageChannel();
+  assert_equals(await command(receiver, "receive", port2), "ready");
+  const outcome = nextReply(receiver);
+  assert_equals(await command(sender, "send", port1), "sent");
+  assert_equals(await outcome, "messageerror");
+}, "a shared worker refuses a module a dedicated worker sends");
+
+promise_test(async t => {
+  const sender = dedicated(t);
+  const { port1, port2 } = new MessageChannel();
+  const received = new Promise((resolve, reject) => {
+    port2.onmessage = e => resolve(e.data.module);
+    port2.onmessageerror = () => reject(new Error("messageerror"));
+  });
+  assert_equals(await command(sender, "send", port1), "sent");
+  const module = await received;
+  assert_true(module instanceof WebAssembly.Module);
+}, "a dedicated worker's module reaches its owner window");
+
+promise_test(async t => {
+  const receiver = dedicated(t);
+  const { port1, port2 } = new MessageChannel();
+  assert_equals(await command(receiver, "receive", port2), "ready");
+  const outcome = nextReply(receiver);
+  port1.postMessage({ module: new WebAssembly.Module(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0])) });
+  assert_equals(await outcome, "message:module");
+}, "a window's module reaches its dedicated worker");
+
+promise_test(async t => {
+  const outer = dedicated(t);
+  // The outer worker's sub-worker is in the window's cluster too: a module the window sends
+  // reaches it through a port.
+  const { port1, port2 } = new MessageChannel();
+  const reply = nextReply(outer);
+  outer.postMessage("nest", [port2]);
+  assert_equals(await reply, "nested");
+  const outcome = nextReply(outer);
+  port1.postMessage({ module: new WebAssembly.Module(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0])) });
+  assert_equals(await outcome, "message:module");
+}, "a dedicated worker's own dedicated worker is in the window's cluster");
+</script>

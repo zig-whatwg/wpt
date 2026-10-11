@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Reports what a posted message became here</title>
+<script>
+// "loaded" once ready; then, per message: "message:<kind of data.module>", or "messageerror".
+// A message { send: true } asks it to post a new WebAssembly.Module to its parent instead.
+const emptyModule = () => new WebAssembly.Module(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]));
+onmessage = e => {
+  if (e.data && e.data.send === true) return parent.postMessage({ module: emptyModule() }, "*");
+  parent.postMessage("message:" + (e.data && e.data.module instanceof WebAssembly.Module ? "module" : typeof (e.data && e.data.module)), "*");
+};
+onmessageerror = () => parent.postMessage("messageerror", "*");
+parent.postMessage("loaded", "*");
+</script>
