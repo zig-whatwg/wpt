@@ -1,0 +1,118 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection keeps a Range made in a frame's realm after the frame goes</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-addrange">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-range-bp-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// addRange step 3 keeps the Range "by a strong reference". A Range made by
+// another realm's constructor and moved into this document by setStart is
+// this selection's range like any other; the frame's removal or navigation
+// does not end it. (Crane: the selection's traced edge keeps the Range's
+// wrapper, and the wrapper keeps the frame's detached realm.)
+async function collect(t) {
+  for (let i = 0; i < 3; ++i) {
+    TestUtils.gc();
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+}
+
+async function loadedFrame() {
+  const iframe = document.createElement("iframe");
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  document.body.append(iframe);
+  await loaded;
+  return iframe;
+}
+
+function topText(t, data) {
+  const p = document.createElement("p");
+  p.textContent = data;
+  document.body.append(p);
+  t.add_cleanup(() => p.remove());
+  return p.firstChild;
+}
+
+function selectFrameRange(iframe, text) {
+  const range = new iframe.contentWindow.Range();
+  range.selectionMarker = "frame range";
+  // A different root: set the start moves the end too, then the end moves.
+  range.setStart(text, 1);
+  range.setEnd(text, 4);
+  const selection = getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  assert_equals(selection.rangeCount, 1, "added");
+  assert_equals(selection.getRangeAt(0), range, "the same object");
+}
+
+function assertKept(selection, text) {
+  assert_equals(selection.rangeCount, 1, "rangeCount");
+  const kept = selection.getRangeAt(0);
+  assert_equals(kept.selectionMarker, "frame range", "the same Range object");
+  assert_equals(selection.anchorNode, text);
+  assert_equals(selection.anchorOffset, 1);
+  assert_equals(selection.focusNode, text);
+  assert_equals(selection.focusOffset, 4);
+  assert_equals(selection.type, "Range");
+  assert_equals(selection.direction, "forward");
+  assert_equals(String(selection), "op ");
+  assert_true(selection.containsNode(text, true), "containsNode");
+  // Still live: a mutation before the start moves both boundaries.
+  text.insertData(0, "xx");
+  assert_equals(selection.anchorOffset, 3, "live start");
+  assert_equals(selection.focusOffset, 6, "live end");
+  selection.removeRange(kept);
+  assert_equals(selection.rangeCount, 0, "removed");
+}
+
+promise_test(async t => {
+  const selection = getSelection();
+  t.add_cleanup(() => selection.removeAllRanges());
+  const text = topText(t, "top text");
+  await (async () => {
+    const iframe = await loadedFrame();
+    selectFrameRange(iframe, text);
+    iframe.remove();
+  })();
+  await collect(t);
+  assertKept(selection, text);
+}, "a Range constructed in a removed frame's realm stays the selection's range");
+
+promise_test(async t => {
+  const selection = getSelection();
+  const text = topText(t, "top text");
+  let iframe;
+  t.add_cleanup(() => { selection.removeAllRanges(); iframe.remove(); });
+  await (async () => {
+    iframe = await loadedFrame();
+    selectFrameRange(iframe, text);
+    const navigated = new Promise(resolve => iframe.onload = resolve);
+    iframe.srcdoc = "<p>a new document and realm</p>";
+    await navigated;
+  })();
+  await collect(t);
+  assertKept(selection, text);
+}, "a Range constructed in a frame's realm stays the selection's range after the frame navigates");
+
+promise_test(async t => {
+  const selection = getSelection();
+  t.add_cleanup(() => selection.removeAllRanges());
+  const text = topText(t, "top text");
+  await (async () => {
+    const iframe = await loadedFrame();
+    selectFrameRange(iframe, text);
+    iframe.remove();
+  })();
+  // Let the frame's realm go: nothing holds its Range once the selection
+  // drops it.
+  selection.removeAllRanges();
+  await collect(t);
+  assert_equals(selection.rangeCount, 0);
+  selection.setBaseAndExtent(text, 0, text, 3);
+  assert_equals(selection.rangeCount, 1);
+  assert_equals(String(selection), "top");
+}, "the selection takes a new range after dropping a removed frame's Range");
+</script>
