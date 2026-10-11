@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>maxlength counts a lone surrogate in the value as one code unit</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-maxlength">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+// "A string's length is the number of code units it contains" (Infra), and a
+// lone surrogate is one. maxlength 3 with the value "a\uD800" leaves one code
+// unit of room, so typing "bc" inserts "b".
+for (const tag of ["input", "textarea"]) {
+  promise_test(async t => {
+    const control = document.createElement(tag);
+    document.body.append(control);
+    t.add_cleanup(() => control.remove());
+    control.maxLength = 3;
+    control.value = "a\uD800";
+    assert_equals(control.value.length, 2);
+    await test_driver.click(control);
+    control.setSelectionRange(2, 2);
+    await test_driver.send_keys(control, "bc");
+    assert_equals(control.value, "a\uD800b");
+  }, `${tag}: a lone surrogate in the value is one code unit of maxlength`);
+}
+</script>

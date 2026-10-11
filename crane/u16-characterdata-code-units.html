@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>CharacterData, Text, Range and normalize() count and index data in UTF-16 code units</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-length">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-cd-replace">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-cd-substring">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-text-split">
+<link rel=help href="https://dom.spec.whatwg.org/#dom-range-stringifier">
+<link rel=help href="https://infra.spec.whatwg.org/#string-length">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script>
+// A string's length is its number of UTF-16 code units: an astral character
+// is two (a surrogate pair), a lone surrogate one, U+00E9 and U+65E5 one each.
+// Crane stores data as WTF-8, where those take 4, 3, 2 and 3 bytes.
+const kinds = [
+  ["Text", data => document.createTextNode(data)],
+  ["Comment", data => document.createComment(data)],
+];
+
+for (const [kind, make] of kinds) {
+  test(() => {
+    assert_equals(make("A\u{1F600}B").length, 4);
+    assert_equals(make("\uD83D").length, 1);
+    assert_equals(make("é日本").length, 3);
+    // Past 31 bytes (Crane's inline storage).
+    assert_equals(make("\u{1F600}".repeat(10)).length, 20);
+    const node = make("");
+    node.data = "\u{1F600}\u{1F600}";
+    assert_equals(node.length, 4);
+  }, `${kind}: length counts code units`);
+
+  test(() => {
+    const node = make("A\u{1F600}BéC");
+    assert_equals(node.substringData(1, 2), "\u{1F600}");
+    assert_equals(node.substringData(2, 3), "\uDE00Bé");
+    assert_equals(node.substringData(4, 100), "éC");
+    assert_equals(node.substringData(6, 1), "");
+    assert_throws_dom("IndexSizeError", () => node.substringData(7, 1));
+  }, `${kind}: substringData takes code-unit offsets`);
+
+  test(() => {
+    const node = make("\uD83D");
+    node.appendData("\uDE00");
+    assert_equals(node.data, "\u{1F600}");
+    assert_equals(node.length, 2);
+    assert_true(node.isEqualNode(make("\u{1F600}")), "the halves joined are the pair itself");
+    node.insertData(1, "");
+    assert_equals(node.data, "\u{1F600}");
+    node.deleteData(0, 1);
+    assert_equals(node.data, "\uDE00");
+    node.insertData(0, "x\uD83D");
+    assert_equals(node.data, "x\u{1F600}");
+    assert_true(node.isEqualNode(make("x\u{1F600}")));
+  }, `${kind}: lone surrogates that meet become a pair`);
+
+  test(() => {
+    const node = make("日本語");
+    node.replaceData(1, 1, "\u{1F600}");
+    assert_equals(node.data, "日\u{1F600}語");
+    node.deleteData(2, 2);
+    assert_equals(node.data, "日\uD83D");
+    node.insertData(2, "é".repeat(20));
+    assert_equals(node.length, 22);
+    node.replaceData(2, 18, "");
+    assert_equals(node.data, "日\uD83Déé");
+  }, `${kind}: replaceData, deleteData and insertData take code-unit offsets`);
+}
+
+test(() => {
+  const div = document.createElement("div");
+  const text = div.appendChild(document.createTextNode("A\u{1F600}BC"));
+  const range = document.createRange();
+  range.setStart(text, 3);
+  range.setEnd(text, 5);
+  text.deleteData(0, 1);
+  assert_equals(range.startOffset, 2);
+  assert_equals(range.endOffset, 4);
+  text.insertData(0, "é\u{1F600}");
+  assert_equals(range.startOffset, 5);
+  assert_equals(range.endOffset, 7);
+  range.setEnd(text, 7);
+  assert_throws_dom("IndexSizeError", () => range.setEnd(text, 8));
+}, "live ranges move by code units");
+
+test(() => {
+  const div = document.createElement("div");
+  const text = div.appendChild(document.createTextNode("A\u{1F600}B"));
+  const tail = text.splitText(3);
+  assert_equals(text.data, "A\u{1F600}");
+  assert_equals(tail.data, "B");
+  const half = text.splitText(2);
+  assert_equals(text.data, "A\uD83D");
+  assert_equals(half.data, "\uDE00");
+  assert_equals(text.wholeText, "A\u{1F600}B", "wholeText joins the halves");
+  assert_throws_dom("IndexSizeError", () => half.splitText(2));
+}, "splitText splits at a code-unit offset");
+
+test(() => {
+  const div = document.createElement("div");
+  const first = div.appendChild(document.createTextNode("A\uD83D"));
+  const second = div.appendChild(document.createTextNode("\uDE00B"));
+  const range = document.createRange();
+  range.setStart(second, 1);
+  range.setEnd(second, 2);
+  div.normalize();
+  assert_equals(div.childNodes.length, 1);
+  assert_equals(first.data, "A\u{1F600}B");
+  assert_equals(first.length, 4);
+  assert_equals(range.startContainer, first);
+  assert_equals(range.startOffset, 3);
+  assert_equals(range.endOffset, 4);
+}, "normalize joins the halves and moves ranges by code units");
+
+test(() => {
+  const div = document.createElement("div");
+  const text = div.appendChild(document.createTextNode("A\u{1F600}BC"));
+  const range = document.createRange();
+  range.setStart(text, 1);
+  range.setEnd(text, 3);
+  assert_equals(range.toString(), "\u{1F600}");
+  range.setStart(text, 2);
+  range.setEnd(text, 4);
+  assert_equals(range.toString(), "\uDE00B");
+  text.data = "xy\uD83C";
+  const next = div.appendChild(document.createTextNode("\uDF20éZ"));
+  range.setStart(text, 1);
+  range.setEnd(next, 2);
+  assert_equals(range.toString(), "y\u{1F320}é");
+}, "Range stringifies its Text boundaries by code units");
+</script>
