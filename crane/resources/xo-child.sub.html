@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane xo- command frame: document.domain and javascript: navigations</title>
+<body>
+<script>
+window.addEventListener("message", event => {
+  const {id, command, value} = event.data;
+  let result;
+  try {
+    if (command === "set") {
+      document.domain = value;
+      result = document.domain;
+    } else if (command === "domain") {
+      result = document.domain;
+    } else if (command === "navigate-top") {
+      top.location.href = value;
+      result = "queued";
+    } else if (command === "navigate-top-then-set") {
+      // The navigation is queued first; the domain is set after, in the
+      // same task, before the queued javascript: URL task runs.
+      top.location.href = value.url;
+      document.domain = value.domain;
+      result = "queued";
+    } else if (command === "make-documents") {
+      // Made before this document opts in to a domain.
+      window.xoMade = new Document();
+      window.xoHtml = document.implementation.createHTMLDocument("x");
+      window.xoClone = document.cloneNode(false);
+      result = "made";
+    } else if (command === "parent-document") {
+      result = parent.document === null ? "null" : "document";
+    }
+  } catch (error) {
+    result = error.name;
+  }
+  event.source.postMessage({id, result}, "*");
+});
+</script>

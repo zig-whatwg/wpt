@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A document made with another's origin shares it, and keeps it after that document goes</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-document-document">
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-domimplementation-createhtmldocument">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#concept-origin">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/xo-helpers.js"></script>
+<body>
+<script>
+// The owner is a subdomain document, so a domain it sets differs from its
+// host: a document sharing its origin answers the domain, a copy the host.
+// This page opts in too, to reach the owner (each test sets it; it is
+// idempotent).
+
+async function wwwOwner(t) {
+  document.domain = location.hostname;
+  const container = await xoLoadChild(t, document, "{{hosts[][www]}}");
+  const made = await xoCommand(container, "make-documents");
+  assert_equals(made, "made");
+  assert_equals(await xoCommand(container, "set", location.hostname), location.hostname);
+  return container;
+}
+
+promise_test(async t => {
+  const container = await wwwOwner(t);
+  const win = container.contentWindow;
+  assert_equals(win.xoMade.domain, location.hostname, "new Document()");
+  assert_equals(win.xoHtml.domain, location.hostname, "createHTMLDocument()");
+  assert_equals(win.xoClone.domain, location.hostname, "cloneNode()");
+}, "Documents made with a document's origin see a domain it sets later");
+
+promise_test(async t => {
+  const container = await wwwOwner(t);
+  const win = container.contentWindow;
+  const made = win.xoMade, html = win.xoHtml, clone = win.xoClone;
+  await new Promise(resolve => {
+    container.onload = resolve;
+    container.src = "/common/blank.html";
+  });
+  assert_equals(made.domain, location.hostname, "new Document()");
+  assert_equals(html.domain, location.hostname, "createHTMLDocument()");
+  assert_equals(clone.domain, location.hostname, "cloneNode()");
+}, "Documents made with a document's origin keep it after that document navigates away");
+</script>

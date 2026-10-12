@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A javascript: URL navigation of the page compares its initiator's origin domain</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-to-a-javascript:-url">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/xo-helpers.js"></script>
+<body>
+<script>
+// "Navigate to a javascript: URL" step 4: "If initiatorOrigin is not same
+// origin-domain with targetNavigable's active document's origin, then
+// return." Each test opts this page in (idempotent) and makes its own
+// subdomain child, the initiator.
+
+async function waitFor(t, predicate) {
+  for (let i = 0; i < 40 && !predicate(); i++) await xoWait(t, 25);
+}
+
+promise_test(async t => {
+  document.domain = location.hostname;
+  const sub = await xoLoadChild(t, document, "{{hosts[][www]}}");
+  window.xoRanOneSided = false;
+  await xoCommand(sub, "navigate-top", "javascript:void(window.xoRanOneSided = true)");
+  await xoWait(t, 300);
+  assert_false(window.xoRanOneSided);
+}, "A javascript: URL from a subdomain that did not opt in does not run");
+
+promise_test(async t => {
+  document.domain = location.hostname;
+  const sub = await xoLoadChild(t, document, "{{hosts[][www]}}");
+  assert_equals(await xoCommand(sub, "set", location.hostname), location.hostname);
+  window.xoRanBoth = false;
+  assert_equals(await xoCommand(sub, "navigate-top", "javascript:void(window.xoRanBoth = true)"), "queued");
+  await waitFor(t, () => window.xoRanBoth);
+  assert_true(window.xoRanBoth);
+}, "A javascript: URL from a subdomain with the same domain runs");
+</script>

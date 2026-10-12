@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An inherited document shares its creator's origin, domain included</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#concept-origin">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/xo-helpers.js"></script>
+<body>
+<script>
+// HTML 7.1.1: "Origins can be shared, e.g., among multiple Document
+// objects." An initial about:blank document's origin is its creator's, a
+// srcdoc document's its container document's: one origin, so document.domain
+// set through either document is the other's too.
+
+promise_test(async t => {
+  const {owner} = await xoOwner(t);
+  const blank = xoBlankFrame(t, owner);
+  const sub = await xoLoadChild(t, owner, "{{hosts[][www]}}");
+  assert_equals(await xoCommand(sub, "set", location.hostname), location.hostname);
+  assert_equals(sub.contentDocument, null, "the owner has not opted in");
+  blank.contentDocument.domain = location.hostname;
+  assert_not_equals(sub.contentDocument, null,
+                    "the about:blank document's origin is the owner's: its domain is set too");
+}, "document.domain set in an initial about:blank document is its creator's");
+
+promise_test(async t => {
+  const {owner} = await xoOwner(t);
+  const frame = owner.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = "<p>srcdoc";
+  owner.body.appendChild(frame);
+  await loaded;
+  const sub = await xoLoadChild(t, owner, "{{hosts[][www]}}");
+  assert_equals(await xoCommand(sub, "set", location.hostname), location.hostname);
+  assert_equals(sub.contentDocument, null, "the owner has not opted in");
+  frame.contentDocument.domain = location.hostname;
+  assert_not_equals(sub.contentDocument, null,
+                    "the srcdoc document's origin is its container document's");
+}, "document.domain set in a srcdoc document is its container document's");
+
+promise_test(async t => {
+  const {owner} = await xoOwner(t);
+  const blank = xoBlankFrame(t, owner);
+  const sub = await xoLoadChild(t, owner, "{{hosts[][www]}}");
+  assert_equals(await xoCommand(sub, "set", location.hostname), location.hostname);
+  const readFromBlank = blank.contentWindow.Function("w",
+    "try { return w.document === null ? 'null' : 'document'; } catch (e) { return e.name; }");
+  assert_equals(readFromBlank(sub.contentWindow), "SecurityError", "neither has opted in");
+  owner.domain = location.hostname;
+  assert_equals(readFromBlank(sub.contentWindow), "document",
+                "the about:blank document's origin is the owner's");
+}, "document.domain set by the creator is its initial about:blank document's");
+
+promise_test(async t => {
+  const {owner} = await xoOwner(t);
+  const blank = xoBlankFrame(t, owner);
+  const inner = await xoLoadChild(t, blank.contentDocument, "{{hosts[][www]}}");
+  owner.domain = location.hostname;
+  assert_equals(inner.contentDocument, null, "the inner document has not opted in");
+  assert_equals(await xoCommand(inner, "set", location.hostname), location.hostname);
+  assert_not_equals(inner.contentDocument, null,
+                    "the about:blank container document has its creator's domain");
+  const readFromBlank = blank.contentWindow.Function("w", "return w.document");
+  assert_equals(inner.contentDocument, readFromBlank(inner.contentWindow),
+                "contentDocument and Window.document agree");
+}, "contentDocument in an inherited about:blank container document reads its creator's domain");
+
+promise_test(async t => {
+  const {owner} = await xoOwner(t);
+  const blank = xoBlankFrame(t, owner);
+  const inner = await xoLoadChild(t, blank.contentDocument, "{{hosts[][www]}}");
+  owner.domain = location.hostname;
+  assert_equals(inner.contentDocument, null,
+                "the container's origin opted in, the inner document's did not");
+}, "contentDocument in an inherited about:blank container document stays one-sided");
+</script>
