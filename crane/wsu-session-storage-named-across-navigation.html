@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an item written through Storage's named setter reaches the navigable's next document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webstorage.html#the-storage-interface">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webstorage.html#the-sessionstorage-attribute">
+<link rel="help" href="https://webidl.spec.whatwg.org/#legacy-platform-object-set">
+<!-- websockets/unload-a-document/001-004 decide whether a document was discarded by navigating
+     away and back: the returning document reads sessionStorage[uuid], which the first one wrote
+     with the named setter. Crane keeps no document in session history (no back/forward cache), so
+     the document is always discarded: 001 and 003 (open WebSocket: "must be discarded") pass and
+     002 and 004 (closed WebSocket: "must not be") fail with "document was discarded" - exactly as
+     in Chrome 154 and Firefox 157 (wpt.fyi, 2026-10-06; Safari passes 002 from its page cache, no
+     browser passes 004). Until 1f9e9ce980 (lane specops) Storage had no named setter in the
+     binding: `sessionStorage[uuid] = "true"` made a plain property of that Window's Storage
+     wrapper, the next document never saw it, and the four files read inverted. Lane wsunload
+     (2026-10-12). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function loaded(f) {
+  return new Promise(r => f.addEventListener("load", r, { once: true }));
+}
+
+promise_test(async t => {
+  const key = "wsu-named-" + Math.random();
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const f = document.createElement("iframe");
+  f.src = "resources/nav-probe.html?one";
+  let load = loaded(f);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  await load;
+
+  f.contentWindow.sessionStorage[key] = "true";
+  assert_equals(sessionStorage.getItem(key), "true",
+    "the named setter stores an item in the top-level traversable's session storage");
+
+  load = loaded(f);
+  f.src = "resources/nav-probe.html?two";
+  await load;
+  assert_true(f.contentWindow.probeSearch === "?two", "the frame holds its next document");
+  assert_equals(f.contentWindow.sessionStorage[key], "true",
+    "the next document reads the item through the named getter");
+
+  delete f.contentWindow.sessionStorage[key];
+  assert_equals(sessionStorage.getItem(key), null, "the named deleter removes the item");
+}, "sessionStorage[key] = value in one document is an item the navigable's next document reads");
+</script>
