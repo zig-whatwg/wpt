@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Legacy platform objects: named properties in [[OwnPropertyKeys]]</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#legacy-platform-object-ownpropertykeys">
+<link rel="help" href="https://github.com/whatwg/html/issues/1731">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebIDL 3.9.6 step 3 lists the visible supported property names. A form's
+// are left out in all three browsers (WebKit's and Gecko's supported names
+// are empty, Blink's named getter is [NotEnumerable]; whatwg/html#1731),
+// while named lookup still finds them.
+function append(parent, tag, name, id) {
+  const element = document.createElement(tag);
+  if (name !== undefined) element.setAttribute("name", name);
+  if (id !== undefined) element.id = id;
+  parent.appendChild(element);
+  return element;
+}
+
+test(t => {
+  const form = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => form.remove());
+  append(form, "input", "alpha");
+  append(form, "input", undefined, "beta");
+  form.expando = 1;
+  assert_array_equals(Object.getOwnPropertyNames(form), ["0", "1", "expando"]);
+  assert_array_equals(Reflect.ownKeys(form).filter(k => typeof k === "string"), ["0", "1", "expando"]);
+  assert_array_equals(Object.keys(form), ["0", "1", "expando"]);
+  const seen = [];
+  for (const k in form) if (k === "alpha" || k === "beta") seen.push(k);
+  assert_array_equals(seen, [], "for-in");
+}, "form: no named properties in [[OwnPropertyKeys]]");
+
+test(t => {
+  const form = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => form.remove());
+  const alpha = append(form, "input", "alpha");
+  const beta = append(form, "input", undefined, "beta");
+  assert_equals(form.alpha, alpha);
+  assert_equals(form.beta, beta);
+  assert_true("alpha" in form);
+  assert_true(Object.prototype.hasOwnProperty.call(form, "beta"));
+  const desc = Object.getOwnPropertyDescriptor(form, "alpha");
+  assert_equals(desc.value, alpha);
+  assert_false(desc.enumerable, "enumerable");
+  assert_true(desc.configurable, "configurable");
+  assert_false(desc.writable, "writable");
+}, "form: named lookup and descriptors are unchanged");
+
+test(t => {
+  const div = document.body.appendChild(document.createElement("div"));
+  t.add_cleanup(() => div.remove());
+  div.setAttribute("data-x", "1");
+  append(div, "a", undefined, "n");
+  assert_array_equals(Object.getOwnPropertyNames(div.dataset), ["x"], "DOMStringMap");
+  assert_array_equals(Object.getOwnPropertyNames(div.attributes), ["0", "data-x"], "NamedNodeMap");
+  assert_array_equals(Object.getOwnPropertyNames(div.children), ["0", "n"], "HTMLCollection");
+}, "every other interface lists its named properties");
+</script>

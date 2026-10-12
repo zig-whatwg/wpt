@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Legacy platform objects: the named property visibility algorithm on a read</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#dfn-named-property-visibility">
+<link rel="help" href="https://webidl.spec.whatwg.org/#LegacyOverrideBuiltIns">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Step 2: "If O has an own property named P, then return false." Step 3:
+// [LegacyOverrideBuiltIns] returns true there - it skips only the prototype
+// chain (steps 4-6), never the own property.
+function append(parent, tag, name, id) {
+  const element = document.createElement(tag);
+  if (name !== undefined) element.setAttribute("name", name);
+  if (id !== undefined) element.id = id;
+  parent.appendChild(element);
+  return element;
+}
+
+test(t => {
+  const form = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => form.remove());
+  form.later = 5;
+  const input = append(form, "input", "later");
+  assert_equals(form.later, 5, "the expando");
+  assert_equals(Object.getOwnPropertyDescriptor(form, "later").value, 5, "its descriptor");
+  assert_true(delete form.later);
+  assert_equals(form.later, input, "then the named property");
+}, "[LegacyOverrideBuiltIns] form: an expando hides a named property added after it");
+
+test(t => {
+  const form = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => form.remove());
+  Object.defineProperty(form, "fixed", { value: 6, configurable: false, writable: false });
+  append(form, "input", "fixed");
+  assert_equals(form.fixed, 6);
+  assert_false(delete form.fixed);
+  assert_equals(form.fixed, 6);
+}, "[LegacyOverrideBuiltIns] form: a non-configurable expando hides a named property added after it");
+
+test(t => {
+  const form = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => form.remove());
+  const submit = append(form, "input", "submit");
+  const action = append(form, "input", undefined, "action");
+  assert_equals(form.submit, submit);
+  assert_equals(form.action, action);
+}, "[LegacyOverrideBuiltIns] form: a named property hides the prototype chain");
+
+test(t => {
+  const div = document.body.appendChild(document.createElement("div"));
+  t.add_cleanup(() => div.remove());
+  const children = div.children;
+  children.later = 5;
+  const a = append(div, "a", undefined, "later");
+  assert_equals(children.later, 5, "the expando");
+  assert_true(delete children.later);
+  assert_equals(children.later, a, "then the named property");
+  append(div, "a", undefined, "item");
+  assert_equals(typeof children.item, "function", "the prototype");
+}, "HTMLCollection: an expando and the prototype chain hide a named property");
+</script>
