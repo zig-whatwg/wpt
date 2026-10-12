@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Invalid final cookie Path</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  for (const [index, value] of ['', 'relative'].entries()) {
+    const name = 'ck_final_path_' + index;
+    t.add_cleanup(() => {
+      document.cookie = name + '=; Max-Age=0';
+      document.cookie = name + '=; Path=/ck-unreachable; Max-Age=0';
+    });
+    document.cookie = name + '=present; Path=/ck-unreachable; Path=' + value;
+    assert_true(document.cookie.split('; ').includes(name + '=present'), value);
+  }
+}, 'An empty or relative final Path selects the default path');
+</script>

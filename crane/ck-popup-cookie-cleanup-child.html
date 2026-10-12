@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie cleanup popup child</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/cookies/resources/cookie-test.js"></script>
+<script>
+httpRedirectCookieTest('ck_popup=1; Path=/cookies/attributes', 'ck_popup=1',
+                      'An iframe in a popup reads and expires its cookie',
+                      '/cookies/attributes/resources/path/one.html');
+</script>

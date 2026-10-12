@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Domain boundaries</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [suffix, domain, accepted] of [
+  ['single', '.' + location.hostname, true],
+  ['double', '..' + location.hostname, false],
+  ['public', location.hostname.split('.').at(-1), false],
+]) {
+  test(t => {
+    const name = 'ck_domain_' + suffix;
+    const attributes = '; Path=/; Domain=' + domain;
+    document.cookie = name + '=; Max-Age=0' + attributes;
+    t.add_cleanup(() => { document.cookie = name + '=; Max-Age=0' + attributes; });
+    document.cookie = name + '=present' + attributes;
+    assert_equals(document.cookie.split('; ').includes(name + '=present'), accepted);
+  }, 'Cookie Domain ' + suffix + ' boundary');
+}
+</script>

@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicitly empty names and tokens without equals</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const path = '; Path=' + location.pathname;
+  t.add_cleanup(() => { document.cookie = 'ck_explicit; Max-Age=0' + path; });
+  document.cookie = '=ck_explicit' + path;
+  assert_false(document.cookie.split('; ').includes('ck_explicit'));
+}, 'An explicitly empty name is rejected (Firefox/Safari majority)');
+test(t => {
+  const path = '; Path=' + location.pathname;
+  t.add_cleanup(() => { document.cookie = 'ck_token; Max-Age=0' + path; });
+  document.cookie = 'ck_token' + path;
+  assert_true(document.cookie.split('; ').includes('ck_token'));
+}, 'A token without equals is a nameless cookie (three-way split: spec)');
+</script>

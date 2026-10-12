@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Collect cookie context controls from a cross-origin popup</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+test(() => {
+  const popup = window.open(get_host_info().HTTP_REMOTE_ORIGIN + '/crane/ck-cookie-context-child.html');
+  add_completion_callback(() => popup.close());
+  fetch_tests_from_window(popup);
+}, 'Collect cookie command context assertions');
+</script>

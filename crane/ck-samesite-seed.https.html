@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SameSite cookie request setup</title>
+<script>
+const attributes = {
+  strict: '; SameSite=Strict', lax: '; SameSite=Lax',
+  default: '', none: '; SameSite=None'
+};
+function writeCookies(expire) {
+  for (const [name, extra] of Object.entries(attributes)) {
+    document.cookie = 'ck_site_' + name + '=present; Path=/; Secure' + extra +
+                      (expire ? '; Max-Age=0' : '');
+  }
+}
+writeCookies(true);
+writeCookies(false);
+window.addEventListener('message', event => {
+  if (event.source !== opener || event.data !== 'ck-expire') return;
+  writeCookies(true);
+  event.source.postMessage('ck-expired', event.origin);
+});
+opener.postMessage('ck-ready', '*');
+</script>

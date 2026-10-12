@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An initial about:blank document inherits cookie access</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  document.cookie = 'ck_blank=parent';
+  t.add_cleanup(() => { document.cookie = 'ck_blank=; Max-Age=0'; });
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  assert_equals(frame.contentDocument.URL, 'about:blank');
+  assert_true(frame.contentDocument.cookie.split('; ').includes('ck_blank=parent'));
+  frame.contentDocument.cookie = 'ck_blank=child';
+  assert_true(document.cookie.split('; ').includes('ck_blank=child'));
+}, 'Initial about:blank reads and writes its creator cookie URL');
+</script>

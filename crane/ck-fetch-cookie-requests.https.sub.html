@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Cookies remain available across repeated same-site fetches</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+promise_test(async t => {
+  const suffix = '; Path=/; Domain=' + location.hostname + '; Secure; SameSite=Strict';
+  for (let i = 0; i < 20; ++i) {
+    const name = 'ck_fetch_' + i;
+    document.cookie = name + '=present' + suffix;
+    t.add_cleanup(() => { document.cookie = name + '=; Max-Age=0' + suffix; });
+  }
+  const origins = [location.origin, get_host_info().HTTPS_REMOTE_ORIGIN];
+  for (let i = 0; i < 200; ++i) {
+    const response = await fetch(origins[i % 2] + '/cookies/resources/list.py',
+                                 {credentials: 'include', cache: 'no-store'});
+    assert_true(response.ok);
+    const cookies = await response.json();
+    assert_equals(cookies.ck_fetch_0, 'present');
+    assert_equals(cookies.ck_fetch_19, 'present');
+  }
+}, 'Cookie retrieval stays correct across 200 same-host and subdomain requests');
+</script>

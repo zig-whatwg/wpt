@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie cleanup in an iframe inside a cross-origin popup</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+test(t => {
+  const popup = window.open(get_host_info().HTTP_REMOTE_ORIGIN +
+                           '/crane/ck-popup-cookie-cleanup-child.html');
+  add_completion_callback(() => popup.close());
+  fetch_tests_from_window(popup);
+}, 'Collect a cookie test from a cross-origin popup');
+</script>

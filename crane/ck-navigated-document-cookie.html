@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A navigated-away HTTP document is cookie-averse</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  document.cookie = 'ck_navigated=parent; Path=/';
+  t.add_cleanup(() => { document.cookie = 'ck_navigated=; Path=/; Max-Age=0'; });
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.appendChild(frame);
+  await loaded;
+  const oldDocument = frame.contentDocument;
+  assert_true(oldDocument.cookie.split('; ').includes('ck_navigated=parent'));
+  const navigated = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html?ck=second';
+  await navigated;
+  assert_equals(oldDocument.cookie, '');
+  oldDocument.cookie = 'ck_navigated=old; Path=/';
+  assert_equals(oldDocument.cookie, '');
+  assert_true(document.cookie.split('; ').includes('ck_navigated=parent'));
+}, 'An old HTTP document cannot read or change cookies after navigation');
+</script>

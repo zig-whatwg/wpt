@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Response cookies use the request path</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/cookies/resources/echo-cookie.html';
+  document.body.appendChild(frame);
+  await loaded;
+  const doc = frame.contentDocument;
+  const expire = () => { doc.cookie = 'ck_response_path=; Max-Age=0'; };
+  expire();
+  t.add_cleanup(expire);
+  const value = encodeURIComponent(JSON.stringify('ck_response_path=present'));
+  const response = await fetch(`/cookies/resources/cookie.py?set=${value}`);
+  assert_true(response.ok);
+  assert_equals(new URL(doc.URL).pathname, '/cookies/resources/echo-cookie.html');
+  assert_true(doc.cookie.split('; ').includes('ck_response_path=present'),
+              'The frame sees the cookie set in its directory');
+  assert_false(document.cookie.split('; ').includes('ck_response_path=present'),
+               'The caller outside that directory does not see it');
+}, 'HTTP response cookies use the response request directory');
+</script>

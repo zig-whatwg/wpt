@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie commands in a popup and its frame</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/cookies/resources/cookie-test.js"></script>
+<body>
+<script>
+test(() => {
+  assert_equals(window.top, window);
+  assert_not_equals(window.opener, null);
+  assert_false(window.opener.closed);
+  assert_equals(window.opener.top, window.opener);
+  assert_equals(window.opener.opener, null);
+}, 'A cookie popup can read its cross-origin opener chain');
+test(() => {
+  setTestContextUsingRootWindow();
+}, 'A cookie popup can select its root test context');
+promise_test(async t => {
+  document.cookie = 'ck_popup_command=present';
+  t.add_cleanup(() => { document.cookie = 'ck_popup_command=; Max-Age=0'; });
+  const cookies = await test_driver.get_all_cookies();
+  assert_true(cookies.some(cookie => cookie.name === 'ck_popup_command'));
+  await test_driver.delete_all_cookies();
+  assert_false(document.cookie.split('; ').includes('ck_popup_command=present'));
+}, 'Cookie commands address the popup document');
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/cookies/resources/echo-cookie.html';
+  document.body.appendChild(frame);
+  await loaded;
+  const win = frame.contentWindow;
+  assert_equals(new URL(win.document.URL).pathname, '/cookies/resources/echo-cookie.html');
+  win.document.cookie = 'ck_frame_command=present';
+  t.add_cleanup(() => { win.document.cookie = 'ck_frame_command=; Max-Age=0'; });
+  assert_true(win.getCookies().split('; ').includes('ck_frame_command=present'));
+  win.setTestContextUsingRootWindow();
+  const cookies = await win.test_driver.get_all_cookies();
+  assert_true(cookies.some(cookie => cookie.name === 'ck_frame_command'));
+  await win.expireCookies();
+  assert_false(win.getCookies().split('; ').includes('ck_frame_command=present'));
+}, 'Cookie commands address the iframe document inside a popup');
+</script>

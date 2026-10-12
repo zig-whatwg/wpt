@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie path ordering counts bytes</title>
+<link rel="help" href="https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-22#section-5.8.3">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const shortPath = '/crane/';
+  const longPath = location.pathname;
+  const expire = () => {
+    document.cookie = `ck_short=; Max-Age=0; Path=${shortPath}`;
+    document.cookie = `ck_long=; Max-Age=0; Path=${longPath}`;
+  };
+  expire();
+  t.add_cleanup(expire);
+  document.cookie = `ck_short=1; Path=${shortPath}`;
+  document.cookie = `ck_long=1; Path=${longPath}`;
+  const names = document.cookie.split('; ').filter(value =>
+    value.startsWith('ck_short=') || value.startsWith('ck_long='));
+  assert_array_equals(names, ['ck_long=1', 'ck_short=1']);
+}, 'Longer paths precede shorter paths with the same number of segments');
+</script>

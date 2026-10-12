@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie deletion uses the command document's path</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/cookies/resources/echo-cookie.html';
+  document.body.appendChild(frame);
+  await loaded;
+  const win = frame.contentWindow;
+  assert_equals(new URL(win.document.URL).pathname, '/cookies/resources/echo-cookie.html');
+  win.document.cookie = 'ck_frame_delete=present';
+  t.add_cleanup(() => { win.document.cookie = 'ck_frame_delete=; Max-Age=0'; });
+  assert_true(win.getCookies().split('; ').includes('ck_frame_delete=present'));
+  const cookies = await win.test_driver.get_all_cookies();
+  assert_true(cookies.some(cookie => cookie.name === 'ck_frame_delete'), 'The command sees the frame path');
+  await win.expireCookies();
+  assert_false(win.getCookies().split('; ').includes('ck_frame_delete=present'), 'The frame command deletes its associated cookie');
+}, 'A frame cookie command uses the frame URL');
+</script>

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Duplicate cookie attributes use their final value</title>
+<link rel="help" href="https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-22#section-5.6">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const selected = new URLSearchParams(location.search).get('case');
+function cookieCase(id, body, description) {
+  if (selected === null || selected === id) test(body, description);
+}
+function checkCookie(t, name, attributes) {
+  const expire = () => { document.cookie = `${name}=; Max-Age=0`; };
+  expire();
+  t.add_cleanup(expire);
+  document.cookie = `${name}=present; ${attributes}`;
+  assert_true(document.cookie.split('; ').includes(`${name}=present`));
+}
+cookieCase('domain', t => {
+  checkCookie(t, 'ck_empty_domain', `Domain=${location.hostname}; Domain=`);
+}, 'An empty last Domain attribute produces a host-only cookie');
+cookieCase('path-empty', t => {
+  checkCookie(t, 'ck_empty_path', 'Path=/ck-unreachable; Path=');
+}, 'An empty last Path attribute uses the request default path');
+cookieCase('path-relative', t => {
+  checkCookie(t, 'ck_relative_path', 'Path=/ck-unreachable; Path=relative');
+}, 'A relative last Path attribute uses the request default path');
+cookieCase('samesite', t => {
+  checkCookie(t, 'ck_invalid_samesite', 'SameSite=None; SameSite=unsupported');
+}, 'An invalid last SameSite attribute replaces None with Default');
+</script>

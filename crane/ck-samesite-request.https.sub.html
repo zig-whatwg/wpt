@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>SameSite request cookies and redirect history</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+const hosts = get_host_info();
+function messageFrom(popup, expected) {
+  return new Promise(resolve => {
+    function listener(event) {
+      if (event.source !== popup || event.data !== expected) return;
+      window.removeEventListener('message', listener);
+      resolve();
+    }
+    window.addEventListener('message', listener);
+  });
+}
+for (const [label, origin, redirect] of [
+  ['same host', hosts.HTTPS_ORIGIN, false],
+  ['same-site subdomain', hosts.HTTPS_REMOTE_ORIGIN, false],
+  ['cross-site host', hosts.HTTPS_NOTSAMESITE_ORIGIN, false],
+  ['cross-site redirect returning to same host', hosts.HTTPS_ORIGIN, true],
+]) {
+  promise_test(async t => {
+    const popup = window.open(origin + '/crane/ck-samesite-seed.https.html');
+    await messageFrom(popup, 'ck-ready');
+    t.add_cleanup(async () => {
+      const expired = messageFrom(popup, 'ck-expired');
+      popup.postMessage('ck-expire', origin);
+      await expired;
+      popup.close();
+    });
+    let target = origin + '/cookies/resources/list.py';
+    if (redirect) {
+      target = hosts.HTTPS_NOTSAMESITE_ORIGIN +
+        '/cookies/resources/redirectWithCORSHeaders.py?status=307&location=' +
+        encodeURIComponent(target);
+    }
+    const response = await fetch(target, {credentials: 'include'});
+    assert_true(response.ok);
+    const cookies = await response.json();
+    assert_equals(cookies.ck_site_none, 'present');
+    for (const name of ['strict', 'lax', 'default']) {
+      assert_equals(cookies['ck_site_' + name],
+        origin === hosts.HTTPS_NOTSAMESITE_ORIGIN || redirect ? undefined : 'present', name);
+    }
+  }, 'Request cookies: ' + label);
+}
+</script>
