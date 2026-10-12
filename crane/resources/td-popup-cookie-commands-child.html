@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie commands in a popup and in a frame inside it</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+"use strict";
+// The popup's own commands, and its frame's, run while script runs there: each answers
+// for its own window's document (WebDriver 14), not "no such window".
+
+promise_test(async t => {
+  document.cookie = "td_popup=1";
+  t.add_cleanup(() => { document.cookie = "td_popup=; Max-Age=0"; });
+  const cookies = await test_driver.get_all_cookies();
+  assert_true(cookies.some(c => c.name === "td_popup"), "get_all_cookies");
+  const cookie = await test_driver.get_named_cookie("td_popup");
+  assert_equals(cookie.value, "1", "get_named_cookie");
+  await test_driver.delete_all_cookies();
+  assert_false(document.cookie.split("; ").includes("td_popup=1"), "delete_all_cookies");
+}, "cookie commands from the popup act on the popup's document");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/cookies/resources/echo-cookie.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const win = frame.contentWindow;
+  win.document.cookie = "td_popup_frame=2";
+  t.add_cleanup(() => { win.document.cookie = "td_popup_frame=; Max-Age=0"; });
+  const cookies = await win.test_driver.get_all_cookies();
+  assert_true(cookies.some(c => c.name === "td_popup_frame"), "get_all_cookies");
+  const cookie = await win.test_driver.get_named_cookie("td_popup_frame");
+  assert_equals(cookie.value, "2", "get_named_cookie");
+  await win.test_driver.delete_all_cookies();
+  assert_false(win.document.cookie.split("; ").includes("td_popup_frame=2"), "delete_all_cookies");
+}, "cookie commands from a frame inside the popup act on the frame's document");
+</script>

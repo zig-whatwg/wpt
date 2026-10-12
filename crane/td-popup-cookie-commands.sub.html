@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>testdriver cookie commands from a cross-origin popup and from a frame inside it</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+"use strict";
+test(() => {
+  const popup = window.open(get_host_info().HTTP_REMOTE_ORIGIN + "/crane/resources/td-popup-cookie-commands-child.html");
+  add_completion_callback(() => popup.close());
+  fetch_tests_from_window(popup);
+}, "collect the popup's cookie command tests");
+</script>

@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>testdriver cookie commands act on the window whose test_driver called them, or the context argument</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+"use strict";
+// WebDriver 14.1/14.2/14.5 answer for the current browsing context's active document's
+// URL; testdriver.js runs a command in the browsing context whose test_driver was called,
+// unless a context argument names another (wptrunner's testdriver-extra.js). The frame
+// document's path is /cookies/resources/, this document's is /crane/: a cookie each
+// sets with the default path is associated with its own URL only.
+
+async function loadFrame(t) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/cookies/resources/echo-cookie.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const win = frame.contentWindow;
+  assert_equals(win.location.pathname, "/cookies/resources/echo-cookie.html");
+  return win;
+}
+
+function names(cookies) {
+  return cookies.map(c => c.name).sort();
+}
+
+promise_test(async t => {
+  const win = await loadFrame(t);
+  win.document.cookie = "td_frame_path=1";
+  document.cookie = "td_top_path=1";
+  t.add_cleanup(() => {
+    win.document.cookie = "td_frame_path=; Max-Age=0";
+    document.cookie = "td_top_path=; Max-Age=0";
+  });
+  const frameNames = names(await win.test_driver.get_all_cookies());
+  assert_true(frameNames.includes("td_frame_path"), "the frame's command sees the frame-path cookie");
+  assert_false(frameNames.includes("td_top_path"), "the frame's command does not see the top document's path cookie");
+  const topNames = names(await test_driver.get_all_cookies());
+  assert_true(topNames.includes("td_top_path"), "the top's command sees the top-path cookie");
+  assert_false(topNames.includes("td_frame_path"), "the top's command does not see the frame-path cookie");
+}, "get_all_cookies from a frame's test_driver answers for the frame's document");
+
+promise_test(async t => {
+  const win = await loadFrame(t);
+  win.document.cookie = "td_frame_named=2";
+  t.add_cleanup(() => { win.document.cookie = "td_frame_named=; Max-Age=0"; });
+  const cookie = await win.test_driver.get_named_cookie("td_frame_named");
+  assert_equals(cookie.value, "2");
+  assert_equals(cookie.path, "/cookies/resources");
+  await promise_rejects_js(t, Error, test_driver.get_named_cookie("td_frame_named"),
+                           "the top document has no such associated cookie");
+}, "get_named_cookie from a frame's test_driver answers for the frame's document");
+
+promise_test(async t => {
+  const win = await loadFrame(t);
+  win.document.cookie = "td_frame_delete=3";
+  document.cookie = "td_top_keep=3";
+  t.add_cleanup(() => {
+    win.document.cookie = "td_frame_delete=; Max-Age=0";
+    document.cookie = "td_top_keep=; Max-Age=0";
+  });
+  await win.test_driver.delete_all_cookies();
+  assert_false(win.document.cookie.split("; ").includes("td_frame_delete=3"), "the frame-path cookie is deleted");
+  assert_true(document.cookie.split("; ").includes("td_top_keep=3"), "the top-path cookie is not the frame's to delete");
+}, "delete_all_cookies from a frame's test_driver deletes only the frame document's cookies");
+
+promise_test(async t => {
+  const win = await loadFrame(t);
+  win.document.cookie = "td_frame_expire=4";
+  t.add_cleanup(() => { win.document.cookie = "td_frame_expire=; Max-Age=0"; });
+  // cookies/resources/echo-cookie.html's own cleanup: set_test_context to the root
+  // window, then delete_all_cookies - the test context says where messages go, not
+  // which window the command acts on.
+  await win.expireCookies();
+  assert_false(win.document.cookie.split("; ").includes("td_frame_expire=4"));
+}, "the frame's expireCookies() deletes the frame-path cookie after set_test_context");
+
+promise_test(async t => {
+  const win = await loadFrame(t);
+  win.document.cookie = "td_frame_context=5";
+  t.add_cleanup(() => { win.document.cookie = "td_frame_context=; Max-Age=0"; });
+  const frameNames = names(await test_driver.get_all_cookies(win));
+  assert_true(frameNames.includes("td_frame_context"), "a context argument names the frame");
+  const cookie = await test_driver.get_named_cookie("td_frame_context", win);
+  assert_equals(cookie.value, "5");
+  await test_driver.delete_all_cookies(win);
+  assert_false(win.document.cookie.split("; ").includes("td_frame_context=5"));
+}, "the top's commands with the frame as their context argument act on the frame");
+</script>
