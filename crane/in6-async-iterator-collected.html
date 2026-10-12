@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An async iterator script drops is collected</title>
+<!--
+  Crane test (lane inst6, instances B2). The async iterable binding kept the
+  iterator call_values handed it: a strong root, so every stream.values() and
+  every for await over a stream kept the iterator, its reader and the stream
+  until the agent ended. An iterator must be collectable once script drops it.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+
+async function collectUntil(done) {
+  for (let i = 0; i < 20 && !done(); i++) {
+    await TestUtils.gc();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+promise_test(async () => {
+  let collected = 0;
+  const registry = new FinalizationRegistry(() => { collected++; });
+  (() => {
+    for (let i = 0; i < 10; i++) {
+      const it = new ReadableStream({ start(c) { c.close(); } }).values();
+      registry.register(it, i);
+    }
+  })();
+  await collectUntil(() => collected === 10);
+  assert_equals(collected, 10, "every dropped iterator is collected");
+}, "an iterator from values() that script drops is collected");
+
+promise_test(async () => {
+  let collected = 0;
+  let total = 0;
+  const registry = new FinalizationRegistry(() => { collected++; });
+  for (let i = 0; i < 10; i++) {
+    await (async () => {
+      const it = new ReadableStream({ start(c) { c.enqueue(2); c.enqueue(3); c.close(); } }).values();
+      registry.register(it, i);
+      for await (const chunk of it) total += chunk;
+    })();
+  }
+  assert_equals(total, 50, "every loop read its stream");
+  await collectUntil(() => collected === 10);
+  assert_equals(collected, 10, "every iterator a finished for await used is collected");
+}, "an iterator a for await has read to its end is collected");
+</script>
