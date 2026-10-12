@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An img element decodes its image: natural size, complete, currentSrc, load and error, decode()</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#update-the-image-data">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-naturalwidth">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-decode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// basn6a08.png is PngSuite's 32 x 32 RGBA image (WPT's copy).
+const png = "/css/css-ui/support/PTS/basn6a08.png";
+
+function load(img, src) {
+  return new Promise(resolve => {
+    img.onload = () => resolve("load");
+    img.onerror = () => resolve("error");
+    img.src = src;
+  });
+}
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  assert_equals(img.naturalWidth, 0, "before a source");
+  assert_true(img.complete, "no src: complete");
+  assert_equals(await load(img, png), "load");
+  assert_equals(img.naturalWidth, 32);
+  assert_equals(img.naturalHeight, 32);
+  assert_true(img.complete);
+  assert_equals(img.currentSrc, new URL(png, location.href).href);
+}, "a PNG loads: its natural size, complete and currentSrc");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  assert_equals(await load(img, png), "load");
+  // Not being rendered (disconnected): width and height are the natural
+  // size, then the dimension attributes.
+  assert_equals(img.width, 32);
+  assert_equals(img.height, 32);
+  img.setAttribute("width", "10");
+  assert_equals(img.width, 10);
+  assert_equals(img.height, 32);
+}, "width and height of an image that is not rendered");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  assert_equals(await load(img, "/images/broken.png"), "error");
+  assert_equals(img.naturalWidth, 0);
+  assert_equals(img.naturalHeight, 0);
+  assert_true(img.complete, "a broken image is complete");
+}, "a broken image fires error and has no natural size");
+
+promise_test(async t => {
+  const img = document.createElement("img");
+  assert_equals(await load(img, "/images/broken.png"), "error");
+  await promise_rejects_dom(t, "EncodingError", img.decode());
+}, "decode() of a broken image rejects with EncodingError");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  img.src = png;
+  await img.decode();
+  assert_equals(img.naturalWidth, 32);
+  assert_true(img.complete);
+}, "decode() resolves once the image is decoded");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  // MIME Sniffing's image rules: a PNG served as text/plain is a PNG.
+  assert_equals(await load(img, "/images/green.png?pipe=header(Content-Type,text/plain)"), "load");
+  assert_greater_than(img.naturalWidth, 0);
+}, "the image type is sniffed from its bytes");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  // "Whether the image is fetched successfully or not ... must be ignored".
+  assert_equals(await load(img, "/images/green.png?pipe=status(404)"), "load");
+  assert_greater_than(img.naturalWidth, 0);
+}, "a 404 response with image data loads");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  assert_equals(await load(img, "/common/blank.html"), "error");
+  assert_equals(img.naturalWidth, 0);
+}, "a resource that is not an image is broken");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  assert_equals(await load(img, png), "load");
+  // A new source that fails replaces the current image.
+  assert_equals(await load(img, "/images/broken.png"), "error");
+  assert_equals(img.naturalWidth, 0);
+  assert_equals(img.currentSrc, new URL("/images/broken.png", location.href).href);
+}, "a broken image replaces a loaded one");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  // image.py's bitmaps are BMPs (WPT's security-features).
+  img.crossOrigin = "anonymous";
+  assert_equals(img.crossOrigin, "anonymous");
+  assert_equals(await load(img, "/common/security-features/subresource/image.py"), "load");
+  assert_greater_than(img.naturalWidth, 0);
+  assert_equals(img.naturalWidth, img.naturalHeight, "image.py's bitmaps are square");
+}, "a BMP loads");
+</script>

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A decoded image's pixels reach a 2D canvas: drawImage, getImageData, putImageData, origin-clean</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/canvas.html#drawing-images">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/canvas.html#pixel-manipulation">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/canvas.html#security-with-canvas-elements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// basn6a08.png: PngSuite's 32 x 32 RGBA image. Its reference pixels, from a
+// decoder checked against PIL: (31, 0) = 255,0,8,255; (31, 31) = 0,32,255,255;
+// (0, 0) and (0, 31) have alpha 0. Only opaque and fully transparent pixels
+// are compared: the output bitmap is premultiplied (HTML 4.12.5.7), so other
+// values may round on the way back.
+const png = "/css/css-ui/support/PTS/basn6a08.png";
+
+function loaded(src, crossOrigin) {
+  const img = new Image();
+  if (crossOrigin !== undefined) img.crossOrigin = crossOrigin;
+  return new Promise((resolve, reject) => {
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("error loading " + src));
+    img.src = src;
+  });
+}
+
+function pixel(data, width, x, y) {
+  const i = (y * width + x) * 4;
+  return Array.from(data.slice(i, i + 4));
+}
+
+test(() => {
+  const canvas = document.createElement("canvas");
+  assert_equals(canvas.width, 300);
+  assert_equals(canvas.height, 150);
+  const context = canvas.getContext("2d");
+  assert_equals(canvas.getContext("2d"), context, "the same context every time");
+  assert_equals(context.canvas, canvas);
+  canvas.width = 7;
+  assert_equals(canvas.getAttribute("width"), "7");
+  assert_equals(canvas.width, 7);
+}, "a canvas's size and its one 2D context");
+
+test(() => {
+  const context = document.createElement("canvas").getContext("2d");
+  const data = context.getImageData(0, 0, 2, 2).data;
+  assert_array_equals(Array.from(data), new Array(16).fill(0), "a new bitmap is transparent black");
+  assert_throws_dom("IndexSizeError", () => context.getImageData(0, 0, 0, 1));
+  assert_throws_dom("IndexSizeError", () => context.getImageData(0, 0, 1, 0));
+  // Outside the bitmap: transparent black.
+  const outside = context.getImageData(-5, -5, 2, 2).data;
+  assert_array_equals(Array.from(outside), new Array(16).fill(0));
+}, "getImageData of a new canvas");
+
+test(() => {
+  const context = document.createElement("canvas").getContext("2d");
+  const image = context.createImageData(2, 1);
+  image.data.set([10, 20, 30, 255, 200, 100, 50, 0]);
+  context.putImageData(image, 3, 4);
+  const back = context.getImageData(3, 4, 2, 1).data;
+  // An alpha 0 pixel is transparent black once premultiplied.
+  assert_array_equals(Array.from(back), [10, 20, 30, 255, 0, 0, 0, 0]);
+  // A dirty rectangle: only its pixels.
+  const two = context.createImageData(2, 1);
+  two.data.set([1, 2, 3, 255, 4, 5, 6, 255]);
+  context.putImageData(two, 0, 0, 1, 0, 1, 1);
+  assert_array_equals(Array.from(context.getImageData(0, 0, 2, 1).data), [0, 0, 0, 0, 4, 5, 6, 255]);
+}, "putImageData then getImageData");
+
+promise_test(async () => {
+  const img = await loaded(png);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  context.drawImage(img, 0, 0);
+  // Explicit sizes: the image's natural size, not a layout box.
+  const data = context.getImageData(0, 0, 32, 32).data;
+  assert_array_equals(pixel(data, 32, 31, 0), [255, 0, 8, 255]);
+  assert_array_equals(pixel(data, 32, 31, 31), [0, 32, 255, 255]);
+  assert_array_equals(pixel(data, 32, 0, 0), [0, 0, 0, 0]);
+  assert_array_equals(pixel(data, 32, 0, 31), [0, 0, 0, 0]);
+  // Drawn at an offset, clipped by the bitmap.
+  const other = document.createElement("canvas").getContext("2d");
+  other.drawImage(img, 290, -16);
+  const corner = other.getImageData(290, 0, 10, 16).data;
+  // Image (0..9, 16..31) lands at canvas (290..299, 0..15): canvas (299, 15)
+  // is image (9, 31); the rest of the image is outside the bitmap.
+  assert_array_equals(pixel(corner, 10, 9, 15), pixel(data, 32, 9, 31));
+}, "drawImage copies a PNG's pixels at its natural size");
+
+promise_test(async () => {
+  const img = await loaded("/common/security-features/subresource/image.py", "anonymous");
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  context.drawImage(img, 0, 0);
+  const rgba = context.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data;
+  // common.sub.js decodeImageData: 8 bits from 3 pixels' RGB.
+  let text = "";
+  for (let i = 0; i + 12 <= rgba.length; i += 12) {
+    const bits = [];
+    for (let j = 0; j < 3; ++j) bits.push(rgba[i + j * 4], rgba[i + j * 4 + 1], rgba[i + j * 4 + 2]);
+    bits.pop();
+    let byte = 0;
+    for (let j = 0; j < 8; ++j) byte = (byte << 1) | (bits[j] >= 128 ? 1 : 0);
+    if (byte == 0) break;
+    text += String.fromCharCode(byte);
+  }
+  const parsed = JSON.parse(text);
+  assert_equals(typeof parsed.headers, "object");
+  assert_equals(parsed.headers.host, location.host);
+}, "image.py's BMP reads back as the request's headers");
+
+promise_test(async () => {
+  const img = await loaded("http://{{hosts[alt][]}}:{{ports[http][0]}}/images/green.png?img-taint");
+  const context = document.createElement("canvas").getContext("2d");
+  context.drawImage(img, 0, 0);
+  assert_throws_dom("SecurityError", () => context.getImageData(0, 0, 1, 1));
+}, "a cross-origin image drawn without CORS taints the canvas");
+
+promise_test(async () => {
+  const img = await loaded("http://{{hosts[alt][]}}:{{ports[http][0]}}/images/green.png?pipe=header(Access-Control-Allow-Origin,*)&img-cors", "anonymous");
+  const context = document.createElement("canvas").getContext("2d");
+  context.drawImage(img, 0, 0);
+  const data = context.getImageData(0, 0, 1, 1).data;
+  assert_equals(data[3], 255);
+}, "a CORS image drawn with crossorigin keeps the canvas origin-clean");
+
+promise_test(async () => {
+  const img = await loaded(png);
+  const source = document.createElement("canvas");
+  source.width = 32;
+  source.height = 32;
+  source.getContext("2d").drawImage(img, 0, 0);
+  const target = document.createElement("canvas").getContext("2d");
+  target.drawImage(source, 1, 2);
+  assert_array_equals(pixel(target.getImageData(0, 0, 33, 34).data, 33, 32, 2), [255, 0, 8, 255]);
+}, "drawImage from another canvas");
+
+promise_test(async () => {
+  const broken = new Image();
+  await new Promise(resolve => { broken.onerror = resolve; broken.src = "/images/broken.png"; });
+  const context = document.createElement("canvas").getContext("2d");
+  assert_throws_dom("InvalidStateError", () => context.drawImage(broken, 0, 0));
+  // An image with no data yet draws nothing.
+  context.drawImage(new Image(), 0, 0);
+  const empty = document.createElement("canvas");
+  empty.width = 0;
+  assert_throws_dom("InvalidStateError", () => context.drawImage(empty, 0, 0));
+}, "drawImage of a broken image or an empty canvas throws");
+</script>

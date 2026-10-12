@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An img's clientWidth and clientHeight, and its width and height when rendered</title>
+<link rel="help" href="https://drafts.csswg.org/cssom-view/#dom-element-clientwidth">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/embedded-content-other.html#dimension-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// basn6a08.png is 32 x 32; an img with no style is a replaced element of
+// its natural size, or of its width and height attributes' size, the other
+// dimension from its natural aspect ratio (CSS 2.1 10.3.2, 10.6.2). The
+// security-features tests read image pixels back with
+// getImageData(0, 0, img.clientWidth, img.clientHeight).
+const png = "/css/css-ui/support/PTS/basn6a08.png";
+
+function loaded(img, src) {
+  return new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = () => reject(new Error("error"));
+    img.src = src;
+  });
+}
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  await loaded(img, png);
+  assert_equals(img.clientWidth, 0, "not in a document: no layout box");
+  document.body.appendChild(img);
+  assert_equals(img.clientWidth, 32);
+  assert_equals(img.clientHeight, 32);
+  img.remove();
+  assert_equals(img.clientWidth, 0);
+}, "a connected img's client size is its natural size");
+
+promise_test(async () => {
+  const img = document.createElement("img");
+  img.setAttribute("width", "16");
+  document.body.appendChild(img);
+  await loaded(img, png);
+  assert_equals(img.clientWidth, 16);
+  assert_equals(img.clientHeight, 16, "the height from the natural aspect ratio");
+  assert_equals(img.width, 16);
+  assert_equals(img.height, 16, "rendered: the content box");
+  img.remove();
+  assert_equals(img.height, 32, "not rendered: the natural height");
+}, "a width attribute sizes the box, the aspect ratio its height");
+</script>
