@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>frameElement compares live origin domains</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-frameelement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="dd-domain-helpers.js"></script>
+<body>
+<script>
+async function ddFreshChild(t, host = location.hostname) {
+  // Keep the top document unmodified so every test starts with unset domains.
+  const container = await ddFrame(t);
+  const owner = container.contentDocument;
+  const frame = owner.createElement("iframe");
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  const url = new URL("dd-domain-child.sub.html", location.href);
+  url.hostname = host;
+  frame.src = url;
+  owner.body.appendChild(frame);
+  await loaded;
+  return {owner, frame};
+}
+
+promise_test(async t => {
+  const {owner, frame} = await ddFreshChild(t);
+  assert_equals(await ddCommand(frame, "frameElement"), "element");
+  owner.domain = location.hostname;
+  assert_equals(await ddCommand(frame, "frameElement"), "null", "one-sided opt in");
+  await ddCommand(frame, "set", location.hostname);
+  assert_equals(await ddCommand(frame, "frameElement"), "element", "both opted in");
+}, "frameElement is hidden after a one-sided domain change");
+
+promise_test(async t => {
+  const {owner, frame} = await ddFreshChild(t, "{{hosts[][www]}}");
+  owner.domain = location.hostname;
+  assert_equals(await ddCommand(frame, "frameElement"), "null");
+  await ddCommand(frame, "set", location.hostname);
+  assert_equals(await ddCommand(frame, "frameElement"), "element");
+}, "frameElement is exposed after matching domain changes across subdomains");
+</script>

@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A constructed Document inherits the creator's origin independently of its URL</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-document-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const created = new Document();
+  assert_equals(created.domain, location.hostname);
+}, "new Document inherits the creator's host without a domain opt-in");
+
+test(() => {
+  document.domain = location.hostname;
+  const created = new Document();
+  assert_equals(created.domain, document.domain);
+}, "new Document inherits an explicitly set domain");
+
+test(() => {
+  const created = new Document();
+  assert_equals(created.URL, "about:blank");
+  assert_equals(created.defaultView, null);
+  assert_throws_dom("SecurityError", () => created.domain = location.hostname);
+}, "Inherited origin does not change the new document's URL or give it a browsing context");
+</script>

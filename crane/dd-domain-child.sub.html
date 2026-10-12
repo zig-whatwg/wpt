@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.domain command frame</title>
+<body>
+<script>
+window.addEventListener("message", event => {
+  const {id, command, value} = event.data;
+  let result;
+  try {
+    if (command === "set") {
+      document.domain = value;
+      result = document.domain;
+    } else if (command === "frameElement") {
+      result = window.frameElement === null ? "null" : "element";
+    } else if (command === "origin") {
+      result = window.origin;
+    } else if (command === "domain") {
+      result = document.domain;
+    }
+  } catch (error) {
+    result = error.name;
+  }
+  event.source.postMessage({id, result}, "*");
+});
+</script>

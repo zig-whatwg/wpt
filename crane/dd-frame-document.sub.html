@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Frame contentDocument uses both documents' current domain</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#concept-bcc-content-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="dd-domain-helpers.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frameset = document.createElement("frameset");
+  const frame = document.createElement("frame");
+  t.add_cleanup(() => frameset.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "dd-domain-child.sub.html";
+  frameset.appendChild(frame);
+  document.body.appendChild(frameset);
+  await loaded;
+  assert_not_equals(frame.contentDocument, null, "unchanged tuple origins");
+  document.domain = location.hostname;
+  assert_equals(frame.contentDocument, null, "only the container document opted in");
+  await ddCommand(frame, "set", location.hostname);
+  assert_not_equals(frame.contentDocument, null, "both documents opted in");
+}, "A frame document requires matching document.domain opt-in");
+</script>

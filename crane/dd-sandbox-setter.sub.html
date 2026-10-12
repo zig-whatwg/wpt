@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sandbox restrictions precede document.domain opt in</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="dd-domain-helpers.js"></script>
+<body>
+<script>
+for (const sandbox of ["allow-scripts", "allow-scripts allow-same-origin"]) {
+  promise_test(async t => {
+    const frame = await ddFrame(t, location.hostname, location.port, sandbox);
+    assert_equals(await ddCommand(frame, "set", location.hostname), "SecurityError");
+  }, "document.domain throws for sandbox=" + sandbox);
+}
+
+promise_test(async t => {
+  const frame = await ddFrame(t, location.hostname, location.port,
+                              "allow-scripts allow-same-origin");
+  frame.removeAttribute("sandbox");
+  assert_equals(await ddCommand(frame, "set", location.hostname), "SecurityError");
+}, "Removing sandbox does not clear the active document.domain restriction");
+
+promise_test(async t => {
+  const frame = await ddFrame(t);
+  frame.sandbox = "allow-scripts allow-same-origin";
+  assert_equals(await ddCommand(frame, "set", location.hostname), location.hostname);
+}, "Adding sandbox does not alter the current document before navigation");
+</script>

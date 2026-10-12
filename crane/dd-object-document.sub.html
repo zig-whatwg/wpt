@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Object contentDocument uses both documents' current domain</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#concept-bcc-content-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="dd-domain-helpers.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const object = document.createElement("object");
+  object.type = "text/html";
+  t.add_cleanup(() => object.remove());
+  const loaded = new Promise(resolve => object.onload = resolve);
+  object.data = "dd-domain-child.sub.html";
+  document.body.appendChild(object);
+  await loaded;
+  assert_not_equals(object.contentDocument, null, "unchanged tuple origins");
+  document.domain = location.hostname;
+  assert_equals(object.contentDocument, null, "only the container document opted in");
+  await ddCommand(object, "set", location.hostname);
+  assert_not_equals(object.contentDocument, null, "both documents opted in");
+}, "An object document requires matching document.domain opt-in");
+</script>

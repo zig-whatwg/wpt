@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>contentDocument compares live origin domains on both documents</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#concept-bcc-content-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="dd-domain-helpers.js"></script>
+<body>
+<script>
+async function ddFreshChild(t, host = location.hostname, port = location.port) {
+  // A domain opt-in cannot be undone, so each test needs a fresh owner too.
+  const container = await ddFrame(t);
+  const owner = container.contentDocument;
+  const frame = owner.createElement("iframe");
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  const url = new URL("dd-domain-child.sub.html", location.href);
+  url.hostname = host;
+  url.port = port;
+  frame.src = url;
+  owner.body.appendChild(frame);
+  await loaded;
+  return {owner, frame};
+}
+
+promise_test(async t => {
+  const {owner, frame} = await ddFreshChild(t);
+  assert_not_equals(frame.contentDocument, null, "unchanged tuple origins");
+  owner.domain = location.hostname;
+  assert_equals(frame.contentDocument, null, "only the owner document opted in");
+  assert_equals(await ddCommand(frame, "set", location.hostname), location.hostname);
+  assert_not_equals(frame.contentDocument, null, "both opted in");
+}, "A one-sided domain setter revokes contentDocument until the other document opts in");
+
+promise_test(async t => {
+  const {owner, frame} = await ddFreshChild(t, "{{hosts[][www]}}");
+  // Read Window.document in the owner's realm, whose domain is opted in below.
+  const readWindowDocument = owner.defaultView.Function("frame", "return frame.contentWindow.document");
+  owner.domain = location.hostname;
+  assert_equals(frame.contentDocument, null, "child has not opted in");
+  assert_equals(await ddCommand(frame, "set", location.hostname), location.hostname);
+  assert_not_equals(frame.contentDocument, null, "different hosts with equal domains");
+  assert_equals(frame.contentDocument, readWindowDocument(frame));
+  assert_equals(await ddCommand(frame, "origin"), new URL(frame.src).origin,
+                "setting a domain does not change serialized origin");
+}, "Matching document.domain values permit contentDocument across subdomains");
+
+promise_test(async t => {
+  const {owner, frame} = await ddFreshChild(t, "{{hosts[][www]}}", "{{ports[http][1]}}");
+  owner.domain = location.hostname;
+  assert_equals(await ddCommand(frame, "set", location.hostname), location.hostname);
+  assert_not_equals(frame.contentDocument, null, "different host and port");
+}, "Matching document.domain values ignore ports");
+</script>
