@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: WebIDL special operations, bound from the IDL (lane specops)</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#idl-special-operations">
+<link rel=help href="https://webidl.spec.whatwg.org/#es-legacy-platform-objects">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<div id=log></div>
+<script>
+"use strict";
+
+// Storage's named property getter, setter and deleter are getItem, setItem and
+// removeItem (HTML 12.2.1): named properties are the map's entries.
+for (const name of ["localStorage", "sessionStorage"]) {
+  test(t => {
+    const storage = window[name];
+    storage.clear();
+    t.add_cleanup(() => storage.clear());
+    storage.alpha = "a";
+    storage[7] = "seven";
+    assert_equals(storage.getItem("alpha"), "a", "setter");
+    assert_equals(storage.getItem("7"), "seven", "an index is a key");
+    assert_equals(storage.length, 2);
+    assert_array_equals(Object.keys(storage).sort(), ["7", "alpha"]);
+    assert_true(delete storage.alpha, "deleter");
+    assert_equals(storage.getItem("alpha"), null);
+    storage.setItem("key", "item");
+    assert_equals(typeof storage.key, "function", "a prototype member hides a key");
+    assert_equals(Object.getOwnPropertyDescriptor(storage, "key"), undefined);
+    assert_false(Object.keys(storage).includes("key"));
+  }, `${name}: named properties are the storage map`);
+}
+
+test(() => {
+  // NamedNodeMap's setNamedItem(Attr) is a regular operation, not a setter:
+  // its named properties are read-only (WebIDL 3.9.3 step 2.2.1).
+  const el = document.createElement("div");
+  el.setAttribute("title", "t");
+  const attrs = el.attributes;
+  const attr = attrs.title;
+  assert_false(Object.getOwnPropertyDescriptor(attrs, "title").writable);
+  assert_throws_js(TypeError, () => { attrs.title = 1; });
+  assert_throws_js(TypeError, () => Object.defineProperty(attrs, "title", { value: 1 }));
+  assert_equals(attrs.title, attr);
+  // [[Delete]] answers false (a sloppy delete; strict code throws).
+  assert_false(Function("a", "return delete a.title")(attrs));
+}, "NamedNodeMap: named properties without a named setter or deleter");
+
+test(() => {
+  // HTMLOptionsCollection inherits HTMLCollection's named getter.
+  const select = document.createElement("select");
+  const option = document.createElement("option");
+  option.id = "pick";
+  select.append(option);
+  assert_equals(select.options.pick, option);
+  assert_false(Object.getOwnPropertyDescriptor(select.options, "pick").enumerable,
+               "[LegacyUnenumerableNamedProperties] is inherited");
+}, "HTMLOptionsCollection: the named properties it inherits");
+
+test(() => {
+  // Touch Events declares `getter boolean getModifierState(DOMString)`; no
+  // browser makes TouchEvent a legacy platform object.
+  if (typeof TouchEvent !== "function") return;
+  const event = new TouchEvent("touchstart");
+  assert_equals(event.Shift, undefined);
+  assert_false("Shift" in event);
+}, "TouchEvent has no named properties");
+
+test(() => {
+  // Browsers give the named getter to HTMLDocument; an XMLDocument has none.
+  const xml = document.implementation.createDocument(null, "root");
+  const img = xml.createElementNS("http://www.w3.org/1999/xhtml", "img");
+  img.setAttribute("name", "pic");
+  xml.documentElement.append(img);
+  assert_equals(xml.pic, undefined);
+}, "XMLDocument has no named properties");
+
+test(() => {
+  // DOMStringMap's anonymous setter and deleter, and an index as a name.
+  const el = document.createElement("div");
+  el.dataset[0] = "zero";
+  el.dataset.fooBar = "x";
+  assert_equals(el.getAttribute("data-0"), "zero");
+  assert_equals(el.getAttribute("data-foo-bar"), "x");
+  assert_true(delete el.dataset.fooBar);
+  assert_false(el.hasAttribute("data-foo-bar"));
+}, "DOMStringMap: setter, deleter and an index as a name");
+</script>

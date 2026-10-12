@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Storage named writes must reach the same map as setItem</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ["localStorage", "sessionStorage"]) {
+  test(t => {
+    const storage = window[kind];
+    storage.clear();
+    t.add_cleanup(() => storage.clear());
+    storage.setItem("rsDirect", "first");
+    assert_equals(storage.length, 1);
+    storage.setItem("rsDirect", "replacement");
+    assert_equals(storage.length, 1);
+    assert_equals(storage.getItem("rsDirect"), "replacement");
+    storage.removeItem("rsDirect");
+    assert_equals(storage.length, 0);
+  }, kind + ": direct setItem updates one map entry");
+
+  // Isolated storage_setitem.window.js [] case, with a distinct key so
+  // an ordinary expando left behind on a broken implementation cannot mask it.
+  test(t => {
+    const storage = window[kind];
+    storage.clear();
+    t.add_cleanup(() => { delete storage["rsNamed"]; storage.clear(); });
+    storage["rsNamed"] = "first";
+    assert_equals(storage.length, 1, "named write updates map size");
+    assert_equals(storage.getItem("rsNamed"), "first");
+    storage["rsNamed"] = "replacement";
+    assert_equals(storage.length, 1);
+    assert_equals(storage.getItem("rsNamed"), "replacement");
+    delete storage["rsNamed"];
+    assert_equals(storage.length, 0);
+  }, kind + ": bracket assignment and deletion update the storage map");
+
+  test(t => {
+    const storage = window[kind];
+    storage.clear();
+    t.add_cleanup(() => storage.clear());
+    storage.setItem("rsVisible", "value");
+    assert_equals(storage.rsVisible, "value");
+    assert_true("rsVisible" in storage);
+    assert_true(Object.keys(storage).includes("rsVisible"));
+  }, kind + ": setItem is visible through named lookup and enumeration");
+}
+</script>
