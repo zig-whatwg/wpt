@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Origin-Agent-Cluster is ignored outside a secure context</title>
+<!-- HTML "create and initialize a Document object" step 7.3: requestsOAC is false when the reserved
+     environment is a non-secure context - its top-level creation URL is not potentially trustworthy.
+     An http subdomain frame sending ?1 stays site-keyed: its originAgentCluster is false and a module
+     crosses to it.
+     Lane oac (2026-10-11), from lane serial's ser-oac-insecure.sub.html. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script type="module">
+import { insertIframe, sendWasmModule, testGetter } from "/html/browsers/origin/origin-keyed-agent-clusters/resources/helpers.mjs";
+
+promise_setup(() => insertIframe("{{hosts[][www]}}:{{ports[http][0]}}", "?1"));
+
+testGetter(self, false, "parent");
+testGetter(0, false, "child");
+
+promise_test(async () => {
+  assert_equals(await sendWasmModule(frames[0]), "WebAssembly.Module message received");
+}, "a module crosses to the frame");
+</script>

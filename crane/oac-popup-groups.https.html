@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A popup opened with noopener keys its origin in a browsing context group of its own</title>
+<!-- HTML: each browsing context group has its own historical agent cluster key map ("obtain a
+     similar-origin window agent" steps 4-5). This page sends no Origin-Agent-Cluster header, so its
+     origin is site-keyed in its group. A popup it opens joins the group: a same-origin document
+     there that sends ?1 follows the group's keying (false). A popup opened with noopener is created
+     given a null opener, in a new group whose initial about:blank document has an opaque origin, so
+     the same document's ?1 is honoured there (true). Each popup reports over a BroadcastChannel.
+     Lane oac (2026-10-11). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function popupReport(name, features) {
+  return new Promise(resolve => {
+    const channel = new BroadcastChannel(name);
+    channel.onmessage = e => {
+      channel.close();
+      resolve(e.data);
+    };
+    window.open("resources/oac-group-reporter.html?" + name, "_blank", features);
+  });
+}
+
+test(() => {
+  assert_false(self.originAgentCluster);
+}, "the opener is site-keyed");
+
+promise_test(async () => {
+  assert_equals(await popupReport("oac-popup-same-group", ""), false);
+}, "a popup in the opener's group follows the group's keying of its origin");
+
+promise_test(async () => {
+  assert_equals(await popupReport("oac-popup-own-group", "noopener"), true);
+}, "a noopener popup's group keys the origin afresh, by its document's header");
+</script>

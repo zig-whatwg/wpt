@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Reports this window's originAgentCluster over a BroadcastChannel</title>
+<!-- For crane/oac-popup-groups.https.html: the channel is named by the query string. -->
+<script>
+const channel = new BroadcastChannel(location.search.slice(1));
+channel.postMessage(self.originAgentCluster);
+channel.close();
+window.close();
+</script>

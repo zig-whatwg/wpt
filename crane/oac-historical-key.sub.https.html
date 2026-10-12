@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A browsing context group keeps the first keying of an origin</title>
+<!-- HTML "obtain a similar-origin window agent" steps 4-5: the browsing context group's historical
+     agent cluster key map decides an origin's keying once; a later document of that origin follows it,
+     with or without Origin-Agent-Cluster. Frame 0 is the parent's own origin, which the parent's
+     document (no header) already keyed by site: its ?1 is not honoured. Frame 1 is a subdomain whose
+     first document sent ?1. Frame 2 is that same subdomain without the header: still origin-keyed.
+     Lane oac (2026-10-11), from lane serial's ser-oac-historical-key.sub.https.html. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script type="module">
+import { insertIframe, sendWasmModule, testGetter } from "/html/browsers/origin/origin-keyed-agent-clusters/resources/helpers.mjs";
+
+promise_setup(async () => {
+  await insertIframe("{{hosts[][]}}:{{ports[https][0]}}", "?1");
+  await insertIframe("{{hosts[][www]}}", "?1");
+  await insertIframe("{{hosts[][www]}}");
+});
+
+testGetter(self, false, "parent");
+testGetter(0, false, "same-origin frame with ?1");
+testGetter(1, true, "subdomain frame with ?1");
+testGetter(2, true, "subdomain frame without the header");
+
+promise_test(async () => {
+  assert_equals(await sendWasmModule(frames[0]), "WebAssembly.Module message received");
+}, "the same-origin frame shares the parent's cluster");
+
+promise_test(async () => {
+  assert_equals(await sendWasmModule(frames[2]), "messageerror");
+}, "the header-less subdomain frame is in its origin's cluster, not the parent's");
+</script>

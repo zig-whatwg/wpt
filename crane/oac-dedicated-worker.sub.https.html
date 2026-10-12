@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An origin-keyed window's dedicated worker shares its cluster; a same-site frame does not</title>
+<!-- This page sends Origin-Agent-Cluster: ?1, so "obtain a similar-origin window agent" keys its
+     agent cluster by its origin. "Obtain a worker/worklet agent" step 3 puts a dedicated worker in its
+     owner's cluster, so a WebAssembly.Module crosses to it (WebAssembly Web API section 3). A
+     same-site, cross-origin frame that sends no header is in its site's cluster - another one - and
+     gets messageerror.
+     Lane oac (2026-10-11). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const emptyModule = () => new WebAssembly.Module(new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]));
+
+function nextReply(target) {
+  return new Promise(resolve => target.addEventListener("message", e => resolve(e.data), { once: true }));
+}
+
+test(() => {
+  assert_true(self.originAgentCluster);
+}, "the page is origin-keyed");
+
+promise_test(async t => {
+  const worker = new Worker("resources/ws-cluster-agent.js");
+  t.add_cleanup(() => worker.terminate());
+  const { port1, port2 } = new MessageChannel();
+  const ready = nextReply(worker);
+  worker.postMessage("receive", [port2]);
+  assert_equals(await ready, "ready");
+  const outcome = nextReply(worker);
+  port1.postMessage({ module: emptyModule() });
+  assert_equals(await outcome, "message:module");
+}, "a module reaches the page's dedicated worker");
+
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  const replies = [];
+  let waiting = null;
+  const loaded = new Promise(resolve => {
+    window.addEventListener("message", e => {
+      if (e.source !== iframe.contentWindow) return;
+      if (e.data === "loaded") return resolve();
+      if (waiting) {
+        waiting(e.data);
+        waiting = null;
+      } else replies.push(e.data);
+    });
+  });
+  iframe.src = "https://{{hosts[][www]}}:{{ports[https][0]}}/crane/resources/ws-frame-reporter.html";
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  await loaded;
+  const outcome = replies.length ? Promise.resolve(replies.shift()) : new Promise(r => waiting = r);
+  iframe.contentWindow.postMessage({ module: emptyModule() }, "*");
+  assert_equals(await outcome, "messageerror");
+}, "a same-site frame without the header is in another cluster");
+</script>
