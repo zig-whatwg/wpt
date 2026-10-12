@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An img element decodes a GIF: its first frame on a transparent canvas of the logical screen</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#update-the-image-data">
+<link rel="help" href="https://mimesniff.spec.whatwg.org/#matching-an-image-type-pattern">
+<link rel="help" href="https://www.w3.org/Graphics/GIF/spec-gif89a.txt">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Expected pixels from the GIF89a format and, where it is silent, from the
+// majority of Chrome, Firefox and Safari (the rules are listed in Crane's
+// src/platform/adapters/testing/gif.zig). Only opaque and fully transparent
+// pixels are compared: the canvas bitmap is premultiplied.
+
+function loaded(src) {
+  const img = new Image();
+  return new Promise((resolve, reject) => {
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("error loading " + src));
+    img.src = src;
+  });
+}
+
+function outcome(src) {
+  const img = new Image();
+  return new Promise(resolve => {
+    img.onload = () => resolve("load");
+    img.onerror = () => resolve("error");
+    img.src = src;
+  });
+}
+
+// The image's pixels at its natural size.
+function pixels(img) {
+  const canvas = document.createElement("canvas");
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const context = canvas.getContext("2d");
+  context.drawImage(img, 0, 0);
+  const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  return (x, y) => {
+    const i = (y * canvas.width + x) * 4;
+    return Array.from(data.slice(i, i + 4));
+  };
+}
+
+const transparent = [0, 0, 0, 0];
+const red = [255, 0, 0, 255];
+const green = [0, 255, 0, 255];
+
+promise_test(async () => {
+  const img = await loaded("/images/anim-gr.gif");
+  assert_equals(img.naturalWidth, 100);
+  assert_equals(img.naturalHeight, 50);
+  assert_true(img.complete);
+  const at = pixels(img);
+  // Its first frame is green, its second red.
+  assert_array_equals(at(0, 0), green);
+  assert_array_equals(at(99, 49), green);
+}, "an animated GIF loads; its image is its first frame");
+
+promise_test(async () => {
+  const at = pixels(await loaded("/images/red-green-animated.gif"));
+  assert_array_equals(at(25, 25), red);
+}, "the first frame of another animated GIF");
+
+promise_test(async () => {
+  const img = await loaded("/css/css-shapes/shape-outside/shape-image/support/right-half-rectangle.gif");
+  const at = pixels(img);
+  // A Graphic Control Extension makes the left half's index transparent.
+  assert_array_equals(at(25, 50), transparent);
+  assert_array_equals(at(75, 50), [0, 100, 0, 255]);
+}, "a GIF's transparent index is transparent");
+
+promise_test(async () => {
+  const img = await loaded("/css/css-lists/resources/white.gif");
+  assert_equals(img.naturalWidth, 10);
+  const at = pixels(img);
+  assert_array_equals(at(0, 0), transparent);
+  assert_array_equals(at(5, 5), [181, 181, 181, 255]);
+  assert_array_equals(at(2, 5), [231, 231, 231, 255]);
+  assert_array_equals(at(7, 5), [132, 132, 132, 255]);
+}, "an interlaced GIF's rows are in place");
+
+promise_test(async () => {
+  assert_equals(await outcome("/css/css-images/support/1x1-green.gif?pipe=header(Content-Type,text/plain)"), "load");
+}, "a GIF served as text/plain is sniffed as a GIF");
+
+promise_test(async () => {
+  // "The smallest GIF": no colour table, and no LZW data at all.
+  const img = await loaded("data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=");
+  assert_equals(img.naturalWidth, 1);
+  assert_equals(img.naturalHeight, 1);
+  assert_array_equals(pixels(img)(0, 0), transparent);
+}, "a GIF with no image data is a transparent pixel");
+
+promise_test(async () => {
+  // Screen 3x3; a 2x2 frame at (1, 1) of red, green / green, red. What the
+  // frame does not cover is transparent (the background colour is not drawn).
+  const img = await loaded("data:image/gif;base64,R0lGODlhAwADAIAAAP8AAAD/ACwBAAEAAgACAAACA0QCBQA7");
+  assert_equals(img.naturalWidth, 3);
+  assert_equals(img.naturalHeight, 3);
+  const at = pixels(img);
+  assert_array_equals(at(0, 0), transparent);
+  assert_array_equals(at(2, 0), transparent);
+  assert_array_equals(at(0, 2), transparent);
+  assert_array_equals(at(1, 1), red);
+  assert_array_equals(at(2, 1), green);
+  assert_array_equals(at(1, 2), green);
+  assert_array_equals(at(2, 2), red);
+}, "a frame smaller than the logical screen sits at its offset on transparency");
+
+promise_test(async () => {
+  // GIF87a, screen 4x4, one 2x1 frame at (1, 1): Firefox and Safari make the
+  // screen the first frame's size for GIF87a ("we assume that GIF87a files
+  // don't contain animations").
+  const img = await loaded("data:image/gif;base64,R0lGODdhBAAEAIAAAP8AAAD/ACwBAAEAAgABAAACAgwKADs=");
+  assert_equals(img.naturalWidth, 2);
+  assert_equals(img.naturalHeight, 1);
+  const at = pixels(img);
+  assert_array_equals(at(0, 0), green);
+  assert_array_equals(at(1, 0), red);
+}, "a GIF87a's size is its first frame's");
+
+promise_test(async () => {
+  // 2x2, and the LZW data ends (an end code) after two pixels.
+  const img = await loaded("data:image/gif;base64,R0lGODlhAgACAIAAAP8AAAD/ACwAAAAAAgACAAACAkwKADs=");
+  const at = pixels(img);
+  assert_array_equals(at(0, 0), green);
+  assert_array_equals(at(1, 0), green);
+  assert_array_equals(at(0, 1), transparent);
+  assert_array_equals(at(1, 1), transparent);
+}, "pixels the data does not reach are transparent");
+
+promise_test(async () => {
+  // The header, screen and colour table, and nothing more: no image.
+  assert_equals(await outcome("data:image/gif;base64,R0lGODlhAwADAIAAAP8AAAD/AA=="), "error");
+}, "a GIF with no image is broken");
+</script>
