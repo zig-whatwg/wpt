@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Range comparison between text nodes in sibling paragraphs terminates</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script src="/dom/common.js"></script>
+<script>
+// Isolated upstream Range-compareBoundaryPoints.html subtest 1,5,0.
+// The upstream oracle also uses Node.compareDocumentPosition. Keep that
+// oracle here: a contradictory order must not recurse until stack overflow.
+test(() => {
+  const a = rangeFromEndpoints([paras[0].firstChild, 0, paras[0].firstChild, 0]);
+  const b = rangeFromEndpoints([paras[1].firstChild, 0, paras[1].firstChild, 0]);
+  const expected = getPosition(a.startContainer, a.startOffset,
+                               b.startContainer, b.startOffset);
+  assert_equals(expected, "before");
+  assert_equals(a.compareBoundaryPoints(Range.START_TO_START, b), -1);
+}, "1,5,0: collapsed ranges in the first and second paragraphs compare before");
+</script>

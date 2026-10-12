@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Range intersection excludes nodes touching either boundary</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (let start = 0; start <= 3; ++start) {
+  for (let end = start; end <= 3; ++end) {
+    test(() => {
+      const parent = document.createElement("div");
+      for (let i = 0; i < 3; ++i) parent.appendChild(document.createElement("span"));
+      const range = document.createRange();
+      range.setStart(parent, start);
+      range.setEnd(parent, end);
+      for (let i = 0; i < 3; ++i) {
+        assert_equals(range.intersectsNode(parent.childNodes[i]), i < end && i + 1 > start,
+                      "child " + i + " against [" + start + ", " + end + "]");
+      }
+    }, "Sibling boundary interval [" + start + ", " + end + "]");
+  }
+}
+test(() => {
+  const parent = document.createElement("div");
+  const text = parent.appendChild(document.createTextNode("abc"));
+  const range = document.createRange();
+  range.setStart(text, 1);
+  range.collapse(true);
+  assert_true(range.intersectsNode(text), "a point inside text intersects the node");
+  assert_true(range.intersectsNode(parent), "a same-tree root intersects");
+  assert_false(range.intersectsNode(document.createElement("div")), "another root does not intersect");
+}, "Collapsed interior point and disconnected roots");
+</script>

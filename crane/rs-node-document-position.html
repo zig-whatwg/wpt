@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document position is antisymmetric for trees and attributes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function ordered(a, b, bits) {
+  assert_equals(a.compareDocumentPosition(b), bits, "forward");
+  const inverse = (bits & 33) | ((bits & 2) << 1) | ((bits & 4) >> 1) |
+                  ((bits & 8) << 1) | ((bits & 16) >> 1);
+  assert_equals(b.compareDocumentPosition(a), inverse, "reverse");
+}
+test(() => {
+  const root = document.createElement("div");
+  root.innerHTML = "<p>first<i></i></p><p>second</p>";
+  const [a, b] = root.children;
+  ordered(a, b, Node.DOCUMENT_POSITION_FOLLOWING);
+  ordered(a.firstChild, b.firstChild, Node.DOCUMENT_POSITION_FOLLOWING);
+  ordered(a.lastChild, b, Node.DOCUMENT_POSITION_FOLLOWING);
+  ordered(root, a.firstChild, 20);
+  ordered(a, a, 0);
+}, "Sibling and cousin order reverses, containment keeps its direction");
+
+test(() => {
+  const root = document.createElement("div");
+  root.innerHTML = "<p first='1' second='2'><b></b></p><p third='3'></p>";
+  const [a, b] = root.children;
+  const first = a.getAttributeNode("first");
+  const second = a.getAttributeNode("second");
+  const third = b.getAttributeNode("third");
+  ordered(first, second, 36);
+  ordered(a, first, 20);
+  ordered(root, first, 20);
+  ordered(first, a.firstChild, 4);
+  ordered(first, third, 4);
+  ordered(first, b, 4);
+  ordered(a.firstChild, third, 4);
+  a.removeAttributeNode(first);
+  const position = first.compareDocumentPosition(second);
+  assert_in_array(position, [35, 37]);
+  ordered(first, second, position);
+}, "Attributes follow their owner and precede children; removal disconnects them");
+
+test(() => {
+  const root = document.createElement("div");
+  const left = root.appendChild(document.createElement("div"));
+  const right = root.appendChild(document.createElement("div"));
+  let a = left, b = right;
+  for (let i = 0; i < 512; ++i) {
+    a = a.appendChild(document.createElement("i"));
+    b = b.appendChild(document.createElement("i"));
+  }
+  ordered(a, b, 4);
+  ordered(root, a, 20);
+}, "Deep cousin comparisons finish by walking ancestors iteratively");
+
+test(() => {
+  const host = document.createElement("div");
+  const shadow = host.attachShadow({mode: "open"});
+  const shadowChild = shadow.appendChild(document.createElement("i"));
+  const light = host.appendChild(document.createElement("i"));
+  const attr = document.createAttribute("detached");
+  for (const [a, b] of [[light, shadowChild], [host, shadow], [attr, host]]) {
+    const position = a.compareDocumentPosition(b);
+    assert_in_array(position, [35, 37]);
+    ordered(a, b, position);
+    assert_equals(a.compareDocumentPosition(b), position);
+  }
+}, "Shadow trees and unattached attributes have consistent disconnected order");
+</script>
