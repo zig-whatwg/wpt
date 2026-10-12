@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Multipart Content-Disposition parameters</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const cases = [
+  ['name=field', 'field', null, 'unquoted name'],
+  ['name=field; filename=upload.txt', 'field', 'upload.txt', 'unquoted filename'],
+  ['filename="upload.txt"; name="field"', 'field', 'upload.txt', 'filename before name'],
+  ['name="a\\b"; filename="x\\y.txt"', 'a\\b', 'x\\y.txt', 'literal backslashes'],
+  ['name="first"; name=last; filename=one; filename=two', 'last', 'two', 'last duplicate wins'],
+  ['name="a\\"b"; filename="x\\"y"', 'a"b', 'x"y', 'escaped quotes'],
+  ['note="name=wrong; filename=wrong"; name="a;b"', 'a;b', null, 'quoted semicolons'],
+  ['name= value ', 'value', null, 'spaces around an unquoted value'],
+  ['name= "value"', 'value', null, 'space before a quoted value'],
+  ['name=""; filename=""', '', '', 'empty quoted parameters'],
+  ['name=field; FILENAME=ignored', 'field', null, 'case-sensitive parameter names'],
+  ['name="value', 'value', null, 'an unterminated quote'],
+  ['name=; filename=x', '', 'x', 'an empty delimited unquoted value'],
+];
+for (const kind of ['Request', 'Response']) {
+  const make = parameters => {
+    const body = `--b\r\nContent-Disposition: form-data; ${parameters}\r\n\r\nvalue\r\n--b--\r\n`;
+    const headers = {'Content-Type': 'multipart/form-data; boundary=b'};
+    return kind === 'Request'
+      ? new Request(location.href, {method: 'POST', body, headers})
+      : new Response(body, {headers});
+  };
+  for (const [parameters, name, filename, label] of cases) {
+    promise_test(async () => {
+      const form = await make(parameters).formData();
+      assert_array_equals(Array.from(form.keys()), [name]);
+      const entry = form.get(name);
+      if (filename === null) {
+        assert_equals(entry, 'value');
+      } else {
+        assert_true(entry instanceof File);
+        assert_equals(entry.name, filename);
+        assert_equals(await entry.text(), 'value');
+      }
+    }, `${kind}.formData parses ${label}`);
+  }
+  for (const parameters of ['filename="upload.txt"', 'xname="field"', 'NAME="field"', 'name ="field"', 'name=', 'name="a"filename="b"']) {
+    promise_test(async t => {
+      await promise_rejects_js(t, TypeError, make(parameters).formData());
+    }, `${kind}.formData rejects invalid name parameters in ${parameters}`);
+  }
+}
+</script>

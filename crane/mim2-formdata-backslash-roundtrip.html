@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FormData round trips names and filenames ending in a backslash</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const form = new FormData();
+  form.append('a\\', 'value');
+  const result = await new Response(form).formData();
+  assert_array_equals(Array.from(result.keys()), ['a\\']);
+  assert_equals(result.get('a\\'), 'value');
+}, 'Response FormData round trip preserves a field name ending in a backslash');
+
+for (const name of ['field', 'a\\']) {
+  promise_test(async () => {
+    const filename = 'C:\\dir\\';
+    const form = new FormData();
+    form.append(name, new File(['file contents'], filename, {type: 'text/plain'}));
+    const result = await new Response(form).formData();
+    assert_array_equals(Array.from(result.keys()), [name]);
+    const file = result.get(name);
+    assert_true(file instanceof File);
+    assert_equals(file.name, filename);
+    assert_equals(file.type, 'text/plain');
+    assert_equals(file.size, 13);
+    assert_equals(await file.text(), 'file contents');
+  }, `Response FormData round trip preserves a trailing filename backslash with field ${JSON.stringify(name)}`);
+}
+</script>

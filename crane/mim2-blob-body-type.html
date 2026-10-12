@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blob types depend on whether a Request or Response has a body</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ["Request", "Response"]) {
+  const make = (body, type) => kind === "Request"
+    ? new Request(location.href, {method: "POST", body, duplex: "half", headers: {"Content-Type": type}})
+    : new Response(body, {headers: {"Content-Type": type}});
+  for (const [label, body] of [
+    ["text", () => "x"],
+    ["empty text", () => ""],
+    ["bytes", () => new Uint8Array([120])],
+    ["zero bytes", () => new Uint8Array(0)],
+    ["Blob", () => new Blob(["x"], {type: "text/other"})],
+    ["empty Blob", () => new Blob()],
+    ["FormData", () => new FormData()],
+    ["URLSearchParams", () => new URLSearchParams("a=b")],
+    ["closed stream", () => new ReadableStream({start(controller) { controller.close(); }})]
+  ]) {
+    promise_test(async () => {
+      const object = make(body(), "text/plain; a=b");
+      assert_not_equals(object.body, null);
+      assert_equals((await object.blob()).type, "text/plain; a=b");
+    }, `${kind}: ${label} preserves a script-supplied raw Content-Type`);
+  }
+  for (const body of [null, undefined]) {
+    promise_test(async () => {
+      const object = make(body, "Text/Plain; A=First;A=Second");
+      assert_equals(object.body, null);
+      assert_equals((await object.blob()).type, "text/plain;a=first");
+    }, `${kind}: ${body} body uses MIME extraction`);
+  }
+  promise_test(async () => {
+    const object = make("x", "Text/Plain; A=First;A=Second");
+    assert_equals((await object.blob()).type, "text/plain; a=first;a=second");
+  }, `${kind}: non-null body keeps duplicate parameters before Blob lowercasing`);
+  promise_test(async () => {
+    const object = make("x", "not a MIME type");
+    assert_equals((await object.blob()).type, "not a mime type");
+  }, `${kind}: non-null body keeps a printable non-MIME header`);
+  promise_test(async () => {
+    const object = make("x", "text/plain; a=b");
+    object.headers.append("Content-Type", "text/html; c=d");
+    assert_equals((await object.blob()).type, "text/plain; a=b, text/html; c=d");
+  }, `${kind}: non-null body combines duplicate Content-Type fields`);
+  promise_test(async () => {
+    const object = make("x", "text/plain; a=b");
+    object.headers.delete("Content-Type");
+    assert_equals((await object.blob()).type, "");
+  }, `${kind}: a missing Content-Type gives an empty Blob type`);
+  promise_test(async () => {
+    const object = make("x", "text/plain; a=b");
+    const copy = object.clone();
+    copy.headers.set("Content-Type", "text/html; c=d");
+    assert_equals((await copy.blob()).type, "text/html; c=d");
+    assert_equals((await object.blob()).type, "text/plain; a=b");
+  }, `${kind}: clone header mutations preserve each raw type independently`);
+}
+promise_test(async () => {
+  const request = new Request(location.href, {method: "POST", body: "x", headers: {"Content-Type": "text/plain; a=b"}});
+  const copy = new Request(request, {headers: request.headers});
+  assert_equals((await copy.blob()).type, "text/plain; a=b");
+}, "Request copied with its Headers object preserves the raw body type");
+</script>

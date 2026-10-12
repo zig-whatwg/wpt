@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>formData rejects an empty multipart boundary</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ["Request", "Response"]) {
+  const make = (body, type) => kind === "Request"
+    ? new Request("https://example.test/", {method: "POST", body, headers: {"Content-Type": type}})
+    : new Response(body, {headers: {"Content-Type": type}});
+  for (const [label, body] of [
+    ["closing delimiter", "----"],
+    ["part", '--\r\nContent-Disposition: form-data; name="n"\r\n\r\nv\r\n----'],
+    ["zero bytes", ""],
+    ["null body", null]
+  ]) {
+    promise_test(t => promise_rejects_js(t, TypeError,
+      make(body, 'multipart/form-data; boundary=""').formData()),
+      `${kind}: empty boundary rejects ${label}`);
+  }
+  promise_test(async () => {
+    const result = await make("--x--\r\n", 'multipart/form-data; boundary="x"').formData();
+    assert_equals(Array.from(result).length, 0);
+  }, `${kind}: a nonempty boundary still permits zero parts`);
+}
+</script>
