@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Omitted SameSite uses the Firefox and Safari default</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+promise_test(async t => {
+  const origin = get_host_info().HTTPS_NOTSAMESITE_ORIGIN;
+  const names = ['ck2_default', 'ck2_invalid', 'ck2_lax', 'ck2_strict', 'ck2_none'];
+  const attributes = ['', '; SameSite=bogus', '; SameSite=Lax', '; SameSite=Strict', '; SameSite=None'];
+  const write = values => fetch(origin + '/cookies/resources/cookie.py?set=' +
+    encodeURIComponent(JSON.stringify(values)), {credentials: 'include', cache: 'no-store'});
+  const lines = names.map((name, i) => name + '=present; Secure; Path=/' + attributes[i]);
+  t.add_cleanup(() => write(lines.map(line => line + '; Max-Age=0')));
+  await write(lines);
+  const response = await fetch(origin + '/cookies/resources/list.py', {credentials: 'include', cache: 'no-store'});
+  const cookies = await response.json();
+  assert_equals(cookies.ck2_default, 'present');
+  assert_equals(cookies.ck2_invalid, 'present');
+  assert_equals(cookies.ck2_none, 'present');
+  assert_false('ck2_lax' in cookies);
+  assert_false('ck2_strict' in cookies);
+}, 'Cross-site responses store and send Default cookies while explicit Strict and Lax stay blocked');
+</script>

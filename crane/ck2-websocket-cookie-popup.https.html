@@ -1,0 +1,17 @@
+<!doctype html>
+<script>
+const names = ['ck2_ws_strict', 'ck2_ws_lax', 'ck2_ws_default', 'ck2_ws_none'];
+const attributes = ['; SameSite=Strict', '; SameSite=Lax', '', '; SameSite=None'];
+const value = new URL(location.href).searchParams.get('value');
+if (value) {
+  for (let i = 0; i < names.length; ++i)
+    document.cookie = names[i] + '=' + value + '; Path=/; Secure' + attributes[i];
+}
+opener.postMessage({type: 'ck2-ws-ready', cookies: document.cookie}, '*');
+onmessage = e => {
+  if (e.source !== opener || e.data !== 'ck2-ws-clean') return;
+  for (let i = 0; i < names.length; ++i)
+    document.cookie = names[i] + '=; Path=/; Secure; Max-Age=0' + attributes[i];
+  opener.postMessage({type: 'ck2-ws-cleaned'}, '*');
+};
+</script>

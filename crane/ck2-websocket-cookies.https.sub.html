@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebSocket handshake cookie site restrictions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/websockets/cookies/support/websocket-cookies-helper.sub.js"></script>
+<script>
+const selectedCase = new URL(location.href).searchParams.get('case');
+function check(id, body, title) {
+  if (!selectedCase || selectedCase === id) promise_test(body, title);
+}
+function popupMessage(popup, type) {
+  return new Promise(resolve => {
+    function listener(e) {
+      if (e.source !== popup || e.data.type !== type) return;
+      removeEventListener('message', listener);
+      resolve(e.data);
+    }
+    addEventListener('message', listener);
+  });
+}
+function readCookies(origin) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(origin + '/echo-cookie');
+    ws.onmessage = e => { ws.close(); resolve(e.data); };
+    ws.onerror = () => reject(new Error('WebSocket cookie read failed'));
+  });
+}
+for (const [name, origin, sameSite] of [
+  ['same-site', WSS_ORIGIN, true],
+  ['cross-site', WSS_CROSS_SITE_ORIGIN, false]
+]) {
+  check(sameSite ? 'same' : 'cross', async t => {
+    const value = String(Math.random());
+    t.add_cleanup(() => clearSameSiteCookies(origin));
+    await setSameSiteCookies(origin, value);
+    const cookies = await readCookies(origin);
+    assertCookie(cookies, 'samesite-strict', value, sameSite);
+    assertCookie(cookies, 'samesite-lax', value, sameSite);
+    assertCookie(cookies, 'samesite-unspecified', value, true);
+    assertCookie(cookies, 'samesite-none', value, true);
+  }, name + ' WebSocket sends only cookies permitted by its handshake site');
+}
+check('send', async t => {
+  const value = String(Math.random());
+  const popup = window.open(HTTPS_CROSS_SITE_ORIGIN + '/crane/ck2-websocket-cookie-popup.https.html?value=' + value);
+  await popupMessage(popup, 'ck2-ws-ready');
+  t.add_cleanup(async () => {
+    const cleaned = popupMessage(popup, 'ck2-ws-cleaned');
+    popup.postMessage('ck2-ws-clean', HTTPS_CROSS_SITE_ORIGIN);
+    await cleaned;
+    popup.close();
+  });
+  const cookies = await readCookies(WSS_CROSS_SITE_ORIGIN);
+  assertCookie(cookies, 'ck2_ws_strict', value, false);
+  assertCookie(cookies, 'ck2_ws_lax', value, false);
+  assertCookie(cookies, 'ck2_ws_default', value, true);
+  assertCookie(cookies, 'ck2_ws_none', value, true);
+}, 'Cross-site WebSocket excludes pre-existing Strict and Lax cookies');
+check('store', async t => {
+  const value = String(Math.random());
+  t.add_cleanup(() => clearSameSiteCookies(WSS_CROSS_SITE_ORIGIN));
+  await setSameSiteCookies(WSS_CROSS_SITE_ORIGIN, value);
+  const popup = window.open(HTTPS_CROSS_SITE_ORIGIN + '/crane/ck2-websocket-cookie-popup.https.html');
+  t.add_cleanup(() => popup.close());
+  const result = await popupMessage(popup, 'ck2-ws-ready');
+  assertCookie(result.cookies, 'samesite-strict', value, false);
+  assertCookie(result.cookies, 'samesite-lax', value, false);
+  assertCookie(result.cookies, 'samesite-unspecified', value, true);
+  assertCookie(result.cookies, 'samesite-none', value, true);
+}, 'Cross-site WebSocket response cannot store Strict and Lax cookies');
+</script>

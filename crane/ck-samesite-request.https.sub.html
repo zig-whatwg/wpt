@@ -42,7 +42,10 @@ for (const [label, origin, redirect] of [
     assert_true(response.ok);
     const cookies = await response.json();
     assert_equals(cookies.ck_site_none, 'present');
-    for (const name of ['strict', 'lax', 'default']) {
+    // A cookie with no SameSite attribute is sent like None: Firefox and
+    // WebKit ship None-by-default, Chromium Lax (2-1; Codex row 25, N1).
+    assert_equals(cookies.ck_site_default, 'present', 'default');
+    for (const name of ['strict', 'lax']) {
       assert_equals(cookies['ck_site_' + name],
         origin === hosts.HTTPS_NOTSAMESITE_ORIGIN || redirect ? undefined : 'present', name);
     }
