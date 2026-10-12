@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An img element whose image data ends early or is corrupt after its dimensions is a partial image: load, its natural size, its decoded part drawn</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#update-the-image-data">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-decode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML breaks an image only when "the image dimensions cannot be obtained".
+// Past them, every browser treats a truncated or corrupt image as an image:
+// load fires, the natural size is known, and the part that decoded is drawn
+// (the rest transparent). decode() resolves - except, by the majority of
+// Chrome, Firefox and Safari, when the data is corrupt and nothing decoded
+// (Chrome and Firefox reject; Safari's ImageIO resolves). Where each
+// format's dimensions are known is where the browsers know them: a PNG at
+// its first IDAT chunk, a GIF at its first image descriptor, a BMP after its
+// headers. The cuts use wptserve's slice pipe.
+
+function outcome(src) {
+  const img = new Image();
+  return new Promise(resolve => {
+    img.onload = () => resolve({ img, event: "load" });
+    img.onerror = () => resolve({ img, event: "error" });
+    img.src = src;
+  });
+}
+
+async function loaded(src) {
+  const { img, event } = await outcome(src);
+  assert_equals(event, "load", src);
+  return img;
+}
+
+// The image's pixels at its natural size.
+function pixels(img) {
+  const canvas = document.createElement("canvas");
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const context = canvas.getContext("2d");
+  context.drawImage(img, 0, 0);
+  const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  return (x, y) => {
+    const i = (y * canvas.width + x) * 4;
+    return Array.from(data.slice(i, i + 4));
+  };
+}
+
+const transparent = [0, 0, 0, 0];
+const white = [255, 255, 255, 255];
+const green = [0, 255, 0, 255];
+
+promise_test(async () => {
+  // smiley.png: 300 x 150, one IDAT from byte 123; 1,000 bytes hold its
+  // first 92 rows.
+  const whole = pixels(await loaded("/images/smiley.png"));
+  const img = await loaded("/images/smiley.png?pipe=slice(0,1000)");
+  assert_equals(img.naturalWidth, 300);
+  assert_equals(img.naturalHeight, 150);
+  assert_equals(img.width, 300);
+  assert_true(img.complete, "complete: all of its data has arrived");
+  const at = pixels(img);
+  assert_array_equals(at(0, 0), white);
+  assert_array_equals(at(0, 0), whole(0, 0));
+  assert_array_equals(at(150, 91), whole(150, 91), "the last row the data holds");
+  assert_array_equals(at(150, 92), transparent, "the first row it does not");
+  assert_array_equals(at(299, 149), transparent);
+  await img.decode();
+}, "A PNG cut inside its image data: load, its natural size, the rows it holds drawn, decode() resolves");
+
+promise_test(async t => {
+  const { img, event } = await outcome("/images/smiley.png?pipe=slice(0,123)");
+  assert_equals(event, "error");
+  assert_equals(img.naturalWidth, 0);
+  assert_equals(img.naturalHeight, 0);
+  await promise_rejects_dom(t, "EncodingError", img.decode());
+}, "A PNG cut before its first IDAT chunk has no dimensions: error, and decode() rejects");
+
+promise_test(async () => {
+  const img = await loaded("/images/smiley.png?pipe=slice(0,131)");
+  assert_equals(img.naturalWidth, 300);
+  assert_equals(img.naturalHeight, 150);
+  const at = pixels(img);
+  assert_array_equals(at(0, 0), transparent);
+  assert_array_equals(at(150, 75), transparent);
+  // Truncated with nothing decoded: Firefox and Safari resolve.
+  await img.decode();
+}, "A PNG cut right at its first IDAT chunk: load, its natural size, nothing drawn, decode() resolves");
+
+promise_test(async t => {
+  // IHDR, then an empty IDAT and IEND: available, and nothing decodes
+  // (html/canvas/element/manual/imagebitmap/createImageBitmap-invalid-args).
+  const img = await loaded("/images/undecodable.png");
+  assert_equals(img.naturalWidth, 100);
+  assert_equals(img.naturalHeight, 50);
+  assert_true(img.complete);
+  await promise_rejects_dom(t, "EncodingError", img.decode());
+}, "WPT's undecodable.png: load, its natural size; decode() rejects (corrupt, and nothing decoded)");
+
+promise_test(async () => {
+  // A byte of smiley.png's image data flipped (its CRC no longer matches).
+  const bytes = new Uint8Array(await (await fetch("/images/smiley.png")).arrayBuffer());
+  bytes[600] ^= 0x5a;
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  const img = await loaded("data:image/png;base64," + btoa(binary));
+  assert_equals(img.naturalWidth, 300);
+  assert_equals(img.naturalHeight, 150);
+  assert_array_equals(pixels(img)(0, 0), white);
+  await img.decode();
+}, "A PNG whose image data is corrupt after its first rows: load, its natural size, decode() resolves");
+
+promise_test(async () => {
+  // anim-gr.gif: 100 x 50, its first (green) frame's LZW data from byte 56.
+  const img = await loaded("/images/anim-gr.gif?pipe=slice(0,100)");
+  assert_equals(img.naturalWidth, 100);
+  assert_equals(img.naturalHeight, 50);
+  const at = pixels(img);
+  assert_array_equals(at(0, 0), green);
+  assert_array_equals(at(99, 49), transparent);
+  await img.decode();
+}, "A GIF cut inside its first frame: load, its natural size, the pixels it holds drawn");
+
+promise_test(async () => {
+  // Its first image descriptor is at byte 46.
+  const { img, event } = await outcome("/images/anim-gr.gif?pipe=slice(0,40)");
+  assert_equals(event, "error");
+  assert_equals(img.naturalWidth, 0);
+}, "A GIF cut before its first image descriptor has no dimensions: error");
+
+promise_test(async () => {
+  // t.bmp: 100 x 100, 24 bits, bottom-up rows of 300 bytes from byte 54:
+  // 15,000 bytes hold the bottom 49 rows.
+  const img = await loaded("/dom/nodes/Document-contentType/resources/t.bmp?pipe=slice(0,15000)");
+  assert_equals(img.naturalWidth, 100);
+  assert_equals(img.naturalHeight, 100);
+  const at = pixels(img);
+  assert_array_equals(at(0, 99), green);
+  assert_array_equals(at(0, 51), green);
+  assert_array_equals(at(0, 50), transparent);
+  assert_array_equals(at(0, 0), transparent);
+  await img.decode();
+}, "A BMP cut inside its pixel data: load, its natural size, the rows it holds drawn");
+</script>
