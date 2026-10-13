@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>tabIndex defaults and the first summary child</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ["a", "area", "button", "frame", "iframe", "input", "object", "select", "textarea"]) {
+  test(() => {
+    const element = document.createElement(tag);
+    assert_equals(element.tabIndex, 0);
+    for (const invalid of ["", "bad", "2147483648", "-2147483649", "\v7"]) {
+      element.setAttribute("tabindex", invalid);
+      assert_equals(element.tabIndex, 0, JSON.stringify(invalid));
+    }
+  }, tag + " has default tabIndex zero, including an invalid content attribute");
+}
+test(() => {
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.disabled = true;
+  assert_equals(input.tabIndex, 0);
+}, "tabIndex default does not depend on whether the input can be focused");
+for (const tag of ["div", "span", "audio", "video", "details", "summary"]) {
+  test(() => assert_equals(document.createElement(tag).tabIndex, -1), tag + " has default tabIndex minus one");
+}
+test(() => {
+  const details = document.createElement("details");
+  const first = document.createElement("summary");
+  const second = document.createElement("summary");
+  details.append(document.createTextNode("text"), document.createElement("div"), first, second);
+  assert_equals(first.tabIndex, 0);
+  assert_equals(second.tabIndex, -1);
+  first.remove();
+  assert_equals(second.tabIndex, 0);
+  assert_equals(first.tabIndex, -1);
+}, "the first summary child of details supplies the default, after tree changes too");
+test(() => {
+  const element = document.createElement("div");
+  element.setAttributeNS("urn:reflection", "tabindex", "9");
+  assert_equals(element.tabIndex, -1);
+  element.setAttributeNS(null, "tabindex", "\t +7trailing");
+  assert_equals(element.tabIndex, 7);
+}, "tabIndex reads only the null-namespace attribute and parses an integer prefix");
+</script>

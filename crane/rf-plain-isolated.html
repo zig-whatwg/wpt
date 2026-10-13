@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Iframe width reflects the content attribute</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("width", "123");
+  assert_equals(frame.width, "123");
+}, "iframe.width reads the content attribute");
+</script>

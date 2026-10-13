@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>inputMode returns a canonical keyword</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement("div");
+  element.setAttribute("inputmode", "EMAIL");
+  assert_equals(element.inputMode, "email");
+}, "inputMode is limited to known values with ASCII case-insensitive matching");
+</script>

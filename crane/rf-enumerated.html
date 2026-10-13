@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Enumerated content attribute reflection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const referrerPolicies = ["", "no-referrer", "no-referrer-when-downgrade", "same-origin", "origin", "strict-origin", "origin-when-cross-origin", "strict-origin-when-cross-origin", "unsafe-url"];
+for (const [tag, property, keywords, defaultValue] of [
+  ["div", "inputMode", ["none", "text", "tel", "url", "email", "numeric", "decimal", "search"], ""],
+  ["div", "enterKeyHint", ["enter", "done", "go", "next", "previous", "search", "send"], ""],
+  ["img", "referrerPolicy", referrerPolicies, ""],
+  ["img", "decoding", ["sync", "async", "auto"], "auto"],
+  ["img", "loading", ["eager", "lazy"], "eager"],
+  ["img", "fetchPriority", ["high", "low", "auto"], "auto"],
+  ["iframe", "referrerPolicy", referrerPolicies, ""],
+  ["iframe", "loading", ["eager", "lazy"], "eager"],
+  ["script", "referrerPolicy", referrerPolicies, ""],
+  ["script", "fetchPriority", ["high", "low", "auto"], "auto"],
+]) {
+  test(() => {
+    const element = document.createElement(tag);
+    const attribute = property.toLowerCase();
+    assert_equals(element[property], defaultValue, "missing");
+    for (const keyword of keywords) {
+      element.setAttribute(attribute, keyword.toUpperCase());
+      assert_equals(element[property], keyword, "content attribute " + keyword);
+      element[property] = keyword.toUpperCase();
+      assert_equals(element.getAttribute(attribute), keyword.toUpperCase(), "setter preserves case");
+      assert_equals(element[property], keyword, "IDL attribute " + keyword);
+    }
+    for (const invalid of ["unknown", " auto", "auto ", "\ttext", "EMAIL\0"]) {
+      element[property] = invalid;
+      assert_equals(element[property], defaultValue, JSON.stringify(invalid));
+    }
+    element.removeAttribute(attribute);
+    element.setAttributeNS("urn:reflection", attribute, keywords[1]);
+    assert_equals(element[property], defaultValue, "namespaced attribute does not reflect");
+  }, tag + "." + property + " reflects canonical values and preserves raw content");
+}
+test(() => {
+  const script = document.createElement("script");
+  assert_equals(script.crossOrigin, null);
+  for (const [given, expected] of [["", "anonymous"], ["unknown", "anonymous"], ["Anonymous", "anonymous"], ["USE-CREDENTIALS", "use-credentials"]]) {
+    script.crossOrigin = given;
+    assert_equals(script.getAttribute("crossorigin"), given);
+    assert_equals(script.crossOrigin, expected);
+  }
+  script.crossOrigin = null;
+  assert_false(script.hasAttribute("crossorigin"));
+}, "script.crossOrigin reflects its nullable enumerated type");
+</script>

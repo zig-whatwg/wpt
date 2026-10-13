@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reflected URL getters use the document base</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [tag, property, attribute] of [["script", "src", "src"], ["iframe", "src", "src"], ["iframe", "longDesc", "longdesc"], ["form", "action", "action"]]) {
+  test(t => {
+    const base = document.createElement("base");
+    base.setAttribute("href", "https://example.test/dir/");
+    document.head.prepend(base);
+    t.add_cleanup(() => base.remove());
+    const element = document.createElement(tag);
+    assert_equals(element[property], tag === "form" ? document.URL : "", "missing");
+    for (const value of ["../resource?q=é", "", "http://["]) {
+      element.setAttribute(attribute, value);
+      const expected = value === "" && tag === "form" ? document.URL :
+        value === "http://[" ? value : new URL(value, document.baseURI).href;
+      assert_equals(element[property], expected, JSON.stringify(value));
+      assert_equals(element.getAttribute(attribute), value, "getter does not rewrite the content attribute");
+    }
+    element.removeAttribute(attribute);
+    element.setAttributeNS("urn:reflection", attribute, "ignored");
+    assert_equals(element[property], tag === "form" ? document.URL : "", "namespace");
+  }, tag + "." + property + " reflects URLs with its specified missing and empty defaults");
+}
+</script>

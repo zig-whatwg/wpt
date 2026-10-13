@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Plain string and boolean reflection uses the attribute list</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [tag, property] of [["iframe", "width"], ["iframe", "height"], ["iframe", "align"], ["iframe", "scrolling"], ["iframe", "frameBorder"], ["iframe", "marginHeight"], ["iframe", "marginWidth"], ["frameset", "cols"], ["frameset", "rows"]]) {
+  test(() => {
+    const element = document.createElement(tag);
+    const attribute = property.toLowerCase();
+    element.setAttributeNS("urn:reflection", attribute, "namespaced");
+    assert_equals(element[property], "");
+    element.setAttributeNS(null, attribute, "content");
+    assert_equals(element[property], "content");
+    element[property] = "property";
+    assert_equals(element.getAttributeNS(null, attribute), "property");
+    assert_equals(element.getAttributeNS("urn:reflection", attribute), "namespaced");
+    if (property === "marginHeight" || property === "marginWidth") {
+      element[property] = null;
+      assert_equals(element.getAttributeNS(null, attribute), "");
+    }
+  }, tag + "." + property + " uses null-namespace string reflection");
+}
+test(() => {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("allowfullscreen", "false");
+  assert_true(frame.allowFullscreen);
+  frame.allowFullscreen = false;
+  assert_false(frame.hasAttribute("allowfullscreen"));
+  frame.allowFullscreen = true;
+  assert_equals(frame.getAttribute("allowfullscreen"), "");
+}, "iframe.allowFullscreen uses boolean presence reflection");
+for (const [property, attribute] of [["fgColor", "text"], ["linkColor", "link"], ["vlinkColor", "vlink"], ["alinkColor", "alink"], ["bgColor", "bgcolor"]]) {
+  test(() => {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.setAttribute(attribute, "body-value");
+    assert_equals(doc[property], "body-value");
+    doc[property] = "new-value";
+    assert_equals(doc.body.getAttribute(attribute), "new-value");
+    const replacement = doc.createElement("body");
+    replacement.setAttribute(attribute, "replacement");
+    doc.body = replacement;
+    assert_equals(doc[property], "replacement");
+    replacement.remove();
+    doc[property] = "ignored";
+    assert_equals(doc[property], "");
+    const frameset = doc.createElement("frameset");
+    doc.body = frameset;
+    doc[property] = "ignored";
+    assert_equals(doc[property], "");
+    assert_false(frameset.hasAttribute(attribute));
+  }, "document." + property + " reflects the current body's " + attribute + " attribute");
+}
+</script>

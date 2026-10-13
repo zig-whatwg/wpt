@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hidden false removes the reflected content attribute</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#dom-hidden">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  element.hidden = true;
+  element.hidden = false;
+  assert_false(element.hasAttribute('hidden'));
+  assert_false(element.hidden);
+}, 'Setting hidden to false removes the content attribute and returns false');
+</script>

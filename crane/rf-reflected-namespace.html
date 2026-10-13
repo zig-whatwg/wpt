@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Generated reflection operates on null-namespace content attributes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflect">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  element.setAttributeNS('urn:reflection', 'title', 'namespaced');
+  assert_equals(element.title, '');
+  assert_false(element.hasAttributeNS(null, 'title'));
+  element.title = 'plain';
+  assert_equals(element.getAttributeNS(null, 'title'), 'plain');
+  assert_equals(element.getAttributeNS('urn:reflection', 'title'), 'namespaced');
+  assert_equals(element.title, 'plain');
+}, 'String reflection reads and writes the null-namespace attribute only');
+
+test(() => {
+  const element = document.createElement('div');
+  element.setAttributeNS('urn:reflection', 'inert', 'namespaced');
+  assert_false(element.inert);
+  element.inert = true;
+  assert_equals(element.getAttributeNS(null, 'inert'), '');
+  element.inert = false;
+  assert_false(element.hasAttributeNS(null, 'inert'));
+  assert_equals(element.getAttributeNS('urn:reflection', 'inert'), 'namespaced');
+}, 'Boolean reflection deletes only the null-namespace attribute');
+
+test(() => {
+  const element = document.createElement('div');
+  const observer = new MutationObserver(() => {});
+  observer.observe(element, {attributes: true, attributeOldValue: true});
+  element.title = 'first';
+  element.title = 'second';
+  const records = observer.takeRecords();
+  observer.disconnect();
+  assert_equals(records.length, 2);
+  assert_array_equals(records.map(record => record.attributeName), ['title', 'title']);
+  assert_array_equals(records.map(record => record.oldValue), [null, 'first']);
+}, 'Generated reflected setters run the normal attribute mutation steps');
+
+test(() => {
+  const calls = [];
+  customElements.define('rf-title-element', class extends HTMLElement {
+    static get observedAttributes() { return ['title']; }
+    attributeChangedCallback(name, previous, value) { calls.push([name, previous, value]); }
+  });
+  const element = document.createElement('rf-title-element');
+  element.title = 'value';
+  assert_equals(calls.length, 1);
+  assert_array_equals(calls[0], ['title', null, 'value']);
+}, 'A generated reflected setter invokes its custom element reaction before returning');
+</script>

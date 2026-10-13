@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A failed hidden union conversion must not mutate the attribute</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement("div");
+  element.setAttribute("hidden", "previous");
+  let threw = false;
+  try {
+    element.hidden = {toString() { throw new Error("conversion failed"); }};
+  } catch (error) {
+    threw = true;
+  }
+  assert_true(threw, "conversion must throw");
+  assert_equals(element.getAttribute("hidden"), "previous");
+  // rf-hidden-union separately asserts preservation of the thrown object.
+}, "a throwing hidden DOMString conversion leaves the content attribute unchanged");
+</script>

@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>tabIndex uses HTML integer parsing</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#dom-tabindex">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  element.setAttribute('tabindex', '\t7trailing');
+  assert_equals(element.tabIndex, 7);
+}, 'tabIndex skips ASCII whitespace and accepts the initial integer');
+</script>

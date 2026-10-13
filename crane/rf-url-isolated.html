@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Script src uses URL reflection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const script = document.createElement("script");
+  script.setAttribute("src", "relative.js");
+  assert_equals(script.src, new URL("relative.js", document.baseURI).href);
+}, "script.src resolves a relative content attribute");
+</script>

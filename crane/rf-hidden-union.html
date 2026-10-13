@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hidden reflects each arm of its nullable union</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [name, value, attribute, property] of [
+  ["null", null, null, false],
+  ["undefined", undefined, null, false],
+  ["false", false, null, false],
+  ["true", true, "", true],
+  ["positive zero", 0, null, false],
+  ["negative zero", -0, null, false],
+  ["NaN", NaN, null, false],
+  ["negative number", -3.5, "", true],
+  ["infinity", Infinity, "", true],
+  ["empty string", "", null, false],
+  ["mixed-case until-found", "UnTiL-FoUnD", "until-found", "until-found"],
+  ["string false", "false", "", true],
+  ["string zero", "0", "", true],
+  ["object returning empty string", {toString() { return ""; }}, null, false],
+  ["object returning until-found", {toString() { return "UnTiL-FoUnD"; }}, "until-found", "until-found"],
+  ["bigint zero uses DOMString", 0n, "", true],
+]) {
+  test(() => {
+    const element = document.createElement("div");
+    element.setAttribute("hidden", "previous");
+    element.hidden = value;
+    assert_equals(element.getAttribute("hidden"), attribute);
+    assert_equals(element.hidden, property);
+  }, "hidden setter: " + name);
+}
+test(() => {
+  const element = document.createElement("div");
+  assert_equals(element.hidden, false);
+  element.setAttribute("hidden", "UnTiL-FoUnD");
+  assert_equals(element.hidden, "until-found");
+  element.setAttribute("hidden", " until-found");
+  assert_equals(element.hidden, true);
+}, "hidden getter returns the attribute state without changing its value");
+test(() => {
+  const element = document.createElement("div");
+  const exception = new Error("coercion failed");
+  element.setAttribute("hidden", "previous");
+  assert_throws_exactly(exception, () => {
+    element.hidden = {toString() { throw exception; }};
+  });
+  assert_equals(element.getAttribute("hidden"), "previous");
+}, "throwing DOMString conversion preserves the hidden attribute");
+test(() => {
+  const element = document.createElement("div");
+  element.setAttribute("hidden", "previous");
+  assert_throws_js(TypeError, () => { element.hidden = Symbol("hidden"); });
+  assert_equals(element.getAttribute("hidden"), "previous");
+}, "a Symbol cannot select hidden's DOMString arm");
+</script>
