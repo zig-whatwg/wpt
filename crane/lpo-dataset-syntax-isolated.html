@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dataset hyphen-lowercase isolated regression</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-dataset">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement("div");
+  assert_throws_dom("SyntaxError", () => { element.dataset["foo-bar"] = "value"; });
+  assert_false(element.hasAttribute("data-foo-bar"));
+}, "dataset setter rejects a hyphen followed by an ASCII lowercase letter");
+</script>

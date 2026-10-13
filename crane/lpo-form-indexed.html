@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form indexed properties use the live elements collection</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#the-form-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const form = document.createElement("form");
+  const image = form.appendChild(document.createElement("input"));
+  image.type = "image";
+  const input = form.appendChild(document.createElement("input"));
+  const button = form.appendChild(document.createElement("button"));
+  assert_array_equals([form[0], form[1], form[2]], [input, button, undefined]);
+  image.type = "text";
+  assert_array_equals([form[0], form[1], form[2]], [image, input, button]);
+  input.remove();
+  assert_array_equals([form[0], form[1], form[2]], [image, button, undefined]);
+}, "indexed properties track insertion, removal and image-input type changes");
+
+test(() => {
+  const form = document.createElement("form");
+  const input = form.appendChild(document.createElement("input"));
+  const descriptor = Object.getOwnPropertyDescriptor(form, "0");
+  assert_equals(descriptor.value, input);
+  assert_true(descriptor.enumerable);
+  assert_true(descriptor.configurable);
+  assert_false(descriptor.writable);
+  assert_false(Reflect.deleteProperty(form, "0"));
+  assert_equals(form[0], input);
+  assert_array_equals(Object.getOwnPropertyNames(form), ["0"]);
+}, "indexed descriptors, deletion and own names follow legacy platform object rules");
+
+test(t => {
+  const container = document.body.appendChild(document.createElement("div"));
+  t.add_cleanup(() => container.remove());
+  container.innerHTML = '<input form="lpo-index-owner"><form id="lpo-index-owner"><button></button></form><input form="lpo-index-owner">';
+  const form = container.querySelector("form");
+  const controls = container.querySelectorAll("input,button");
+  assert_array_equals([form[0], form[1], form[2], form[3]], [...controls, undefined]);
+  controls[0].removeAttribute("form");
+  assert_array_equals([form[0], form[1], form[2]], [controls[1], controls[2], undefined]);
+}, "indexed properties include external controls in tree order and track form ownership");
+
+test(() => {
+  const form = document.createElement("form");
+  const host = form.appendChild(document.createElement("div"));
+  host.attachShadow({mode: "open"}).appendChild(document.createElement("input"));
+  const input = form.appendChild(document.createElement("input"));
+  assert_equals(form[0], input);
+  assert_equals(form[1], undefined);
+}, "indexed properties do not cross shadow roots");
+</script>

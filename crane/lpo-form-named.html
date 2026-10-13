@@ -1,0 +1,141 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form current supported property names and live candidates</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#the-form-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function append(parent, tag, name, id) {
+  const element = document.createElement(tag);
+  if (name !== undefined) element.setAttribute("name", name);
+  if (id !== undefined) element.id = id;
+  parent.appendChild(element);
+  return element;
+}
+
+test(() => {
+  const form = document.createElement("form");
+  const input = append(form, "input", "alias", "identity");
+  assert_equals(form.alias, input);
+  assert_equals(form.identity, input);
+  const descriptor = Object.getOwnPropertyDescriptor(form, "alias");
+  assert_equals(descriptor.value, input);
+  assert_false(descriptor.writable);
+  assert_false(descriptor.enumerable);
+  assert_true(descriptor.configurable);
+}, "form name and id expose a single listed element with the correct descriptor");
+
+test(() => {
+  const form = document.createElement("form");
+  const first = append(form, "input", "group");
+  const second = append(form, "input", "group", "group");
+  const list = form.group;
+  assert_true(list instanceof RadioNodeList);
+  assert_array_equals(Array.from(list), [first, second]);
+  second.name = "different";
+  second.id = "different";
+  assert_array_equals(Array.from(list), [first]);
+  const third = append(form, "button", "group");
+  assert_array_equals(Array.from(list), [first, third]);
+}, "duplicate names return a live RadioNodeList and id/name matches count once");
+
+test(() => {
+  const form = document.createElement("form");
+  const firstImage = append(form, "img", "picture");
+  const secondImage = append(form, "img", undefined, "picture");
+  const images = form.picture;
+  assert_true(images instanceof RadioNodeList);
+  assert_array_equals(Array.from(images), [firstImage, secondImage]);
+  const control = append(form, "input", "picture");
+  assert_equals(form.picture, control);
+  assert_array_equals(Array.from(images), [firstImage, secondImage]);
+  secondImage.remove();
+  assert_array_equals(Array.from(images), [firstImage]);
+  control.remove();
+  assert_equals(form.picture, firstImage);
+}, "image candidates are a live fallback and listed controls take precedence");
+
+test(() => {
+  const outer = document.createElement("form");
+  const inner = outer.appendChild(document.createElement("form"));
+  const image = append(inner, "img", "nested");
+  assert_equals(outer.nested, undefined);
+  assert_equals(inner.nested, image);
+  const imageInput = append(outer, "input", "imageInput");
+  imageInput.type = "image";
+  assert_equals(outer.imageInput, undefined);
+}, "named access respects the nearest form and excludes image inputs");
+
+test(() => {
+  const form = document.createElement("form");
+  append(form, "img", "picture", "pictureId");
+  append(form, "input", "shared", "fieldId");
+  append(form, "input", "shared", "");
+  append(form, "input", "", "lastId");
+  // Browser consensus, https://github.com/whatwg/html/issues/1731.
+  // Crane's lookup/enumeration separation is the codex-lpo Q7 follow-up.
+  assert_array_equals(Object.getOwnPropertyNames(form), ["0", "1", "2"]);
+  assert_array_equals(Object.keys(form), ["0", "1", "2"]);
+}, "named properties are hidden from own-key enumeration, as in all three browsers");
+
+test(() => {
+  const form = document.createElement("form");
+  const submit = append(form, "input", "submit");
+  const length = append(form, "input", "length");
+  const elements = append(form, "input", "elements");
+  assert_equals(form.submit, submit);
+  assert_equals(form.length, length);
+  assert_equals(form.elements, elements);
+  assert_equals(form[0], submit);
+  assert_equals(form[1], length);
+  assert_equals(form[2], elements);
+}, "named controls override builtins without changing native indexed access");
+
+test(() => {
+  const form = document.createElement("form");
+  form.later = 42;
+  const input = append(form, "input", "later");
+  assert_equals(form.later, 42);
+  assert_true(Reflect.deleteProperty(form, "later"));
+  assert_equals(form.later, input);
+}, "an own expando remains visible until deleted");
+
+async function collect(t) {
+  // Leave the frame that made the form before collecting: only the list
+  // should keep this tree alive, not a temporary register on that frame.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  for (let i = 0; i < 2; ++i) {
+    await TestUtils.gc();
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+}
+
+promise_test(async t => {
+  const list = (() => {
+    const form = document.createElement("form");
+    append(form, "input", "group", "retained-control-a");
+    append(form, "input", "group", "retained-control-b");
+    return form.group;
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].id, "retained-control-a");
+  assert_equals(list[1].id, "retained-control-b");
+  assert_equals(list[0].parentNode.localName, "form");
+}, "a retained named RadioNodeList keeps its form and controls alive");
+
+promise_test(async t => {
+  const list = (() => {
+    const form = document.createElement("form");
+    append(form, "img", "pictures", "retained-image-a");
+    append(form, "img", "pictures", "retained-image-b");
+    return form.pictures;
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].id, "retained-image-a");
+  assert_equals(list[1].id, "retained-image-b");
+  assert_equals(list[0].parentNode.localName, "form");
+}, "a retained image RadioNodeList keeps its form and images alive");
+</script>

@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form indexed getter isolated regression</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#the-form-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const form = document.createElement("form");
+  const input = form.appendChild(document.createElement("input"));
+  assert_equals(form[0], input);
+  assert_equals(form[1], undefined);
+  assert_equals(form[-1], undefined);
+}, "form indexed properties return the corresponding listed control");
+</script>

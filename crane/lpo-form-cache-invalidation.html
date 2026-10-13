@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form named access follows mutations and custom element upgrades</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  t.add_cleanup(() => container.remove());
+  container.innerHTML = '<form id=lpoCacheForm><input name=field></form><input name=outside>';
+  const form = container.firstChild;
+  const input = form.firstChild;
+  const external = container.lastChild;
+  assert_equals(form.field, input);
+  assert_equals(form.outside, undefined);
+  external.setAttribute('form', 'lpoCacheForm');
+  assert_equals(form.outside, external);
+  form.id = 'lpoCacheRenamed';
+  assert_equals(form.outside, undefined);
+  input.name = 'imageOnly';
+  input.type = 'image';
+  assert_equals(form.imageOnly, undefined);
+  input.type = 'text';
+  input.name = 'renamed';
+  assert_equals(form.renamed, input);
+  const other = document.implementation.createHTMLDocument('adoption');
+  other.body.appendChild(form);
+  assert_equals(form.renamed, input);
+  form.remove();
+  assert_equals(form.renamed, input);
+}, 'Names remain live across owner attributes, input type, adoption and detachment');
+
+test(() => {
+  const form = document.createElement('form');
+  const control = document.createElement('lpo-cached-face');
+  control.setAttribute('name', 'face');
+  form.appendChild(control);
+  assert_equals(form.face, undefined, 'cache before upgrade');
+  assert_equals(form.length, 0);
+  customElements.define('lpo-cached-face', class extends HTMLElement {
+    static formAssociated = true;
+  });
+  customElements.upgrade(form);
+  assert_equals(form.face, control, 'named answer after upgrade');
+  assert_equals(form.length, 1);
+  assert_equals(form[0], control, 'indexed answer after upgrade');
+}, 'A form-associated custom element becomes visible without a tree mutation');
+</script>

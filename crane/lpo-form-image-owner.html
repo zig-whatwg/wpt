@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form named image access ignores form attributes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#reset-the-form-owner">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const first = document.body.appendChild(document.createElement("form"));
+  const second = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => first.remove());
+  t.add_cleanup(() => second.remove());
+  first.id = "lpo-first";
+  second.id = "lpo-second";
+  const image = first.appendChild(document.createElement("img"));
+  image.name = "picture";
+  image.setAttribute("form", second.id);
+  assert_equals(first.picture, image);
+  assert_equals(second.picture, undefined);
+  const external = document.body.appendChild(document.createElement("img"));
+  t.add_cleanup(() => external.remove());
+  external.name = "outside";
+  external.setAttribute("form", first.id);
+  assert_equals(first.outside, undefined);
+}, "only listed elements use the form attribute to select an owner");
+</script>

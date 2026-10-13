@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Object.keys on a form with an indexed and named control</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#the-form-element">
+<link rel="help" href="https://webidl.spec.whatwg.org/#LegacyUnenumerableNamedProperties">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const form = document.createElement("form");
+  const input = document.createElement("input");
+  input.name = "field";
+  form.appendChild(input);
+  // Keep this independent of getOwnPropertyNames: a failing assertion there
+  // must not hide a crash in the adapter's enumerable-key path (bindlpo).
+  assert_array_equals(Object.keys(form), ["0"]);
+}, "Object.keys(form) enumerates indexed controls without named entries");
+</script>

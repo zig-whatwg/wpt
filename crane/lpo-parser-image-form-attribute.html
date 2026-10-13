@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A parser-associated image ignores changes to its form attribute</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = new DOMParser().parseFromString(
+    '<div><form id=f></div><img id=image name=picture><input id=control></form>',
+    'text/html');
+  const form = doc.getElementById('f');
+  const image = doc.getElementById('image');
+  const control = doc.getElementById('control');
+  assert_equals(form.picture, image, 'initial parser-associated image');
+  assert_equals(control.form, form, 'initial listed control');
+  image.setAttribute('form', 'other');
+  assert_equals(form.picture, image, 'setting an unlisted image form attribute');
+  image.setAttribute('form', 'changed');
+  assert_equals(form.picture, image, 'changing the unlisted attribute');
+  image.removeAttribute('form');
+  assert_equals(form.picture, image, 'removing the unlisted attribute');
+  control.setAttribute('form', 'other');
+  control.removeAttribute('form');
+  assert_equals(control.form, null, 'listed control loses its parser association');
+}, 'Only listed elements reset their parser association after a form attribute change');
+</script>

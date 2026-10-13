@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dataset setter validation, conversion and mutation order</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-dataset">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const name of ["-a", "foo-bar", "--a", "bad-a/", "bad-a "]) {
+  test(() => {
+    const element = document.createElement("div");
+    assert_throws_dom("SyntaxError", () => { element.dataset[name] = "value"; });
+    assert_array_equals(element.getAttributeNames(), []);
+  }, `dataset SyntaxError precedes mutation and attribute-name validation: ${JSON.stringify(name)}`);
+}
+for (const name of ["bad name", "bad\tname", "bad\nname", "bad\rname", "bad\fname", "bad\0name", "bad/name", "bad=name", "bad>name"]) {
+  test(() => {
+    const element = document.createElement("div");
+    assert_throws_dom("InvalidCharacterError", () => { element.dataset[name] = "value"; });
+    assert_array_equals(element.getAttributeNames(), []);
+  }, `dataset rejects an invalid resulting attribute name: ${JSON.stringify(name)}`);
+}
+for (const [name, attribute] of [["", "data-"], ["fooBar", "data-foo-bar"], ["foo-Bar", "data-foo--bar"], ["-", "data--"], ["foo-9", "data-foo-9"], ["é-É", "data-é-É"]]) {
+  test(() => {
+    const element = document.createElement("div");
+    element.dataset[name] = "first";
+    assert_equals(element.getAttribute(attribute), "first");
+    element.dataset[name] = "second";
+    assert_equals(element.getAttribute(attribute), "second");
+    assert_equals(element.dataset[name], "second");
+  }, `dataset converts ASCII uppercase only: ${JSON.stringify(name)}`);
+}
+test(() => {
+  const element = document.createElement("div");
+  element.dataset.fooBar = "original";
+  assert_throws_dom("SyntaxError", () => { element.dataset["foo-bar"] = "replacement"; });
+  assert_equals(element.dataset.fooBar, "original");
+  assert_equals(element.getAttribute("data-foo-bar"), "original");
+}, "an invalid dataset alias cannot overwrite an existing attribute");
+test(() => {
+  const element = document.createElement("div");
+  const marker = {};
+  assert_throws_exactly(marker, () => {
+    element.dataset["foo-bar"] = {toString() { throw marker; }};
+  });
+  assert_array_equals(element.getAttributeNames(), []);
+}, "WebIDL value conversion runs before dataset name validation");
+</script>
