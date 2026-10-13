@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store captures each notification before queueing its event</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const store = cookieStore;
+  const name = 'cs-captured-batch';
+  const events = [];
+  let firstResolve, allResolve;
+  const first = new Promise(resolve => firstResolve = resolve);
+  const all = new Promise(resolve => allResolve = resolve);
+  const listener = event => {
+    if (!event.changed.some(cookie => cookie.name === name)) return;
+    events.push(event);
+    if (events.length === 1) {
+      document.cookie = `${name}=reentrant; Path=/; Secure`;
+      firstResolve(event);
+    }
+    if (events.length === 4) allResolve();
+  };
+  store.addEventListener('change', listener);
+  t.add_cleanup(() => {
+    store.removeEventListener('change', listener);
+    return store.delete(name);
+  });
+  for (const value of ['first', 'second', 'third']) {
+    document.cookie = `${name}=${value}; Path=/; Secure`;
+  }
+  const initial = await first;
+  assert_equals(initial.changed.length, 1, 'the first task owns only its first notification');
+  assert_equals(initial.changed[0].value, 'first', 'later writes do not replace a captured value');
+  await all;
+  assert_array_equals(events.map(event => event.changed.length), [1, 1, 1, 1]);
+  assert_array_equals(events.map(event => event.changed[0].value), ['first', 'second', 'third', 'reentrant']);
+  assert_true(events.every(event => event.deleted.length === 0));
+}, 'synchronous and reentrant writes retain their own queued change records');
+</script>

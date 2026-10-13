@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store releases changes queued when a page completes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({explicit_done: true});
+addEventListener('load', () => {
+  const t = async_test('page teardown drops change tasks queued by a completing event handler');
+  let value = 0;
+  const store = cookieStore;
+  function mutate() {
+    document.cookie = `cs-teardown=${++value}; Path=/; Secure`;
+    document.cookie = 'cs-teardown=; Path=/; Secure; Max-Age=0';
+  }
+  store.addEventListener('change', event => {
+    if (!event.changed.some(cookie => cookie.name === 'cs-teardown')) return;
+    // Keep one successor notification pending until the page is destroyed.
+    // The runner pumps tasks before checking completion, so merely queueing
+    // a fixed number before done() would not exercise task drop at teardown.
+    mutate();
+  });
+  store.addEventListener('change', t.step_func_done(event => {
+    assert_equals(event.changed.length, 1);
+    assert_equals(event.changed[0].name, 'cs-teardown');
+    assert_false(document.cookie.split('; ').some(cookie => cookie.startsWith('cs-teardown=')));
+  }), {once: true});
+  mutate();
+  // Run under leaks --atExit to verify cleanup of the pending successor.
+  done();
+});
+</script>

@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store normalization before validation, query and deletion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const selectedCase = new URLSearchParams(location.search).get('case');
+function cookieCase(key, body, title) {
+  if (!selectedCase || selectedCase === key) promise_test(body, title);
+}
+cookieCase('set', async t => {
+  const raw = ' \tcs-normalized\t ';
+  t.add_cleanup(async () => {
+    await cookieStore.delete(raw);
+    await cookieStore.delete('cs-normalized');
+  });
+  await cookieStore.set(raw, ' \tvalue with\ttab \t');
+  const cookie = await cookieStore.get('cs-normalized');
+  assert_not_equals(cookie, null);
+  assert_equals(cookie.name, 'cs-normalized');
+  assert_equals(cookie.value, 'value with\ttab');
+}, 'set trims edge spaces and tabs but keeps interior whitespace');
+cookieCase('empty', async t => {
+  for (const [name, value] of [['', ' '], [' \t', ''], [' \t', '\t ']]) {
+    t.add_cleanup(() => cookieStore.delete(name));
+    await promise_rejects_js(t, TypeError, cookieStore.set({name, value}));
+  }
+}, 'set rejects a name and value that normalize to empty');
+cookieCase('get', async t => {
+  t.add_cleanup(() => cookieStore.delete('cs-query'));
+  await cookieStore.set('cs-query', 'value');
+  assert_equals((await cookieStore.get(' \tcs-query \t')).value, 'value');
+  assert_equals((await cookieStore.get({name: '\tcs-query '})).value, 'value');
+  assert_equals((await cookieStore.getAll(' cs-query\t')).length, 1);
+  assert_equals((await cookieStore.getAll({name: ' cs-query\t'})).length, 1);
+}, 'get and getAll normalize both string and dictionary names');
+cookieCase('delete', async t => {
+  t.add_cleanup(() => cookieStore.delete('cs-delete'));
+  await cookieStore.set('cs-delete', 'value');
+  await cookieStore.delete(' \tcs-delete\t ');
+  assert_equals(await cookieStore.get('cs-delete'), null);
+}, 'delete normalizes the requested name');
+cookieCase('controls', async t => {
+  for (const name of ['\ncs-control', 'cs-control\r', '\vcs-control', 'cs-control\f']) {
+    await promise_rejects_js(t, TypeError, cookieStore.set(name, 'value'));
+  }
+}, 'normalization does not hide forbidden control characters');
+</script>

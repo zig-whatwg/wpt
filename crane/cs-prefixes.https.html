@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store rejects normalized reserved prefixes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const selectedCase = new URLSearchParams(location.search).get('case');
+for (const [key, name, value] of [
+  ['http', ' \t__Http-cs-reserved', 'value'],
+  ['host-http', '\t__Host-Http-cs-reserved', 'value'],
+  ['nameless-host', ' \t', ' \t__Host-cs-reserved'],
+  ['nameless-secure', ' \t', ' \t__Secure-cs-reserved'],
+  ['nameless-http', ' \t', ' \t__Http-cs-reserved'],
+  ['nameless-host-http', ' \t', ' \t__Host-Http-cs-reserved']
+]) {
+  if (selectedCase && selectedCase !== key) continue;
+  promise_test(async t => {
+    t.add_cleanup(() => cookieStore.delete(name).catch(() => {}));
+    await promise_rejects_js(t, TypeError, cookieStore.set({name, value}));
+    assert_equals(await cookieStore.get({name}), null);
+  }, `normalized ${key} prefix is rejected without storing a cookie`);
+}
+</script>

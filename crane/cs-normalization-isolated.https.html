@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store whitespace-only validation, isolated</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  t.add_cleanup(() => cookieStore.delete(' \t'));
+  await promise_rejects_js(t, TypeError, cookieStore.set({name: ' \t', value: ' \t'}));
+}, 'a whitespace-only name and value must reject');
+</script>

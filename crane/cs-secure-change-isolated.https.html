@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store Secure-only change, isolated</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  t.add_cleanup(() => cookieStore.delete('cs-secure-isolated'));
+  async function write(value) { document.cookie = value; }
+  // Match the upstream test's initial CookieStore access before writes.
+  const store = cookieStore;
+  await write('cs-secure-isolated=VALUE; Path=/; Secure');
+  const eventPromise = new Promise(resolve => store.addEventListener('change', resolve, {once: true}));
+  await write('cs-secure-isolated=VALUE; Path=/');
+  const event = await eventPromise;
+  assert_equals(event.changed.length, 1);
+  assert_equals(event.changed[0].name, 'cs-secure-isolated');
+  assert_equals(event.changed[0].value, 'VALUE');
+  assert_equals(event.deleted.length, 0);
+}, 'a Secure-only overwrite after a microtask produces one changed record');
+</script>

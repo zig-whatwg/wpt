@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store distinguishes an empty name from an omitted filter</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  await cookieStore.delete('');
+  t.add_cleanup(async () => {
+    await cookieStore.delete('');
+    await cookieStore.delete('cs-named');
+  });
+  await cookieStore.set('cs-named', 'named');
+  assert_equals(await cookieStore.get(''), null, 'string empty name with only a named cookie');
+  assert_equals(await cookieStore.get({name: ''}), null, 'dictionary empty name');
+  assert_equals((await cookieStore.getAll('')).length, 0, 'empty string is an exact filter');
+  assert_true((await cookieStore.getAll()).some(c => c.name === 'cs-named'), 'omitted filter');
+  assert_true((await cookieStore.getAll({})).some(c => c.name === 'cs-named'), 'empty dictionary');
+  await cookieStore.set('', 'nameless');
+  assert_equals((await cookieStore.get('')).value, 'nameless');
+  assert_equals((await cookieStore.getAll('')).length, 1);
+  assert_equals((await cookieStore.getAll({name: ''}))[0].value, 'nameless');
+  await cookieStore.delete(' \t');
+  assert_equals(await cookieStore.get(''), null, 'whitespace-only delete targets the empty name');
+  assert_equals((await cookieStore.get('cs-named')).value, 'named');
+}, 'an explicitly empty name selects only nameless cookies');
+</script>

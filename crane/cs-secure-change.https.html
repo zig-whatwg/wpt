@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cookie Store Secure-only changes produce one change record</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const selectedCase = new URLSearchParams(location.search).get('case');
+for (const drained of [false, true]) {
+  const key = drained ? 'drained' : 'microtask';
+  if (selectedCase && selectedCase !== key) continue;
+  promise_test(async t => {
+    const name = `cs-secure-${key}`;
+    t.add_cleanup(() => cookieStore.delete(name));
+    const first = drained ? new Promise(resolve => cookieStore.addEventListener('change', resolve, {once: true})) : null;
+    async function write(value) { document.cookie = value; }
+    await write(`${name}=VALUE; Path=/; Secure`);
+    if (first) await first;
+    const eventPromise = new Promise(resolve => cookieStore.addEventListener('change', resolve, {once: true}));
+    await write(`${name}=VALUE; Path=/`);
+    const event = await eventPromise;
+    assert_equals(event.changed.length, 1);
+    assert_equals(event.changed[0].name, name);
+    assert_equals(event.changed[0].value, 'VALUE');
+    assert_equals(event.deleted.length, 0);
+  }, `Secure-only change after ${drained ? 'the first change event' : 'a microtask'} reports one changed cookie`);
+}
+</script>
