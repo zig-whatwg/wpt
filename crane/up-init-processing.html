@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern construction and input processing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const pattern = new URLPattern();
+  assert_true(pattern.test());
+  const result = pattern.exec();
+  assert_not_equals(result, null);
+  assert_equals(result.inputs.length, 1);
+  assert_equals(typeof result.inputs[0], 'object');
+  assert_array_equals(Object.keys(result.inputs[0]), []);
+  for (const name of ['protocol', 'username', 'password', 'hostname', 'port', 'pathname', 'search', 'hash']) {
+    assert_equals(result[name].input, '', name);
+    assert_equals(result[name].groups[0], '', name + ' capture');
+  }
+}, 'Omitted matching input is an empty dictionary');
+for (const operation of ['test', 'exec']) {
+  test(() => assert_throws_js(TypeError, () => new URLPattern()[operation]({}, 'https://example.com/')),
+       operation + ' rejects a dictionary and a separate base URL');
+}
+test(() => assert_throws_js(TypeError, () => new URLPattern({}, 'https://example.com/')),
+     'Construction rejects a dictionary and a separate base URL');
+test(() => {
+  const p = new URLPattern('../:file', 'https://example.com/a/b');
+  assert_equals(p.protocol, 'https');
+  assert_equals(p.hostname, 'example.com');
+  // Encoding callbacks process fixed /a/.. separately from the /:file part.
+  // Verified in HeadlessChrome 155 on 2026-10-12 (row 26, ANSWER Q13).
+  assert_equals(p.pathname, '//:file');
+  assert_false(p.test('../one', 'https://example.com/a/two'));
+  assert_true(p.test('https://example.com//one'));
+  const fixed = new URLPattern('../fixed/:file', 'https://example.com/a/b');
+  assert_equals(fixed.pathname, '/fixed/:file');
+  assert_true(fixed.test('../fixed/one', 'https://example.com/a/two'));
+}, 'String construction and matching resolve relative paths');
+test(() => {
+  const p = new URLPattern({pathname: '/b', protocol: 'https', hostname: 'example.com'});
+  assert_true(p.test('HTTPS://EXAMPLE.COM:443/a/../b'));
+  assert_true(p.test({hostname: 'EXAMPLE.COM', pathname: '../b', baseURL: 'https://old.example/a/c'}));
+  assert_false(p.test('not a URL'));
+  assert_equals(p.exec({port: '65536'}), null);
+}, 'String and dictionary matching use URL canonicalization');
+test(() => {
+  const p = new URLPattern({baseURL: 'https://user:pass@example.com/a/+/b?q=*&v={x}#end'});
+  assert_equals(p.username, '*');
+  assert_equals(p.password, '*');
+  assert_equals(p.pathname, '/a/\\+/b');
+  assert_equals(p.search, 'q=\\*&v=\\{x\\}');
+  assert_true(p.test('https://example.com/a/+/b?q=*&v={x}#end'));
+}, 'Base URL syntax is escaped before it becomes a pattern');
+</script>

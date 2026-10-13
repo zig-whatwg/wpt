@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern canonicalizes every fixed component fragment</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [component, input, expected] of [
+  ['pathname', '/a/../b', '/b'],
+  ['pathname', '/a/%2e%2e/b', '/b'],
+  ['pathname', '/{café:part}', '/{caf%C3%A9:part}'],
+  ['hostname', '0x7f.1', '127.0.0.1'],
+  ['hostname', '%65xample.com', 'example.com'],
+  ['hostname', '[2001\\:DB8\\:\\:1]', '[2001\\:db8\\:\\:1]'],
+  ['search', "a'b", 'a%27b'],
+  ['search', '?a\\?b', 'a\\?b'],
+  ['hash', '##hash', '#hash'],
+]) {
+  test(() => {
+    assert_equals(new URLPattern({[component]: input})[component], expected);
+  }, component + ' canonicalization: ' + input);
+}
+for (const input of [
+  {protocol: '1http'}, {hostname: 'bad host'}, {port: '65536'}, {baseURL: 'not a URL'},
+]) {
+  test(() => assert_throws_js(TypeError, () => new URLPattern(input)),
+       'Reject invalid fixed component: ' + JSON.stringify(input));
+}
+test(() => {
+  assert_equals(new URLPattern({protocol: 'data', pathname: '/a/../b'}).pathname, '/a/../b');
+}, 'Opaque pathname keeps dot segments');
+</script>

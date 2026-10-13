@@ -1,0 +1,25 @@
+<!doctype html>
+<title>URLPattern sees parser failures that URL setters ignore</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const port of ['65536', '100000', 'invalid80']) {
+  test(() => {
+    assert_throws_js(TypeError, () => new URLPattern({port}));
+    assert_false(new URLPattern({port: '*'}).test({port}));
+  }, 'URLPattern rejects invalid port ' + port);
+}
+for (const port of ['65536', 'invalid']) {
+  for (const kind of ['URL', 'a', 'area']) {
+    test(() => {
+      const value = kind === 'URL' ? new URL('https://old.example:8443/path') : document.createElement(kind);
+      value.href = 'https://old.example:8443/path';
+      value.host = 'new.example:' + port;
+      assert_equals(value.hostname, 'new.example');
+      assert_equals(value.port, '8443');
+      value.port = port;
+      assert_equals(value.port, '8443');
+    }, kind + ' setter ignores port failure and preserves the host: ' + port);
+  }
+}
+</script>

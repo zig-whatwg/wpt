@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern classifies compiled protocol components</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const pattern = new URLPattern('*:?query');
+  assert_equals(pattern.protocol, '*');
+  assert_equals(pattern.hostname, '');
+  assert_equals(pattern.pathname, '/');
+  assert_equals(pattern.search, 'query');
+}, 'Wildcard protocol gives constructor-string parsing the special-scheme defaults');
+test(() => {
+  const pattern = new URLPattern({protocol: 'http*', pathname: '/a/../b'});
+  assert_equals(pattern.pathname, '/b');
+}, 'Pathname encoding uses whether the compiled protocol matches a special scheme');
+</script>

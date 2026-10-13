@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern uses builtin ECMAScript regexp semantics</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const saved = RegExp;
+  const savedExec = saved.prototype.exec;
+  let accepted;
+  let rejected;
+  try {
+    globalThis.RegExp = () => { throw new Error('page constructor called'); };
+    saved.prototype.exec = () => { throw new Error('page exec called'); };
+    const pattern = new URLPattern({pathname: '/:part(foo|bar)'});
+    accepted = pattern.exec({pathname: '/bar'});
+    rejected = pattern.test({pathname: '/other'});
+  } finally {
+    globalThis.RegExp = saved;
+    saved.prototype.exec = savedExec;
+  }
+  assert_not_equals(accepted, null);
+  assert_equals(accepted.pathname.groups.part, 'bar');
+  assert_false(rejected);
+}, 'Page RegExp and exec replacements do not affect URLPattern');
+test(() => {
+  /page-(\w+)/.exec('page-sentinel');
+  const previous = RegExp.$1;
+  new URLPattern({pathname: '/:part(foo|bar)'}).exec({pathname: '/bar'});
+  assert_equals(RegExp.$1, previous);
+}, 'Matching does not expose captures through page RegExp statics');
+test(() => {
+  const pattern = new URLPattern({pathname: '/([\\d&&[0-1]])'});
+  assert_true(pattern.test({pathname: '/1'}));
+  assert_false(pattern.test({pathname: '/2'}));
+  assert_throws_js(TypeError, () => new URLPattern({pathname: '/([(])'}));
+}, 'Compilation and matching use UnicodeSets mode');
+test(() => {
+  const pattern = new URLPattern({pathname: '/:part?'});
+  const result = pattern.exec({pathname: ''});
+  assert_not_equals(result, null);
+  assert_true(Object.hasOwn(result.pathname.groups, 'part'));
+  assert_equals(result.pathname.groups.part, undefined);
+  const empty = new URLPattern({pathname: ':part(.*)'}).exec({pathname: ''});
+  assert_equals(empty.pathname.groups.part, '');
+}, 'An unmatched capture stays distinct from a captured empty string');
+test(() => {
+  const name = 'é'.repeat(40);
+  const pattern = new URLPattern({pathname: '/:' + name});
+  assert_equals(pattern.exec({pathname: '/value'}).pathname.groups[name], 'value');
+}, 'Capture names are mapped positionally without truncation');
+test(() => {
+  assert_false(new URLPattern({pathname: String.raw`([^\/]+?)`}).hasRegExpGroups);
+  assert_true(new URLPattern({pathname: '([^/]+?)'}).hasRegExpGroups);
+}, 'Only the generated segment-wildcard spelling is canonical');
+</script>

@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern serialization preserves part boundaries</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [input, expected] of [
+  ['/{foo}?', '/{foo}?'],
+  ['/{foo}+', '/{foo}+'],
+  ['{:foo}{(.*)}', '{:foo}(.*)'],
+  ['{:foo}{(.*)bar}', ':foo{*bar}'],
+  ['{:foo}{bar(.*)}', ':foo{bar*}'],
+  ['{:foo\\.bar}', '{:foo.bar}'],
+  [':foo\\bar', '{:foo}bar'],
+  [':foo{}(.*)', '{:foo}(.*)'],
+  ['*\\/*', '*/{*}'],
+  ['/:foo\\bar', '{/:foo}bar'],
+  ['(foo)(.*)', '(foo)(.*)'],
+  ['(foo)?(.*)', '(foo)?*'],
+  ['/a\\+b\\?c', '/a\\+b%3Fc'],
+]) {
+  test(() => {
+    const pattern = new URLPattern({pathname: input});
+    assert_equals(pattern.pathname, expected);
+    const reparsed = new URLPattern({pathname: pattern.pathname});
+    assert_equals(reparsed.pathname, expected);
+    assert_equals(reparsed.hasRegExpGroups, pattern.hasRegExpGroups);
+  }, `Canonical serialization: ${input}`);
+}
+</script>

@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern empty pathname versus a URL's implicit root</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const pattern = new URLPattern({protocol: 'https', hostname: 'example.com', pathname: ''});
+  assert_false(pattern.test('https://example.com'));
+  assert_false(pattern.test('https://example.com/'));
+  assert_true(pattern.test({protocol: 'https', hostname: 'example.com', pathname: ''}));
+}, 'An empty pathname pattern matches an empty component, not the implicit URL root');
+</script>

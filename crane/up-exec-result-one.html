@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern exec result lifetime</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Row 26 Q14: pair this common-success fixture under leaks --atExit on BASE/tip.
+// The assertions also pin result contents across subsequent calls and GC.
+test(() => {
+  const pattern = new URLPattern({pathname: '/items/:id'});
+  const saved = [];
+  for (let index = 0; index < 1; ++index) {
+    const input = 'https://example.com/items/value' + index;
+    const result = pattern.exec(input);
+    assert_not_equals(result, null);
+    assert_equals(result.pathname.groups.id, 'value' + index);
+    assert_equals(result.inputs[0], input);
+    saved.push(result);
+  }
+  if (self.TestUtils && TestUtils.gc) TestUtils.gc();
+  for (let index = 0; index < saved.length; ++index) {
+    assert_equals(saved[index].pathname.groups.id, 'value' + index);
+    assert_equals(saved[index].inputs[0], 'https://example.com/items/value' + index);
+  }
+}, '1 identical successful exec results, retained across later calls and GC');
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>URLPattern Unicode group names and escaped code points</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const name of ['café', '名', '\u{10400}', 'a\u0301', 'a\u200c', 'a\u200d']) {
+  test(() => {
+    const pattern = new URLPattern({pathname: '/:' + name});
+    assert_equals(pattern.pathname, '/:' + name);
+    assert_equals(pattern.exec({pathname: '/value'}).pathname.groups[name], 'value');
+  }, 'Unicode IdentifierName: ' + name);
+}
+for (const name of ['\u{1f600}', '\u0301', '\u200c']) {
+  test(() => {
+    assert_throws_js(TypeError, () => new URLPattern({pathname: '/:' + name}));
+  }, 'Reject non-IdentifierStart: ' + name);
+}
+test(() => {
+  const pattern = new URLPattern({pathname: '/\\é:x'});
+  assert_equals(pattern.pathname, '/%C3%A9:x');
+  assert_equals(pattern.exec({pathname: '/évalue'}).pathname.groups.x, 'value');
+}, 'An escaped Unicode character is one token');
+</script>
