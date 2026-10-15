@@ -1,0 +1,23 @@
+<!doctype html><meta charset=utf-8><title>XPath browser string unit behavior</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+// Blink/WebKit XPathFunctions use UTF-16 units, including lone surrogates.
+const cases = [
+ ['string-length("a😀b")', 4],
+ ['substring("a😀b", 2, 1)', '\ud83d'],
+ ['substring("a😀b", 3, 1)', '\ude00'],
+ ['substring("a😀b", 2, 2)', '😀'],
+ ['translate("a😀a", "😀a", "xy")', 'xy'],
+ ['translate("😀", "x", "y")', '😀'],
+ ['starts-with("😀", "\ud83d")', true],
+ ['contains("😀", "\ude00")', true],
+ ['substring-before("😀", "\ude00")', '\ud83d'],
+ ['substring-after("😀", "\ud83d")', '\ude00'],
+ ['concat("\ud83d", "\ude00") = "😀"', true],
+ ['sum(3)', 0], ['sum("3")', 0], ['substring("abc", -1 div 0)', '']
+];
+for (const [expression, expected] of cases) test(() => {
+  const result = document.evaluate(expression, document);
+  assert_equals(result[typeof expected + 'Value'], expected);
+}, expression);
+</script>

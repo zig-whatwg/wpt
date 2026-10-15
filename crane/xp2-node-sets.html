@@ -1,0 +1,61 @@
+<!doctype html><meta charset=utf-8><title>XPath axes and predicates</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+function fixture() {
+  const root = document.createElement('section');
+  root.innerHTML = '<div id="a"><i id="a1">1</i><i id="a2">2</i></div><div id="b"><i id="b1">3</i><i id="b2">4</i></div>';
+  return root;
+}
+function nodes(expression, context) {
+  const r = document.evaluate(expression, context, null, 7);
+  return Array.from({length:r.snapshotLength}, (_, i) => r.snapshotItem(i).id);
+}
+for (const [expression, expected] of [
+ ['div/i', ['a1','a2','b1','b2']], ['div/i[1]', ['a1','b1']], ['(div/i)[1]', ['a1']],
+ ['.//i[last()]', ['a2','b2']], ['div/i[position() mod 2 = 0]', ['a2','b2']],
+ ['div[2]/preceding-sibling::*[1]', ['a']], ['div[1]/following-sibling::*', ['b']],
+ ['div[2]/i[2]/ancestor::*[1]', ['b']], ['div[1]/i[2]/following::i', ['b1','b2']],
+ ['div[2]/i[1]/preceding::i[1]', ['a2']], ['(div[2]/i[1]/preceding::i)[1]', ['a1']],
+ ['div[2]/i | div[1]/i | div[2]/i', ['a1','a2','b1','b2']],
+ ['div/i[. >= 2 and . < 4]', ['a2','b1']], ['div[i = "2"]', ['a']],
+ ['div[i != "2"]', ['a','b']], ['div[i > ../div[2]/i[1]]', ['b']],
+ ['div/@id/..', ['a','b']], ['div/i/parent::div', ['a','b']],
+ ['div[1]/i[2]/preceding::*[1]', ['a1']], ['div/namespace::*', []],
+ // XPath §3.4: a node-set compared with a boolean is converted with boolean(),
+ // for < <= > >= as for = and != (WebKit EqTestOp::compare).
+ ['div[. > true()]', []], ['div[i > true()]', []], ['div[i >= true()]', ['a','b']],
+ ['div[missing < true()]', ['a','b']]
+]) test(() => assert_array_equals(nodes(expression, fixture()), expected), expression);
+test(() => {
+  assert_true(document.evaluate('missing < true()', fixture(), null, 3).booleanValue);
+  assert_false(document.evaluate('div > true()', fixture(), null, 3).booleanValue);
+  assert_true(document.evaluate('true() > missing', fixture(), null, 3).booleanValue);
+}, 'relational comparison of a node-set with a boolean');
+test(() => {
+  const root = fixture();
+  const snapshot = document.evaluate('.//i', root, null, 7);
+  root.textContent = '';
+  assert_equals(snapshot.snapshotLength, 4);
+  assert_equals(snapshot.snapshotItem(3).textContent, '4');
+  assert_equals(snapshot.snapshotItem(4), null);
+  assert_false(snapshot.invalidIteratorState);
+}, 'snapshots survive mutation');
+test(() => {
+  const root = fixture();
+  const r = document.evaluate('.//i', root);
+  assert_equals(r.resultType, 4);
+  assert_false(r.invalidIteratorState);
+  root.setAttribute('changed', 'yes');
+  assert_true(r.invalidIteratorState);
+  assert_throws_dom('InvalidStateError', () => r.iterateNext());
+}, 'attribute mutation invalidates an iterator');
+test(() => {
+  const r = document.evaluate('true()', document);
+  for (const property of ['numberValue','stringValue','singleNodeValue','snapshotLength'])
+    assert_throws_js(TypeError, () => r[property]);
+  assert_throws_js(TypeError, () => r.snapshotItem(0));
+  assert_throws_js(TypeError, () => r.iterateNext());
+  for (let kind=4; kind<=9; ++kind)
+    assert_throws_js(TypeError, () => document.evaluate('1', document, null, kind));
+}, 'XPathResult rejects incompatible access and conversion');
+</script>

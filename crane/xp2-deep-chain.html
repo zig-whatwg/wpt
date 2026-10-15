@@ -1,0 +1,46 @@
+<!doctype html><meta charset=utf-8><title>XPath long operator chains evaluate without native recursion</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<section id=s><b></b></section>
+<script>
+// XPath §3.3-3.5 operators are left-associative, so N chained operators make a
+// tree N levels high at nesting depth one. A 200,000-term chain once overflowed
+// the native stack (review M1); every chain below must evaluate, and `and`/`or`
+// must still short-circuit (§3.4).
+const NUMBER = XPathResult.NUMBER_TYPE, BOOLEAN = XPathResult.BOOLEAN_TYPE;
+const evaluate = (expression, kind, context = document) => document.evaluate(expression, context, null, kind);
+test(() => {
+  assert_equals(evaluate('1' + '+1'.repeat(200000), NUMBER).numberValue, 200001);
+}, 'addition chain of 200,000 operators');
+test(() => {
+  assert_equals(evaluate('200000' + ' - 1'.repeat(200000), NUMBER).numberValue, 0);
+}, 'subtraction chain stays left-associative');
+test(() => {
+  assert_equals(evaluate('1' + ' + 2 * 3'.repeat(100000), NUMBER).numberValue, 600001);
+}, 'chain whose right operands are themselves operators');
+test(() => {
+  // The fold reads each left value while building the next: comparisons must
+  // see their left operand intact. (1 = 1) = 1 = ... stays true.
+  assert_true(evaluate('1' + ' = 1'.repeat(200000), BOOLEAN).booleanValue);
+  assert_true(evaluate('"ab" = concat("a", "b")', BOOLEAN).booleanValue);
+  assert_true(evaluate('3 > 2 = true()', BOOLEAN).booleanValue);
+}, 'comparison chain of 200,000 operators');
+test(() => {
+  assert_true(evaluate('true()' + ' and true()'.repeat(200000), BOOLEAN).booleanValue);
+  assert_false(evaluate('true()' + ' and true()'.repeat(200000) + ' and false()', BOOLEAN).booleanValue);
+}, 'and chain of 200,000 operators');
+test(() => {
+  assert_true(evaluate('false()' + ' or false()'.repeat(200000) + ' or true()', BOOLEAN).booleanValue);
+  assert_false(evaluate('false()' + ' or false()'.repeat(200000), BOOLEAN).booleanValue);
+}, 'or chain of 200,000 operators');
+test(() => {
+  // count(1|1) is a type error if it is ever evaluated.
+  assert_true(evaluate('true()' + ' or count(1|1)'.repeat(200000), BOOLEAN).booleanValue);
+  assert_false(evaluate('false()' + ' and count(1|1)'.repeat(200000), BOOLEAN).booleanValue);
+  assert_false(evaluate('true() and false()' + ' or false()'.repeat(1000), BOOLEAN).booleanValue);
+}, 'long chains still short-circuit');
+test(() => {
+  const s = document.getElementById('s');
+  assert_equals(evaluate('count(b' + '|b'.repeat(20000) + ')', NUMBER, s).numberValue, 1);
+  assert_equals(evaluate('count(b' + '|.'.repeat(20000) + ')', NUMBER, s).numberValue, 2);
+}, 'union chain of 20,000 operators');
+</script>

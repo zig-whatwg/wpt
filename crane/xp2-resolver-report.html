@@ -1,0 +1,22 @@
+<!doctype html><meta charset=utf-8><title>XPath resolver exceptions are reported</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+setup({allow_uncaught_exception:true});
+test(t => {
+  const expected = {resolverError: true};
+  let seen;
+  const handler = event => { seen = event.error; event.preventDefault(); };
+  window.addEventListener('error', handler);
+  t.add_cleanup(() => window.removeEventListener('error', handler));
+  assert_throws_dom('NamespaceError', () => document.createExpression('//p:item', () => {throw expected;}));
+  assert_equals(seen, expected);
+}, 'report the original exception before raising NamespaceError');
+for (const expected of [undefined, null, false, 0, 'resolver failure']) test(t => {
+  let seen = Symbol('no event');
+  const handler = event => { seen = event.error; event.preventDefault(); };
+  window.addEventListener('error', handler);
+  t.add_cleanup(() => window.removeEventListener('error', handler));
+  assert_throws_dom('NamespaceError', () => document.createExpression('//p:item', () => {throw expected;}));
+  assert_equals(seen, expected);
+}, 'report the original thrown primitive: ' + String(expected));
+</script>

@@ -1,0 +1,11 @@
+<!doctype html><meta charset=utf-8><title>XPath PI target node test</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const doc = document.implementation.createDocument(null, 'root');
+  const pi = doc.createProcessingInstruction('target', 'data');
+  doc.documentElement.appendChild(pi);
+  assert_equals(doc.evaluate('name(//processing-instruction())', doc, null, 2).stringValue, 'target');
+  assert_equals(doc.evaluate('string(//processing-instruction("target"))', doc, null, 2).stringValue, 'data');
+}, 'PI expanded name and node test use the target');
+</script>

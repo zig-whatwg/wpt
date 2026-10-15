@@ -1,0 +1,35 @@
+<!doctype html><meta charset=utf-8><title>XPath scalar semantics</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+const cases = [
+ ['1 + 2 * 3', 7], ['(1 + 2) * 3', 9], ['5 mod -2', 1], ['-5 mod 2', -1],
+ ['1 div 0', Infinity], ['0 div 0', NaN], ['round(-0.5)', -0],
+ ['floor(-1.2)', -2], ['ceiling(-1.2)', -1], ['number("  -.5 ")', -0.5],
+ ['number("1e2")', NaN], ['number("+1")', NaN], ['number("")', NaN],
+ ['string(0 div 0)', 'NaN'], ['string(-1 div 0)', '-Infinity'], ['string(-0)', '0'],
+ ['concat("a", "b", 3)', 'ab3'], ['substring("12345", 1.5, 2.6)', '234'],
+ ['substring("12345", 0, 3)', '12'], ['substring("12345", -1 div 0, 1 div 0)', ''],
+ ['substring("12345", -42, 1 div 0)', '12345'], ['string-length("a😀b")', 4],
+ ['substring("a😀b", 2, 1)', '\ud83d'], ['translate("a😀a", "😀a", "xy")', 'xy'],
+ ['translate("aba", "aa", "xy")', 'xbx'], ['normalize-space("  a\t b\n ")', 'a b'],
+ ['contains("abc", "")', true], ['starts-with("abc", "ab")', true],
+ ['substring-before("abc", "b")', 'a'], ['substring-after("abc", "b")', 'c'],
+ ['boolean(0 div 0)', false], ['not(false())', true], ['true() or false()', true],
+ ['false() and true()', false], ['3 > 2 > 1', false],
+ // XPath §3.1 makes an unbound variable an evaluation error; WebKit and Blink
+ // parse `$` QName and evaluate an unbound one to "" (Gecko fails at evaluation).
+ ['concat($unbound, "b")', 'b']
+];
+for (const [expression, expected] of cases) test(() => {
+  for (const evaluator of [document, new XPathEvaluator()]) {
+    const compiled = evaluator.createExpression(expression);
+    for (const result of [evaluator.evaluate(expression, document), compiled.evaluate(document)]) {
+      const kind = typeof expected;
+      assert_equals(result.resultType, kind === 'number' ? 1 : kind === 'string' ? 2 : 3);
+      assert_equals(result[kind + 'Value'], expected);
+    }
+  }
+}, expression);
+for (const expression of ['true(1)', 'concat("x")', 'unknown()', '$ unbound', '$p:*', '1 +', '//x[', '"unclosed'])
+ test(() => assert_throws_dom('SyntaxError', () => document.createExpression(expression)), 'reject ' + expression);
+</script>

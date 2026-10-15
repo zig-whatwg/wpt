@@ -1,0 +1,42 @@
+<!doctype html><meta charset=utf-8><title>XPath namespace and core node functions</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+function scalar(expr, node, resolver) {
+  const r = document.evaluate(expr, node, resolver);
+  return r[r.resultType === 1 ? 'numberValue' : r.resultType === 2 ? 'stringValue' : 'booleanValue'];
+}
+test(() => {
+  const root = document.createElementNS('urn:xp2', 'p:root');
+  root.setAttributeNS('urn:attrs', 'q:value', '9');
+  root.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:lang', 'EN-us');
+  const child = document.createElementNS('urn:xp2', 'p:child');
+  root.appendChild(child);
+  assert_equals(scalar('name()', root), 'p:root');
+  assert_equals(scalar('local-name()', root), 'root');
+  assert_equals(scalar('namespace-uri()', root), 'urn:xp2');
+  assert_true(scalar('lang("en")', child));
+  assert_false(scalar('lang("fr")', child));
+  assert_equals(scalar('sum(@q:*)', root, p => p === 'q' ? 'urn:attrs' : null), 9);
+}, 'names, attributes, namespaces and inherited language without XML parsing');
+test(() => {
+  let calls = 0;
+  const compiled = document.createExpression('//p:span', prefix => {
+    assert_equals(prefix, 'p'); ++calls;
+    return 'http://www.w3.org/1999/xhtml';
+  });
+  const root = document.createElement('section');
+  root.innerHTML = '<span></span><span></span>';
+  assert_equals(compiled.evaluate(root, 7).snapshotLength, 2);
+  assert_equals(compiled.evaluate(root, 7).snapshotLength, 2);
+  assert_equals(calls, 1);
+}, 'compiled expression resolves prefixes once');
+test(() => {
+  const node = document.createElement('xp2-node');
+  node.id = 'xp2-find-me'; document.body.appendChild(node);
+  try {
+    const r = document.evaluate('id("xp2-find-me xp2-find-me")', document, null, 7);
+    assert_equals(r.snapshotLength, 1); assert_equals(r.snapshotItem(0), node);
+  } finally { node.remove(); }
+}, 'id tokenizes and deduplicates');
+</script>

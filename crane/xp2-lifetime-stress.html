@@ -1,0 +1,24 @@
+<!doctype html><meta charset=utf-8><title>XPath repeated evaluations release temporary storage</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<body><script>
+// Run the same calls even on an engine lacking XPath. This also gives the
+// base/tip native-leak measurement identical argument-conversion counts.
+test(() => {
+  const root = document.createElement('section');
+  root.innerHTML = '<span>retained</span>';
+  let scalarPasses = 0, snapshotPasses = 0;
+  for (let i=0; i<128; ++i) {
+    try {
+      const result = document.evaluate('1 + 2 * 3', document, null, 1);
+      if (result.numberValue === 7) ++scalarPasses;
+    } catch (_) {}
+    try {
+      const result = document.evaluate('./span', root, null, 7);
+      if (result.snapshotLength === 1 && result.snapshotItem(0).textContent === 'retained') ++snapshotPasses;
+    } catch (_) {}
+    if (i % 16 === 15) TestUtils.gc();
+  }
+  assert_equals(scalarPasses, 128);
+  assert_equals(snapshotPasses, 128);
+}, 'repeated scalar and detached snapshot evaluation with collection');
+</script>

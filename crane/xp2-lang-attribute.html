@@ -1,0 +1,11 @@
+<!doctype html><meta charset=utf-8><title>XPath lang on an attribute</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const root = document.createElement('div');
+  root.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:lang', 'en-US');
+  const attr = root.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace', 'lang');
+  // Blink/WebKit FunLang walks DOM parentNode, which is null for Attr.
+  assert_false(document.evaluate('lang("en")', attr).booleanValue);
+}, 'lang does not climb from an attribute to its owner element');
+</script>

@@ -1,0 +1,14 @@
+<!doctype html><meta charset=utf-8><title>XPath wildcard with empty resolved namespace</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const root = document.createElement('div');
+  root.appendChild(document.createElementNS('urn:one', 'one'));
+  root.appendChild(document.createElementNS('urn:two', 'two'));
+  root.setAttributeNS('urn:one', 'p:a', '1');
+  root.setAttributeNS('urn:two', 'q:b', '2');
+  // Blink/WebKit Step use an empty namespace as unrestricted for wildcards.
+  for (const expression of ['p:*', '@p:*'])
+    assert_equals(document.evaluate(expression, root, () => '', 7).snapshotLength, 2);
+}, 'empty resolved namespace on a wildcard matches every namespace');
+</script>

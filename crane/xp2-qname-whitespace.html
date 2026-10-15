@@ -1,0 +1,19 @@
+<!doctype html><meta charset=utf-8><title>XPath QName whitespace accepted by browsers</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+const expressions = ['p : child', 'p: child', 'p :child', 'child :: p : child', 'p : *', '@p : attr'];
+for (const expression of expressions) test(() => {
+  const root = document.createElementNS('urn:xp2', 'root');
+  const child = document.createElementNS('urn:xp2', 'p:child');
+  root.appendChild(child);
+  root.setAttributeNS('urn:xp2', 'p:attr', 'value');
+  const prefixes = [];
+  const result = document.evaluate(expression, root, prefix => {
+    prefixes.push(prefix); return 'urn:xp2';
+  }, 7);
+  assert_array_equals(prefixes, ['p']);
+  assert_equals(result.snapshotLength, 1);
+  const expected = expression[0] === '@' ? root.getAttributeNodeNS('urn:xp2', 'attr') : child;
+  assert_equals(result.snapshotItem(0), expected);
+}, expression);
+</script>

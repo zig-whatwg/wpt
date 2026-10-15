@@ -1,0 +1,9 @@
+<!doctype html><meta charset=utf-8><title>XPath createNSResolver identity</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const node = document.createElement('xp2-node');
+  assert_equals(document.createNSResolver(node), node);
+  assert_equals(new XPathEvaluator().createNSResolver(node), node);
+}, 'createNSResolver returns its argument without creating an adapter');
+</script>

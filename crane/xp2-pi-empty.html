@@ -1,0 +1,11 @@
+<!doctype html><meta charset=utf-8><title>XPath empty PI target test</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const root = document.createElement('div');
+  root.appendChild(document.createProcessingInstruction('first', 'a'));
+  root.appendChild(document.createProcessingInstruction('second', 'b'));
+  // Blink/WebKit Step treat an empty target as the unrestricted PI test.
+  assert_equals(document.evaluate('processing-instruction("")', root, null, 7).snapshotLength, 2);
+}, 'empty processing-instruction target matches every PI');
+</script>

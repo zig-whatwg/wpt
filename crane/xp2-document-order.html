@@ -1,0 +1,100 @@
+<!doctype html><meta charset=utf-8><title>XPath node-sets in document order</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<body>
+<div><p a=1 b=2><i c=3><u d=4></u></i></p><s e=5></s></div>
+<script>
+// XPath §5: a node-set result is in document order - an element's attributes
+// after it and before its children - whatever order evaluation met its nodes
+// in. About 2,000 table nodes: ordering is not a handful of swaps here.
+const table = document.createElement('table');
+const tbody = table.appendChild(document.createElement('tbody'));
+for (let r = 0; r < 160; ++r) {
+  const row = tbody.appendChild(document.createElement('tr'));
+  row.setAttribute('data-r', r);
+  for (let c = 0; c < 12; ++c) row.appendChild(document.createElement('td')).setAttribute('data-c', c);
+}
+document.body.appendChild(table);
+
+const SNAPSHOT = XPathResult.ORDERED_NODE_SNAPSHOT_TYPE;
+function nodes(expression, context = document) {
+  const r = document.evaluate(expression, context, null, SNAPSHOT);
+  return Array.from({length: r.snapshotLength}, (_, i) => r.snapshotItem(i));
+}
+const fixture = document.body.firstElementChild; // no attributes of its own
+const label = node => node.nodeType === Node.ATTRIBUTE_NODE ? '@' + node.name : node.localName;
+const all = () => Array.from(document.querySelectorAll('*'));
+const inOrder = set => all().filter(node => set.has(node));
+
+test(() => {
+  assert_array_equals(nodes('//tr | //td'), Array.from(document.querySelectorAll('tr, td')));
+  assert_array_equals(nodes('//td | //tr'), Array.from(document.querySelectorAll('tr, td')));
+}, 'union of two location paths interleaves into document order');
+test(() => {
+  assert_array_equals(nodes('//*'), all());
+  assert_array_equals(nodes('/descendant-or-self::node()/child::*'), all());
+}, 'a child step over a descendant set is reordered');
+test(() => {
+  const expected = new Set([...document.querySelectorAll('tr:last-child td, td:first-child, tr:first-child')]);
+  assert_array_equals(nodes('//tr[last()]/td | //td[1] | //tr[1]'), inOrder(expected));
+}, 'union of overlapping sets keeps each node once, in order');
+test(() => {
+  assert_array_equals(nodes('//td/.. | //tr'), Array.from(document.querySelectorAll('tr')));
+  const ancestors = new Set();
+  for (const td of document.querySelectorAll('td')) for (let n = td.parentElement; n; n = n.parentElement) ancestors.add(n);
+  assert_array_equals(nodes('//td/ancestor::*'), inOrder(ancestors));
+}, 'parent and ancestor steps from many nodes deduplicate and sort');
+test(() => {
+  assert_array_equals(nodes('//tr/following-sibling::tr[1]'), Array.from(document.querySelectorAll('tr')).slice(1));
+  assert_array_equals(nodes('//tr/preceding-sibling::tr[1]'), Array.from(document.querySelectorAll('tr')).slice(0, -1));
+}, 'sibling axes from many context nodes');
+test(() => {
+  const s = fixture.querySelector('s');
+  const before = all().filter(x => (x.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING) && !x.contains(s));
+  assert_array_equals(nodes('preceding::*', s), before);
+  const u = fixture.querySelector('u');
+  assert_array_equals(nodes('ancestor::*', u), [document.documentElement, document.body, fixture, fixture.querySelector('p'), fixture.querySelector('i')]);
+  assert_array_equals(nodes('ancestor::* | preceding::*', s), all().filter(x => x.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING));
+  const cell = tbody.rows[80].cells[6];
+  assert_array_equals(nodes('preceding-sibling::td', cell), Array.from(tbody.rows[80].cells).slice(0, 6));
+  assert_array_equals(nodes('following::tr[1] | preceding::tr[1]', cell), [tbody.rows[79], tbody.rows[81]]);
+}, 'reverse axes are returned in document order');
+test(() => {
+  const root = fixture;
+  assert_array_equals(nodes('.//@* | .//*', root).map(label), ['p', '@a', '@b', 'i', '@c', 'u', '@d', 's', '@e']);
+  assert_array_equals(nodes('.//@d | .//p | .//@a | .//u', root).map(label), ['p', '@a', 'u', '@d']);
+  assert_array_equals(nodes('.//p/@b | .//p/@a', root).map(label), ['@a', '@b']);
+  assert_array_equals(nodes('.//s | .//i/@c | .//u/..', root).map(label), ['i', '@c', 's']);
+}, 'attributes follow their element and precede its children');
+test(() => {
+  const ids = [];
+  for (let i = 0; i < 6; ++i) {
+    const b = document.body.appendChild(document.createElement('b'));
+    b.id = 'id' + i;
+    ids.push(b);
+  }
+  assert_array_equals(nodes("id('id3 id1 id2 id1')"), [ids[1], ids[2], ids[3]]);
+  assert_array_equals(nodes("id('id5') | id('id0 id4')"), [ids[0], ids[4], ids[5]]);
+}, 'id() results are in document order');
+test(() => {
+  // Two trees in one node-set: the document, through id(), and a detached
+  // tree. Allocating their nodes alternately makes node addresses interleave.
+  const detached = document.createElement('div');
+  const host = document.body.appendChild(document.createElement('div'));
+  const inDocument = [], outside = [];
+  for (let i = 0; i < 50; ++i) {
+    const d = host.appendChild(document.createElement('b'));
+    d.id = 'tree' + i;
+    inDocument.push(d);
+    outside.push(detached.appendChild(document.createElement('b')));
+  }
+  const allIds = inDocument.map(d => d.id).join(' ');
+  const result = nodes(`.//b | id('${allIds}')`, detached);
+  assert_equals(result.length, 100);
+  const documentFirst = result[0] === inDocument[0];
+  assert_array_equals(result, documentFirst ? [...inDocument, ...outside] : [...outside, ...inDocument],
+                      'each tree contiguous and in tree order');
+  const small = nodes(`id('tree49 tree0') | .//b[50] | .//b[1]`, detached);
+  const pairs = [[inDocument[0], inDocument[49]], [outside[0], outside[49]]];
+  assert_array_equals(small, documentFirst ? pairs.flat() : pairs.reverse().flat(), 'the same tree order every time');
+}, 'nodes of separate trees keep each tree together, in a consistent order');
+</script>
