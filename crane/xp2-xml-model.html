@@ -1,0 +1,59 @@
+<!doctype html><meta charset=utf-8><title>XPath XML data model without an XML parser</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+function fixture() {
+  const doc = document.implementation.createDocument(null, 'Root');
+  const root = doc.documentElement;
+  const a = doc.createElement('Item'), b = doc.createElementNS('urn:items', 'p:Item');
+  root.append(a, b);
+  a.setAttribute('id', 'xml-first'); a.setAttribute('value', '3');
+  b.setAttribute('id', 'xml-second'); b.setAttribute('value', '7');
+  a.append(doc.createTextNode('a'), doc.createCDATASection('b'), doc.createComment('ignored'), doc.createTextNode('c'));
+  root.append(doc.createProcessingInstruction('target', 'data'));
+  return {doc, root, a, b};
+}
+for (const [expression, expected] of [
+ ['count(/Root/Item)', 1], ['count(/root)', 0], ['count(//p:Item)', 1],
+ ['count(//*)', 3], ['count(//@*)', 4], ['sum(//@value)', 10],
+ ['string(/Root/Item)', 'abc'], ['count(/Root/Item/text())', 3],
+ ['string(/Root/Item/text()[1])', 'a'], ['string(/Root/Item/text()[2])', 'b'],
+ ['count(//comment())', 1], ['string(//comment())', 'ignored'],
+ ['name(//processing-instruction())', 'target'], ['string(//processing-instruction("target"))', 'data'],
+ ['count(/Root/Item/@value/following::*)', 1], ['count(/Root/p:Item/@value/preceding::*)', 1],
+ ['name(1)', ''], ['local-name(false())', ''], ['namespace-uri("x")', '']
+]) test(() => {
+  const {doc} = fixture();
+  const r = doc.evaluate(expression, doc, p => p === 'p' ? 'urn:items' : null);
+  assert_equals(r[r.resultType === 1 ? 'numberValue' : 'stringValue'], expected);
+}, expression);
+test(() => {
+  const {doc, a} = fixture();
+  const attr = a.getAttributeNode('value');
+  const r = doc.evaluate('.', attr, null, 9);
+  assert_equals(r.singleNodeValue, attr);
+  assert_equals(doc.evaluate('..', attr, null, 9).singleNodeValue, a);
+  assert_equals(doc.evaluate('name()', attr, null, 2).stringValue, 'value');
+}, 'attribute context, value, and parent');
+test(() => {
+  const {doc, root} = fixture();
+  const iter = doc.evaluate('//text()', root, null, 5);
+  root.firstChild.firstChild.data = 'changed';
+  assert_true(iter.invalidIteratorState);
+  assert_throws_dom('InvalidStateError', () => iter.iterateNext());
+}, 'character-data mutation invalidates an iterator');
+test(() => {
+  const {doc} = fixture();
+  assert_throws_dom('NotSupportedError', () => doc.evaluate('.', doc.createDocumentFragment()));
+  assert_throws_dom('NotSupportedError', () => doc.evaluate('.', doc, null, 10));
+  assert_throws_dom('NamespaceError', () => doc.evaluate('//missing:item', doc));
+}, 'unsupported context, result type, and unresolved prefix');
+test(() => {
+  const attached = document.createElement('i'); attached.id = 'xp2-scope';
+  document.body.append(attached);
+  try {
+    const detached = document.createElement('i'); detached.id = 'xp2-scope';
+    assert_equals(document.evaluate('id("xp2-scope")', detached, null, 9).singleNodeValue, attached);
+  } finally { attached.remove(); }
+}, 'id searches the context tree scope, including from a detached node');
+</script>

@@ -1,0 +1,43 @@
+<!doctype html><meta charset=utf-8><title>XPath results retain nodes</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+for (const kind of [4,5,6,7,8,9]) test(() => {
+  let result = (() => {
+    const root = document.createElement('section');
+    root.innerHTML = '<span>retained</span>';
+    return document.evaluate('./span', root, null, kind);
+  })();
+  TestUtils.gc();
+  const node = kind < 6 ? result.iterateNext() : kind < 8 ? result.snapshotItem(0) : result.singleNodeValue;
+  assert_equals(node.textContent, 'retained');
+  assert_equals(node.parentNode.localName, 'section');
+  result = null;
+  TestUtils.gc();
+}, 'result type ' + kind + ' keeps a detached node after script drops it');
+test(() => {
+  let result = (() => {
+    const root = document.createElement('section');
+    root.innerHTML = '<i data-x="retained">text</i>';
+    document.body.appendChild(root);
+    const snapshot = document.evaluate('.//i', root, null, 7);
+    root.remove();
+    return snapshot;
+  })();
+  TestUtils.gc();
+  assert_equals(result.snapshotItem(0).getAttribute('data-x'), 'retained');
+  assert_equals(result.snapshotItem(0).parentNode.localName, 'section');
+  result = null;
+  TestUtils.gc();
+}, 'a snapshot keeps its tree after removal and collection');
+test(() => {
+  const result = (() => {
+    const element = document.createElement('i');
+    element.setAttribute('data-x', 'retained');
+    return document.evaluate('@data-x', element, null, 9);
+  })();
+  TestUtils.gc();
+  assert_equals(result.singleNodeValue.value, 'retained');
+  assert_equals(result.singleNodeValue.ownerElement.localName, 'i');
+}, 'an attribute result keeps its owner after collection');
+</script>
