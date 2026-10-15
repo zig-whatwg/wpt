@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CryptoKey cached-value cycles are collectible</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function makeKeyCycle() {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-GCM", true, ["encrypt"]);
+  const algorithm = key.algorithm;
+  const usages = key.usages;
+  algorithm.owner = key;
+  usages.owner = key;
+  return [new WeakRef(key), new WeakRef(algorithm), new WeakRef(usages)];
+}
+
+promise_test(async t => {
+  const refs = await makeKeyCycle();
+  // WeakRef keeps targets until this job ends; collection must run in a task.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  for (const ref of refs) assert_equals(ref.deref(), undefined);
+}, "A CryptoKey and both cached values are collected after their cycle loses script roots");
+</script>

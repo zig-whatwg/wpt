@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>EC PKCS8 browser encoding</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/WebCryptoAPI/util/ec_key_fixtures.js"></script>
+<script>
+promise_test(async () => {
+  const bytes = ecKeyData["P-256"].pkcs8;
+  const key = await crypto.subtle.importKey("pkcs8", bytes,
+    {name: "ECDSA", namedCurve: "P-256"}, true, ["sign"]);
+  assert_array_equals(new Uint8Array(await crypto.subtle.exportKey("pkcs8", key)), bytes);
+}, "EC PKCS8 export has the browser encoding without redundant inner parameters");
+</script>

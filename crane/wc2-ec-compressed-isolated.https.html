@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>P-521 compressed point import</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/WebCryptoAPI/util/ec_key_fixtures.js"></script>
+<script>
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", ecKeyData["P-521"].raw_compressed,
+    {name: "ECDSA", namedCurve: "P-521"}, true, ["verify"]);
+  assert_array_equals(new Uint8Array(await crypto.subtle.exportKey("raw", key)), ecKeyData["P-521"].raw);
+}, "P-521 compressed point imports and exports its uncompressed point");
+</script>

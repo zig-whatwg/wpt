@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebCrypto plain Algorithm normalization reads name once</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+  let reads = 0;
+  const result = await crypto.subtle.digest({get name() {
+    ++reads;
+    bytes.buffer.transfer();
+    return "SHA-256";
+  }}, bytes);
+  assert_equals(reads, 1);
+  assert_array_equals(new Uint8Array(result), new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new Uint8Array())));
+}, "digest reads name once and copies the transferred input as empty");
+</script>

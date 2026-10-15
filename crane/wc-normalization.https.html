@@ -9,19 +9,10 @@ promise_test(async t => {
   const algorithm = {get name() { reads.push("name"); return "sHa-256"; }};
   const result = await crypto.subtle.digest(algorithm, new Uint8Array());
   assert_equals(result.byteLength, 32);
-  assert_array_equals(reads, ["name", "name"]);
-}, "digest converts Algorithm and the registered dictionary separately");
-
-promise_test(async t => {
-  const sentinel = new Error("second name getter");
-  let count = 0;
-  const algorithm = {get name() {
-    if (++count === 2) throw sentinel;
-    return "SHA-256";
-  }};
-  await promise_rejects_exactly(t, sentinel,
-    crypto.subtle.digest(algorithm, new Uint8Array()));
-}, "an exception in the registered dictionary conversion is preserved");
+  // Plain Algorithm: read once, as Chrome and Safari do (Codex row 30 D2;
+  // WebCryptoAPI/digest Chrome 116/116, Safari 116/116, Firefox 104/116).
+  assert_array_equals(reads, ["name"]);
+}, "digest converts a plain Algorithm once (browser majority)");
 
 promise_test(async t => {
   const reads = [];

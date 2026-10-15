@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CryptoKey cached values survive collection and preserve native slots</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-GCM", true, ["encrypt"]);
+  assert_equals(key.algorithm, key.algorithm);
+  assert_equals(key.usages, key.usages);
+  key.algorithm.marker = 42;
+  key.usages.marker = 43;
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(key.algorithm.marker, 42);
+  assert_equals(key.usages.marker, 43);
+}, "A reachable CryptoKey keeps cached algorithm and usages alive after other references are dropped");
+
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array([1]),
+    {name: "HMAC", hash: "SHA-256"}, true, ["sign"]);
+  key.algorithm.name = "AES-GCM";
+  key.algorithm.hash.name = "SHA-1";
+  key.usages.push("encrypt");
+  TestUtils.gc();
+  assert_equals(key.algorithm.name, "AES-GCM");
+  assert_equals(key.algorithm.hash.name, "SHA-1");
+  assert_array_equals(key.usages, ["sign", "encrypt"]);
+  const jwk = await crypto.subtle.exportKey("jwk", key);
+  assert_equals(jwk.alg, "HS256");
+  assert_array_equals(jwk.key_ops, ["sign"]);
+  assert_equals((await crypto.subtle.sign("HMAC", key, new Uint8Array())).byteLength, 32);
+}, "Mutating cached values persists but cannot change native algorithm or usages");
+
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-GCM", true, ["encrypt"]);
+  const clone = structuredClone(key);
+  assert_not_equals(clone.algorithm, key.algorithm);
+  assert_not_equals(clone.usages, key.usages);
+  key.algorithm.owner = key;
+  key.usages.owner = key;
+  TestUtils.gc();
+  assert_equals(key.algorithm.owner, key);
+  assert_equals(key.usages.owner, key);
+}, "Cached values belong to each key and can hold a collectible back-reference");
+</script>

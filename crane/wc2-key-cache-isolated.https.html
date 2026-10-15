@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CryptoKey caches its algorithm object</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(16), "AES-GCM", true, ["encrypt"]);
+  assert_equals(key.algorithm, key.algorithm);
+}, "CryptoKey.algorithm returns its cached object");
+</script>

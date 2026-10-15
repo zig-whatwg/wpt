@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Invalid RSA signature returns false</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/WebCryptoAPI/util/rsa_key_fixtures.js"></script>
+<script src="/WebCryptoAPI/sign_verify/rsa_pkcs_vectors.js"></script>
+<script>
+promise_test(async () => {
+  const vector = getTestVectors().find(v => v.hash === "SHA-256");
+  const key = await crypto.subtle.importKey(vector.publicKeyFormat,
+    vector.publicKeyBuffer, {name: "RSASSA-PKCS1-v1_5", hash: "SHA-256"}, false, ["verify"]);
+  const signature = new Uint8Array(vector.signature);
+  signature[0] = 255 - signature[0];
+  assert_false(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, vector.plaintext));
+}, "An altered RSA signature outside the representative range resolves false");
+</script>
