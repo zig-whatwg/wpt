@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8">
+<title>Fetch error response has immutable headers</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-response-error">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const response = Response.error();
+  for (const r of [response, response.clone()]) {
+    assert_throws_js(TypeError, () => r.headers.append('x-test', '1'));
+    assert_throws_js(TypeError, () => r.headers.set('x-test', '1'));
+    assert_throws_js(TypeError, () => r.headers.delete('absent'));
+    assert_equals(r.type, 'error');
+    assert_equals(r.status, 0);
+    assert_equals(r.body, null);
+    assert_equals(r.url, '');
+  }
+}, 'Error responses and their clones keep the immutable header guard');
+</script>

@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8">
+<title>Replacing a Request body leaves the input body usable</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-request">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const input = new Request('/common/blank.html', {method: 'POST', body: 'original'});
+  const originalStream = input.body;
+  const replacement = new Request(input, {body: 'replacement'});
+  assert_false(input.bodyUsed);
+  assert_false(input.body.locked);
+  assert_equals(input.body, originalStream);
+  assert_equals(await input.text(), 'original');
+  assert_equals(await replacement.text(), 'replacement');
+}, 'A replacement body does not disturb the unused input (Fetch step 41; Firefox and Safari; Chrome 154 disturbs it)');
+</script>

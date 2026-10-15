@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8">
+<title>Repeated Fetch object construction preserves source requests</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  for (let i = 0; i < 128; ++i) {
+    const error = Response.error();
+    assert_equals(error.type, 'error');
+    const redirect = Response.redirect('https://example.test/path', 301);
+    assert_equals(redirect.headers.get('location'), 'https://example.test/path');
+    const source = new Request('https://example.test/', {
+      headers: {'x-source': String(i), 'content-type': 'application/json'}
+    });
+    const replacement = new Request(source, {headers: {'x-new': 'value'}});
+    const filtered = new Request(source, {mode: 'no-cors'});
+    assert_equals(replacement.method, 'GET');
+    assert_equals(filtered.mode, 'no-cors');
+    assert_equals(source.headers.get('x-source'), String(i));
+  }
+}, 'Repeated construction leaves input requests intact');
+</script>

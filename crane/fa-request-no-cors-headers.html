@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8">
+<title>RequestInit mode sanitizes copied headers</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-request">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const input = new Request('/common/blank.html', {headers:{'x-private':'1','content-type':'application/json','accept':'text/plain','range':'bytes=0-4'}});
+  const request = new Request(input, {mode:'no-cors'});
+  assert_false(request.headers.has('x-private'));
+  assert_false(request.headers.has('content-type'));
+  assert_false(request.headers.has('range'));
+  assert_equals(request.headers.get('accept'), 'text/plain');
+  assert_equals(input.headers.get('x-private'), '1');
+  assert_equals(new Request(input).headers.get('x-private'), '1');
+}, 'Nonempty init refills inherited headers using the new no-cors guard');
+</script>

@@ -1,0 +1,20 @@
+<!doctype html><meta charset="utf-8">
+<title>Fetch redirect parses URLs before checking status</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-response-redirect">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_throws_js(TypeError, () => Response.redirect('http://:invalid'));
+  assert_throws_js(TypeError, () => Response.redirect('http://:invalid', 200));
+  assert_throws_js(RangeError, () => Response.redirect('/valid', 200));
+  for (const input of ['', '../relative?x=ÿ#fragment', 'https://EXAMPLE.test:443/a/../b?x=ÿ#z', 'data:text/plain,hello#part']) {
+    assert_equals(Response.redirect(input).headers.get('location'), new URL(input, document.baseURI).href);
+  }
+  const base = document.createElement('base');
+  base.href = 'https://base.example.test/path/';
+  document.head.append(base);
+  try {
+    assert_equals(Response.redirect('child').headers.get('location'), 'https://base.example.test/path/child');
+  } finally { base.remove(); }
+}, 'Redirect URL validation, UTF-8 serialization, error order and document base');
+</script>

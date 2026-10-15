@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8">
+<title>RequestInit headers replace input headers</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-request">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  for (const headers of [{}, [], new Headers(), {'x-new':'2'}, [['x-new','2']]]) {
+    const input = new Request('/common/blank.html', {headers:{'x-old':'1','content-type':'text/plain'}});
+    const request = new Request(input, {headers});
+    assert_false(request.headers.has('x-old'));
+    assert_false(request.headers.has('content-type'));
+    assert_equals(request.headers.get('x-new'), new Headers(headers).get('x-new'));
+    assert_equals(input.headers.get('x-old'), '1');
+    assert_equals(input.headers.get('content-type'), 'text/plain');
+  }
+}, 'Explicit RequestInit.headers replaces the input header list without changing it');
+</script>

@@ -1,0 +1,20 @@
+<!doctype html><meta charset="utf-8">
+<title>Fetch redirect response has immutable headers</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-response-redirect">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  for (const status of [301, 302, 303, 307, 308]) {
+    const response = Response.redirect('https://example.test/a#b', status);
+    for (const r of [response, response.clone()]) {
+      assert_throws_js(TypeError, () => r.headers.set('location', '/changed'));
+      assert_throws_js(TypeError, () => r.headers.append('x-test', '1'));
+      assert_throws_js(TypeError, () => r.headers.delete('location'));
+      assert_equals(r.headers.get('location'), 'https://example.test/a#b');
+      assert_equals(r.status, status);
+      assert_equals(r.url, '');
+      assert_false(r.redirected);
+    }
+  }
+}, 'Redirect responses and their clones keep immutable headers');
+</script>

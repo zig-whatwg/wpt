@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><meta name="timeout" content="long">
+<title>Fetch construction cost control</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  for (let i = 0; i < 600; ++i) {
+    const response = await fetch('/common/blank.html?fa-cost=' + i, {cache: 'no-store'});
+    assert_equals(response.status, 200);
+    await response.text();
+  }
+}, '600 fetches with RequestInit complete and consume their bodies');
+</script>
