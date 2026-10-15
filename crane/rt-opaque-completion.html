@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opaque resource timing preserves completion</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#create-an-opaque-timing-info">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+promise_test(async t => {
+  const url = new URL('/common/blank.html?rt-opaque=' + Math.random(), get_host_info().REMOTE_ORIGIN);
+  let resolveEntry;
+  const observed = new Promise(resolve => resolveEntry = resolve);
+  const observer = new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) {
+      if (entry.name === url.href) resolveEntry(entry);
+    }
+  });
+  observer.observe({entryTypes: ['resource']});
+  t.add_cleanup(() => observer.disconnect());
+  await fetch(url, {mode: 'no-cors'});
+  const entry = await observed;
+  assert_greater_than(entry.responseEnd, 0);
+  assert_greater_than_equal(entry.responseEnd, entry.fetchStart);
+  assert_equals(entry.startTime, entry.fetchStart);
+  assert_equals(entry.duration, entry.responseEnd - entry.startTime);
+  for (const field of ['domainLookupStart', 'domainLookupEnd', 'connectStart',
+                       'connectEnd', 'secureConnectionStart', 'requestStart', 'responseStart']) {
+    assert_equals(entry[field], 0, field + ' remains hidden');
+  }
+}, 'A response without Timing-Allow-Origin retains responseEnd and a nonnegative duration');
+</script>

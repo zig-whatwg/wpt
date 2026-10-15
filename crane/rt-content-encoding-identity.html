@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Identity is not a registered response content coding</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-http-network-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const url = new URL('/resource-timing/resources/content-encoding-headers.py?content_encoding=identity&rt-identity=' + Math.random(), location.href);
+  let resolveEntry;
+  const observed = new Promise(resolve => resolveEntry = resolve);
+  const observer = new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) if (entry.name === url.href) resolveEntry(entry);
+  });
+  observer.observe({entryTypes: ['resource']});
+  t.add_cleanup(() => observer.disconnect());
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url.href, false);
+  xhr.send();
+  assert_equals(xhr.status, 200);
+  const entry = await observed;
+  assert_equals(entry.contentEncoding, '@unknown');
+}, 'Content-Encoding identity is exposed as an unknown coding');
+</script>

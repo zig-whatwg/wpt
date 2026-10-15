@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Fetch timing cost control</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const xhr = new XMLHttpRequest();
+  for (let i = 0; i < 2000; ++i) {
+    xhr.open('GET', '/common/blank.html?rt-fetch-cost=' + i, false);
+    xhr.send();
+    assert_equals(xhr.status, 200);
+  }
+}, '2000 sequential fetches complete successfully');
+</script>

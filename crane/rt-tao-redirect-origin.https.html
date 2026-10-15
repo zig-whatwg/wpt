@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>TAO uses the redirect-tainted request origin</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-tao-check">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/resource-timing/resources/resource-loaders.js"></script>
+<script src="/resource-timing/resources/entry-invariants.js"></script>
+<script>
+const remote = get_host_info().HTTPS_REMOTE_ORIGIN;
+const target = new URL('/resource-timing/resources/multi_redirect.py', remote);
+target.searchParams.set('page_origin', location.origin);
+target.searchParams.set('cross_origin', remote);
+target.searchParams.set('final_resource', '/resource-timing/resources/blue-with-tao.png');
+target.searchParams.set('tao_steps', 3);
+target.searchParams.set('tao_value', location.origin);
+attribute_test(load.image, target.href,
+  invariants.assert_cross_origin_redirected_resource,
+  'TAO with the original origin does not expose a redirect-tainted chain');
+</script>

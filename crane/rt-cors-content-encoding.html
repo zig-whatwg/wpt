@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CORS content encoding is independent of TAO</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#fetch-finale">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+promise_test(async t => {
+  const {ORIGIN, REMOTE_ORIGIN} = get_host_info();
+  const url = new URL('/resource-timing/resources/gzip_xml.py', REMOTE_ORIGIN);
+  url.searchParams.set('allow_origin', ORIGIN);
+  url.searchParams.set('rt-cors-encoding', Math.random());
+  let resolveEntry;
+  const observed = new Promise(resolve => resolveEntry = resolve);
+  const observer = new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) if (entry.name === url.href) resolveEntry(entry);
+  });
+  observer.observe({entryTypes: ['resource']});
+  t.add_cleanup(() => observer.disconnect());
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url.href, false);
+  xhr.send();
+  assert_equals(xhr.status, 200);
+  const entry = await observed;
+  assert_equals(entry.contentEncoding, 'gzip');
+  assert_equals(entry.responseStatus, 200);
+  assert_equals(entry.requestStart, 0, 'TAO still hides network timing');
+  assert_equals(entry.transferSize, 0);
+}, 'A CORS response without TAO exposes its content encoding');
+</script>

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resource timing response status follows the response filter</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+for (const tao of [false, true]) {
+  for (const mode of ['no-cors', 'cors']) {
+    promise_test(async t => {
+      const url = new URL('/common/blank.html', get_host_info().REMOTE_ORIGIN);
+      url.search = '?pipe=status(203)|header(Access-Control-Allow-Origin,*)' +
+        (tao ? '|header(Timing-Allow-Origin,*)' : '') + '&rt-status=' + Math.random();
+      let resolveEntry;
+      const observed = new Promise(resolve => resolveEntry = resolve);
+      const observer = new PerformanceObserver(list => {
+        for (const entry of list.getEntries()) {
+          if (entry.name === url.href) resolveEntry(entry);
+        }
+      });
+      observer.observe({entryTypes: ['resource']});
+      t.add_cleanup(() => observer.disconnect());
+      const response = await fetch(url, {mode});
+      await response.text();
+      const entry = await observed;
+      assert_equals(response.status, mode === 'no-cors' ? 0 : 203);
+      assert_equals(entry.responseStatus, response.status);
+    }, `${mode} responseStatus with Timing-Allow-Origin ${tao ? 'present' : 'absent'}`);
+  }
+}
+</script>

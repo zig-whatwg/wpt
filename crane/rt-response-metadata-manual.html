@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opaque redirect resource metadata is hidden</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-filtered-response-opaque-redirect">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const url = new URL('/resource-timing/resources/fake_responses.py?pipe=status(302)|header(Location,/common/blank.html)&tag=rt-metadata-' + Math.random(), location.href);
+  let resolveEntry;
+  const observed = new Promise(resolve => resolveEntry = resolve);
+  const observer = new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) if (entry.name === url.href) resolveEntry(entry);
+  });
+  observer.observe({entryTypes: ['resource']});
+  t.add_cleanup(() => observer.disconnect());
+  const response = await fetch(url, {redirect: 'manual'});
+  assert_equals(response.type, 'opaqueredirect');
+  const entry = await observed;
+  assert_equals(entry.contentType, '');
+  assert_equals(entry.contentEncoding, '');
+  assert_equals(entry.encodedBodySize, 0);
+  assert_equals(entry.decodedBodySize, 0);
+}, 'A same-origin manual redirect exposes no internal response metadata');
+</script>
