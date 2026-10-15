@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>reportError reports synchronously for its receiver</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#dom-reporterror">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({allow_uncaught_exception: true});
+test(t => {
+  const thrown = {marker: 1};
+  let reported;
+  const listener = event => { reported = event; event.preventDefault(); };
+  window.addEventListener('error', listener);
+  t.add_cleanup(() => window.removeEventListener('error', listener));
+  assert_equals(window.reportError(thrown), undefined);
+  assert_true(reported instanceof ErrorEvent);
+  assert_equals(reported.error, thrown);
+  assert_equals(reported.target, window);
+  assert_true(reported.isTrusted);
+  assert_true(reported.cancelable);
+}, 'reportError synchronously dispatches a trusted cancelable ErrorEvent');
+</script>

@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Legacy event handler names map to case-sensitive event types</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#handler-onwebkitanimationend">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  let calls = 0;
+  element.onwebkitanimationend = () => { ++calls; };
+  element.dispatchEvent(new Event('webkitAnimationEnd'));
+  assert_equals(calls, 1);
+}, 'onwebkitanimationend listens for webkitAnimationEnd');
+</script>

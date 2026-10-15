@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A reported ErrorEvent retains its error value</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({allow_uncaught_exception: true});
+promise_test(async t => {
+  let received;
+  const listener = event => { received = event; event.preventDefault(); };
+  window.addEventListener('error', listener, {once: true});
+  t.add_cleanup(() => window.removeEventListener('error', listener));
+  (() => { window.reportError({marker: 'retained through the event'}); })();
+  await TestUtils.gc();
+  assert_equals(received.error.marker, 'retained through the event');
+}, 'ErrorEvent retains the reported value after argument references are dropped');
+</script>

@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fullscreen handler attributes use the event handler map</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  const callback = () => {};
+  element.onfullscreenchange = callback;
+  assert_equals(element.onfullscreenchange, callback);
+  element.onfullscreenchange = null;
+  assert_equals(element.onfullscreenchange, null);
+}, 'An Element fullscreen handler retains the assigned callback');
+</script>

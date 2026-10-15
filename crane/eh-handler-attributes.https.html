@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Event handler attributes on initialized event targets</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const cases = [
+  ['Element', () => document.createElement('div'), ['fullscreenchange', 'fullscreenerror']],
+  ['Window', () => window, ['deviceorientation', 'deviceorientationabsolute', 'devicemotion',
+    'orientationchange', 'appinstalled', 'beforeinstallprompt']],
+  ['HTMLAudioElement', () => document.createElement('audio'), ['encrypted', 'waitingforkey']],
+  ['HTMLVideoElement', () => document.createElement('video'), ['encrypted', 'waitingforkey',
+    'enterpictureinpicture', 'leavepictureinpicture']],
+  ['Keyboard', () => navigator.keyboard, ['layoutchange']],
+];
+for (const [label, create, types] of cases) {
+  for (const type of types) {
+    test(t => {
+      const target = create();
+      const name = 'on' + type;
+      const calls = [];
+      const first = () => calls.push('first');
+      const last = () => calls.push('last');
+      assert_equals(target[name], null, 'initial value');
+      t.add_cleanup(() => {
+        target[name] = null;
+        target.removeEventListener(type, first);
+        target.removeEventListener(type, last);
+      });
+      target.addEventListener(type, first);
+      const replaced = () => calls.push('replaced');
+      target[name] = replaced;
+      assert_equals(target[name], replaced, 'assigned callback identity');
+      target.addEventListener(type, last);
+      const replacement = function(event) {
+        assert_equals(this, target);
+        assert_equals(event.currentTarget, target);
+        calls.push('handler');
+        return false;
+      };
+      target[name] = replacement;
+      assert_equals(target[name], replacement, 'replacement identity');
+      const event = new Event(type, {cancelable: true});
+      assert_false(target.dispatchEvent(event), 'false return cancels');
+      assert_array_equals(calls, ['first', 'handler', 'last'], 'replacement keeps order');
+      target[name] = null;
+      assert_equals(target[name], null);
+      calls.length = 0;
+      target.dispatchEvent(new Event(type));
+      assert_array_equals(calls, ['first', 'last'], 'null removes the handler');
+      target[name] = replacement;
+      calls.length = 0;
+      target.dispatchEvent(new Event(type));
+      assert_array_equals(calls, ['first', 'last', 'handler'], 'reactivation appends');
+    }, `${label}.on${type}: default, identity, dispatch, replacement, removal and reactivation`);
+  }
+}
+
+test(t => {
+  // body.onorientationchange is Window-reflecting, as in Chrome (Blink
+  // html_body_element.h) and Firefox (Gecko EventNameList.h, WINDOW_EVENT).
+  const body = document.createElement('body');
+  const handler = () => {};
+  t.add_cleanup(() => { window.onorientationchange = null; });
+  body.onorientationchange = handler;
+  assert_equals(window.onorientationchange, handler, 'the Window sees the handler');
+  assert_equals(body.onorientationchange, handler, 'the body reads the Window\'s');
+}, 'HTMLBodyElement.onorientationchange forwards to its Window');
+</script>

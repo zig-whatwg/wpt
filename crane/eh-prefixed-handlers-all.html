@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>All legacy WebKit event handler attributes use their specified event types</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers-on-elements,-document-objects,-and-window-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const type of ['webkitAnimationEnd', 'webkitAnimationIteration', 'webkitAnimationStart', 'webkitTransitionEnd']) {
+  const name = 'on' + type.toLowerCase();
+  for (const [label, create] of [['HTMLElement', () => document.createElement('div')],
+      ['Document', () => document], ['Window', () => window]]) {
+    test(t => {
+      const target = create();
+      let calls = 0;
+      const callback = () => { ++calls; return false; };
+      t.add_cleanup(() => { target[name] = null; });
+      target[name] = callback;
+      assert_equals(target[name], callback);
+      target.dispatchEvent(new Event(type.toLowerCase()));
+      assert_equals(calls, 0, 'event type matching is case-sensitive');
+      assert_false(target.dispatchEvent(new Event(type, {cancelable: true})));
+      assert_equals(calls, 1, 'specified camel-case event type');
+      target[name] = null;
+      target.dispatchEvent(new Event(type));
+      assert_equals(calls, 1, 'deactivation uses the same key');
+    }, `${label}.${name} uses ${type}`);
+  }
+  test(() => {
+    const element = document.createElement('div');
+    element.setAttribute(name, 'this.setAttribute("data-fired", "yes");');
+    assert_equals(typeof element[name], 'function');
+    element.dispatchEvent(new Event(type));
+    assert_equals(element.getAttribute('data-fired'), 'yes');
+    element.removeAttribute(name);
+    assert_equals(element[name], null);
+  }, `${name} content attribute uses ${type}`);
+}
+</script>
