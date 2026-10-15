@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSP ignores a directive containing a control byte</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => {
+    const listener = e => {
+      if (e.source === frame.contentWindow) resolve(e.data);
+    };
+    window.addEventListener('message', listener);
+    t.add_cleanup(() => window.removeEventListener('message', listener));
+  });
+  frame.src = '/content-security-policy/parsing/support/csp.py?policy=' +
+      encodeURIComponent("img-src 'none'\x01");
+  document.body.append(frame);
+  assert_equals(await result, 'load');
+}, 'An invalid byte invalidates the img-src directive rather than blocking the image');
+</script>

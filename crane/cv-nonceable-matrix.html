@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSP nonce eligibility preserves other authorization paths</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-cv'">
+<body>
+<script nonce="cv">
+for (const signal of ['<script', '<ScRiPt', 'before<style after', 'before<LiNk after']) {
+  promise_test(async t => {
+    window.cvCount = 0;
+    const script = document.createElement('script');
+    script.nonce = 'cv';
+    script.setAttribute('data-markup', signal);
+    script.textContent = 'window.cvCount++';
+    t.add_cleanup(() => script.remove());
+    const violation = new Promise(resolve => {
+      document.addEventListener('securitypolicyviolation', resolve, {once: true});
+    });
+    document.body.append(script);
+    assert_equals(window.cvCount, 0);
+    assert_equals((await violation).target, script);
+  }, 'Inline script nonce is ineligible for ' + signal);
+}
+test(t => {
+  window.cvCount = 0;
+  const script = document.createElement('script');
+  script.nonce = 'cv';
+  script.setAttribute('data-markup', 'script < span link style');
+  script.textContent = 'window.cvCount++';
+  t.add_cleanup(() => script.remove());
+  document.body.append(script);
+  assert_equals(window.cvCount, 1);
+}, 'A clean attribute preserves nonce authorization');
+</script>

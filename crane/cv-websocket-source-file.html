@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<title>CSP sourceFile preserves the WebSocket URL</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const policy = trustedTypes.createPolicy('cv-source', {createScript: s => s});
+  const violation = new Promise(resolve => {
+    document.addEventListener('securitypolicyviolation', resolve, {once: true});
+  });
+  const source = policy.createScript("eval('');\n//# sourceURL=wss://dummy.test/script.js");
+  assert_throws_js(EvalError, () => eval(source));
+  assert_equals((await violation).sourceFile, 'wss://dummy.test/script.js');
+}, 'A WebSocket source URL remains a URL in the CSP violation event');
+</script>

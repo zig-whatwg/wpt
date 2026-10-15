@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSP matches a nonce after trimming surrounding ASCII whitespace</title>
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'nonce-cvnonce'">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script nonce="cvnonce">
+test(() => {
+  window.cvWhitespaceNonceRan = false;
+  const script = document.createElement('script');
+  script.nonce = '\t\n\f\r cvnonce\t\n\f\r ';
+  script.textContent = 'window.cvWhitespaceNonceRan = true';
+  document.head.appendChild(script);
+  assert_true(window.cvWhitespaceNonceRan);
+}, 'Leading and trailing Infra ASCII whitespace is ignored when matching a script nonce');
+</script>

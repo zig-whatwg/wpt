@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dangling markup makes a script nonce ineligible</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-cv'">
+<body>
+<script nonce="cv">
+promise_test(async t => {
+  window.cvExecuted = false;
+  const script = document.createElement('script');
+  script.nonce = 'cv';
+  script.setAttribute('data-markup', 'before<ScRiPt after');
+  script.textContent = 'window.cvExecuted = true';
+  t.add_cleanup(() => script.remove());
+  const violation = new Promise(resolve => {
+    document.addEventListener('securitypolicyviolation', resolve, {once: true});
+  });
+  document.body.append(script);
+  assert_false(window.cvExecuted, 'A matching nonce must not allow dangling markup');
+  const event = await violation;
+  assert_equals(event.target, script);
+  assert_equals(event.effectiveDirective, 'script-src-elem');
+  assert_equals(event.blockedURI, 'inline');
+}, 'CSP rejects a matching nonce when an inline script attribute contains dangling markup');
+</script>

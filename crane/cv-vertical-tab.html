@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSP does not tokenize vertical tab as whitespace</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => {
+    const listener = e => {
+      if (e.source === frame.contentWindow) resolve(e.data);
+    };
+    window.addEventListener('message', listener);
+    t.add_cleanup(() => window.removeEventListener('message', listener));
+  });
+  frame.src = '/content-security-policy/generic/support/load_img_and_post_result_meta.sub.html?csp=' +
+      encodeURIComponent("img-src\x0b'none'");
+  document.body.append(frame);
+  assert_equals(await result, 'img loaded');
+}, 'Vertical tab does not separate the CSP directive name from its value');
+</script>
