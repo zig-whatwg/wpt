@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Textarea selection offsets count WTF-8 values in UTF-16 units</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#textFieldSelection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const value of ['a\uD800b', 'a\uDC00b', '\uD800\uD800', 'a\uD83D\uDE00b', 'a\r\n\uD800b', '']) {
+  test(() => {
+    const area = document.createElement('textarea');
+    area.value = value;
+    const length = area.value.length;
+    area.setSelectionRange(100, 100);
+    assert_equals(area.selectionStart, length);
+    assert_equals(area.selectionEnd, length);
+    area.select();
+    assert_equals(area.selectionStart, 0);
+    assert_equals(area.selectionEnd, length);
+    area.selectionStart = length + 1;
+    assert_equals(area.selectionStart, length);
+    assert_equals(area.selectionEnd, length);
+  }, `textarea clamps selection in UTF-16 units: ${JSON.stringify(value)}`);
+}
+</script>

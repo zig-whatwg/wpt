@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Text control selectionchange scheduling</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+const settle = t => new Promise(resolve => t.step_timeout(resolve, 20));
+for (const tag of ['input', 'textarea']) {
+  for (const connected of [false, true]) {
+    promise_test(async t => {
+      const control = document.createElement(tag);
+      control.value = 'abcdef';
+      if (connected) document.body.append(control);
+      t.add_cleanup(() => control.remove());
+      control.setSelectionRange(0, 0);
+      await settle(t);
+      const events = [];
+      const bubbled = [];
+      control.addEventListener('selectionchange', e => events.push(e));
+      const onDocument = e => { if (e.target === control) bubbled.push(e); };
+      document.addEventListener('selectionchange', onDocument);
+      t.add_cleanup(() => document.removeEventListener('selectionchange', onDocument));
+      control.selectionStart = 1;
+      control.selectionEnd = 4;
+      control.selectionDirection = 'backward';
+      assert_equals(events.length, 0);
+      await settle(t);
+      assert_equals(events.length, 1, 'changes in one turn coalesce');
+      assert_equals(events[0].target, control);
+      assert_true(events[0].bubbles);
+      assert_false(events[0].cancelable);
+      assert_false(events[0].composed);
+      assert_true(events[0].isTrusted);
+      assert_equals(bubbled.length, connected ? 1 : 0);
+      control.setSelectionRange(1, 4, 'backward');
+      await settle(t);
+      assert_equals(events.length, 1, 'equal selection does not notify');
+      control.selectionDirection = 'forward';
+      await settle(t);
+      assert_equals(events.length, 2, 'direction alone notifies');
+      control.select();
+      await settle(t);
+      assert_equals(events.length, 3, 'select notifies');
+      control.setRangeText('XY', 1, 2, 'select');
+      await settle(t);
+      assert_equals(events.length, 4, 'setRangeText selection notifies');
+    }, `${connected ? 'Connected' : 'Disconnected'} ${tag}: asynchronous, coalesced, trusted selectionchange`);
+  }
+  promise_test(async t => {
+    const control = document.createElement(tag);
+    control.value = 'abcdef';
+    control.setSelectionRange(0, 0);
+    await settle(t);
+    let count = 0;
+    control.onselectionchange = () => {
+      ++count;
+      if (count === 1) control.setSelectionRange(2, 3);
+    };
+    control.setSelectionRange(0, 1);
+    await settle(t);
+    await settle(t);
+    assert_equals(count, 2, 'flag clears before dispatch');
+  }, `${tag}: a listener can schedule another selectionchange`);
+}
+promise_test(async t => {
+  let count = 0;
+  for (const tag of ['input', 'textarea']) {
+    (function queueOnlyReference() {
+      const control = document.createElement(tag);
+      control.value = 'abcdef';
+      control.onselectionchange = t.step_func(e => {
+        assert_equals(e.target.selectionEnd, 3);
+        assert_equals(e.target.value, 'abcdef');
+        ++count;
+      });
+      control.setSelectionRange(1, 3);
+    })();
+  }
+  assert_true(!!self.TestUtils, 'Crane GC test helper');
+  TestUtils.gc();
+  await settle(t);
+  assert_equals(count, 2, 'both detached controls survive until notification');
+}, 'Queued selectionchange keeps each detached text control alive through GC');
+</script>

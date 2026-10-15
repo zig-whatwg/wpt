@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input selectionStart queues selectionchange</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const input = document.createElement('input');
+  input.value = 'abcdef';
+  input.setSelectionRange(0, 0);
+  await new Promise(resolve => t.step_timeout(resolve, 20));
+  let count = 0;
+  input.addEventListener('selectionchange', () => ++count);
+  input.selectionStart = 1;
+  assert_equals(count, 0, 'the notification is asynchronous');
+  await new Promise(resolve => t.step_timeout(resolve, 20));
+  assert_equals(count, 1, 'the control dispatches one notification');
+}, 'A disconnected input queues selectionchange when selectionStart changes');
+</script>

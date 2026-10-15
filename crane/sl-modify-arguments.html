@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection.modify validates its keywords before moving</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-modify">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><p id="text">abcdef ghijkl</p><script>
+const node = document.getElementById('text').firstChild;
+const selection = getSelection();
+for (const args of [[], ['move'], ['move', 'forward'],
+  ['', 'forward', 'character'], ['invalid', 'forward', 'character'],
+  ['move', '', 'character'], ['move', 'invalid', 'character'],
+  ['extend', 'forwards', 'character'], ['move', 'forward', ''],
+  ['move', 'forward', 'invalid'], ['move', 'forward', ' character'],
+  [' move', 'forward', 'character'], ['move', 'forward ', 'character']]) {
+  test(t => {
+    t.add_cleanup(() => selection.removeAllRanges());
+    selection.setBaseAndExtent(node, 2, node, 4);
+    const range = selection.getRangeAt(0);
+    selection.modify(...args);
+    assert_equals(selection.getRangeAt(0), range, 'invalid arguments preserve Range identity');
+    assert_equals(selection.anchorOffset, 2);
+    assert_equals(selection.focusOffset, 4);
+    assert_equals(selection.direction, 'forward');
+  }, `modify(${args.map(JSON.stringify).join(', ')}) does nothing`);
+}
+for (const [alter, direction, expectedAnchor, expectedFocus] of [
+  ['MoVe', 'FoRwArD', 4, 4], ['MOVE', 'BACKWARD', 2, 2],
+  ['ExTeNd', 'RiGhT', 3, 4], ['EXTEND', 'LeFt', 3, 2]]) {
+  test(t => {
+    t.add_cleanup(() => selection.removeAllRanges());
+    selection.collapse(node, 3);
+    selection.modify(alter, direction, 'ChArAcTeR');
+    assert_equals(selection.anchorNode, node);
+    assert_equals(selection.focusNode, node);
+    assert_equals(selection.anchorOffset, expectedAnchor);
+    assert_equals(selection.focusOffset, expectedFocus);
+  }, `modify accepts ASCII case-insensitive ${alter}, ${direction}, ChArAcTeR`);
+}
+</script>
