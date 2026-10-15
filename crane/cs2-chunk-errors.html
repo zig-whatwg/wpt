@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Compression errors identify BufferSource inputs and preserve the rejection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// ?only selects a single independent case for the red/green loop.
+const only = new URLSearchParams(location.search).get('only');
+const chunks = [
+  ['undefined', () => undefined], ['null', () => null],
+  ['number', () => 2.3], ['object', () => ({})], ['array', () => [1]],
+  ['proxy', () => new Proxy(new Uint8Array(1), {})],
+  ['shared-buffer', () => new WebAssembly.Memory({shared:true, initial:1, maximum:1}).buffer],
+  ['shared-view', () => new Uint8Array(new WebAssembly.Memory({shared:true, initial:1, maximum:1}).buffer)],
+];
+for (const C of [CompressionStream, DecompressionStream]) {
+  for (const format of ['deflate', 'deflate-raw', 'gzip']) {
+    for (const [label, make] of chunks) {
+      const id = `${C.name}-${format}-${label}`;
+      if (only && only !== id) continue;
+      promise_test(async () => {
+        const stream = new C(format);
+        const writer = stream.writable.getWriter();
+        const reader = stream.readable.getReader();
+        const settled = p => p.then(() => ({fulfilled:true}), error => ({error}));
+        const closed = [settled(writer.closed), settled(reader.closed)];
+        const write = settled(writer.write(make()));
+        const read = settled(reader.read());
+        const close = settled(writer.close());
+        const results = await Promise.all([write, read, close, ...closed]);
+        const error = results[0].error;
+        assert_true(error instanceof TypeError, 'write rejects with TypeError');
+        assert_true(error.message.includes('BufferSource'), 'message explains the required chunk type: ' + error.message);
+        assert_true(error.message.includes('shared'), 'message explains the shared-buffer restriction');
+        for (const result of results) assert_equals(result.error, error, 'all stream rejections preserve the same error');
+      }, id);
+    }
+  }
+}
+</script>

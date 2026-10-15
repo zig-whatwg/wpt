@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DecompressionStream rejects an invalid chunk with a useful TypeError</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const stream = new DecompressionStream('gzip');
+  const writer = stream.writable.getWriter();
+  const reader = stream.readable.getReader();
+  const caught = promise => promise.then(() => null, error => error);
+  const read = caught(reader.read());
+  const error = await caught(writer.write(undefined));
+  assert_equals(await read, error, 'both sides preserve the same error');
+  assert_true(error instanceof TypeError);
+  assert_true(error.message.includes('BufferSource'), 'message names the required input: ' + error.message);
+}, 'DecompressionStream invalid chunk identifies the required BufferSource');
+</script>

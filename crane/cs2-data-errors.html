@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Decompression corrupt, truncated and trailing data errors have useful messages</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const vectors = [
+  ['deflate', [120,156,203,72,205,201,201,7,0,6,44,2,21]],
+  ['deflate-raw', [203,72,205,201,201,7,0]],
+  ['gzip', [31,139,8,0,0,0,0,0,0,3,203,72,205,201,201,7,0,134,166,16,54,5,0,0,0]],
+];
+for (const [format, bytes] of vectors) {
+  const corrupt = bytes.slice();
+  // Invalid raw block type, or invalid container checksum/length.
+  if (format === 'deflate-raw') corrupt[0] = 7;
+  else corrupt[corrupt.length - 1] ^= 1;
+  for (const [kind, input] of [
+    ['corrupt', corrupt], ['truncated', bytes.slice(0,-1)],
+    ['trailing', [...bytes,0]], ['missing', []],
+  ]) {
+    promise_test(async () => {
+      const stream = new DecompressionStream(format);
+      const reader = stream.readable.getReader();
+      const writer = stream.writable.getWriter();
+      const caught = p => p.then(() => null, e => e);
+      const writerClosed = caught(writer.closed);
+      const readerClosed = caught(reader.closed);
+      const consume = caught((async () => {
+        while (!(await reader.read()).done) {}
+      })());
+      const write = caught(writer.write(new Uint8Array(input)));
+      const close = caught(writer.close());
+      const [writeError, error, readError, writableError, readableError] = await Promise.all([write,close,consume,writerClosed,readerClosed]);
+      assert_true(error instanceof TypeError, 'close rejects with TypeError');
+      assert_true(error.message.includes('compressed data'), 'message describes compressed data: ' + error.message);
+      assert_equals(readError,error,'read rejects with the same error');
+      assert_equals(writableError,error,'writer.closed preserves the error');
+      assert_equals(readableError,error,'reader.closed preserves the error');
+      if (writeError !== null) assert_equals(writeError,error,'failed write preserves the error');
+    }, `${format} ${kind} data produces a descriptive TypeError`);
+  }
+}
+</script>

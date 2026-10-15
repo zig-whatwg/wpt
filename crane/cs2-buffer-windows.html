@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Compression consumes only the BufferSource window and accepts empty detached input</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const vectors = [
+  ['deflate', [120,156,203,72,205,201,201,7,0,6,44,2,21]],
+  ['deflate-raw', [203,72,205,201,201,7,0]],
+  ['gzip', [31,139,8,0,0,0,0,0,0,3,203,72,205,201,201,7,0,134,166,16,54,5,0,0,0]],
+];
+for (const [format, bytes] of vectors) {
+  for (const kind of ['Uint8Array', 'DataView']) {
+    promise_test(async () => {
+      const backing = new Uint8Array(bytes.length + 4);
+      backing.fill(255); backing.set(bytes, 2);
+      const view = kind === 'DataView' ? new DataView(backing.buffer, 2, bytes.length) : backing.subarray(2, 2 + bytes.length);
+      const stream = new DecompressionStream(format);
+      const text = new Response(stream.readable).text();
+      const writer = stream.writable.getWriter();
+      await writer.write(view);
+      await writer.close();
+      assert_equals(await text, 'hello');
+    }, `${format} ${kind} excludes bytes outside its window`);
+  }
+  promise_test(async () => {
+    const stream = new CompressionStream(format);
+    const text = new Response(stream.readable.pipeThrough(new DecompressionStream(format))).text();
+    const writer = stream.writable.getWriter();
+    const detached = new Uint8Array([88]);
+    structuredClone(detached.buffer, {transfer:[detached.buffer]});
+    await writer.write(detached.buffer);
+    await writer.write(detached);
+    await writer.write(new Uint8Array([255,104,101,108,108,111,255]).subarray(1,6));
+    await writer.close();
+    assert_equals(await text, 'hello');
+  }, `${format} accepts detached empty chunks and compresses only the view window`);
+}
+</script>
