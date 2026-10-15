@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An SVG animated href holds its element through collection and adoption</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#InterfaceSVGURIReference">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const SVG = "http://www.w3.org/2000/svg";
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+    await TestUtils.gc();
+  }
+}
+promise_test(async t => {
+  let use = document.createElementNS(SVG, "a");
+  const href = use.href;
+  href.baseVal = "#kept";
+  use = null;
+  await collect(t);
+  assert_equals(href.baseVal, "#kept");
+  href.baseVal = "#still-live";
+  assert_equals(href.animVal, "#still-live");
+}, "an animated href keeps its detached element alive");
+promise_test(async t => {
+  const use = document.createElementNS(SVG, "a");
+  (() => { use.href.marker = "same object"; })();
+  await collect(t);
+  assert_equals(use.href.marker, "same object");
+  assert_equals(use.href, use.href);
+}, "an element keeps the animated href it has exposed");
+promise_test(async t => {
+  let use = document.createElementNS(SVG, "a");
+  document.body.appendChild(use);
+  const href = use.href;
+  href.baseVal = "#removed";
+  use.remove();
+  use = null;
+  await collect(t);
+  assert_equals(href.baseVal, "#removed");
+  href.baseVal = "#changed";
+  assert_equals(href.animVal, "#changed");
+}, "a retained animated href survives removal of its element");
+promise_test(async t => {
+  let frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  let use = frame.contentDocument.createElementNS(SVG, "a");
+  const href = use.href;
+  document.adoptNode(use);
+  frame.remove();
+  frame = null;
+  use = null;
+  await collect(t);
+  href.baseVal = "#adopted";
+  assert_equals(href.animVal, "#adopted");
+}, "an adopted element and its animated href survive their frame's removal");
+</script>

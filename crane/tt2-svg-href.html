@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG href exposes a live animated string</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#InterfaceSVGURIReference">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const script = document.createElementNS("http://www.w3.org/2000/svg", "script");
+  const href = script.href;
+  assert_true(href instanceof SVGAnimatedString);
+  href.baseVal = "about:blank";
+  assert_equals(href.baseVal, "about:blank");
+  assert_equals(href.animVal, "about:blank");
+  assert_equals(script.getAttribute("href"), "about:blank");
+}, "SVGScriptElement.href is a live SVGAnimatedString");
+</script>

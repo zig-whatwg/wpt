@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An SVG script href survives its frame's removal inside the default policy</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#InterfaceSVGAnimatedString">
+<link rel="help" href="https://w3c.github.io/trusted-types/dist/spec/#get-trusted-type-compliant-string-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row 38 review S2: SVGAnimatedString's setter holds its element across the
+// default policy callback. Here the callback removes the frame whose document
+// owns that element, while the parent realm is the one setting baseVal.
+const SVG = "http://www.w3.org/2000/svg";
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">`;
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.append(frame);
+  await loaded;
+  const win = frame.contentWindow;
+  let calls = 0;
+  win.trustedTypes.createPolicy("default", {createScriptURL: value => {
+    ++calls;
+    frame.remove();
+    return "checked:" + value;
+  }});
+  const script = frame.contentDocument.createElementNS(SVG, "script");
+  const href = script.href;
+  let threw = null;
+  try {
+    href.baseVal = "x.js";
+  } catch (e) {
+    threw = e;
+  }
+  assert_equals(calls, 1, "the default policy ran once");
+  assert_false(document.body.contains(frame), "the frame was removed");
+  // Either outcome is acceptable; the point is that nothing is freed under
+  // the setter. If it did not throw, the policy's value was written.
+  if (threw === null) assert_equals(script.getAttribute("href"), "checked:x.js");
+  // The element and its animated string remain usable afterwards.
+  assert_equals(typeof href.baseVal, "string");
+  assert_equals(typeof href.animVal, "string");
+}, "the frame's default policy removes the frame while the parent sets baseVal");
+</script>

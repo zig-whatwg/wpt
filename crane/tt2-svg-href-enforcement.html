@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG href Trusted Types checks preserve the selected backing attribute</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#InterfaceSVGAnimatedString">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<script>
+const SVG = "http://www.w3.org/2000/svg";
+const XLINK = "http://www.w3.org/1999/xlink";
+const trusted = trustedTypes.createPolicy("tt2-values", {createScriptURL: value => value});
+test(() => {
+  const script = document.createElementNS(SVG, "script");
+  assert_throws_js(TypeError, () => { script.href.baseVal = "blocked"; });
+  assert_false(script.hasAttribute("href"));
+  const url = trusted.createScriptURL("accepted");
+  url.toString = () => { throw new Error("must unwrap the trusted value"); };
+  script.href.baseVal = url;
+  assert_equals(script.href.baseVal, "accepted");
+}, "a script href rejects strings and unwraps TrustedScriptURL");
+test(() => {
+  const use = document.createElementNS(SVG, "a");
+  use.href.baseVal = "ordinary";
+  assert_equals(use.getAttribute("href"), "ordinary");
+  use.href.baseVal = trusted.createScriptURL("trusted");
+  assert_equals(use.href.animVal, "trusted");
+}, "a non-script href accepts both union arms without enforcement");
+let current, mutate, calls;
+trustedTypes.createPolicy("default", {createScriptURL: (value, type, sink) => {
+  assert_equals(type, "TrustedScriptURL");
+  assert_equals(sink, "SVGScriptElement href");
+  ++calls;
+  if (mutate) mutate();
+  return "checked:" + value;
+}});
+test(() => {
+  current = document.createElementNS(SVG, "script");
+  calls = 0;
+  mutate = null;
+  current.href.baseVal = "once";
+  assert_equals(current.getAttribute("href"), "checked:once");
+  assert_equals(calls, 1, "attribute update does not re-enter the TT sink");
+}, "the default policy runs exactly once");
+test(() => {
+  current = document.createElementNS(SVG, "script");
+  current.setAttributeNS(XLINK, "xlink:href", trusted.createScriptURL("legacy"));
+  calls = 0;
+  mutate = () => current.setAttribute("href", trusted.createScriptURL("added"));
+  current.href.baseVal = "modern";
+  assert_equals(current.getAttribute("href"), "added");
+  assert_equals(current.getAttributeNS(XLINK, "href"), "checked:modern");
+  assert_equals(calls, 1);
+  mutate = null;
+}, "an href added by the default policy does not retarget the xlink write");
+test(() => {
+  current = document.createElementNS(SVG, "script");
+  current.setAttribute("href", trusted.createScriptURL("modern"));
+  current.setAttributeNS(XLINK, "xlink:href", trusted.createScriptURL("legacy"));
+  calls = 0;
+  mutate = () => current.removeAttribute("href");
+  current.href.baseVal = "fallback";
+  assert_equals(current.getAttribute("href"), "checked:fallback");
+  assert_equals(current.getAttributeNS(XLINK, "href"), "legacy");
+  assert_equals(calls, 1);
+  mutate = null;
+}, "an href removed by the default policy is recreated by the chosen write");
+</script>

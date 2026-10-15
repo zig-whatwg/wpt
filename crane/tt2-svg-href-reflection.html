@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG animated href reflects href and its deprecated xlink alternative</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#InterfaceSVGAnimatedString">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const SVG = "http://www.w3.org/2000/svg";
+const XLINK = "http://www.w3.org/1999/xlink";
+for (const tag of ["script", "a"]) {
+  test(() => {
+    const element = document.createElementNS(SVG, tag);
+    const href = element.href;
+    assert_true(href instanceof SVGAnimatedString);
+    assert_equals(element.href, href, "SameObject");
+    assert_equals(href.baseVal, "");
+    assert_equals(href.animVal, "");
+    element.setAttributeNS(XLINK, "xlink:href", "#legacy");
+    assert_equals(href.baseVal, "#legacy");
+    href.baseVal = "#updated";
+    assert_equals(element.getAttributeNS(XLINK, "href"), "#updated");
+    assert_false(element.hasAttribute("href"));
+    element.setAttribute("href", "");
+    assert_equals(href.baseVal, "", "present empty href wins");
+    href.baseVal = "#modern";
+    assert_equals(element.getAttribute("href"), "#modern");
+    assert_equals(element.getAttributeNS(XLINK, "href"), "#updated");
+    element.removeAttribute("href");
+    assert_equals(href.animVal, "#updated", "fallback is live");
+    element.removeAttributeNS(XLINK, "href");
+    href.baseVal = "#created";
+    assert_equals(element.getAttribute("href"), "#created");
+  }, `${tag}.href selects the current attribute for every access`);
+}
+test(() => {
+  const use = document.createElementNS(SVG, "a");
+  const href = use.href;
+  href.baseVal = "first";
+  const saved = href.baseVal;
+  href.baseVal = "second";
+  assert_equals(saved, "first");
+  assert_equals(href.animVal, "second");
+  assert_throws_js(TypeError, () => { "use strict"; href.animVal = "ignored"; });
+  assert_equals(href.animVal, "second");
+}, "returned strings are stable and animVal is read-only");
+</script>

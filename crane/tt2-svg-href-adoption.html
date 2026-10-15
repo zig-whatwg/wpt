@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG href enforcement follows the element's node document after adoption</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#InterfaceSVGAnimatedString">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => { frame.onload = resolve; });
+  frame.srcdoc = "<!doctype html><meta http-equiv='Content-Security-Policy' content=\"require-trusted-types-for 'script'\">";
+  document.body.appendChild(frame);
+  await loaded;
+  const script = document.createElementNS("http://www.w3.org/2000/svg", "script");
+  const href = script.href;
+  href.baseVal = "before";
+  frame.contentDocument.adoptNode(script);
+  assert_throws_js(TypeError, () => { href.baseVal = "blocked"; });
+  assert_equals(href.baseVal, "before");
+  const policy = frame.contentWindow.trustedTypes.createPolicy("tt2-adoption", {
+    createScriptURL: value => value
+  });
+  href.baseVal = policy.createScriptURL("trusted");
+  assert_equals(href.animVal, "trusted");
+  document.adoptNode(script);
+  href.baseVal = "allowed-again";
+  assert_equals(script.getAttribute("href"), "allowed-again");
+}, "the same animated string follows CSP changes caused by adoption");
+</script>
