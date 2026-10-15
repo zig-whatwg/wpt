@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals ARIA references survive collection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+customElements.define('ar-kept-element', class extends HTMLElement {});
+promise_test(async () => {
+  const owner = document.createElement('ar-kept-element');
+  const state = owner.attachInternals();
+  (() => {
+    const single = document.createElement('span');
+    single.id = 'ar-single';
+    state.ariaActiveDescendantElement = single;
+    const arrayNode = document.createElement('div');
+    arrayNode.id = 'ar-array';
+    const input = [arrayNode];
+    state.ariaControlsElements = input;
+    input.length = 0; // An empty borrowed argument cannot keep the node alive.
+    arrayNode.internalsOwner = state;
+  })();
+  await new Promise(resolve => step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(state.ariaActiveDescendantElement.id, 'ar-single');
+  assert_equals(state.ariaControlsElements[0].id, 'ar-array');
+  assert_equals(state.ariaControlsElements[0].internalsOwner, state);
+  state.ariaActiveDescendantElement = null;
+  state.ariaControlsElements = null;
+  assert_equals(state.ariaControlsElements, null, 'observe null to replace cached snapshot');
+  TestUtils.gc();
+  assert_equals(state.ariaActiveDescendantElement, null);
+  assert_equals(state.ariaControlsElements, null);
+}, 'sole internals references keep detached nodes alive, including a cycle');
+</script>

@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals ARIA nullable strings are independent default semantics</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#accessibility-semantics">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+class ArStringElement extends HTMLElement {
+  static observedAttributes = ['role', 'aria-label'];
+  constructor() { super(); this.internals = this.attachInternals(); this.changes = []; }
+  attributeChangedCallback(...args) { this.changes.push(args); }
+}
+customElements.define('ar-string-element', ArStringElement);
+const properties = ["role", "ariaAtomic", "ariaAutoComplete", "ariaBrailleLabel", "ariaBrailleRoleDescription", "ariaBusy", "ariaChecked", "ariaColCount", "ariaColIndex", "ariaColIndexText", "ariaColSpan", "ariaCurrent", "ariaDescription", "ariaDisabled", "ariaExpanded", "ariaHasPopup", "ariaHidden", "ariaInvalid", "ariaKeyShortcuts", "ariaLabel", "ariaLevel", "ariaLive", "ariaModal", "ariaMultiLine", "ariaMultiSelectable", "ariaOrientation", "ariaPlaceholder", "ariaPosInSet", "ariaPressed", "ariaReadOnly", "ariaRelevant", "ariaRequired", "ariaRoleDescription", "ariaRowCount", "ariaRowIndex", "ariaRowIndexText", "ariaRowSpan", "ariaSelected", "ariaSetSize", "ariaSort", "ariaValueMax", "ariaValueMin", "ariaValueNow", "ariaValueText"];
+for (const name of properties) {
+  test(() => {
+    const first = document.createElement('ar-string-element');
+    const second = document.createElement('ar-string-element');
+    const attr = name === 'role' ? 'role' : 'aria-' + name.slice(4).toLowerCase();
+    assert_equals(first.internals[name], null);
+    first.internals[name] = {toString() { return '  INVALID MiXeD  '; }};
+    assert_equals(first.internals[name], '  INVALID MiXeD  ', 'unvalidated case-preserving string');
+    assert_equals(first.getAttribute(attr), null, 'default semantics do not create an attribute');
+    assert_equals(second.internals[name], null, 'each internals owns its values');
+    first.setAttribute(attr, 'author override');
+    assert_equals(first.internals[name], '  INVALID MiXeD  ', 'content attribute does not overwrite the default');
+    first.changes.length = 0;
+    first.internals[name] = '';
+    assert_equals(first.internals[name], '', 'empty is distinct from absent');
+    assert_equals(first.getAttribute(attr), 'author override');
+    first.internals[name] = null;
+    assert_equals(first.internals[name], null);
+    first.internals[name] = 'again';
+    first.internals[name] = undefined;
+    assert_equals(first.internals[name], null, 'undefined converts to null');
+    assert_equals(first.changes.length, 0, 'internal semantics do not trigger attributeChanged');
+  }, name + ': nullable internal reflection');
+}
+test(() => {
+  const element = document.createElement('ar-string-element');
+  element.internals.ariaLabel = 'before';
+  const failure = new Error('conversion failed');
+  assert_throws_exactly(failure, () => { element.internals.ariaLabel = {toString() { throw failure; }}; });
+  assert_equals(element.internals.ariaLabel, 'before');
+  element.internals.ariaLabel = 'a\0b\ud800x\udfff';
+  assert_equals(element.internals.ariaLabel, 'a\0b\ud800x\udfff', 'DOMString keeps UTF-16 code units');
+}, 'conversion is atomic and DOMString preserves code units');
+</script>

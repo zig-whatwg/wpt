@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals ARIA references keep adopted and cross-realm nodes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+customElements.define('ar-realm-owner', class extends HTMLElement {});
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  const state = document.createElement('ar-realm-owner').attachInternals();
+  (() => {
+    const target = frame.contentDocument.createElement('span');
+    target.id = 'from-frame';
+    state.ariaActiveDescendantElement = target;
+    const input = [target];
+    state.ariaControlsElements = input;
+    input.length = 0;
+    document.body.append(target);
+  })();
+  frame.remove();
+  await new Promise(resolve => step_timeout(resolve, 0));
+  TestUtils.gc();
+  const target = state.ariaActiveDescendantElement;
+  t.add_cleanup(() => target.remove());
+  assert_equals(target.id, 'from-frame');
+  assert_equals(target.ownerDocument, document);
+  assert_equals(state.ariaControlsElements[0], target);
+}, 'ARIA internals references retain an adopted element after its frame is removed');
+promise_test(async () => {
+  const state = document.createElement('ar-realm-owner').attachInternals();
+  (() => {
+    const frame = document.createElement('iframe');
+    document.body.append(frame);
+    const single = frame.contentDocument.createElement('span');
+    single.id = 'foreign-single';
+    const many = frame.contentDocument.createElement('div');
+    many.id = 'foreign-array';
+    state.ariaActiveDescendantElement = single;
+    const input = [many];
+    state.ariaControlsElements = input;
+    input.length = 0; // Exclude a leaked binding argument as a hidden holder.
+    frame.remove();
+  })();
+  await new Promise(resolve => step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(state.ariaActiveDescendantElement.id, 'foreign-single');
+  assert_equals(state.ariaControlsElements[0].id, 'foreign-array');
+  state.ariaActiveDescendantElement = null;
+  state.ariaControlsElements = null;
+  assert_equals(state.ariaControlsElements, null);
+}, 'ARIA internals alone retain unadopted foreign nodes after the iframe is dropped');
+</script>

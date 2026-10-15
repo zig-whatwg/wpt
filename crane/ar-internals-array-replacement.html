@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals repeatedly replaces an ARIA element array</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+customElements.define('ar-array-replacement', class extends HTMLElement {});
+test(() => {
+  const state = document.createElement('ar-array-replacement').attachInternals();
+  const node = document.createElement('span');
+  const input = [node];
+  let firstError;
+  // Exercise every replacement before reporting an error, including on an
+  // implementation whose setter does not yet support this member.
+  for (let i = 0; i < 100; ++i) {
+    try { state.ariaControlsElements = input; }
+    catch (error) { firstError ??= error; }
+  }
+  if (firstError) throw firstError;
+  input.length = 0;
+  const result = state.ariaControlsElements;
+  assert_array_equals(result, [node], 'the last replacement owns a copy');
+  assert_true(Object.isFrozen(result));
+  assert_equals(state.ariaControlsElements, result, 'repeated reads keep the cached snapshot');
+  state.ariaControlsElements = null;
+  assert_equals(state.ariaControlsElements, null, 'clearing ends the replacement');
+}, 'Repeated ARIA array replacement copies inputs and preserves the final cached value');
+</script>
