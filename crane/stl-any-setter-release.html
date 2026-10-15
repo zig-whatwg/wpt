@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Assigning an object to an any-typed attribute 1,000 times</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A fixture for `leaks --atExit` (lane setterleak): each loop assigns an
+// object to an attribute whose binding value is `any`, 1,000 times. The
+// binding kept the object's argument handle on every path - setter returned,
+// setter threw - so each loop left 1,000 handles behind; it must leave none.
+// The assertions only show that every path ran.
+const ROUNDS = 1000;
+customElements.define('stl-any-setter-release', class extends HTMLElement {});
+
+test(() => {
+  const state = document.createElement('stl-any-setter-release').attachInternals();
+  const node = document.createElement('span');
+  for (let i = 0; i < ROUNDS; ++i) state.ariaControlsElements = [node];
+  assert_array_equals(state.ariaControlsElements, [node]);
+}, 'ElementInternals.ariaControlsElements = [element], 1,000 times');
+
+test(() => {
+  const value = {};
+  for (let i = 0; i < ROUNDS; ++i) document.fullscreenEnabled = value;
+  assert_equals(typeof document.fullscreenEnabled, 'boolean', '[LegacyLenientSetter]: the setter steps are to return');
+}, 'a plain any setter (Document.fullscreenEnabled) set to an object, 1,000 times');
+
+test(() => {
+  const element = document.createElement('div');
+  const value = {};
+  for (let i = 0; i < ROUNDS; ++i) element.hidden = value;
+  assert_equals(element.getAttribute('hidden'), '');
+}, 'HTMLElement.hidden set to an object, 1,000 times');
+
+test(() => {
+  const input = document.createElement('input');
+  const value = new Date(0);
+  let failures = 0;
+  for (let i = 0; i < ROUNDS; ++i) {
+    try { input.valueAsDate = value; } catch (error) { if (error.name === 'InvalidStateError') ++failures; }
+  }
+  assert_equals(failures, ROUNDS, 'every assignment threw InvalidStateError');
+}, 'HTMLInputElement.valueAsDate on a text input (the setter throws), 1,000 times');
+
+test(() => {
+  const state = document.createElement('stl-any-setter-release').attachInternals();
+  const sentinel = new Error('@@iterator threw');
+  const iterable = {[Symbol.iterator]() { throw sentinel; }};
+  let failures = 0;
+  for (let i = 0; i < ROUNDS; ++i) {
+    try { state.ariaOwnsElements = iterable; } catch (error) { ++failures; }
+  }
+  assert_equals(failures, ROUNDS, 'every assignment threw');
+}, 'ElementInternals.ariaOwnsElements set to a throwing iterable, 1,000 times');
+</script>

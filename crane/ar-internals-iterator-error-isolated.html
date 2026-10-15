@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals ARIA iterable exception identity</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#create-sequence-from-iterable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+customElements.define('ar-iterator-exception', class extends HTMLElement {});
+test(() => {
+  const state = document.createElement('ar-iterator-exception').attachInternals();
+  const node = document.createElement('span');
+  state.ariaControlsElements = [node];
+  const before = state.ariaControlsElements;
+  const sentinel = new Error('original iterator error');
+  let thrown;
+  try {
+    state.ariaControlsElements = {[Symbol.iterator]() { throw sentinel; }};
+  } catch (error) { thrown = error; }
+  assert_equals(state.ariaControlsElements, before, 'failed conversion preserves prior state');
+  assert_equals(thrown, sentinel, 'the setter must propagate the original exception object');
+}, 'ARIA array setter preserves a thrown iterator exception');
+</script>

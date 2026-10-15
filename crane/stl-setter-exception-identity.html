@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An attribute setter rethrows the exception script threw, by identity</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-attributes">
+<link rel="help" href="https://webidl.spec.whatwg.org/#create-sequence-from-iterable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL 3.7.6 attribute setter steps: converting the value (step 4.1-4.4,
+// "? ToString", "? GetMethod", "? IteratorStepValue") propagates whatever
+// script throws, as it is. Crane converts some values in the binding and some
+// in the impl (an `any`-typed binding value the impl converts itself); either
+// way the exception that reaches script is script's own object.
+customElements.define('stl-exception-identity', class extends HTMLElement {});
+
+function thrown(assign) {
+  try { assign(); } catch (error) { return error; }
+  return 'nothing thrown';
+}
+
+test(() => {
+  const element = document.createElement('div');
+  const sentinel = new Error('toString threw');
+  const error = thrown(() => { element.title = {toString() { throw sentinel; }}; });
+  assert_equals(error, sentinel);
+  assert_false(element.hasAttribute('title'), 'the setter steps did not run');
+}, 'a DOMString setter (converted in the binding) rethrows toString\'s exception');
+
+test(() => {
+  const element = document.createElement('div');
+  const sentinel = new Error('toString threw');
+  const error = thrown(() => { element.hidden = {toString() { throw sentinel; }}; });
+  assert_equals(error, sentinel);
+  assert_false(element.hasAttribute('hidden'), 'the setter steps did not run');
+}, 'HTMLElement.hidden (converted in the impl) rethrows toString\'s exception');
+
+test(() => {
+  const element = document.createElement('div');
+  const sentinel = Symbol('a thrown primitive');
+  const error = thrown(() => { element.hidden = {toString() { throw sentinel; }}; });
+  assert_equals(error, sentinel);
+}, 'HTMLElement.hidden rethrows a thrown primitive as it is');
+
+test(() => {
+  const state = document.createElement('stl-exception-identity').attachInternals();
+  const node = document.createElement('span');
+  state.ariaControlsElements = [node];
+  const before = state.ariaControlsElements;
+  const sentinel = new Error('@@iterator threw');
+  const error = thrown(() => { state.ariaControlsElements = {[Symbol.iterator]() { throw sentinel; }}; });
+  assert_equals(error, sentinel);
+  assert_equals(state.ariaControlsElements, before, 'a failed conversion preserves the previous value');
+}, 'ElementInternals.ariaControlsElements rethrows @@iterator\'s exception');
+
+test(() => {
+  const state = document.createElement('stl-exception-identity').attachInternals();
+  const sentinel = new Error('next threw');
+  let calls = 0;
+  const iterable = {[Symbol.iterator]() {
+    return {next() {
+      if (++calls === 2) throw sentinel;
+      return {value: document.createElement('span'), done: false};
+    }};
+  }};
+  const error = thrown(() => { state.ariaDescribedByElements = iterable; });
+  assert_equals(error, sentinel);
+  assert_equals(calls, 2);
+  assert_equals(state.ariaDescribedByElements, null, 'a failed conversion stores nothing');
+}, 'ElementInternals.ariaDescribedByElements rethrows next()\'s exception midway');
+</script>

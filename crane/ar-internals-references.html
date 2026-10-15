@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals ARIA element references and frozen arrays</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+customElements.define('ar-reference-element', class extends HTMLElement {});
+function internals() { return document.createElement('ar-reference-element').attachInternals(); }
+const arrays = ['ariaControlsElements', 'ariaDescribedByElements', 'ariaDetailsElements', 'ariaErrorMessageElements', 'ariaFlowToElements', 'ariaLabelledByElements', 'ariaOwnsElements'];
+for (const property of arrays) {
+  test(() => {
+    const state = internals();
+    const first = document.createElement('span');
+    const second = document.createElement('span');
+    assert_equals(state[property], null);
+    const input = [first, second, first];
+    state[property] = input;
+    input.pop();
+    const read = state[property];
+    assert_array_equals(read, [first, second, first], 'preserve order and duplicates, copy input');
+    assert_true(Object.isFrozen(read));
+    assert_not_equals(read, input);
+    assert_equals(state[property], read, 'stable getter identity');
+    state[property] = [first, second, first];
+    assert_equals(state[property], read, 'equal contents preserve cached array');
+    state[property] = [second];
+    state[property] = [first, second, first];
+    assert_equals(state[property], read, 'assignments do not overwrite the last getter cache');
+    state[property] = new Set([second, first]);
+    assert_array_equals(state[property], [second, first], 'iterable conversion');
+    assert_array_equals(read, [first, second, first], 'old result is an immutable snapshot');
+    state[property] = [];
+    assert_array_equals(state[property], []);
+    assert_true(Object.isFrozen(state[property]));
+    state[property] = null;
+    assert_equals(state[property], null);
+    state[property] = [];
+    state[property] = undefined;
+    assert_equals(state[property], null);
+  }, property + ': immutable cached snapshot and nullable iterable setter');
+}
+test(t => {
+  const owner = document.createElement('ar-reference-element');
+  document.body.append(owner);
+  t.add_cleanup(() => owner.remove());
+  const state = owner.attachInternals();
+  const node = document.createElement('div');
+  state.ariaActiveDescendantElement = node;
+  assert_equals(state.ariaActiveDescendantElement, node, 'disconnected reference is retained');
+  const shadowHost = document.createElement('div');
+  document.body.append(shadowHost);
+  t.add_cleanup(() => shadowHost.remove());
+  const shadow = shadowHost.attachShadow({mode: 'closed'});
+  shadow.append(node);
+  assert_equals(state.ariaActiveDescendantElement, node, 'shipped Chrome and Firefox 157 do not scope-filter internals references (current Gecko and WebKit heads do)');
+  state.ariaControlsElements = [node];
+  assert_array_equals(state.ariaControlsElements, [node]);
+  for (const invalid of [document, new Event('x'), 1, {}, []]) {
+    assert_throws_js(TypeError, () => { state.ariaActiveDescendantElement = invalid; });
+    assert_equals(state.ariaActiveDescendantElement, node, 'invalid singleton conversion preserves value');
+  }
+  state.ariaActiveDescendantElement = undefined;
+  assert_equals(state.ariaActiveDescendantElement, null);
+  state.ariaActiveDescendantElement = node;
+  state.ariaActiveDescendantElement = null;
+  assert_equals(state.ariaActiveDescendantElement, null);
+}, 'internals references remain readable across tree scopes');
+test(() => {
+  const state = internals();
+  const node = document.createElement('div');
+  state.ariaControlsElements = [node];
+  const before = state.ariaControlsElements;
+  let nextCalls = 0;
+  const bad = {[Symbol.iterator]() { return {next() { ++nextCalls; return nextCalls === 1 ? {value: document.createTextNode('not an Element'), done: false} : {done: true}; }}; }};
+  assert_throws_js(TypeError, () => { state.ariaControlsElements = bad; });
+  assert_equals(nextCalls, 1, 'convert each item before advancing');
+  assert_equals(state.ariaControlsElements, before, 'failed conversion preserves state');
+  for (const value of [1, 'str', {}, [null], [document], [new Event('x')]]) {
+    assert_throws_js(TypeError, () => { state.ariaControlsElements = value; });
+    assert_equals(state.ariaControlsElements, before);
+  }
+  const sentinel = new Error('iterator failed');
+  assert_throws_exactly(sentinel, () => { state.ariaControlsElements = {[Symbol.iterator]() { throw sentinel; }}; });
+  assert_equals(state.ariaControlsElements, before);
+}, 'element sequence conversion is eager, typed and atomic');
+test(() => {
+  const state = internals();
+  const outer = document.createElement('div');
+  const inner = document.createElement('span');
+  state.ariaControlsElements = {[Symbol.iterator]: function* () {
+    state.ariaControlsElements = [inner];
+    yield outer;
+    TestUtils.gc();
+  }};
+  assert_array_equals(state.ariaControlsElements, [outer], 'outer successful conversion commits last');
+  const failure = new Error('after reentry');
+  assert_throws_exactly(failure, () => {
+    state.ariaControlsElements = {[Symbol.iterator]: function* () {
+      state.ariaControlsElements = [inner];
+      throw failure;
+    }};
+  });
+  assert_array_equals(state.ariaControlsElements, [inner], 'failed outer conversion preserves reentrant write');
+}, 'iterable reentry and GC complete before the outer setter commits');
+</script>
