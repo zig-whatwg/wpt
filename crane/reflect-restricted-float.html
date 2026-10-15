@@ -3,6 +3,7 @@
 <title>Restricted double and float reject NaN and the infinities; unrestricted ones do not</title>
 <link rel="help" href="https://webidl.spec.whatwg.org/#js-double">
 <link rel="help" href="https://webidl.spec.whatwg.org/#js-float">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#dom-input-valueasnumber">
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <body>
@@ -63,9 +64,26 @@ test(() => {
   for (const v of bad) {
     notATypeError(() => new DOMPoint(v, v, v, v), `new DOMPoint(${String(v)})`);
     notATypeError(() => DOMPoint.fromPoint({x: v}), `DOMPoint.fromPoint({x: ${String(v)}})`);
-    const input = document.createElement("input");
-    input.type = "number";
-    notATypeError(() => { input.valueAsNumber = v; }, `valueAsNumber = ${String(v)}`);
+    const p = new DOMPoint();
+    notATypeError(() => { p.x = v; }, `DOMPoint.x = ${String(v)}`);
   }
 }, "unrestricted double arguments, members and attributes accept NaN and the infinities");
+
+test(() => {
+  const input = document.createElement("input");
+  input.type = "number";
+  // HTML valueAsNumber setter step 1 throws for an infinite new value,
+  // even though WebIDL's unrestricted-double conversion accepts it.
+  for (const v of [Infinity, -Infinity, {valueOf() { return Infinity; }}]) {
+    input.value = "12";
+    assert_throws_js(TypeError, () => { input.valueAsNumber = v; });
+    assert_equals(input.value, "12", "an infinite value leaves the input unchanged");
+  }
+  // The setter's NaN branch sets the value to the empty string.
+  for (const v of [NaN, "NaN"]) {
+    input.value = "12";
+    input.valueAsNumber = v;
+    assert_equals(input.value, "");
+  }
+}, "valueAsNumber accepts NaN but its own setter rejects the infinities");
 </script>

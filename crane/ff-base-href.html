@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8">
+<title>base.href parses against the fallback URL</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#dom-base-href">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const first = document.createElement('base');
+  first.href = '/elsewhere/'; document.head.append(first);
+  t.add_cleanup(() => first.remove());
+  const second = document.createElement('base');
+  assert_equals(second.href, location.href, 'missing');
+  second.href = 'child';
+  assert_equals(second.href, new URL('child', location.href).href, 'ignores first base');
+  document.head.append(second); t.add_cleanup(() => second.remove());
+  assert_equals(second.href, new URL('child', location.href).href, 'same when connected');
+  first.href = '/changed/';
+  assert_equals(second.href, new URL('child', location.href).href, 'ignores changes to first base');
+  second.href = '';
+  assert_equals(second.href, location.href, 'empty');
+}, 'Every base href resolves against the fallback URL, not another base');
+for (const href of ['http://[', 'data:text/plain,hello', 'javascript:void(0)']) test(() => {
+  const base = document.createElement('base'); base.href = href;
+  assert_equals(base.href, href);
+}, `The getter preserves ${href} independently of document-base restrictions`);
+test(() => {
+  const base = document.createElement('base');
+  base.setAttribute('href', 'http://[\uD800');
+  assert_equals(base.href, 'http://[\uFFFD');
+}, 'A failed parse returns a scalar value string');
+test(t => {
+  const first = document.createElement('base'); first.href = '/new-base/';
+  document.head.append(first); t.add_cleanup(() => first.remove());
+  const frame = document.createElement('iframe'); document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const base = frame.contentDocument.createElement('base'); base.href = 'child';
+  assert_equals(base.href, new URL('child', first.href).href);
+}, 'An about:blank document uses its inherited fallback URL');
+</script>

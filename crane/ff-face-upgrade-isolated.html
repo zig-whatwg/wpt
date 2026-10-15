@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An upgraded form-associated custom element honors its form attribute</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#upgrades">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#reset-the-form-owner">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<form id="form2"></form>
+<ff-upgrade-isolated form="form2"></ff-upgrade-isolated>
+<script>
+test(() => {
+  customElements.define('ff-upgrade-isolated', class extends HTMLElement {
+    static formAssociated = true;
+    constructor() {
+      super();
+      this.internals = this.attachInternals();
+    }
+  });
+  assert_equals(document.querySelector('ff-upgrade-isolated').internals.form,
+                document.getElementById('form2'));
+}, 'Upgrade step 11 resolves the explicit form owner before step 12 sets custom state');
+</script>

@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form-associated upgrade phases and form-owner changes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#upgrades">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#reset-the-form-owner">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t, markup) {
+  const box = document.createElement('div');
+  box.innerHTML = markup;
+  document.body.append(box);
+  t.add_cleanup(() => box.remove());
+  return box;
+}
+function define(name) {
+  customElements.define(name, class extends HTMLElement {
+    static formAssociated = true;
+    constructor() {
+      super();
+      this.internals = this.attachInternals();
+      this.duringConstruction = this.internals.form;
+      this.history = [];
+    }
+    formAssociatedCallback(form) { this.history.push(form); }
+  });
+}
+test(t => {
+  const box = fixture(t, '<form id=ff-a></form><ff-owner-later form=ff-a></ff-owner-later>');
+  const form = box.firstChild, control = box.lastChild;
+  assert_equals(form.elements.length, 0, 'undefined elements are not listed');
+  define('ff-owner-later');
+  assert_equals(control.duringConstruction, null, 'constructor runs before the owner reset');
+  assert_equals(control.internals.form, form);
+  assert_array_equals(control.history, [form]);
+  assert_equals(form.elements[0], control);
+}, 'Connected then upgraded: owner and callback honor the form attribute');
+test(t => {
+  define('ff-owner-predefined');
+  const box = fixture(t, '<form id=ff-b></form><ff-owner-predefined form=ff-b></ff-owner-predefined>');
+  const form = box.firstChild, control = box.lastChild;
+  assert_equals(control.internals.form, form);
+  assert_array_equals(control.history, [form]);
+}, 'Fragment creation with an existing definition honors the form attribute');
+test(t => {
+  const box = fixture(t, '<form id=ff-c><ff-owner-override form=ff-d></ff-owner-override></form><form id=ff-d></form>');
+  const ancestor = box.firstChild, target = box.lastChild, control = ancestor.firstChild;
+  define('ff-owner-override');
+  assert_equals(control.internals.form, target, 'explicit target overrides ancestor');
+  control.removeAttribute('form');
+  assert_equals(control.internals.form, ancestor);
+  control.setAttribute('form', 'ff-missing');
+  assert_equals(control.internals.form, null, 'an unresolved explicit target has no owner');
+  control.setAttribute('form', 'ff-d');
+  assert_equals(control.internals.form, target);
+  assert_array_equals(control.history, [target, ancestor, null, target]);
+}, 'Upgraded ownership resets on removal and changes of the form attribute');
+test(t => {
+  const box = fixture(t, '<div id=ff-e></div><form id=ff-e></form><ff-owner-first form=ff-e></ff-owner-first>');
+  const blocker = box.firstChild, form = blocker.nextSibling, control = box.lastChild;
+  define('ff-owner-first');
+  assert_equals(control.internals.form, null, 'the first ID match is not a form');
+  blocker.remove();
+  assert_equals(control.internals.form, form);
+  assert_array_equals(control.history, [form]);
+}, 'An upgrade observes the first matching ID and subsequent target changes');
+test(t => {
+  const box = document.createElement('div');
+  box.innerHTML = '<form id=ff-f></form><ff-owner-detached form=ff-f></ff-owner-detached>';
+  const form = box.firstChild, control = box.lastChild;
+  define('ff-owner-detached');
+  customElements.upgrade(box);
+  assert_equals(control.internals.form, null, 'form attributes require connectedness');
+  assert_array_equals(control.history, []);
+  document.body.append(box);
+  t.add_cleanup(() => box.remove());
+  assert_equals(control.internals.form, form);
+  assert_array_equals(control.history, [form]);
+}, 'Disconnected upgrade waits for connection before resolving an explicit form target');
+</script>

@@ -1,0 +1,44 @@
+<!doctype html><meta charset="utf-8">
+<title>Meter gauge values use ordered defaults and clamping</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#the-meter-element">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+const names = ['min', 'max', 'value', 'low', 'high', 'optimum'];
+const cases = [
+  [{}, [0, 1, 0, 0, 1, .5], 'missing attributes'],
+  [{min: '7'}, [7, 7, 7, 7, 7, 7], 'min exceeds the default max'],
+  [{min: '2', max: '-2'}, [2, 2, 2, 2, 2, 2], 'max is below min'],
+  [{min: '-10', max: '10', value: '20', low: '8', high: '-8', optimum: '-20'}, [-10, 10, 10, 8, 8, -10], 'dependent clamping'],
+  [{min: '-10', max: '10', value: '-20', low: '-20', high: '20', optimum: '20'}, [-10, 10, -10, -10, 10, 10], 'opposite bounds'],
+  [{min: '\t+2tail', max: '8e0 trailing', value: '+3.5x', low: '.5e1', high: '7.', optimum: '6e+'}, [2, 8, 3.5, 5, 7, 6], 'HTML numeric prefix parsing'],
+];
+for (const [attrs, expected, name] of cases) test(() => {
+  const m = document.createElement('meter');
+  for (const [key, value] of Object.entries(attrs)) m.setAttribute(key, value);
+  assert_array_equals(names.map(key => m[key]), expected);
+}, name);
+for (const value of ['', 'NaN', 'Infinity', '-Infinity', '1e999', 'invalid']) test(() => {
+  const m = document.createElement('meter');
+  for (const name of names) m.setAttribute(name, value);
+  assert_array_equals(names.map(key => m[key]), [0, 1, 0, 0, 1, .5]);
+}, `Invalid numeric content ${JSON.stringify(value)} uses defaults`);
+test(() => {
+  const m = document.createElement('meter');
+  m.min = 1e308; m.max = 1.6e308;
+  assert_approx_equals(m.optimum, 1.3e308, 1e293);
+  m.min = -1.6e308;
+  assert_equals(m.optimum, 0);
+  m.min = Number.MIN_VALUE; m.max = Number.MIN_VALUE;
+  assert_equals(m.optimum, Number.MIN_VALUE);
+}, 'Default optimum stays finite and preserves a subnormal equal range');
+test(() => {
+  const m = document.createElement('meter');
+  m.min = 0; m.max = 10; m.value = 12;
+  assert_equals(m.value, 10);
+  assert_equals(m.getAttribute('value'), '12', 'getters do not change attributes');
+  m.max = 20;
+  assert_equals(m.value, 12, 'getters recompute after another bound changes');
+  for (const name of names) for (const value of [NaN, Infinity, -Infinity])
+    assert_throws_js(TypeError, () => { m[name] = value; });
+}, 'Setters reflect and reject non-finite values before the getter clamps');
+</script>

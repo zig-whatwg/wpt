@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8">
+<title>base.href has a fallback for a missing href</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#dom-base-href">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>test(() => { assert_equals(document.createElement('base').href, location.href); }, 'An absent base href parses the empty string against the fallback URL');</script>

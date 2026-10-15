@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8">
+<title>A meter uses dependent defaults</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#the-meter-element">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>test(() => { const m = document.createElement('meter'); m.min = 7; assert_equals(m.max, 7); }, 'A missing meter max is clamped to min');</script>
