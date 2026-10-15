@@ -1,0 +1,13 @@
+<!doctype html>
+<title>WebSocket send uses ECMAScript number formatting</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const socket = new WebSocket('ws://127.0.0.1:9/');
+  t.add_cleanup(() => socket.close());
+  socket.close();
+  socket.send(1e21);
+  assert_equals(socket.bufferedAmount, 5);
+}, 'send(1e21) counts the five UTF-8 bytes of 1e+21');
+</script>

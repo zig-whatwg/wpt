@@ -1,0 +1,11 @@
+<!doctype html>
+<title>WebSocket case-distinct subprotocols</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const socket = new WebSocket('ws://127.0.0.1:9/', ['echo', 'eCho']);
+  t.add_cleanup(() => socket.close());
+  assert_equals(socket.readyState, WebSocket.CONNECTING);
+}, 'Protocol names that differ in case are distinct');
+</script>

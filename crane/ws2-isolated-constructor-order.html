@@ -1,0 +1,12 @@
+<!doctype html>
+<title>WebSocket protocol conversion precedes URL validation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const sentinel = {};
+  assert_throws_exactly(sentinel, () => new WebSocket('ftp://example.test/', {
+    toString() { throw sentinel; }
+  }));
+}, 'Protocol argument conversion precedes the constructor algorithm');
+</script>

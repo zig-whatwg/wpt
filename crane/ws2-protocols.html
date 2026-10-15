@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebSocket protocol conversion and validation order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const url = 'ws://127.0.0.1:9/';
+const selected = new URLSearchParams(location.search).get('case');
+function check(id, body) { if (!selected || selected === id) test(body, id); }
+check('case-sensitive', t => {
+  const ws = new WebSocket(url, ['chat', 'CHAT']);
+  t.add_cleanup(() => ws.close());
+  assert_equals(ws.readyState, WebSocket.CONNECTING);
+});
+check('exact-duplicate', () => {
+  assert_throws_dom('SyntaxError', () => new WebSocket(url, ['chat', 'chat']));
+});
+check('conversion-before-url-validation', () => {
+  const sentinel = {};
+  assert_throws_exactly(sentinel, () => new WebSocket('ftp://example.test/', {
+    toString() { throw sentinel; }
+  }));
+});
+check('iteration-before-url-validation', () => {
+  const sentinel = {};
+  assert_throws_exactly(sentinel, () => new WebSocket('ws://example.test/#', {
+    get [Symbol.iterator]() { throw sentinel; }
+  }));
+});
+check('url-validation-before-token-validation', () => {
+  let converted = false;
+  assert_throws_dom('SyntaxError', () => new WebSocket('ftp://example.test/', {
+    toString() { converted = true; return '/'; }
+  }));
+  assert_true(converted);
+});
+check('iterable-completes-before-validation', () => {
+  const sentinel = {};
+  assert_throws_exactly(sentinel, () => new WebSocket(url, {
+    *[Symbol.iterator]() { yield ''; throw sentinel; }
+  }));
+});
+check('platform-object-string', () => {
+  assert_throws_dom('SyntaxError', () => new WebSocket(url, document.createElement('div')));
+});
+check('platform-object-iterable', t => {
+  const element = document.createElement('div');
+  let iterated = false;
+  element[Symbol.iterator] = function* () { iterated = true; yield 'chat'; };
+  const ws = new WebSocket(url, element);
+  t.add_cleanup(() => ws.close());
+  assert_true(iterated);
+});
+for (const protocols of ['', 'a b', 'a\0b', 'a/b', 'a,b', '\u00e9']) {
+  check('invalid-' + JSON.stringify(protocols), () => {
+    assert_throws_dom('SyntaxError', () => new WebSocket(url, protocols));
+  });
+}
+for (const [id, protocols] of [['omitted', undefined], ['empty-sequence', []], ['null', null], ['boolean', false], ['number', 1e21]]) {
+  check('valid-' + id, t => {
+    const ws = new WebSocket(url, protocols);
+    t.add_cleanup(() => ws.close());
+    assert_equals(ws.protocol, '');
+  });
+}
+</script>

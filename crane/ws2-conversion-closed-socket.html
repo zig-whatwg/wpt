@@ -1,0 +1,21 @@
+<!doctype html>
+<title>WebSocket send conversion remains correct after the close event</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const socket = new WebSocket('ws://127.0.0.1:9/');
+  t.add_cleanup(() => socket.close());
+  socket.onclose = t.step_func_done(() => {
+    assert_equals(socket.readyState, WebSocket.CLOSED);
+    socket.send(1e21);
+    assert_equals(socket.bufferedAmount, 5);
+    socket.send(new Uint8Array(3));
+    assert_equals(socket.bufferedAmount, 8);
+    const sentinel = {};
+    assert_throws_exactly(sentinel, () => socket.send({toString() { throw sentinel; }}));
+    assert_equals(socket.bufferedAmount, 8);
+  });
+  socket.close();
+}, 'CLOSED sockets count converted bytes without transmitting data');
+</script>

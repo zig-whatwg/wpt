@@ -1,0 +1,21 @@
+<!doctype html>
+<title>WebSocket reads the API base URL after protocol conversion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const base = document.createElement('base');
+  base.setAttribute('href', 'http://example.test/before/');
+  document.head.appendChild(base);
+  t.add_cleanup(() => base.remove());
+  assert_equals(document.baseURI, 'http://example.test/before/');
+  const socket = new WebSocket('relative', {
+    toString() {
+      base.setAttribute('href', 'http://example.test/after/');
+      return 'echo';
+    }
+  });
+  t.add_cleanup(() => socket.close());
+  assert_equals(socket.url, 'ws://example.test/after/relative');
+}, 'Protocol conversion updates the base href content attribute before URL parsing');
+</script>

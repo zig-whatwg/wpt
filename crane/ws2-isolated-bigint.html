@@ -1,0 +1,11 @@
+<!doctype html>
+<title>BigInt selects the DOMString member of the WebSocket protocols union</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const socket = new WebSocket('ws://127.0.0.1:9/', 12345678901234567890n);
+  t.add_cleanup(() => socket.close());
+  assert_equals(socket.readyState, WebSocket.CONNECTING);
+}, 'A primitive BigInt protocol is stringified without sequence conversion');
+</script>

@@ -1,0 +1,17 @@
+<!doctype html>
+<title>WebSocket observes protocol conversion side effects before URL parsing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const base = document.createElement('base');
+  base.href = 'http://example.test/before/';
+  document.head.appendChild(base);
+  t.add_cleanup(() => base.remove());
+  const socket = new WebSocket('relative', {
+    toString() { base.href = 'http://example.test/after/'; return 'echo'; }
+  });
+  t.add_cleanup(() => socket.close());
+  assert_equals(socket.url, 'ws://example.test/after/relative');
+}, 'The API base URL is read after the protocols argument is converted');
+</script>

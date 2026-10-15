@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebSocket close validates before changing state</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function socket(t) {
+  const ws = new WebSocket('ws://127.0.0.1:9/');
+  t.add_cleanup(() => ws.close());
+  return ws;
+}
+for (const code of [0, 999, 1001, 2999, 5000, 65535]) {
+  test(t => {
+    const ws = socket(t);
+    assert_throws_dom('InvalidAccessError', () => ws.close(code));
+    assert_equals(ws.readyState, WebSocket.CONNECTING);
+    ws.close();
+    assert_throws_dom('InvalidAccessError', () => ws.close(code));
+  }, 'bad close code ' + code + ' is rejected while connecting and closing');
+}
+for (const reason of ['x'.repeat(124), '\u00e9'.repeat(62), '\ud800'.repeat(42)]) {
+  test(t => {
+    const ws = socket(t);
+    assert_throws_dom('SyntaxError', () => ws.close(1000, reason));
+    assert_equals(ws.readyState, WebSocket.CONNECTING);
+    ws.close();
+    assert_throws_dom('SyntaxError', () => ws.close(1000, reason));
+  }, 'reason is limited by encoded bytes: ' + JSON.stringify(reason));
+}
+test(t => {
+  const ws = socket(t);
+  assert_throws_dom('InvalidAccessError', () => ws.close(1001, 'x'.repeat(124)));
+}, 'code validation precedes reason length validation');
+for (const reason of ['x'.repeat(123), '\ud800'.repeat(41), '\u00e9'.repeat(61) + 'x']) {
+  test(t => {
+    const ws = socket(t);
+    ws.close(1000, reason);
+    assert_equals(ws.readyState, WebSocket.CLOSING);
+  }, '123-byte reason is accepted: ' + JSON.stringify(reason));
+}
+async_test(t => {
+  const ws = socket(t), events = [];
+  ws.onopen = t.unreached_func('a synchronously closed socket cannot open');
+  ws.onerror = t.step_func(() => { events.push('error'); assert_equals(ws.readyState, WebSocket.CLOSED); });
+  ws.onclose = t.step_func_done(event => {
+    events.push('close');
+    assert_array_equals(events, ['error', 'close']);
+    assert_equals(event.code, 1006);
+    assert_equals(event.reason, '');
+    assert_false(event.wasClean);
+    assert_equals(ws.readyState, WebSocket.CLOSED);
+    assert_throws_dom('InvalidAccessError', () => ws.close(1001));
+  });
+  ws.close();
+  assert_equals(ws.readyState, WebSocket.CLOSING);
+  assert_array_equals(events, []);
+}, 'closing while CONNECTING queues error followed by close');
+</script>

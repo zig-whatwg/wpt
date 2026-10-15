@@ -1,0 +1,11 @@
+<!doctype html>
+<title>WebSocket send conversion precedes state validation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const socket = new WebSocket('ws://127.0.0.1:9/'), sentinel = {};
+  t.add_cleanup(() => socket.close());
+  assert_throws_exactly(sentinel, () => socket.send({toString() { throw sentinel; }}));
+}, 'send preserves conversion exceptions while CONNECTING');
+</script>

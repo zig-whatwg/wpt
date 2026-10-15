@@ -1,0 +1,25 @@
+<!doctype html>
+<title>WebSocket protocol union distinguishes primitive handles from objects</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const socket = new WebSocket('ws://127.0.0.1:9/', 12345678901234567890n);
+  t.add_cleanup(() => socket.close());
+  assert_equals(socket.readyState, WebSocket.CONNECTING);
+}, 'BigInt protocol is converted to a decimal string');
+test(() => {
+  assert_throws_js(TypeError, () => new WebSocket('ws://127.0.0.1:9/', Symbol()));
+}, 'Symbol protocol throws TypeError');
+test(t => {
+  const socket = new WebSocket('ws://127.0.0.1:9/', {
+    [Symbol.iterator]: null,
+    toString() { return 'echo'; }
+  });
+  t.add_cleanup(() => socket.close());
+  assert_equals(socket.readyState, WebSocket.CONNECTING);
+}, 'null iterator falls back to DOMString');
+test(() => {
+  assert_throws_js(TypeError, () => new WebSocket('ws://127.0.0.1:9/', {[Symbol.iterator]: 1}));
+}, 'noncallable iterator throws TypeError');
+</script>

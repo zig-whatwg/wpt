@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebSocket initial attributes, constants and URL serialization</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const ws = new WebSocket('ws://127.0.0.1:9/');
+  t.add_cleanup(() => ws.close());
+  for (const [name, value] of [['CONNECTING', 0], ['OPEN', 1], ['CLOSING', 2], ['CLOSED', 3]]) {
+    assert_equals(WebSocket[name], value);
+    assert_equals(ws[name], value);
+  }
+  assert_equals(ws.readyState, 0);
+  assert_equals(ws.bufferedAmount, 0);
+  assert_equals(ws.protocol, '');
+  assert_equals(ws.extensions, '');
+  assert_equals(ws.binaryType, 'blob');
+  ws.binaryType = 'arraybuffer';
+  assert_equals(ws.binaryType, 'arraybuffer');
+  ws.binaryType = 'invalid';
+  assert_equals(ws.binaryType, 'arraybuffer');
+}, 'Constants and initial attributes have their specified values');
+for (const [input, expected] of [
+  ['http://EXAMPLE.test:80/a/../b?c', 'ws://example.test/b?c'],
+  ['https://EXAMPLE.test:443/', 'wss://example.test/'],
+  ['ws://EXAMPLE.test:9/', 'ws://example.test:9/'],
+  ['wss://EXAMPLE.test:9/', 'wss://example.test:9/'],
+  ['/echo?one', location.origin.replace(/^http/, 'ws') + '/echo?one']
+]) {
+  test(t => {
+    const ws = new WebSocket(input);
+    t.add_cleanup(() => ws.close());
+    assert_equals(ws.url, expected);
+    assert_equals(ws.url, expected);
+  }, 'URL serialization: ' + input);
+}
+for (const input of ['ftp://example.test/', 'mailto:x@example.test', 'ws://bad host/', 'ws://example.test/#', '#fragment']) {
+  test(() => assert_throws_dom('SyntaxError', () => new WebSocket(input)), 'URL rejection: ' + input);
+}
+test(() => {
+  const e = new CloseEvent('close', {wasClean: true, code: 4001, reason: '\u00e9', bubbles: true, cancelable: true});
+  assert_true(e.wasClean);
+  assert_equals(e.code, 4001);
+  assert_equals(e.reason, '\u00e9');
+  assert_true(e.bubbles);
+  assert_true(e.cancelable);
+  const target = new EventTarget();
+  let seen;
+  target.addEventListener('close', event => { seen = event; event.preventDefault(); });
+  assert_false(target.dispatchEvent(e));
+  assert_equals(seen, e);
+}, 'CloseEvent stores its dictionary and can be dispatched');
+</script>

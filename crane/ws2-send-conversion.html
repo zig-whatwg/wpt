@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebSocket send converts arguments before reading readyState</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const selected = new URLSearchParams(location.search).get('case');
+function check(id, body) { if (!selected || selected === id) test(body, id); }
+function socket(t) {
+  const ws = new WebSocket('ws://127.0.0.1:9/');
+  t.add_cleanup(() => ws.close());
+  return ws;
+}
+check('throwing-string-conversion', t => {
+  const ws = socket(t), sentinel = {};
+  assert_throws_exactly(sentinel, () => ws.send({toString() { throw sentinel; }}));
+  assert_equals(ws.bufferedAmount, 0);
+});
+check('symbol-before-connecting', t => {
+  assert_throws_js(TypeError, () => socket(t).send(Symbol()));
+});
+check('conversion-runs-before-connecting', t => {
+  const ws = socket(t);
+  let calls = 0;
+  assert_throws_dom('InvalidStateError', () => ws.send({toString() { ++calls; return 'abc'; }}));
+  assert_equals(calls, 1);
+  assert_equals(ws.bufferedAmount, 0);
+});
+check('conversion-can-close', t => {
+  const ws = socket(t);
+  assert_equals(ws.send({toString() { ws.close(); return '\u00e9'; }}), undefined);
+  assert_equals(ws.readyState, WebSocket.CLOSING);
+  assert_equals(ws.bufferedAmount, 2);
+});
+check('platform-object-string', t => {
+  const ws = socket(t), element = document.createElement('div');
+  ws.close();
+  element.toString = () => '\u00e9';
+  ws.send(element);
+  assert_equals(ws.bufferedAmount, 2);
+});
+check('blob-bytes', t => {
+  const ws = socket(t);
+  ws.close();
+  ws.send(new Blob(['\u00e9']));
+  assert_equals(ws.bufferedAmount, 2);
+});
+check('view-byte-range', t => {
+  const ws = socket(t);
+  ws.close();
+  ws.send(new Uint8Array(new ArrayBuffer(16), 3, 5));
+  assert_equals(ws.bufferedAmount, 5);
+});
+for (const value of [1e21, 1e-7, 1.5e30, -0, NaN, Infinity, false, null, undefined, '\ud800']) {
+  check('text-size-' + String(value), t => {
+    const ws = socket(t);
+    ws.close();
+    ws.send(value);
+    assert_equals(ws.bufferedAmount, new TextEncoder().encode(String(value)).length);
+  });
+}
+</script>
