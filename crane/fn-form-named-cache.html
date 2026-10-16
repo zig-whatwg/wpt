@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A form's named properties and elements follow every change of form association, cached or not</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#the-form-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  // The inert parser associates the misnested control once the tree is
+  // built: no node moves then.
+  const doc = new DOMParser().parseFromString(
+      "<!doctype html><div><form id=f><input name=first></div><input name=second>", "text/html");
+  const form = doc.getElementById("f");
+  const second = doc.getElementsByName("second")[0];
+  assert_equals(second.form, form, "the parser associated the control");
+  assert_equals(form.elements.length, 2);
+  assert_equals(form[1], second);
+  assert_equals(form.second, second);
+  assert_true("second" in form);
+  assert_equals(form.elements.namedItem("second"), second);
+  second.setAttribute("form", "nowhere");
+  assert_equals(second.form, null, "a form attribute resets the parser association");
+  assert_equals(form.elements.length, 1);
+  assert_equals(form.second, undefined);
+}, "a parser association recorded after the tree is built reaches the form's named and indexed properties");
+
+test(t => {
+  const form = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => form.remove());
+  const face = form.appendChild(document.createElement("fn-cache-face"));
+  face.setAttribute("name", "face");
+  const plain = form.appendChild(document.createElement("input"));
+  plain.name = "plain";
+  assert_equals(form.length, 1);
+  assert_equals(form.elements.length, 1);
+  assert_equals(form.face, undefined);
+  assert_false("face" in form);
+  customElements.define("fn-cache-face", class extends HTMLElement {
+    static formAssociated = true;
+  });
+  assert_equals(form.length, 2, "the upgrade made a listed element");
+  assert_equals(form[0], face);
+  assert_equals(form.elements.namedItem("face"), face);
+  assert_equals(form.face, face);
+  assert_true("face" in form);
+}, "a form-associated custom element's upgrade reaches the form's cached answers");
+
+test(t => {
+  const form = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => form.remove());
+  const controls = [];
+  for (let i = 0; i < 20; ++i) {
+    const control = form.appendChild(document.createElement("input"));
+    control.name = "c" + i;
+    control.id = "fn-cache-id" + i;
+    controls.push(control);
+  }
+  for (let round = 0; round < 3; ++round) {
+    for (let i = 0; i < 20; ++i) {
+      assert_equals(form[i], controls[i]);
+      assert_equals(form["c" + i], controls[i]);
+      assert_equals(form.elements["c" + i], controls[i]);
+      assert_equals(form.elements.namedItem("fn-cache-id" + i), controls[i]);
+    }
+  }
+  controls[5].type = "image";
+  assert_equals(form.elements.length, 19, "an image button leaves the collection");
+  assert_equals(form.elements.c5, undefined);
+  assert_equals(form[5], controls[6]);
+  controls[5].type = "text";
+  controls[7].remove();
+  assert_equals(form.elements.length, 19);
+  assert_equals(form[7], controls[8]);
+  assert_equals(form.elements.c7, undefined);
+  const other = document.body.appendChild(document.createElement("form"));
+  t.add_cleanup(() => other.remove());
+  other.id = "fn-cache-other";
+  controls[3].setAttribute("form", "fn-cache-other");
+  assert_equals(form.elements.length, 18);
+  assert_equals(other.elements.length, 1);
+  assert_equals(other.c3, controls[3]);
+  assert_equals(form.elements.c3, undefined);
+}, "repeated named and indexed reads stay right across type, removal and form attribute changes");
+
+test(() => {
+  const form = document.createElement("form");
+  const one = form.appendChild(document.createElement("input"));
+  one.name = "fnSame";
+  one.id = "fnSame";
+  assert_equals(form.fnSame, one, "an element with the same id and name is one candidate");
+  const image = form.appendChild(document.createElement("img"));
+  image.id = "fnSame";
+  assert_equals(form.fnSame, one, "a control before an img");
+  one.remove();
+  assert_equals(form.fnSame, image, "then the img");
+  assert_true(form.submit instanceof Function, "a builtin with no control of its name");
+  assert_equals(form.method, "get");
+}, "candidates: one per element, controls before images, builtins without a candidate");
+</script>

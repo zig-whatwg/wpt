@@ -1,0 +1,183 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The form element's past names map: recorded on a single named answer, removed when the element changes form owner</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#past-names-map">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<form id="fn-a"></form>
+<form id="fn-b"></form>
+<div id="fn-outside"></div>
+<script>
+function input(parent, name, id) {
+  const element = document.createElement("input");
+  if (name !== undefined) element.name = name;
+  if (id !== undefined) element.id = id;
+  return parent.appendChild(element);
+}
+const formA = document.getElementById("fn-a");
+const formB = document.getElementById("fn-b");
+const outside = document.getElementById("fn-outside");
+
+test(() => {
+  const control = input(formA, "fnFirst", "fnFirstId");
+  assert_equals(formA.fnFirst, control);
+  assert_equals(formA.fnFirstId, control);
+  control.name = "fnSecond";
+  control.id = "fnSecondId";
+  assert_equals(formA.fnFirst, control, "a past name");
+  assert_equals(formA.fnFirstId, control, "a past id");
+  assert_true("fnFirst" in formA, "a past name is a supported property name");
+  assert_equals(Object.getOwnPropertyDescriptor(formA, "fnFirst").value, control);
+  assert_false("fnNeverAsked" in formA);
+  control.remove();
+}, "a control renamed after a single named answer keeps answering to the old name");
+
+test(() => {
+  const control = input(formA, "fnKept");
+  assert_equals(formA.fnKept, control);
+  control.name = "fnKeptNow";
+  formA.moveBefore(control, formA.firstChild);
+  assert_equals(formA.fnKept, control, "moved within its form: it never left the tree");
+  control.setAttribute("form", "fn-a");
+  assert_equals(formA.fnKept, control, "a form attribute naming the same form");
+  control.removeAttribute("form");
+  formA.remove();
+  assert_equals(formA.fnKept, control, "the form out of the document with the control");
+  document.body.insertBefore(formA, formB);
+  assert_equals(formA.fnKept, control, "and back");
+  control.type = "image";
+  assert_equals(formA.fnKept, control, "an image button keeps its form owner and its past names");
+  formA.insertBefore(control, formA.firstChild);
+  assert_equals(formA.fnKept, undefined, "insertBefore removed it first: its owner was null in between");
+  control.remove();
+}, "an element whose form owner stays the same keeps its entries");
+
+test(() => {
+  const control = input(formA, "fnBack");
+  assert_equals(formA.fnBack, control);
+  control.name = "fnBackNow";
+  control.remove();
+  formA.appendChild(control);
+  assert_equals(formA.fnBack, undefined, "removed and reinserted between two reads");
+  assert_equals(formA.fnBackNow, control);
+  control.remove();
+}, "the entries go at the change of owner, not at the next read");
+
+test(() => {
+  const moved = input(formA, "fnMoved");
+  assert_equals(formA.fnMoved, moved);
+  moved.name = "fnMovedNow";
+  formB.appendChild(moved);
+  assert_equals(formA.fnMoved, undefined, "moved into another form");
+  moved.remove();
+
+  const pointed = input(formA, "fnPointed");
+  assert_equals(formA.fnPointed, pointed);
+  pointed.name = "fnPointedNow";
+  pointed.setAttribute("form", "fn-b");
+  assert_equals(formA.fnPointed, undefined, "a form attribute naming another form");
+  assert_equals(formB.fnPointedNow, pointed);
+  pointed.remove();
+
+  const associated = input(outside, "fnAssociated");
+  associated.setAttribute("form", "fn-a");
+  assert_equals(formA.fnAssociated, associated);
+  associated.name = "fnAssociatedNow";
+  formA.id = "fn-a-renamed";
+  assert_equals(formA.fnAssociated, undefined, "the ID its form attribute named left");
+  formA.id = "fn-a";
+  assert_equals(formA.fnAssociated, undefined, "and stays gone when it comes back");
+  assert_equals(formA.fnAssociatedNow, associated);
+
+  associated.name = "fnDecoyed";
+  assert_equals(formA.fnDecoyed, associated);
+  associated.name = "fnDecoyedNow";
+  const decoy = document.createElement("div");
+  decoy.id = "fn-a";
+  document.body.insertBefore(decoy, document.body.firstChild);
+  assert_equals(formA.fnDecoyed, undefined, "an earlier element took the ID the form attribute names");
+  decoy.remove();
+  associated.remove();
+
+  const image = formA.appendChild(document.createElement("img"));
+  image.name = "fnImage";
+  assert_equals(formA.fnImage, image);
+  image.name = "fnImageNow";
+  assert_equals(formA.fnImage, image, "an img's past name");
+  image.remove();
+  assert_equals(formA.fnImage, undefined, "an img leaving its form");
+
+  const far = input(outside, "fnFar");
+  far.setAttribute("form", "fn-a");
+  assert_equals(formA.fnFar, far);
+  far.name = "fnFarNow";
+  formA.remove();
+  assert_equals(formA.fnFar, undefined, "the form left the tree of the control that named it");
+  document.body.insertBefore(formA, formB);
+  far.remove();
+
+  const inner = input(formA, "fnInner");
+  assert_equals(formA.fnInner, inner);
+  inner.name = "fnInnerNow";
+  formA.innerHTML = "";
+  assert_equals(formA.fnInner, undefined, "removed by innerHTML");
+}, "every change of form owner removes the element's entries");
+
+test(() => {
+  const one = input(formB, "fnPair");
+  const two = input(formB, "fnPair");
+  assert_true(formB.fnPair instanceof RadioNodeList);
+  one.name = "fnPair1";
+  two.name = "fnPair2";
+  assert_equals(formB.fnPair, undefined, "a list is recorded nowhere");
+
+  const first = input(formB, "fnShared");
+  assert_equals(formB.fnShared, first);
+  first.name = "fnShared1";
+  const second = input(formB, "fnShared");
+  assert_equals(formB.fnShared, second, "a current candidate before the map");
+  second.name = "fnShared2";
+  assert_equals(formB.fnShared, second, "and it replaced the entry");
+  formB.innerHTML = "";
+}, "current candidates come first, and a single one replaces the entry");
+
+test(() => {
+  const other = document.implementation.createHTMLDocument("fn-adopt");
+  const form = other.body.appendChild(other.createElement("form"));
+  const control = form.appendChild(other.createElement("input"));
+  control.name = "fnAdopted";
+  assert_equals(form.fnAdopted, control);
+  control.name = "fnAdoptedNow";
+  document.body.appendChild(form);
+  assert_equals(form.fnAdopted, control, "adopted with its control: the same owner");
+  control.remove();
+  assert_equals(form.fnAdopted, undefined, "removed in its new document");
+  form.remove();
+}, "a form adopted into another document keeps watching its entries");
+
+async function collect(t) {
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  for (let i = 0; i < 2; ++i) {
+    await TestUtils.gc();
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+}
+
+promise_test(async t => {
+  const form = (() => {
+    const form = document.createElement("form");
+    const control = form.appendChild(document.createElement("input"));
+    control.name = "fnCollected";
+    control.fnExpando = "kept";
+    assert_equals(form.fnCollected, control);
+    control.name = "fnCollectedNow";
+    return form;
+  })();
+  await collect(t);
+  const control = form.fnCollected;
+  assert_true(control instanceof HTMLInputElement, "the past name still answers");
+  assert_equals(control.fnExpando, "kept", "with the same wrapper");
+  assert_equals(control.parentNode, form);
+}, "a past name's element lives, wrapper and all, while its form does");
+</script>
