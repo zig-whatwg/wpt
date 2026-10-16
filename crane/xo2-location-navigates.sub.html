@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A cross-origin window navigates through its Location's cross-origin members</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#crossoriginset-(-o,-p,-v,-receiver-)">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#crossoriginproperties-(-o-)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/xo-helpers.js"></script>
+<body>
+<script>
+// CrossOriginProperties: a cross-origin Window's `location` has a setter, and
+// a cross-origin Location exposes the href setter and replace(). Each
+// navigates the other window; nothing else of the Location is reachable.
+
+function navigated(frame) {
+  return new Promise(resolve => frame.onload = () => resolve(frame.contentWindow.location.hash));
+}
+
+promise_test(async t => {
+  const frame = await xoLoadChild(t, document, "{{hosts[][www]}}");
+  const w = frame.contentWindow;
+  assert_throws_dom("SecurityError", () => w.location.href, "no href getter cross-origin");
+  assert_throws_dom("SecurityError", () => w.location.hash, "no hash cross-origin");
+  const loaded = navigated(frame);
+  w.location.href = xoChildUrl() + "#href";
+  assert_equals(await loaded, "#href");
+}, "the href setter of a cross-origin Location navigates its window");
+
+promise_test(async t => {
+  const frame = await xoLoadChild(t, document, "{{hosts[][www]}}");
+  const loaded = navigated(frame);
+  frame.contentWindow.location.replace(xoChildUrl() + "#replace");
+  assert_equals(await loaded, "#replace");
+}, "replace() of a cross-origin Location navigates its window");
+
+promise_test(async t => {
+  const frame = await xoLoadChild(t, document, "{{hosts[][www]}}");
+  const loaded = navigated(frame);
+  frame.contentWindow.location = xoChildUrl() + "#location";
+  assert_equals(await loaded, "#location");
+}, "the location setter of a cross-origin window navigates it");
+</script>

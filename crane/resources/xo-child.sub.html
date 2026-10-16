@@ -29,6 +29,15 @@ window.addEventListener("message", event => {
       result = "made";
     } else if (command === "parent-document") {
       result = parent.document === null ? "null" : "document";
+    } else if (command === "add-frame") {
+      // A child frame named value.name loading value.url; the reply waits
+      // for its load.
+      const frame = document.createElement("iframe");
+      frame.name = value.name;
+      frame.onload = () => event.source.postMessage({id, result: "loaded"}, "*");
+      frame.src = value.url;
+      document.body.appendChild(frame);
+      return;
     }
   } catch (error) {
     result = error.name;

@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cross-origin access is decided again at every access</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#isplatformobjectsameorigin-(-o-)">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/xo-helpers.js"></script>
+<body>
+<script>
+// HTML 7.2.1.3.3 IsPlatformObjectSameOrigin compares the current settings
+// object's origin with the object's at the moment of each access, and
+// document.domain changes an origin's domain at any time: an access refused
+// once is allowed again when both documents opt in to the same domain, and
+// refused again when only one has. Script runs in the owner document's realm
+// (its Function), so the owner's origin is the current settings object's.
+// (Not Location's members: their own first step compares the ENTRY settings
+// object's origin - this page's - which opts in to no domain.)
+
+promise_test(async t => {
+  const {owner} = await xoOwner(t);
+  const child = await xoLoadChild(t, owner);
+  const read = owner.defaultView.Function("w", `
+    try {
+      w.xo2Count = (w.xo2Count || 0) + 1;
+      return [w.document !== null, typeof w.location, w.xo2Count].join();
+    } catch (e) { return e.name; }`);
+  assert_equals(read(child.contentWindow), "true,object,1", "same origin, neither opted in");
+  assert_equals(await xoCommand(child, "set", location.hostname), location.hostname);
+  assert_equals(read(child.contentWindow), "SecurityError", "only the child opted in");
+  owner.domain = location.hostname;
+  assert_equals(read(child.contentWindow), "true,object,2", "both opted in to one domain");
+}, "an access refused once is allowed when both documents opt in to the same domain");
+
+promise_test(async t => {
+  const {owner} = await xoOwner(t);
+  const child = await xoLoadChild(t, owner);
+  const read = owner.defaultView.Function("w", `
+    try { return String(w.location.href.length > 0); } catch (e) { return e.name; }`);
+  const childLocation = child.contentWindow.location;
+  const readLocation = owner.defaultView.Function("l", `
+    try { return String(l.pathname.length > 0); } catch (e) { return e.name; }`);
+  assert_equals(read(child.contentWindow), "true");
+  assert_equals(readLocation(childLocation), "true", "a Location reached while same origin-domain");
+  assert_equals(await xoCommand(child, "set", location.hostname), location.hostname);
+  assert_equals(read(child.contentWindow), "SecurityError");
+  assert_equals(readLocation(childLocation), "SecurityError",
+                "the same Location object is checked again at its next access");
+}, "a Location obtained while same origin-domain is checked again at every access");
+</script>

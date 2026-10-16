@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A cross-origin window's named children are reachable by name</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#windowproxy-getownproperty">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#document-tree-child-navigable-target-name-property-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/xo-helpers.js"></script>
+<body>
+<script>
+// WindowProxy [[GetOwnProperty]] step 6: a cross-origin window W exposes a
+// child navigable by its target name. HTML's target name property set keeps
+// only the children same origin with W (7.2.2.3 step 5), but Chrome, Firefox
+// and Safari expose every named child (cross-origin-named-access.sub.html
+// fails in all three; document_domain_access_details.sub.html, which needs
+// it, passes) - Crane does as they do. The names are not listed by
+// [[OwnPropertyKeys]]; the children's indices are.
+
+promise_test(async t => {
+  const frame = await xoLoadChild(t, document, "{{hosts[][www]}}");
+  assert_equals(await xoCommand(frame, "add-frame", {name: "sameAsW", url: xoChildUrl("{{hosts[][www]}}")}), "loaded");
+  assert_equals(await xoCommand(frame, "add-frame", {name: "notSameAsW", url: xoChildUrl()}), "loaded");
+  const w = frame.contentWindow;
+  assert_equals(w.sameAsW, w[0], "a child same origin with W, by name");
+  const desc = Object.getOwnPropertyDescriptor(w, "sameAsW");
+  assert_equals(desc.value, w[0]);
+  assert_false(desc.writable, "writable");
+  assert_false(desc.enumerable, "enumerable");
+  assert_true(desc.configurable, "configurable");
+  assert_equals(w.notSameAsW, w[1], "a child cross-origin with W, by name, as browsers do");
+  assert_throws_dom("SecurityError", () => w.noSuchChild, "a name no child has");
+  const names = Object.getOwnPropertyNames(w);
+  assert_false(names.includes("sameAsW"), "names are not own keys");
+  assert_array_equals(names.slice(0, 2), ["0", "1"], "indices come first");
+}, "a cross-origin window's children by name and by index");
+</script>

@@ -57,12 +57,14 @@ promise_test(async t => {
   const {owner} = await xoOwner(t);
   const blank = xoBlankFrame(t, owner);
   const inner = await xoLoadChild(t, blank.contentDocument, "{{hosts[][www]}}");
+  // Made before the owner opts in: from then on this page, which does not,
+  // is no longer same origin-domain with the about:blank document's window.
+  const readFromBlank = blank.contentWindow.Function("w", "return w.document");
   owner.domain = location.hostname;
   assert_equals(inner.contentDocument, null, "the inner document has not opted in");
   assert_equals(await xoCommand(inner, "set", location.hostname), location.hostname);
   assert_not_equals(inner.contentDocument, null,
                     "the about:blank container document has its creator's domain");
-  const readFromBlank = blank.contentWindow.Function("w", "return w.document");
   assert_equals(inner.contentDocument, readFromBlank(inner.contentWindow),
                 "contentDocument and Window.document agree");
 }, "contentDocument in an inherited about:blank container document reads its creator's domain");
