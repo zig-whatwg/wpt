@@ -1,0 +1,21 @@
+<!doctype html>
+<title>Fifty ordinary same-origin frame navigations</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  for (let index = 0; index < 50; index++) {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = '/common/blank.html?cf-navigation-cost=' + index;
+    document.body.append(frame);
+    await loaded;
+    assert_equals(frame.contentDocument.readyState, 'complete');
+    assert_equals(frame.contentWindow.location.origin, location.origin);
+    frame.remove();
+  }
+}, 'Fifty same-origin frames without a csp attribute finish loading');
+</script>

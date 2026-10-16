@@ -1,0 +1,28 @@
+<!doctype html>
+<title>Allow-CSP-From admits and enforces the required policy</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  frame.csp = "img-src 'none'";
+  const url = new URL('/content-security-policy/embedded-enforcement/support/echo-allow-csp-from.py', location.href);
+  url.searchParams.set('allow_csp_from', '*');
+  url.searchParams.set('id', 'cf-allow-csp-from');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = url;
+  document.body.append(frame);
+  await loaded;
+  assert_not_equals(frame.contentDocument, null, 'Allow-CSP-From accepts the required policy');
+  const image = frame.contentDocument.createElement('img');
+  const result = new Promise(resolve => {
+    image.onload = () => resolve('loaded');
+    image.onerror = () => resolve('blocked');
+  });
+  image.src = '/content-security-policy/support/pass.png';
+  frame.contentDocument.body.append(image);
+  assert_equals(await result, 'blocked', 'Accepted required policy is enforced');
+}, 'Allow-CSP-From is read from the navigation response');
+</script>

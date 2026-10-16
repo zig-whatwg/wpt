@@ -1,0 +1,35 @@
+<!doctype html>
+<title>CSP-blocked frames expose an opaque error document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const property of ['contentDocument', 'oldDoc.defaultView', 'location.href', 'origin']) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const initial = new Promise(resolve => frame.onload = resolve);
+    document.body.append(frame);
+    await initial;
+    const oldDoc = frame.contentDocument;
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = '/content-security-policy/frame-ancestors/support/frame-ancestors.sub.html?policy=%27none%27';
+    await loaded;
+    if (property === 'contentDocument') {
+      assert_equals(frame.contentDocument, null, 'The blocked response has an opaque origin');
+      return;
+    }
+    if (property === 'oldDoc.defaultView') {
+      assert_equals(oldDoc.defaultView, null, 'The inactive document has no browsing context');
+      return;
+    }
+    let value, error;
+    try {
+      value = property === 'origin' ? frame.contentWindow.origin : frame.contentWindow.location.href;
+    } catch (caught) {
+      error = caught.name;
+    }
+    assert_equals(error, 'SecurityError', property + ' must be inaccessible; returned ' + String(value));
+  }, 'A CSP error frame denies access to ' + property);
+}
+</script>

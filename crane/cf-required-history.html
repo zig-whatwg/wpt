@@ -1,0 +1,37 @@
+<!doctype html>
+<title>Required CSP is snapshotted on navigation and recomputed on network history traversal</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  function nextHeader() {
+    return new Promise(resolve => {
+      const listener = event => {
+        if (event.source !== frame.contentWindow || !('required_csp' in event.data)) return;
+        window.removeEventListener('message', listener);
+        resolve(event.data.required_csp);
+      };
+      window.addEventListener('message', listener);
+      t.add_cleanup(() => window.removeEventListener('message', listener));
+    });
+  }
+  async function navigate(policy, suffix) {
+    const header = nextHeader();
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.csp = policy;
+    frame.src = '/content-security-policy/embedded-enforcement/support/echo-required-csp.py?' + suffix;
+    if (!frame.isConnected) document.body.append(frame);
+    await loaded;
+    return header;
+  }
+  assert_equals(await navigate("img-src 'none'", 'first'), "img-src 'none'");
+  assert_equals(await navigate("style-src 'none'", 'second'), "style-src 'none'");
+  frame.csp = "object-src 'none'";
+  const historyHeader = nextHeader();
+  frame.contentWindow.history.back();
+  assert_equals(await historyHeader, "object-src 'none'", 'Network history traversal uses the current csp attribute');
+}, 'A new navigation and a history traversal determine required CSP again');
+</script>

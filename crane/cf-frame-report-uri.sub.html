@@ -1,0 +1,37 @@
+<!doctype html>
+<title>frame-ancestors response reports use response data</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const id = '{{uuid()}}';
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  let parentEvents = 0;
+  const listener = () => parentEvents++;
+  document.addEventListener('securitypolicyviolation', listener);
+  t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', listener));
+  const policy = "frame-ancestors 'none'; report-uri /reporting/resources/report.py?op=put&reportID=" + id;
+  const url = new URL('/content-security-policy/frame-ancestors/support/content-security-policy.sub.html', location.href);
+  url.searchParams.set('policy', policy);
+  url.hash = 'not-in-the-report';
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = url;
+  document.body.append(frame);
+  await loaded;
+  assert_equals(frame.contentDocument, null, 'Blocked navigation has an opaque origin');
+  const reports = await (await fetch('/reporting/resources/report.py?op=retrieve_report&timeout=5&reportID=' + id)).json();
+  assert_true(Array.isArray(reports) && reports.length > 0, 'Response violation report arrived');
+  const body = reports[0]['csp-report'];
+  assert_equals(body['effective-directive'], 'frame-ancestors');
+  assert_equals(body['document-uri'], url.href.split('#')[0]);
+  assert_equals(body['blocked-uri'], url.href.split('#')[0]);
+  assert_equals(body.referrer, location.href.split('#')[0]);
+  assert_equals(body['original-policy'], policy);
+  assert_equals(body.disposition, 'enforce');
+  assert_equals(body['status-code'], 200);
+  assert_equals(parentEvents, 0, 'A response-policy violation has no global and fires no parent event');
+}, 'frame-ancestors reports the response and does not target the parent');
+</script>

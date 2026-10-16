@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>iframe csp reflects its content attribute</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('csp', "img-src 'none'");
+  assert_equals(frame.csp, "img-src 'none'");
+}, 'The csp getter reads the content attribute');
+test(() => {
+  const frame = document.createElement('iframe');
+  frame.csp = "script-src 'self'";
+  assert_equals(frame.getAttribute('csp'), "script-src 'self'");
+  frame.removeAttribute('csp');
+  assert_equals(frame.csp, '');
+}, 'The csp setter writes the content attribute, and removal restores the empty string');
+test(() => {
+  const frame = document.createElement('iframe');
+  frame.csp = '\u00e9\ud83d\udca9\ud800';
+  assert_equals(frame.csp, '\u00e9\ud83d\udca9\ud800');
+  assert_equals(frame.getAttribute('csp'), frame.csp);
+}, 'Reflection preserves DOMString contents even when the value is not a valid required policy');
+</script>

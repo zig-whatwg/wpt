@@ -1,0 +1,34 @@
+<!doctype html>
+<title>Allow-CSP-From is compared as a parsed origin</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const same of [true, false]) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    frame.csp = "img-src 'none'";
+    const url = new URL('/content-security-policy/embedded-enforcement/support/echo-allow-csp-from.py', location.href);
+    url.searchParams.set('id', 'cf-origin-url');
+    url.searchParams.set('allow_csp_from', same ? location.origin.toUpperCase() + '/path?q=1#fragment' : 'https://other.example/path');
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = url;
+    document.body.append(frame);
+    await loaded;
+    if (!same) {
+      assert_equals(frame.contentDocument, null, 'Mismatched origin is blocked');
+      return;
+    }
+    assert_not_equals(frame.contentDocument, null, 'Matching parsed origin is admitted');
+    const img = frame.contentDocument.createElement('img');
+    const result = new Promise(resolve => {
+      img.onload = () => resolve('loaded');
+      img.onerror = () => resolve('blocked');
+    });
+    img.src = '/content-security-policy/support/pass.png';
+    frame.contentDocument.body.append(img);
+    assert_equals(await result, 'blocked', 'Blanket-accepted CSP is enforced');
+  }, 'Allow-CSP-From with ' + (same ? 'matching' : 'mismatched') + ' parsed origin');
+}
+</script>

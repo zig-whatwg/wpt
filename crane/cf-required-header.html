@@ -1,0 +1,24 @@
+<!doctype html>
+<title>A frame navigation sends its required CSP</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  frame.csp = "img-src 'none'";
+  const message = new Promise(resolve => {
+    const listener = t.step_func(e => {
+      if (e.source !== frame.contentWindow || !('required_csp' in e.data)) return;
+      window.removeEventListener('message', listener);
+      resolve(e.data.required_csp);
+    });
+    window.addEventListener('message', listener);
+    t.add_cleanup(() => window.removeEventListener('message', listener));
+  });
+  frame.src = '/content-security-policy/embedded-enforcement/support/echo-required-csp.py';
+  document.body.append(frame);
+  assert_equals(await message, "img-src 'none'");
+}, 'Sec-Required-CSP contains the valid iframe csp attribute');
+</script>

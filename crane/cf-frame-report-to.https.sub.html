@@ -1,0 +1,48 @@
+<!doctype html>
+<title>Navigation report-to uses the response's Reporting-Endpoints</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+for (const [header, disposition] of [
+  ['Content-Security-Policy', 'enforce'],
+  ['Content-Security-Policy-Report-Only', 'report']
+]) promise_test(async t => {
+  const id = token();
+  const endpoint = new URL('/reporting/resources/report.py?reportID=' + id, location.href);
+  const url = new URL('/common/blank.html', location.href);
+  url.searchParams.set('pipe', "header(" + header + ",frame-ancestors 'none'; report-to child)|header(Reporting-Endpoints,child=\"" + endpoint.href + "\")");
+  url.hash = 'not-in-the-report';
+  const response = await fetch(url);
+  assert_equals(response.headers.get('Reporting-Endpoints'), 'child="' + endpoint.href + '"', 'The child response supplies its own endpoint');
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  let events = 0;
+  const listener = () => ++events;
+  document.addEventListener('securitypolicyviolation', listener);
+  t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', listener));
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = url;
+  document.body.append(frame);
+  await loaded;
+  if (disposition === 'enforce') assert_equals(frame.contentDocument, null);
+  else assert_not_equals(frame.contentDocument, null, 'Report-only does not block the child');
+  const reports = await (await fetch(endpoint + '&op=retrieve_report&timeout=5')).json();
+  assert_equals(reports.length, 1, 'The response endpoint receives one report');
+  assert_equals(reports[0].type, 'csp-violation');
+  assert_equals(reports[0].url, url.href.split('#')[0]);
+  assert_equals(reports[0].user_agent, navigator.userAgent);
+  assert_equals(reports[0].metadata.content_type, 'application/reports+json');
+  const body = reports[0].body;
+  assert_equals(body.documentURL, url.href.split('#')[0]);
+  assert_equals(body.blockedURL, url.href.split('#')[0]);
+  assert_equals(body.referrer, location.href.split('#')[0]);
+  assert_equals(body.originalPolicy, "frame-ancestors 'none'; report-to child");
+  assert_equals(body.effectiveDirective, 'frame-ancestors');
+  assert_equals(body.disposition, disposition);
+  assert_equals(body.statusCode, 200);
+  assert_equals(events, 0, 'Navigation violations have no parent event target');
+}, disposition + ': frame-ancestors report-to resolves the response endpoint without a violation global');
+</script>

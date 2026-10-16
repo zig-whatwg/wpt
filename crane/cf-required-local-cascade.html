@@ -1,0 +1,36 @@
+<!doctype html>
+<title>Required CSP survives a local document to constrain its grandchild</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const local of ['about:blank', 'about:srcdoc']) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const initial = new Promise(resolve => frame.onload = resolve);
+    document.body.append(frame);
+    await initial;
+    // Initial about:blank is created without navigation. Exercise an actual
+    // local navigation, where CSPEE snapshots the requirement.
+    frame.csp = "img-src 'none'";
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    if (local === 'about:srcdoc') frame.srcdoc = '<!doctype html><body></body>';
+    else frame.src = 'about:blank';
+    await loaded;
+    const child = frame.contentDocument.createElement('iframe');
+    child.csp = "img-src *";
+    const header = new Promise(resolve => {
+      const listener = event => {
+        if (event.source !== child.contentWindow || !('required_csp' in event.data)) return;
+        frame.contentWindow.removeEventListener('message', listener);
+        resolve(event.data.required_csp);
+      };
+      frame.contentWindow.addEventListener('message', listener);
+    });
+    child.src = '/content-security-policy/embedded-enforcement/support/echo-required-csp.py';
+    frame.contentDocument.body.append(child);
+    assert_equals(await header, "img-src 'none'", 'An invalid weaker attribute falls back to inherited required CSP');
+  }, local + ' document enforces required CSP in a grandchild');
+}
+</script>

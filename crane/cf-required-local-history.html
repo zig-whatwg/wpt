@@ -1,0 +1,54 @@
+<!doctype html>
+<title>Restored local documents pass required CSP to network grandchildren</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const local of ['about:blank', 'about:srcdoc']) for (const changed of [false, true]) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    function loaded() {
+      return new Promise(resolve => frame.onload = resolve);
+    }
+    let load = loaded();
+    document.body.append(frame);
+    await load;
+    frame.csp = changed ? "style-src 'none'" : "img-src 'none'";
+    load = loaded();
+    if (local === 'about:srcdoc') frame.srcdoc = '<!doctype html><body></body>';
+    else frame.src = 'about:blank';
+    await load;
+    load = loaded();
+    if (local === 'about:srcdoc') frame.removeAttribute('srcdoc');
+    frame.src = '/common/blank.html?pipe=header(Allow-CSP-From,*)';
+    await load;
+    if (changed) frame.csp = "img-src 'none'";
+    load = loaded();
+    frame.contentWindow.history.back();
+    await load;
+    assert_equals(frame.contentDocument.URL, local, 'The local entry was restored');
+    const image = frame.contentDocument.createElement('img');
+    const imageResult = new Promise(resolve => {
+      image.onload = () => resolve('loaded');
+      image.onerror = () => resolve('blocked');
+    });
+    image.src = new URL('/content-security-policy/support/pass.png', location.href);
+    frame.contentDocument.body.append(image);
+    assert_equals(await imageResult, changed ? 'loaded' : 'blocked', 'The restored document keeps its old enforced policies');
+    const child = frame.contentDocument.createElement('iframe');
+    const header = new Promise(resolve => {
+      const listener = event => {
+        if (event.source !== child.contentWindow || !('required_csp' in event.data)) return;
+        frame.contentWindow.removeEventListener('message', listener);
+        resolve(event.data.required_csp);
+      };
+      frame.contentWindow.addEventListener('message', listener);
+    });
+    child.src = new URL('/content-security-policy/embedded-enforcement/support/echo-required-csp.py', location.href);
+    frame.contentDocument.body.append(child);
+    assert_equals(await header, "img-src 'none'", 'A network grandchild inherits the restored document requirement');
+  }, local + ' history restoration ' + (changed ? 'recomputes' : 'preserves') + ' required CSP for a network grandchild');
+}
+</script>

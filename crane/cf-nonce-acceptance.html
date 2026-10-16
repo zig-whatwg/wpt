@@ -1,0 +1,23 @@
+<!doctype html>
+<title>Blanket and implicit embedded CSP acceptance use different nonce policies</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const blanket of [false, true]) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    frame.csp = "script-src 'nonce-embedder'";
+    const url = new URL('cf-nonce-response.html', location.href);
+    url.searchParams.set('pipe', "header(Content-Security-Policy,script-src 'nonce-response')" +
+      (blanket ? '|header(Allow-CSP-From,*)' : ''));
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = url;
+    document.body.append(frame);
+    await loaded;
+    assert_not_equals(frame.contentDocument, null, 'The response is accepted');
+    assert_equals(frame.contentWindow.cfRan === true, !blanket, 'Only implicit acceptance replaces the required nonce with the response nonce');
+  }, (blanket ? 'Blanket' : 'Implicit') + ' acceptance of a compatible different nonce');
+}
+</script>
