@@ -1,0 +1,32 @@
+<!doctype html>
+<title>Legacy CSP reports reach cross-origin endpoints</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function checkReport(t, id, redirect) {
+  const origin = 'http://{{domains[www1]}}:{{ports[http][0]}}';
+  const collector = origin + '/reporting/resources/report.py?op=put&reportID=' + id;
+  const endpoint = redirect ? origin + '/common/redirect.py?status=307&location=' + encodeURIComponent(collector) : collector;
+  const policy = "img-src 'none'; report-uri " + endpoint;
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const event = new Promise(resolve => {
+    const listener = t.step_func(e => {
+      if (e.source === frame.contentWindow) resolve(e.data);
+    });
+    window.addEventListener('message', listener);
+    t.add_cleanup(() => window.removeEventListener('message', listener));
+  });
+  frame.src = 'cn-report-child.html?pipe=header(Content-Security-Policy,' + encodeURIComponent(policy) + ')';
+  document.documentElement.appendChild(frame);
+  assert_equals(await event, 'img-src');
+  const response = await fetch('/reporting/resources/report.py?op=retrieve_report&timeout=3&reportID=' + id);
+  const reports = await response.json();
+  assert_equals(reports.length, redirect ? 0 : 1, 'Report uploads received beyond the endpoint');
+  if (!redirect) assert_equals(reports[0]['csp-report']['effective-directive'], 'img-src');
+}
+promise_test(t => checkReport(t, '{{uuid()}}', false),
+             'A blocked image sends a legacy report to a cross-origin endpoint');
+promise_test(t => checkReport(t, '{{uuid()}}', true),
+             'A legacy report refuses an HTTP redirect from its cross-origin endpoint');
+</script>

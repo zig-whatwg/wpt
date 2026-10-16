@@ -1,0 +1,26 @@
+<!doctype html>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [label, create] of [
+  ['HTML', () => document.createElement('div')],
+  ['SVG', () => { const script = document.createElementNS('http://www.w3.org/2000/svg', 'script'); script.type = 'application/json'; return script; }]
+]) {
+  test(() => {
+    const element = create();
+    assert_equals(element.nonce, '');
+    element.nonce = 'slot-value';
+    assert_equals(element.nonce, 'slot-value');
+    assert_equals(element.getAttribute('nonce'), null, 'IDL setter does not create an attribute');
+    element.setAttribute('nonce', 'attribute-value');
+    assert_equals(element.nonce, 'attribute-value');
+    document.documentElement.appendChild(element);
+    assert_equals(element.getAttribute('nonce'), 'attribute-value', 'no header CSP leaves the attribute visible');
+    element.remove();
+    element.nonce = 'updated-slot';
+    assert_equals(element.getAttribute('nonce'), 'attribute-value', 'IDL setter preserves the attribute');
+    element.removeAttribute('nonce');
+    assert_equals(element.nonce, '');
+  }, label + ' nonce slot follows attribute changes and remains distinct from the attribute');
+}
+</script>

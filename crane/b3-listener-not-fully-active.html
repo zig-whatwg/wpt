@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>binding3 item 8: listeners of, and on, a Window whose Document is not fully active</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// DOM inner invoke step 8: "If targetGlobal or listenerGlobal is a Window
+// object whose associated Document is not fully active, then continue."
+// Upstream: dom/events/event-listener-not-fully-active-*.html and
+// html/semantics/scripting-1/the-script-element/execution-timing/083.html.
+
+function appendAndWait(t, frame) {
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+  t.add_cleanup(() => frame.remove());
+  document.body.append(frame);
+  return loaded.then(() => frame);
+}
+
+function frameWith(t, srcdoc) {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = srcdoc;
+  return appendAndWait(t, frame);
+}
+
+function frameAt(t, url) {
+  const frame = document.createElement("iframe");
+  frame.src = url;
+  return appendAndWait(t, frame);
+}
+
+function navigated(frame, url) {
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+  frame.src = url;
+  return loaded;
+}
+
+// listenerGlobal: the frame's own function, registered on this document.
+promise_test(async t => {
+  const frame = await frameAt(t, "/common/blank.html");
+  window.frameCalls = 0;
+  frame.contentWindow.eval(`parent.document.addEventListener("b3-x", () => parent.frameCalls++)`);
+  document.dispatchEvent(new Event("b3-x"));
+  assert_equals(window.frameCalls, 1, "runs while the frame's document is fully active");
+  await navigated(frame, "/common/blank.html?2");
+  document.dispatchEvent(new Event("b3-x"));
+  assert_equals(window.frameCalls, 1, "does not run once the frame navigated away");
+}, "A listener of a frame that navigated away does not run (listenerGlobal)");
+
+// targetGlobal: this document's function, on the frame's document and element.
+// RED until the follow-up queued by the integrator (2026-10-16): DOM inner
+// invoke step 8's targetGlobal half, after (1) IndexedDB requests are made in
+// the realm the browsers use (IDBTransaction.enqueueRequest), and (2)
+// dom.document_activity answers "fully active" for a child navigable's
+// document until destroyChildNavigable's step 5. binding3's first version
+// newly blocked IndexedDB/*-cross-realm-methods.html and two
+// navigation-api detach files, which Chrome, Firefox and Safari pass.
+promise_test(async t => {
+  const frame = await frameWith(t, "<div id=d></div>");
+  const doc = frame.contentDocument;
+  const element = doc.getElementById("d");
+  let count = 0;
+  doc.addEventListener("b3-y", () => count++);
+  element.addEventListener("b3-y", () => count++);
+  element.onclick = () => count++;
+  element.dispatchEvent(new Event("b3-y", { bubbles: true }));
+  element.dispatchEvent(new Event("click"));
+  assert_equals(count, 3, "runs while the frame is attached");
+  frame.remove();
+  element.dispatchEvent(new Event("b3-y", { bubbles: true }));
+  element.dispatchEvent(new Event("click"));
+  doc.dispatchEvent(new Event("b3-y"));
+  assert_equals(count, 3, "does not run once the frame is removed");
+}, "This document's listener on a removed frame's nodes does not run (targetGlobal)");
+
+// The control: a node of the frame's realm adopted into this document.
+promise_test(async t => {
+  const frame = await frameWith(t, "");
+  const element = frame.contentDocument.createElement("div");
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  let count = 0;
+  element.addEventListener("b3-z", () => count++);
+  frame.remove();
+  element.dispatchEvent(new Event("b3-z"));
+  assert_equals(count, 1);
+}, "A node adopted into this document from a removed frame's realm still runs this document's listener");
+</script>

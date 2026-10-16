@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Server-Timing JSON ownership limitation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const url = new URL('rt2-server-timing.txt?json', location.href).href;
+  await (await fetch(url)).text();
+  const entry = performance.getEntriesByName(url)[0];
+  assert_equals(entry.serverTiming.length, 2);
+  assert_equals(entry.serverTiming, entry.serverTiming);
+  // Integrator ruling, codex-timing3 Q3: flip this pin when generated
+  // result records can transfer ownership of embedded JSValue members.
+  assert_equals(entry.toJSON().serverTiming, undefined);
+  assert_false(Object.hasOwn(JSON.parse(JSON.stringify(entry)), 'serverTiming'));
+}, 'Resource JSON omits serverTiming until the binding can release its handle');
+</script>

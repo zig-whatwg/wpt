@@ -1,0 +1,35 @@
+<!doctype html>
+<title>Allowed prefetch publishes request timing and body size</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'">
+<script>
+const prefetchEntry = (async () => {
+  const link = document.createElement('link');
+  link.rel = 'prefetch';
+  link.crossOrigin = 'anonymous';
+  link.href = '/common/dummy.xml?cn=' + Math.random();
+  const entry = new Promise(resolve => {
+    const observer = new PerformanceObserver(list => {
+      const matches = list.getEntriesByName(link.href);
+      if (matches.length) { observer.disconnect(); resolve(matches[0]); }
+    });
+    observer.observe({entryTypes: ['resource']});
+  });
+  document.head.appendChild(link);
+  return entry;
+})();
+promise_test(async () => {
+  const timing = await prefetchEntry;
+  assert_equals(timing.entryType, 'resource');
+  assert_equals(timing.initiatorType, 'link');
+}, 'CSP permits the same-origin prefetch and a resource entry arrives');
+promise_test(async () => {
+  const timing = await prefetchEntry;
+  assert_greater_than(timing.requestStart, 0, 'requestStart=' + timing.requestStart);
+}, 'An allowed same-origin prefetch has requestStart');
+promise_test(async () => {
+  const timing = await prefetchEntry;
+  assert_greater_than(timing.decodedBodySize, 0, 'decodedBodySize=' + timing.decodedBodySize);
+}, 'An allowed same-origin prefetch has decodedBodySize');
+</script>

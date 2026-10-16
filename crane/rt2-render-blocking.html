@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<title>Fetch timing preserves a script's render-blocking flag</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="rt2-empty.js?blocking"></script>
+<script defer src="rt2-empty.js?defer"></script>
+<script>
+addEventListener('load', () => {
+  test(() => {
+    const entry = suffix => performance.getEntriesByName(new URL('rt2-empty.js?' + suffix, location.href).href)[0];
+    assert_equals(entry('blocking').renderBlockingStatus, 'blocking');
+    assert_equals(entry('defer').renderBlockingStatus, 'non-blocking');
+  }, 'Render-blocking and deferred script fetches retain distinct timing flags');
+  done();
+});
+setup({explicit_done: true});
+</script>
+</head><body></body></html>

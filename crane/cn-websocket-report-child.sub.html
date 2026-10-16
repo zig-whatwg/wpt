@@ -1,0 +1,10 @@
+<!doctype html>
+<script>
+addEventListener('securitypolicyviolation', e => {
+  parent.postMessage({kind: 'violation', blockedURI: e.blockedURI, disposition: e.disposition}, '*');
+});
+const scheme = new URLSearchParams(location.search).get('scheme');
+const port = scheme === 'ws' ? '{{ports[ws][0]}}' : '{{ports[wss][0]}}';
+const socket = new WebSocket(scheme + '://{{host}}:' + port + '/echo');
+socket.addEventListener('open', () => socket.close());
+</script>

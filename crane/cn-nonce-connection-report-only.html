@@ -1,0 +1,53 @@
+<!doctype html>
+<script nonce="cn" src="/resources/testharness.js"></script>
+<script nonce="cn" src="/resources/testharnessreport.js"></script>
+<script nonce="cn">
+for (const [label, create] of [
+  ['HTML', () => document.createElement('div')],
+  ['SVG', () => { const script = document.createElementNS('http://www.w3.org/2000/svg', 'script'); script.type = 'application/json'; return script; }]
+]) {
+  test(t => {
+    const element = create();
+    element.setAttribute('nonce', 'secret');
+    assert_equals(element.getAttribute('nonce'), 'secret');
+    document.documentElement.appendChild(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(element.getAttribute('nonce'), '', 'connection hides the attribute');
+    assert_equals(element.nonce, 'secret');
+    assert_false(element.matches('[nonce="secret"]'));
+    const clone = element.cloneNode(true);
+    assert_equals(clone.nonce, 'secret', 'cloning copies the slot');
+    assert_equals(clone.getAttribute('nonce'), '');
+    element.remove();
+    assert_equals(element.nonce, 'secret', 'disconnection keeps the slot');
+    document.documentElement.appendChild(element);
+    assert_equals(element.nonce, 'secret', 'reconnection keeps the slot');
+  }, label + ' header-policy nonce hiding survives cloning and reconnection');
+  test(t => {
+    const element = create();
+    element.setAttribute('nonce', 'content-value');
+    element.nonce = '';
+    document.documentElement.appendChild(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(element.getAttribute('nonce'), '');
+    assert_equals(element.nonce, '');
+  }, label + ' hides a content attribute even when the private slot was set empty');
+  test(t => {
+    const element = create();
+    element.nonce = 'private-only';
+    document.documentElement.appendChild(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(element.getAttribute('nonce'), null);
+    assert_equals(element.nonce, 'private-only');
+  }, label + ' connection does not create a missing nonce attribute');
+}
+test(t => {
+  const script = document.createElement('script');
+  script.nonce = 'cn';
+  script.textContent = 'globalThis.cnPrivateNonceScriptRan = true';
+  t.add_cleanup(() => { script.remove(); delete globalThis.cnPrivateNonceScriptRan; });
+  document.documentElement.appendChild(script);
+  assert_true(globalThis.cnPrivateNonceScriptRan);
+  assert_equals(script.getAttribute('nonce'), null);
+}, 'A private-only nonce authorizes a dynamically inserted script');
+</script>

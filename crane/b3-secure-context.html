@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A non-secure context exposes no [SecureContext] construct (WebIDL 3.3.13)</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#SecureContext">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#secure-contexts">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Served over http from a host that is not localhost: HTML 8.1.3.5 says this
+// window's settings object is not a secure context. Crane answered
+// isSecureContext true and exposed every [SecureContext] construct.
+
+test(() => {
+  assert_false(self.isSecureContext);
+}, "isSecureContext is false over http");
+
+test(() => {
+  for (const name of ["LockManager", "Lock", "SubtleCrypto", "CookieStore", "ServiceWorkerContainer", "StorageManager"]) {
+    assert_false(name in self, name);
+  }
+}, "[SecureContext] interfaces have no interface object");
+
+test(() => {
+  assert_false("locks" in navigator, "navigator.locks ([SecureContext] mixin NavigatorLocks)");
+  assert_false("serviceWorker" in navigator, "navigator.serviceWorker ([SecureContext] partial Navigator)");
+  assert_false("subtle" in crypto, "crypto.subtle ([SecureContext] member)");
+  assert_false("randomUUID" in crypto, "crypto.randomUUID ([SecureContext] member)");
+  assert_false("caches" in self, "caches ([SecureContext] partial WindowOrWorkerGlobalScope)");
+  assert_false("cookieStore" in self, "cookieStore ([SecureContext] partial Window)");
+  assert_equals(typeof crypto.getRandomValues, "function", "crypto.getRandomValues is not [SecureContext]");
+  assert_equals(typeof navigator.userAgent, "string", "navigator.userAgent is not [SecureContext]");
+}, "[SecureContext] members of exposed interfaces are not exposed");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  frame.onload = t.step_func_done(() => {
+    const w = frame.contentWindow;
+    assert_false(w.isSecureContext, "a frame's top-level creation URL is its parent's");
+    assert_false("LockManager" in w);
+    assert_false("locks" in w.navigator);
+  });
+  document.body.append(frame);
+}, "A frame of a non-secure page is not a secure context either");
+</script>

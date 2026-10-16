@@ -1,0 +1,1 @@
+/* Resource timing script fixture. */

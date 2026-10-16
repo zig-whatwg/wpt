@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image resource Server-Timing is available at the image load event</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+const hosts = get_host_info();
+for (const [name, origin, file, count] of [
+  ['same origin', hosts.HTTPS_ORIGIN, 'blue.png', 1],
+  ['cross origin without TAO', hosts.HTTPS_REMOTE_ORIGIN, 'blue.png', 0],
+  ['cross origin with TAO', hosts.HTTPS_REMOTE_ORIGIN, 'blue_tao.png', 1]
+]) {
+  promise_test(async t => {
+    const url = origin + '/server-timing/resources/' + file;
+    const img = new Image();
+    t.add_cleanup(() => img.remove());
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('image failed to load'));
+    });
+    img.src = url;
+    document.head.appendChild(img);
+    await loaded;
+    const entries = performance.getEntriesByName(url);
+    assert_equals(entries.length, 1, 'resource entry is available at load');
+    assert_equals(entries[0].serverTiming.length, count);
+    if (count) assert_equals(entries[0].serverTiming[0].name, 'metric2');
+  }, name + ' image timing applies TAO after image load');
+}
+</script>

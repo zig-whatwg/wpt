@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A Performance event handler lives until its realm ends</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  let calls = 0;
+  let handler = () => ++calls;
+  performance.onresourcetimingbufferfull = handler;
+  handler = null;
+  if (globalThis.TestUtils) TestUtils.gc();
+  performance.dispatchEvent(new Event('resourcetimingbufferfull'));
+  assert_equals(calls, 1);
+  // Intentionally keep the property installed. The matched leaks --atExit
+  // run verifies realm teardown, independently of explicit setter clearing.
+}, 'An installed Performance handler is retained until realm teardown');
+</script>

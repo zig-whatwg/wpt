@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Performance resource buffer event handler uses the event handler map</title>
+<link rel="help" href="https://w3c.github.io/resource-timing/#extensions-performance-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  t.add_cleanup(() => { performance.onresourcetimingbufferfull = null; });
+  assert_equals(performance.onresourcetimingbufferfull, null);
+  let calls = 0;
+  let handler = function(event) {
+    assert_equals(this, performance);
+    assert_equals(event.target, performance);
+    ++calls;
+  };
+  performance.onresourcetimingbufferfull = handler;
+  assert_equals(performance.onresourcetimingbufferfull, handler);
+  handler = null;
+  if (globalThis.TestUtils) TestUtils.gc();
+  performance.dispatchEvent(new Event('resourcetimingbufferfull'));
+  assert_equals(calls, 1);
+  performance.onresourcetimingbufferfull = null;
+  performance.dispatchEvent(new Event('resourcetimingbufferfull'));
+  assert_equals(calls, 1, 'null deactivates the handler');
+}, 'The resource buffer handler can be read, retained, invoked and cleared');
+
+promise_test(t => new Promise(resolve => {
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(1);
+  t.add_cleanup(() => {
+    performance.onresourcetimingbufferfull = null;
+    performance.clearResourceTimings();
+    performance.setResourceTimingBufferSize(250);
+  });
+  performance.onresourcetimingbufferfull = t.step_func(event => {
+    assert_equals(event.type, 'resourcetimingbufferfull');
+    assert_equals(performance.getEntriesByType('resource').length, 1);
+    performance.setResourceTimingBufferSize(10);
+    resolve();
+  });
+  const xhr = new XMLHttpRequest();
+  for (let i = 0; i < 2; ++i) {
+    xhr.open('GET', '/common/blank.html?rt-buffer=' + i, false);
+    xhr.send();
+  }
+}), 'A full resource buffer invokes the IDL event handler');
+</script>

@@ -1,0 +1,17 @@
+<!doctype html>
+<title>Generic SVG elements expose nonce through SVGElement</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const name of ['svg', 'g', 'unknown-cn']) {
+  test(() => {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+    assert_true(element instanceof SVGElement);
+    assert_equals(element.nonce, '');
+    element.setAttribute('nonce', 'attribute-value');
+    assert_equals(element.nonce, 'attribute-value');
+    element.nonce = 'private-value';
+    assert_equals(element.getAttribute('nonce'), 'attribute-value');
+  }, name + ' has the SVGElement nonce slot');
+}
+</script>

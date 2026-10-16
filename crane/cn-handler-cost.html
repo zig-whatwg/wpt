@@ -1,0 +1,30 @@
+<!doctype html>
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-cn' 'report-sample'">
+<script nonce="cn" src="/resources/testharness.js"></script>
+<script nonce="cn" src="/resources/testharnessreport.js"></script>
+<body>
+<script nonce="cn">
+promise_test(async t => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  t.add_cleanup(() => container.remove());
+  let count = 0;
+  const violations = new Promise(resolve => {
+    container.addEventListener('securitypolicyviolation', t.step_func(event => {
+      assert_equals(event.effectiveDirective, 'script-src-attr');
+      if (++count === 200) resolve();
+    }));
+  });
+  const start = performance.now();
+  for (let i = 0; i < 200; i++) {
+    const element = document.createElement('button');
+    container.appendChild(element);
+    element.setAttribute('onclick', 'void(0)');
+    element.click();
+  }
+  await violations;
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(count, 200),
+       'CN blocked handlers: ' + elapsed.toFixed(3) + ' ms for 200 handlers');
+}, 'Two hundred blocked inline handlers each deliver a CSP violation');
+</script>

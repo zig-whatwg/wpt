@@ -1,0 +1,38 @@
+<!doctype html>
+<title>WebSocket CSP reports preserve WS schemes and include report-only policies</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [scheme, reportOnly, id] of [
+  ['ws', false, '{{uuid()}}'], ['wss', false, '{{uuid()}}'],
+  ['ws', true, '{{uuid()}}'], ['wss', true, '{{uuid()}}']
+]) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const expected = scheme + '://{{host}}:' +
+      (scheme === 'ws' ? '{{ports[ws][0]}}' : '{{ports[wss][0]}}') + '/echo';
+    const event = new Promise((resolve, reject) => {
+      const listener = t.step_func(e => {
+        if (e.source === frame.contentWindow && e.data.kind === 'violation') resolve(e.data);
+      });
+      window.addEventListener('message', listener);
+      t.add_cleanup(() => window.removeEventListener('message', listener));
+      t.step_timeout(() => reject(new Error('WebSocket CSP violation did not arrive')), 3000);
+    });
+    const header = 'Content-Security-Policy' + (reportOnly ? '-Report-Only' : '');
+    const policy = "connect-src 'none'; report-uri /reporting/resources/report.py?op=put&reportID=" + id;
+    frame.src = 'cn-websocket-report-child.sub.html?scheme=' + scheme +
+      '&pipe=header(' + header + ',' + encodeURIComponent(policy) + ')';
+    document.documentElement.appendChild(frame);
+    const violation = await event;
+    assert_equals(violation.blockedURI, expected);
+    assert_equals(violation.disposition, reportOnly ? 'report' : 'enforce');
+    const response = await fetch('/reporting/resources/report.py?op=retrieve_report&timeout=3&reportID=' + id);
+    const reports = await response.json();
+    assert_equals(reports.length, 1, 'One legacy upload arrives');
+    assert_equals(reports[0]['csp-report']['blocked-uri'], expected);
+    assert_equals(reports[0]['csp-report'].disposition, reportOnly ? 'report' : 'enforce');
+  }, scheme + ' event and upload preserve the scheme under ' + (reportOnly ? 'report-only' : 'enforced') + ' CSP');
+}
+</script>

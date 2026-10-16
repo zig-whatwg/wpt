@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Window's members are the window's own, not Window.prototype's (WebIDL [Global])</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#Global">
+<link rel=help href="https://webidl.spec.whatwg.org/#es-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebIDL 3.7.6/3.7.7: the regular attributes and operations of a [Global]
+// interface - and of the mixins it includes - are properties of the global
+// object, not of the interface prototype object. Window.prototype held all
+// 242 of them besides (IndexedDB/idlharness: "Window.prototype must not have
+// indexedDB"), and EventTarget's methods were copied onto the window instead
+// of reached through EventTarget.prototype.
+
+function checkGlobal(w, label) {
+  assert_array_equals(Object.getOwnPropertyNames(w.Window.prototype).filter(n => n !== "constructor"), [], label + ": Window.prototype has no members");
+  for (const name of ["document", "location", "name", "indexedDB", "origin", "onload", "localStorage"]) {
+    const d = Object.getOwnPropertyDescriptor(w, name);
+    assert_not_equals(d, undefined, label + ": " + name);
+    assert_equals(typeof d.get, "function", label + ": " + name + " getter");
+  }
+  for (const name of ["setTimeout", "postMessage", "atob", "fetch", "getComputedStyle"]) {
+    const d = Object.getOwnPropertyDescriptor(w, name);
+    assert_not_equals(d, undefined, label + ": " + name);
+    assert_equals(typeof d.value, "function", label + ": " + name);
+  }
+  assert_equals(w.addEventListener, w.EventTarget.prototype.addEventListener, label + ": EventTarget's methods come from EventTarget.prototype");
+  assert_equals(Object.getOwnPropertyDescriptor(w, "addEventListener"), undefined, label + ": not copied onto the window");
+  assert_equals(w.window, w, label + ": window");
+  assert_equals(w.self, w, label + ": self");
+  assert_equals(w.frames, w, label + ": frames");
+  assert_equals(typeof Object.getOwnPropertyDescriptor(w, "window").get, "function", label + ": window is an own accessor");
+  assert_true(w instanceof w.Window, label + ": instanceof Window");
+}
+
+test(() => {
+  checkGlobal(window, "top");
+}, "The top-level window's members are its own");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  frame.onload = t.step_func_done(() => {
+    checkGlobal(frame.contentWindow, "frame");
+  });
+  document.body.appendChild(frame);
+}, "A frame's window's members are its own");
+</script>

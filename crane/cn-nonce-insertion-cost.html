@@ -1,0 +1,20 @@
+<!doctype html>
+<script nonce="cn" src="/resources/testharness.js"></script>
+<script nonce="cn" src="/resources/testharnessreport.js"></script>
+<body>
+<script nonce="cn">
+{
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const start = performance.now();
+  for (let i = 0; i < 5000; i++) {
+    const element = document.createElement('span');
+    element.setAttribute('nonce', 'cn-value');
+    container.appendChild(element);
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(container.children.length, 5000),
+       'CN nonce insertion: ' + elapsed.toFixed(3) + ' ms for 5000 elements');
+  container.remove();
+}
+</script>

@@ -1,0 +1,38 @@
+<!doctype html>
+<title>Local child documents inherit CSP and report blocked inline scripts</title>
+<script nonce="cn" src="/resources/testharness.js"></script>
+<script nonce="cn" src="/resources/testharnessreport.js"></script>
+<script nonce="cn">
+for (const scheme of ['data', 'blob']) {
+  for (const sandboxed of [false, true]) {
+    promise_test(async t => {
+      const frame = document.createElement('iframe');
+      if (sandboxed) frame.sandbox = 'allow-scripts';
+      const markup = `<script nonce="cn">
+        addEventListener('securitypolicyviolation', e => {
+          parent.postMessage({kind: 'violation', blocked: e.blockedURI,
+                              directive: e.effectiveDirective}, '*');
+        });
+      <\/script><script>parent.postMessage({kind: 'ran'}, '*');<\/script>`;
+      const url = scheme === 'data' ? 'data:text/html,' + encodeURIComponent(markup)
+        : URL.createObjectURL(new Blob([markup], {type: 'text/html'}));
+      t.add_cleanup(() => { frame.remove(); if (scheme === 'blob') URL.revokeObjectURL(url); });
+      const message = new Promise(resolve => {
+        const listener = t.step_func(event => {
+          if (event.source !== frame.contentWindow) return;
+          window.removeEventListener('message', listener);
+          resolve(event.data);
+        });
+        window.addEventListener('message', listener);
+        t.add_cleanup(() => window.removeEventListener('message', listener));
+      });
+      frame.src = url;
+      document.documentElement.appendChild(frame);
+      const data = await message;
+      assert_equals(data.kind, 'violation', 'The unnonced child script is blocked');
+      assert_equals(data.blocked, 'inline');
+      assert_equals(data.directive, 'script-src-elem');
+    }, scheme + ' frame inherits CSP' + (sandboxed ? ' with sandbox allow-scripts' : ''));
+  }
+}
+</script>

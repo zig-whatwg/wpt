@@ -1,0 +1,13 @@
+<!doctype html>
+<meta http-equiv="Content-Security-Policy" content="sandbox">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_not_equals(location.origin, 'null');
+  const frame = document.createElement('iframe');
+  document.documentElement.appendChild(frame);
+  assert_not_equals(frame.contentDocument, null);
+  frame.remove();
+}, 'A meta sandbox neither disables script nor makes the document opaque');
+</script>

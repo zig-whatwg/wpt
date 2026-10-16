@@ -1,0 +1,15 @@
+<!doctype html>
+<title>10,000 SVG elements without nonce storage</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+{
+  let last;
+  const start = performance.now();
+  for (let i = 0; i < 10000; ++i)
+    last = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(last.localName, 'script'),
+       'CN SVG without nonces: ' + elapsed.toFixed(3) + ' ms for 10000 elements');
+}
+</script>

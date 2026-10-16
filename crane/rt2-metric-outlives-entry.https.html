@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Server-Timing metrics outlive their resource entry</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  performance.clearResourceTimings();
+  const url = new URL('rt2-server-timing.txt?independent-metrics', location.href).href;
+  await fetch(url);
+  let entry = performance.getEntriesByName(url)[0];
+  assert_not_equals(entry, undefined);
+  const metrics = entry.serverTiming;
+  assert_equals(metrics.length, 2);
+  performance.clearResourceTimings();
+  entry = null;
+  TestUtils.gc();
+  assert_true(Object.isFrozen(metrics));
+  assert_equals(metrics[0].name, 'db');
+  assert_equals(metrics[0].duration, 12.5);
+  assert_equals(metrics[0].description, 'Cache hit');
+  assert_equals(metrics[1].toJSON().description, 'warm');
+}, 'A retained Server-Timing array owns metrics independently of the resource entry');
+</script>

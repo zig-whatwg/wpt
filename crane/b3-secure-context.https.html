@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A secure context exposes the [SecureContext] constructs</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#SecureContext">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The control for b3-secure-context.html: over https this window's settings
+// object is a secure context (HTML 8.1.3.5), and everything is exposed.
+
+test(() => {
+  assert_true(self.isSecureContext);
+  for (const name of ["LockManager", "Lock", "SubtleCrypto"]) assert_true(name in self, name);
+  assert_true("locks" in navigator, "navigator.locks");
+  assert_true("subtle" in crypto, "crypto.subtle");
+}, "A secure context exposes [SecureContext] interfaces and members");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  frame.onload = t.step_func_done(() => {
+    assert_true(frame.contentWindow.isSecureContext);
+    assert_true("locks" in frame.contentWindow.navigator);
+  });
+  document.body.append(frame);
+}, "A frame of a secure page is a secure context");
+</script>

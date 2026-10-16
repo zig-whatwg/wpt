@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synchronous XHR entries survive clearing an overflowing resource buffer</title>
+<link rel="help" href="https://w3c.github.io/resource-timing/#dfn-add-a-performanceresourcetiming-entry">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const load = suffix => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/resource-timing/resources/empty.js?rt2=' + suffix, false);
+    xhr.send();
+    assert_equals(xhr.status, 200);
+  };
+  t.add_cleanup(() => performance.setResourceTimingBufferSize(250));
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(1);
+  load('first');
+  assert_equals(performance.getEntriesByType('resource').length, 1);
+  load('second');
+  load('third');
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(3);
+  load('fourth');
+  assert_equals(performance.getEntriesByType('resource').length, 0);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const entries = performance.getEntriesByType('resource');
+  assert_equals(entries.length, 3);
+  assert_true(entries[0].name.endsWith('rt2=second'));
+  assert_true(entries[1].name.endsWith('rt2=third'));
+  assert_true(entries[2].name.endsWith('rt2=fourth'));
+}, 'Clearing the primary buffer preserves pending secondary entries');
+</script>

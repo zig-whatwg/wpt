@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resource timing counts entries dropped before notifying observers</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(0);
+  const result = new Promise(resolve => {
+    const observer = new PerformanceObserver(t.step_func((entries, self, options) => {
+      assert_equals(entries.getEntries().length, 1);
+      assert_equals(options.droppedEntriesCount, 1, 'the current resource is already counted');
+      self.disconnect();
+      resolve();
+    }));
+    observer.observe({type: 'resource'});
+    t.add_cleanup(() => observer.disconnect());
+  });
+  await fetch('/common/blank.html?rt2-dropped');
+  await result;
+}, 'The first resource observer callback includes the entry that overflowed the buffer');
+</script>

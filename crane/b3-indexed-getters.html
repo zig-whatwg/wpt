@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Anonymous and inherited indexed getters are indexed property getters (WebIDL 3.9)</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-getownproperty">
+<link rel=help href="https://html.spec.whatwg.org/multipage/forms.html#the-form-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<form id=f><input name=a id=first><input name=b><input type=image name=img1><img name=picture></form>
+<video id=v><track kind=subtitles src=resources/none.vtt></video>
+<script>
+"use strict";
+// HTMLFormElement's `getter Element (unsigned long index)` and TextTrackList's
+// `getter TextTrack (unsigned long index)` have no identifier; the binding
+// bound only an own item(unsigned long), so form[0] and textTracks[0] read
+// undefined (codex-media Q24, 2026-10-05). (An inherited getter - RadioNodeList's
+// NodeList item(), HTMLOptionsCollection's HTMLCollection item() - is pinned
+// in tests/v8/special_operations_test.zig: no object of those interfaces
+// works yet to test it on.)
+const form = document.getElementById("f");
+
+test(() => {
+  assert_equals(form[0], form.elements[0]);
+  assert_equals(form[1], form.elements[1]);
+  assert_equals(form[2], undefined, "past the end: not a supported property index");
+  assert_true(0 in form, "0 in form");
+  assert_false(2 in form, "2 in form");
+}, "form[i] reads the form's controls");
+
+test(() => {
+  const d = Object.getOwnPropertyDescriptor(form, 0);
+  assert_equals(d.value, form.elements[0]);
+  assert_false(d.writable, "writable: no indexed setter");
+  assert_true(d.enumerable, "enumerable");
+  assert_true(d.configurable, "configurable");
+  assert_equals(Object.getOwnPropertyDescriptor(form, 5), undefined);
+}, "form's indexed properties have WebIDL's descriptor");
+
+test(() => {
+  assert_throws_js(TypeError, () => { form[0] = 1; }, "no indexed setter");
+  assert_throws_js(TypeError, () => { form[7] = 1; }, "[[DefineOwnProperty]] refuses every array index");
+  assert_throws_js(TypeError, () => { delete form[0]; }, "a supported index cannot be deleted");
+  assert_true(delete form[9], "an unsupported index has nothing to delete");
+}, "form's indexed properties are read-only");
+
+test(() => {
+  assert_equals(form.a, document.getElementById("first"), "by name");
+  assert_equals(form.first, document.getElementById("first"), "by id");
+  assert_equals(form.picture, form.querySelector("img"), "an img element, when no listed element has the name");
+  assert_equals(form.img1, undefined, "an image button is not a named property");
+  assert_true("a" in form);
+  assert_false("zzz" in form);
+  assert_equals(typeof form.submit, "function", "a name no control has reaches the prototype");
+}, "form's named properties are its controls by id and name");
+
+test(() => {
+  const video = document.getElementById("v");
+  assert_equals(video.textTracks.length, 1);
+  assert_equals(video.textTracks[0], video.querySelector("track").track, "TextTrackList's anonymous getter");
+  assert_equals(video.textTracks[1], undefined);
+  assert_array_equals(Object.keys(video.textTracks), ["0"]);
+}, "An anonymous indexed getter on a media track list");
+
+</script>

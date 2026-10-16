@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Link stylesheets and CSS imports have distinct initiators</title>
+<link rel="help" href="https://w3c.github.io/resource-timing/#dom-performanceresourcetiming-initiatortype">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'rt2-parent.css';
+  const loaded = new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = reject;
+  });
+  t.add_cleanup(() => link.remove());
+  document.head.append(link);
+  await loaded;
+  const parent = performance.getEntriesByName(link.href)[0];
+  const child = performance.getEntriesByName(new URL('rt2-child.css', location.href).href)[0];
+  assert_true(!!parent);
+  assert_true(!!child);
+  assert_equals(parent.initiatorType, 'link');
+  assert_equals(child.initiatorType, 'css');
+}, 'A link fetch is link; its imported stylesheet fetch is css');
+</script>

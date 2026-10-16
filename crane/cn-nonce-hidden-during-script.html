@@ -1,0 +1,23 @@
+<!doctype html>
+<title>Script execution observes an already-hidden nonce attribute</title>
+<script nonce="cn" src="/resources/testharness.js"></script>
+<script nonce="cn" src="/resources/testharnessreport.js"></script>
+<body>
+<script nonce="cn">
+for (const [kind, namespace] of [
+  ['HTML', 'http://www.w3.org/1999/xhtml'],
+  ['SVG', 'http://www.w3.org/2000/svg']
+]) {
+  test(t => {
+    const element = document.createElementNS(namespace, 'script');
+    t.add_cleanup(() => { element.remove(); delete window.cnRunningNonceElement; });
+    window.cnRunningNonceElement = element;
+    window.cnObservedNonce = 'script did not run';
+    element.setAttribute('nonce', 'cn');
+    element.textContent = 'window.cnObservedNonce = window.cnRunningNonceElement.getAttribute("nonce")';
+    document.body.appendChild(element);
+    assert_equals(window.cnObservedNonce, '');
+    assert_equals(element.nonce, 'cn');
+  }, kind + ' dynamic script sees its nonce attribute already hidden');
+}
+</script>

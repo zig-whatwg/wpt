@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Performance initializes and tears down its EventTarget handler state</title>
+<link rel="help" href="https://w3c.github.io/resource-timing/#extensions-performance-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_equals(performance.onresourcetimingbufferfull, null);
+  let calls = 0;
+  let handler = function(event) {
+    assert_equals(this, performance);
+    assert_equals(event.target, performance);
+    ++calls;
+  };
+  performance.onresourcetimingbufferfull = handler;
+  assert_equals(performance.onresourcetimingbufferfull, handler);
+  handler = null;
+  TestUtils.gc();
+  performance.dispatchEvent(new Event('resourcetimingbufferfull'));
+  assert_equals(calls, 1);
+  // Leave the handler installed: matched leak checks cover realm teardown.
+}, 'Performance retains a buffer handler after GC and releases it at teardown');
+</script>

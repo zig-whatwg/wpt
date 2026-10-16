@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A Window operation called on another realm's WindowProxy runs on that Window</title>
+<!-- WebIDL "create an operation function" step 2.1: O is the this value (a WindowProxy's
+     [[Window]]); the method's realm's global is used only when this is null or undefined.
+     postMessage from one frame called on another (`frame.postMessage.call(otherWindow, ...)`)
+     posts to otherWindow - what the incumbent tests (promise-job-incumbent,
+     wasm/jsapi/functions/incumbent) and structured-clone-cross-realm-method rely on. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const frameLoaded = new Promise(resolve => {
+  const iframe = document.createElement("iframe");
+  iframe.onload = () => resolve(iframe.contentWindow);
+  document.body.append(iframe);
+});
+
+promise_test(async () => {
+  const other = await frameLoaded;
+  const received = new Promise(resolve => {
+    window.onmessage = e => resolve(["parent", e.data]);
+    other.onmessage = e => resolve(["frame", e.data]);
+  });
+  other.postMessage.call(window, "x", "*");
+  assert_array_equals(await received, ["parent", "x"]);
+}, "frame.postMessage.call(window) posts to window");
+
+promise_test(async () => {
+  const other = await frameLoaded;
+  const cloned = other.structuredClone.call(window, new other.Object());
+  assert_true(cloned instanceof Object, "made in this's relevant realm");
+}, "frame.structuredClone.call(window) deserializes in window's realm");
+</script>

@@ -1,0 +1,32 @@
+<!doctype html>
+<title>Nonce hiding custom-element callback order</title>
+<script nonce="cn" src="/resources/testharness.js"></script>
+<script nonce="cn" src="/resources/testharnessreport.js"></script>
+<script nonce="cn">
+const cnNonceEvents = [];
+customElements.define('cn-nonce-order', class extends HTMLElement {
+  static get observedAttributes() { return ['nonce']; }
+  attributeChangedCallback(name, oldValue, newValue) {
+    cnNonceEvents.push(['attribute', oldValue, newValue]);
+  }
+  connectedCallback() { cnNonceEvents.push(['connected']); }
+});
+</script>
+<body>
+<cn-nonce-order nonce="secret"></cn-nonce-order>
+<script nonce="cn">
+const expected = JSON.stringify([
+  ['attribute', null, 'secret'], ['connected'], ['attribute', 'secret', '']
+]);
+test(() => {
+  assert_equals(JSON.stringify(cnNonceEvents), expected);
+}, 'A parser-created custom element connects before nonce-hiding callbacks');
+test(t => {
+  cnNonceEvents.length = 0;
+  const element = document.createElement('cn-nonce-order');
+  t.add_cleanup(() => element.remove());
+  element.setAttribute('nonce', 'secret');
+  document.body.appendChild(element);
+  assert_equals(JSON.stringify(cnNonceEvents), expected);
+}, 'An appended custom element connects before nonce-hiding callbacks');
+</script>

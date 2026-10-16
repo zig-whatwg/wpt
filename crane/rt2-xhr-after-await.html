@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synchronous XHR reports timing after an asynchronous continuation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const continuation of ['immediate', 'microtask', 'script-load']) {
+  promise_test(async t => {
+    if (continuation === 'microtask') await Promise.resolve();
+    if (continuation === 'script-load') {
+      const script = document.createElement('script');
+      t.add_cleanup(() => script.remove());
+      const loaded = new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = reject;
+      });
+      script.src = 'rt2-empty.js?xhr-continuation';
+      document.head.appendChild(script);
+      await loaded;
+    }
+    performance.clearResourceTimings();
+    performance.setResourceTimingBufferSize(250);
+    const url = new URL('rt2-server-timing.txt?continuation=' + continuation, location.href).href;
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, false);
+    xhr.send();
+    assert_equals(xhr.status, 200, 'synchronous request succeeded');
+    assert_equals(performance.getEntriesByName(url).length, 1, 'timing is available when send returns');
+  }, continuation + ' continuation reports synchronous XHR timing');
+}
+</script>

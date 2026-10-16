@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resource timing respects the parent stylesheet's origin-clean flag</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+for (const [name, crossOrigin, expected] of [
+  ['same', false, 1], ['opaque', false, 0], ['cors', true, 1]
+]) {
+  promise_test(async t => {
+    const origin = name === 'same' ? location.origin : get_host_info().HTTP_REMOTE_ORIGIN;
+    const parent = origin + '/crane/rt2-origin-' + name + '.css';
+    const child = origin + '/crane/rt2-child.css?rt2-' + name;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    if (crossOrigin) link.crossOrigin = 'anonymous';
+    link.href = parent;
+    t.add_cleanup(() => link.remove());
+    const loaded = new Promise((resolve, reject) => {
+      link.onload = resolve;
+      link.onerror = () => reject(new Error('stylesheet did not load'));
+    });
+    document.head.appendChild(link);
+    await loaded;
+    const entries = performance.getEntriesByName(child);
+    assert_equals(entries.length, expected, 'import timing visibility');
+    if (expected) assert_equals(entries[0].initiatorType, 'css');
+    assert_equals(performance.getEntriesByName(parent).length, 1, 'link itself is reported');
+  }, name + ' parent stylesheet controls visibility of its imported URL');
+}
+</script>

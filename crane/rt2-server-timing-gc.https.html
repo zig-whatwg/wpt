@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Server-Timing metrics and their FrozenArray survive collection</title>
+<link rel="help" href="https://w3c.github.io/server-timing/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+promise_test(async () => {
+  const url = new URL('rt2-server-timing.txt', location.href).href;
+  await (await fetch(url)).text();
+  let entry = performance.getEntriesByName(url)[0];
+  assert_true(!!entry, 'the resource timing entry exists');
+  let metrics = entry.serverTiming;
+  assert_true(Object.isFrozen(metrics), 'serverTiming is frozen');
+  assert_equals(metrics.length, 2);
+  assert_equals(metrics, entry.serverTiming, 'repeated reads use the same array');
+  assert_equals(metrics[0].name, 'db');
+  assert_equals(metrics[0].duration, 12.5);
+  assert_equals(metrics[0].description, 'Cache hit');
+  const json = metrics[0].toJSON();
+  assert_equals(json.name, 'db');
+  assert_equals(json.duration, 12.5);
+  assert_equals(json.description, 'Cache hit');
+  metrics = null;
+  entry = null;
+  TestUtils.gc();
+  entry = performance.getEntriesByName(url)[0];
+  metrics = entry.serverTiming;
+  assert_equals(metrics.length, 2, 'the buffered entry retains its array');
+  assert_equals(metrics[1].name, 'cache');
+  assert_equals(metrics[1].description, 'warm');
+  assert_equals(metrics[1].duration, 0);
+  assert_equals(metrics, entry.serverTiming);
+}, 'Resource entries retain the Server-Timing array and metrics through GC');
+
+test(() => {
+  const entry = performance.getEntriesByType('navigation')[0];
+  assert_true(!!entry);
+  assert_true(Object.isFrozen(entry.serverTiming));
+  assert_equals(entry.serverTiming.length, 1);
+  assert_equals(entry.serverTiming[0].name, 'navigation');
+  TestUtils.gc();
+  assert_equals(entry.serverTiming[0].duration, 3);
+}, 'Navigation entries expose Server-Timing through the same resource interface');
+// Row 47 review S3: the reads above compare two reads taken after the GC, so a
+// lost traced edge would be hidden by the getter's fallback making a fresh
+// array. A WeakRef taken before collection proves the entry keeps ITS array.
+promise_test(async () => {
+  const entry = performance.getEntriesByType('navigation')[0];
+  const weak = new WeakRef(entry.serverTiming);
+  await garbageCollect();
+  assert_equals(entry.serverTiming, weak.deref(), 'the entry keeps its one array alive');
+}, 'An entry keeps the same serverTiming array through collection');
+</script>

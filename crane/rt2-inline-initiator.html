@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An inline stylesheet's first import has a CSS initiator</title>
+<link rel="help" href="https://w3c.github.io/resource-timing/#dom-performanceresourcetiming-initiatortype">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const style = document.createElement('style');
+  style.textContent = '@import url("rt2-child.css?inline");';
+  const loaded = new Promise((resolve, reject) => {
+    style.onload = resolve;
+    style.onerror = reject;
+  });
+  t.add_cleanup(() => style.remove());
+  document.head.append(style);
+  await loaded;
+  const entry = performance.getEntriesByName(new URL('rt2-child.css?inline', location.href).href)[0];
+  assert_true(!!entry);
+  assert_equals(entry.initiatorType, 'css');
+}, 'An inline stylesheet import is CSS even without a fetched parent sheet');
+</script>

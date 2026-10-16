@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A dictionary member present as null converts by its type (WebIDL 3.2.18)</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#js-dictionary">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Only undefined is "not present": a present null converts to the member's
+// type - to null for a nullable type, and by the type otherwise. Crane read
+// every present null as "not present", so `{mode: null}` was "no mode"
+// (web-locks/acquire.https.any.js) and a string member's null was absent
+// rather than "null".
+
+test(() => {
+  assert_throws_js(TypeError, () => new Request("/", { mode: null }), "null is not a RequestMode");
+  assert_throws_js(TypeError, () => new Request("/", { cache: null }), "null is not a RequestCache");
+}, "An enumeration member's null is a TypeError");
+
+promise_test(async t => {
+  await promise_rejects_js(t, TypeError, navigator.locks.request("b3-null-mode", { mode: null }, () => {}));
+}, "LockOptions {mode: null} rejects with a TypeError");
+
+test(() => {
+  assert_equals(new Request("/", { method: null }).method, "null", "ByteString: ToString(null)");
+  assert_equals(new Response("", { statusText: null }).statusText, "null");
+}, "A string member's null is the string \"null\"");
+
+test(() => {
+  const request = new Request("/", { signal: null });
+  assert_true(request.signal instanceof AbortSignal, "AbortSignal? signal: null is null, and the request makes its own");
+  assert_equals(new CustomEvent("e", { detail: null }).detail, null, "any detail: null is null");
+}, "A nullable or any member's null is null");
+
+test(() => {
+  assert_false(new Event("e", { bubbles: null }).bubbles);
+  assert_false(new Event("e", { cancelable: null }).cancelable);
+}, "A boolean member's null is false");
+</script>

@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Resource Timing cost for 200 same-origin fetches</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(500);
+  const xhr = new XMLHttpRequest();
+  for (let i = 0; i < 200; ++i) {
+    xhr.open('GET', '/common/blank.html?rt2-cost=' + i, false);
+    xhr.send();
+    assert_equals(xhr.status, 200);
+  }
+  const entries = performance.getEntriesByType('resource').filter(entry =>
+    entry.name.includes('rt2-cost='));
+  assert_equals(entries.length, 200);
+}, '200 same-origin resources produce readable timing entries');
+</script>

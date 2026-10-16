@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A [Global] member's receiver: this value, or the function's global for null and undefined</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#dfn-create-operation-function">
+<link rel=help href="https://webidl.spec.whatwg.org/#dfn-attribute-getter">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebIDL "create an operation function" step 2.1 and the attribute getter
+// and setter step 1.1: "If thisValue is null or undefined, set O to realm's
+// global object" - the FUNCTION's realm's - and otherwise "set O to the this
+// value" (a WindowProxy's [[Window]]). The binding read every global as the
+// function's own, so a frame's Window member called on this window ran on
+// the frame (ser-global-operation-this-cross-realm.html has postMessage and
+// structuredClone).
+
+const frameLoaded = new Promise(resolve => {
+  const iframe = document.createElement("iframe");
+  iframe.onload = () => resolve(iframe.contentWindow);
+  document.body.append(iframe);
+});
+
+promise_test(async () => {
+  const frame = await frameLoaded;
+  const nameDescriptor = Object.getOwnPropertyDescriptor(frame, "name");
+  window.name = "top-name";
+  frame.name = "frame-name";
+  assert_equals(nameDescriptor.get.call(window), "top-name", "getter on this window");
+  assert_equals(nameDescriptor.get.call(frame), "frame-name", "getter on the frame");
+  nameDescriptor.set.call(window, "set-through-frame");
+  assert_equals(window.name, "set-through-frame", "setter on this window");
+  assert_equals(frame.name, "frame-name", "the frame's name is untouched");
+  window.name = "";
+}, "A frame's attribute accessors called on this window read and write this window");
+
+promise_test(async () => {
+  const frame = await frameLoaded;
+  const atob = frame.atob;
+  assert_equals(atob.call(undefined, "YQ=="), "a", "undefined: the function's own window");
+  assert_equals(atob.call(null, "YQ=="), "a", "null: the function's own window");
+  assert_throws_js(frame.TypeError, () => atob.call({}, "YQ=="), "an object that is not a Window");
+  assert_throws_js(frame.TypeError, () => atob.call(Object.create(frame.Window.prototype), "YQ=="), "an object that only inherits from Window.prototype");
+}, "A [Global] operation's this: null and undefined are the function's global; a non-Window object is a TypeError");
+
+promise_test(async () => {
+  const frame = await frameLoaded;
+  const received = new Promise(resolve => {
+    window.onmessage = e => resolve(["top", e.data]);
+    frame.onmessage = e => resolve(["frame", e.data]);
+  });
+  frame.postMessage.call(undefined, "to-frame", "*");
+  assert_array_equals(await received, ["frame", "to-frame"]);
+  window.onmessage = null;
+  frame.onmessage = null;
+}, "frame.postMessage.call(undefined) posts to the frame");
+</script>

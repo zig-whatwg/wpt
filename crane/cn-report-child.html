@@ -1,0 +1,9 @@
+<!doctype html>
+<script>
+addEventListener('securitypolicyviolation', event => {
+  parent.postMessage(event.effectiveDirective, '*');
+});
+const image = new Image();
+image.src = '/common/dummy.xml';
+document.documentElement.appendChild(image);
+</script>

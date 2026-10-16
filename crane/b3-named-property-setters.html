@@ -1,0 +1,124 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Named property setters and deleters reach the platform object (WebIDL 3.9.2-3.9.4)</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-set">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-defineownproperty">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-delete">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webstorage.html#the-storage-interface">
+<link rel=help href="https://html.spec.whatwg.org/multipage/dom.html#domstringmap">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id=d></div>
+<input name=named1><input name=named2>
+<script>
+// Storage's named property getter, setter and deleter are getItem, setItem
+// and removeItem; DOMStringMap's have no identifier. The V8 binding found
+// named handlers by function name, so Storage had none, and DOMStringMap's
+// setter refused a name it did not have yet: `sessionStorage.x = "1"` and
+// `el.dataset.foo = true` made plain JS properties that getItem("x") and
+// getAttribute("data-foo") never saw (resource-timing/
+// nested-context-navigations-iframe.html looped until its timeout).
+
+function fresh() {
+  sessionStorage.clear();
+  return sessionStorage;
+}
+
+test(() => {
+  const s = fresh();
+  s.x = "1";
+  assert_equals(s.getItem("x"), "1", "getItem");
+  assert_equals(s.x, "1", "read back");
+  assert_equals(Object.getOwnPropertyDescriptor(s, "x").value, "1", "a named property, not an own data property");
+  s.y = { toString() { return "two"; } };
+  assert_equals(s.getItem("y"), "two", "the value converts to DOMString");
+}, "[[Set]] invokes Storage's named setter, setItem");
+
+test(() => {
+  const s = fresh();
+  s.setItem("k", "v");
+  assert_equals(s.k, "v");
+  assert_true("k" in s, "in");
+  assert_true(Object.keys(s).includes("k"), "Object.keys");
+  const d = Object.getOwnPropertyDescriptor(s, "k");
+  assert_equals(d.value, "v");
+  assert_true(d.writable, "writable: Storage has a named setter");
+  assert_true(d.enumerable, "enumerable");
+  assert_true(d.configurable, "configurable");
+  assert_equals(s.missing, undefined);
+  assert_false("missing" in s);
+}, "Storage's named getter is getItem: supported names read as properties");
+
+test(() => {
+  const s = fresh();
+  s.setItem("gone", "x");
+  assert_true(delete s.gone, "delete returns true");
+  assert_equals(s.getItem("gone"), null);
+  assert_true(delete s.neverThere, "deleting an unsupported name is ordinary");
+}, "[[Delete]] invokes Storage's named deleter, removeItem");
+
+test(() => {
+  const s = fresh();
+  Object.defineProperty(s, "def", { value: "dv" });
+  assert_equals(s.getItem("def"), "dv");
+  assert_throws_js(TypeError, () => Object.defineProperty(s, "acc", { get() { return 1; } }));
+  assert_equals(s.getItem("acc"), null);
+}, "[[DefineOwnProperty]] invokes the named setter for a data descriptor and refuses an accessor");
+
+test(() => {
+  const s = fresh();
+  s[9] = "nine";
+  assert_equals(s.getItem("9"), "nine", "an array index is a String to Storage");
+  assert_equals(s[9], "nine");
+  assert_true(9 in s);
+  assert_true(delete s[9]);
+  assert_equals(s.getItem("9"), null);
+}, "An array index key reaches Storage's named handlers");
+
+test(t => {
+  const s = fresh();
+  Storage.prototype.protoKey = "from the prototype";
+  t.add_cleanup(() => { delete Storage.prototype.protoKey; });
+  s.protoKey = "stored";
+  assert_equals(s.getItem("protoKey"), "stored", "[[Set]] still invokes the setter");
+  assert_equals(s.protoKey, "from the prototype", "hidden: no [LegacyOverrideBuiltIns]");
+  assert_equals(Object.getOwnPropertyDescriptor(s, "protoKey"), undefined);
+}, "A named property a prototype property hides is still set by [[Set]]");
+
+test(() => {
+  const el = document.getElementById("d");
+  el.dataset.foo = true;
+  assert_equals(el.getAttribute("data-foo"), "true");
+  assert_equals(el.dataset.foo, "true");
+  el.dataset.fooBar = 1;
+  assert_equals(el.getAttribute("data-foo-bar"), "1");
+  assert_true(delete el.dataset.foo);
+  assert_false(el.hasAttribute("data-foo"));
+  assert_false("foo" in el.dataset);
+  Object.defineProperty(el.dataset, "viaDefine", { value: "dv" });
+  assert_equals(el.getAttribute("data-via-define"), "dv");
+  el.dataset[0] = "zero";
+  assert_equals(el.getAttribute("data-0"), "zero");
+}, "DOMStringMap's anonymous named setter and deleter set and remove data-* attributes");
+
+test(() => {
+  // HTML "set the value of a new named property", step 4: a name that is not
+  // a valid attribute local name is an "InvalidCharacterError" DOMException -
+  // thrown in sloppy code too: strictness decides only what a false
+  // [[Set]] result does.
+  const el = document.getElementById("d");
+  assert_throws_dom("InvalidCharacterError", () => { el.dataset["a b"] = "x"; });
+  assert_false(el.hasAttribute("data-a b"));
+}, "A named setter's exception reaches script whether or not the code is strict");
+
+test(() => {
+  "use strict";
+  const c = document.getElementsByTagName("input");
+  assert_equals(c.named1, document.getElementsByName("named1")[0]);
+  assert_throws_js(TypeError, () => { c.named1 = 1; }, "no named setter: a supported name cannot be set");
+  assert_throws_js(TypeError, () => Object.defineProperty(c, "named1", { value: 1 }));
+  assert_throws_js(TypeError, () => { delete c.named1; }, "no named deleter");
+  c.notANamedProperty = 5;
+  assert_equals(c.notANamedProperty, 5, "an unsupported name is an ordinary property");
+}, "A collection without a named setter or deleter refuses them for its supported names");
+</script>
