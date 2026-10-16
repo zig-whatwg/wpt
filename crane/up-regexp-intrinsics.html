@@ -51,6 +51,8 @@ test(() => {
 }, 'Capture names are mapped positionally without truncation');
 test(() => {
   assert_false(new URLPattern({pathname: String.raw`([^\/]+?)`}).hasRegExpGroups);
-  assert_true(new URLPattern({pathname: '([^/]+?)'}).hasRegExpGroups);
+  // '([^/]+?)' is not a valid "v"-flag pattern ('/' must be escaped in a
+  // class): RegExpCreate throws and URLPattern throws a TypeError (Chrome 155).
+  assert_true(new URLPattern({pathname: String.raw`([^\/]+)`}).hasRegExpGroups);
 }, 'Only the generated segment-wildcard spelling is canonical');
 </script>
