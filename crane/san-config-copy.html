@@ -1,0 +1,20 @@
+<!doctype html>
+<title>Sanitizer options copy configuration without retaining get results</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const sanitizer = new Sanitizer({removeElements: ['p']});
+  const before = sanitizer.get();
+  const element = document.createElement('div');
+  element.setHTML('<p>removed</p><div>kept</div>', {sanitizer});
+  const after = sanitizer.get();
+  assert_true(sanitizer.allowElement('p'));
+  sanitizer.get();
+  assert_equals(element.innerHTML, '<div>kept</div>');
+  assert_equals(before.removeElements[0].name, 'p');
+  assert_equals(after.removeElements[0].name, 'p');
+  assert_equals(before.javascriptURLs, true);
+  assert_equals(after.javascriptURLs, true);
+}, 'Repeated get and later modifiers do not change prior results or sanitization');
+</script>

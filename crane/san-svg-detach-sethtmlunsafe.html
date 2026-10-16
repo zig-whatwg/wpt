@@ -1,0 +1,27 @@
+<!doctype html>
+<title>Detached SVG script trees remain usable after sethtmlunsafe</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  const markup = '<svg><script>1<\/script></svg>';
+  host.setHTMLUnsafe(markup);
+  const retained = host.firstChild;
+  host.setHTMLUnsafe('');
+  assert_equals(retained.parentNode, null);
+  assert_equals(retained.firstChild.textContent, '1');
+  host.appendChild(retained);
+  assert_not_equals(retained.parentNode, null);
+  assert_equals(retained.firstChild.textContent, '1');
+
+  const unretained = document.body.appendChild(document.createElement('div'));
+  {
+    const host = unretained;
+    host.setHTMLUnsafe(markup);
+    host.setHTMLUnsafe('');
+  }
+  assert_equals(unretained.textContent, '');
+}, 'Retained removed trees are usable; unreferenced removed trees need no script cleanup');
+</script>

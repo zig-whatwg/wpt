@@ -1,0 +1,21 @@
+<!doctype html>
+<title>Sanitizer strips SVG animation URL targets with arbitrary prefixes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ['animate', 'animateTransform', 'set']) {
+  for (const target of ['ylink:href', 'zlink:href', 'a:b:href', 'xlink:href:x']) {
+    test(() => {
+      const html = `<svg><${tag} attributeName="${target}"></${tag}></svg>`;
+      const element = document.createElement('div');
+      const retained = target === 'xlink:href:x';
+      element.setHTML(html, {sanitizer: {}});
+      assert_equals(element.firstElementChild.firstElementChild.hasAttribute('attributeName'), retained);
+      element.setHTMLUnsafe(html, {sanitizer: {javascriptURLs: false}});
+      assert_equals(element.firstElementChild.firstElementChild.hasAttribute('attributeName'), retained);
+      element.setHTMLUnsafe(html, {sanitizer: {}});
+      assert_equals(element.firstElementChild.firstElementChild.getAttribute('attributeName'), target);
+    }, `${tag} animation target ${target} follows the suffix rule`);
+  }
+}
+</script>

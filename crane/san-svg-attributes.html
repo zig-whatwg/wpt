@@ -1,0 +1,27 @@
+<!doctype html>
+<title>Sanitizer removes SVG URL animation attributes without starting animation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const tag of ['animate', 'animateTransform', 'set']) {
+  for (const target of ['href', 'xlink:href']) {
+    test(() => {
+      const html = `<svg><${tag} attributeName="${target}"></${tag}></svg>`;
+      const element = document.createElement('div');
+      element.setHTML(html, {sanitizer: {}});
+      assert_false(element.firstElementChild.firstElementChild.hasAttribute('attributeName'));
+      element.setHTMLUnsafe(html, {sanitizer: {}});
+      assert_equals(element.firstElementChild.firstElementChild.getAttribute('attributeName'), target);
+      element.setHTMLUnsafe(html, {sanitizer: {javascriptURLs: false}});
+      assert_false(element.firstElementChild.firstElementChild.hasAttribute('attributeName'));
+    }, `${tag} URL target ${target} follows the javascriptURLs setting and safe baseline`);
+  }
+}
+test(() => {
+  const element = document.createElement('div');
+  element.setHTML('<svg><animateMotion attributeName="href"></animateMotion><set attributeName="hreflang"></set></svg>', {sanitizer: {}});
+  const children = element.firstElementChild.children;
+  assert_equals(children[0].getAttribute('attributeName'), 'href');
+  assert_equals(children[1].getAttribute('attributeName'), 'hreflang');
+}, 'Unlisted animation elements and harmless target attributes are retained');
+</script>

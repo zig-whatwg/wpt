@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>setHTML and a sanitizing setHTMLUnsafe parse into an inert document</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#set-and-filter-html">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+// Markup the sanitizer removes must never run or fetch anything: Blink parses
+// into the context document's template document with no registry, Gecko into
+// an inert HTML document, and both adopt the survivors on insertion
+// (lane fraginert; sanitizer-api/sanitizer-inert-document.html is the
+// upstream gate). The survivors then behave as ordinary elements.
+const recorder = "/fetch/metadata/resources/record-header.py";
+const recorded = async key => {
+  const response = await fetch(`${recorder}?file=${key}&retrieve=true`);
+  return !(await response.text()).includes("No header has been recorded");
+};
+const settle = () => new Promise(resolve => step_timeout(resolve, 300));
+const host = () => document.body.appendChild(document.createElement("div"));
+
+promise_test(async t => {
+  globalThis.fiSafeHandled = 0;
+  const div = host();
+  t.add_cleanup(() => div.remove());
+  div.setHTML(`<img src="data:image/png," onerror="fiSafeHandled++"><p>kept</p>`);
+  await settle();
+  assert_equals(fiSafeHandled, 0);
+  assert_equals(div.innerHTML, "<p>kept</p>");
+}, "setHTML: a removed img runs no handler");
+
+promise_test(async t => {
+  const key = "image-fi-sethtml-" + token();
+  const div = host();
+  t.add_cleanup(() => div.remove());
+  div.setHTMLUnsafe(`<img src="${recorder}?file=${key}"><p>kept</p>`, {sanitizer: {removeElements: ["img"]}});
+  await settle();
+  assert_false(await recorded(key));
+}, "setHTMLUnsafe with a sanitizer: a removed img is never fetched");
+
+test(t => {
+  let constructed = 0;
+  customElements.define("fi-removed-element", class extends HTMLElement { constructor() { super(); constructed++; } });
+  const div = host();
+  t.add_cleanup(() => div.remove());
+  div.setHTMLUnsafe("<fi-removed-element></fi-removed-element><p>kept</p>", {sanitizer: {removeElements: ["fi-removed-element"]}});
+  assert_equals(constructed, 0);
+}, "setHTMLUnsafe with a sanitizer: a removed custom element is never constructed");
+
+test(t => {
+  let constructed = 0;
+  class FiKept extends HTMLElement { constructor() { super(); constructed++; } }
+  customElements.define("fi-kept-element", FiKept);
+  const div = host();
+  t.add_cleanup(() => div.remove());
+  div.setHTMLUnsafe("<fi-kept-element></fi-kept-element><p>gone</p>", {sanitizer: {removeElements: ["p"]}});
+  assert_equals(constructed, 1, "upgraded on insertion");
+  assert_true(div.firstChild instanceof FiKept);
+  assert_equals(div.firstChild.ownerDocument, document);
+}, "setHTMLUnsafe with a sanitizer: a kept custom element is upgraded once inserted");
+
+promise_test(async t => {
+  globalThis.fiKeptHandled = 0;
+  const div = host();
+  t.add_cleanup(() => div.remove());
+  div.setHTMLUnsafe(`<img src="data:image/png," onerror="fiKeptHandled++"><p>gone</p>`, {sanitizer: {removeElements: ["p"]}});
+  const img = div.firstChild;
+  assert_equals(img.ownerDocument, document);
+  if (fiKeptHandled === 0) await new Promise(resolve => img.addEventListener("error", resolve));
+  assert_equals(fiKeptHandled, 1);
+}, "setHTMLUnsafe with a sanitizer: a kept img loads and runs its handler once inserted");
+</script>
+</body>

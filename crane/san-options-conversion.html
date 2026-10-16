@@ -1,0 +1,13 @@
+<!doctype html>
+<title>Sanitizer option conversion precedes the script-context early return</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const marker = {};
+  const context = document.createElement('script');
+  assert_throws_exactly(marker, () => context.setHTML('', {
+    sanitizer: {get comments() {throw marker;}}
+  }));
+}, 'Nested SanitizerConfig conversion occurs before setHTML method steps');
+</script>

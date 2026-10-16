@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>setDataAttributes(true) with a data-* name in an element's removeAttributes</title>
+<link rel="help" href="https://wicg.github.io/sanitizer-api/#dom-sanitizer-setdataattributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Row 41 review M1: the spec's setDataAttributes(true) leaves data-x in the
+// div's removeAttributes; Crane asserted the configuration valid after every
+// modifier and panicked. The modifier must succeed, and filtering must use
+// the resulting configuration.
+test(() => {
+  const sanitizer = new Sanitizer({
+    attributes: ["data-x"],
+    dataAttributes: false,
+    elements: [{name: "div", removeAttributes: ["data-x"]}],
+  });
+  assert_true(sanitizer.setDataAttributes(true));
+  assert_true(sanitizer.get().dataAttributes);
+  const host = document.createElement("div");
+  host.setHTML('<div data-x="1" data-y="2"></div>', {sanitizer});
+  assert_equals(host.innerHTML, '<div data-y="2"></div>');
+}, "setDataAttributes(true) keeps the element's removeAttributes and does not throw");
+</script>

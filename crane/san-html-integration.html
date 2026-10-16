@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Safe HTML entry points sanitize before insertion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement("div");
+  element.setHTML('<p onclick="throw 1">text</p><script>throw 2<\/script>', {sanitizer: {}});
+  assert_equals(element.innerHTML, "<p>text</p>");
+}, "setHTML with an empty config strips script and event handler attributes");
+</script>

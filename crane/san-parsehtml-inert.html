@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document.parseHTML runs nothing and fetches nothing from markup it strips</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-parsehtml">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Row 41 review S3: parseHTML builds a document with no browsing context
+// (lane fraginert made such documents inert), then filters it safely.
+promise_test(async t => {
+  let constructed = 0;
+  customElements.define("san-parsehtml-probe", class extends HTMLElement {
+    constructor() { super(); constructed++; }
+  });
+  window.sanParseHtmlRan = false;
+  const token = Math.random().toString(36).slice(2);
+  const src = `/common/blank.html?san-parsehtml-inert=${token}`;
+  const doc = Document.parseHTML(
+    `<san-parsehtml-probe></san-parsehtml-probe>` +
+    `<img src="${src}" onerror="window.sanParseHtmlRan = true">`,
+    {sanitizer: {removeElements: ["san-parsehtml-probe"], removeAttributes: ["src"]}});
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_equals(constructed, 0, "a removed custom element is never constructed");
+  assert_false(window.sanParseHtmlRan, "no onerror handler runs");
+  assert_equals(doc.querySelector("san-parsehtml-probe"), null);
+  const img = doc.querySelector("img");
+  assert_not_equals(img, null);
+  assert_false(img.hasAttribute("onerror"), "safe parseHTML strips event handlers");
+  assert_equals(performance.getEntriesByType("resource").filter(e => e.name.includes(token)).length, 0,
+                "nothing is fetched");
+}, "Document.parseHTML is inert");
+</script>

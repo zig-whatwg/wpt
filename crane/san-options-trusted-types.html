@@ -1,0 +1,37 @@
+<!doctype html>
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<title>Sanitizer option conversion and configuration surround Trusted Types correctly</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+let onPolicy = () => {};
+trustedTypes.createPolicy('default', {createHTML(value) {onPolicy(); return value;}});
+
+test(() => {
+  const events = [];
+  onPolicy = () => events.push('policy');
+  const element = document.createElement('div');
+  element.setHTMLUnsafe('<p>text</p>', {
+    sanitizer: {get comments() {events.push('conversion'); return false;}}
+  });
+  assert_array_equals(events, ['conversion', 'policy']);
+}, 'Nested config member conversion precedes the Trusted Types policy callback');
+
+test(() => {
+  const sanitizer = new Sanitizer({});
+  onPolicy = () => sanitizer.removeElement('p');
+  const element = document.createElement('div');
+  element.setHTMLUnsafe('<p>removed</p><div>kept</div>', {sanitizer});
+  assert_equals(element.innerHTML, '<div>kept</div>');
+}, 'The Sanitizer instance configuration is read after the policy callback');
+
+test(() => {
+  const events = [];
+  onPolicy = () => events.push('policy');
+  const element = document.createElement('div');
+  assert_throws_js(TypeError, () => element.setHTMLUnsafe('', {
+    sanitizer: {elements: [], removeElements: []}
+  }));
+  assert_array_equals(events, ['policy']);
+}, 'Configuration invariants are checked after the Trusted Types policy callback');
+</script>

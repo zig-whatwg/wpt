@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>javascriptURLs: false strips navigating javascript: URLs (HTML's list, plus iframe src)</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#sanitize-core">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Row 41 review M3. HTML's navigating URL attributes are a/area href,
+// button/input formaction and form action. iframe src is also stripped, as
+// Blink and Gecko do (browser majority); base href is not (only Blink strips
+// it: a tie, so the spec wins).
+const js = "javascript:void(0)";
+const html = `<a href="${js}"></a><area href="${js}"><form action="${js}"></form>` +
+  `<button formaction="${js}"></button><iframe src="${js}"></iframe><base href="${js}">`;
+test(() => {
+  const doc = Document.parseHTMLUnsafe(html, {sanitizer: {javascriptURLs: false}});
+  assert_false(doc.querySelector("a").hasAttribute("href"), "a href");
+  assert_false(doc.querySelector("area").hasAttribute("href"), "area href");
+  assert_false(doc.querySelector("form").hasAttribute("action"), "form action");
+  assert_false(doc.querySelector("button").hasAttribute("formaction"), "button formaction");
+  assert_false(doc.querySelector("iframe").hasAttribute("src"), "iframe src (browser majority)");
+  assert_true(doc.querySelector("base").hasAttribute("href"), "base href is not a navigating attribute");
+}, "parseHTMLUnsafe with javascriptURLs: false");
+</script>

@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sanitization precedes custom element construction</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  let constructed = 0;
+  customElements.define('san-rejected-element', class extends HTMLElement {
+    constructor() { super(); ++constructed; }
+  });
+  const target = document.createElement('div');
+  document.body.append(target);
+  t.add_cleanup(() => target.remove());
+  target.setHTMLUnsafe('<san-rejected-element></san-rejected-element>',
+    {sanitizer: {elements: []}});
+  assert_equals(constructed, 0, 'A removed element must never be constructed');
+  assert_equals(target.innerHTML, '');
+}, 'setHTMLUnsafe sanitizes before upgrading rejected custom elements');
+</script>

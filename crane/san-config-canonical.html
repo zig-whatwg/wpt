@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sanitizer canonical configuration and independent copies</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const sanitizer = new Sanitizer({});
+  const config = sanitizer.get();
+  assert_array_equals(config.removeElements, []);
+  assert_array_equals(config.removeAttributes, []);
+  assert_true(config.comments);
+  assert_false("dataAttributes" in config);
+}, "An empty Sanitizer configuration has permissive defaults and absent dataAttributes");
+</script>

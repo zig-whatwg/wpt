@@ -1,0 +1,36 @@
+<!doctype html>
+<title>Sanitizer config converts iterable items before advancing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const events = [];
+  const elements = {
+    *[Symbol.iterator]() {
+      events.push('first');
+      yield { get name() { events.push('name'); return 'div'; } };
+      events.push('last');
+    }
+  };
+  new Sanitizer({elements});
+  assert_array_equals(events, ['first', 'name', 'last']);
+}, 'Sequence item conversion happens before the next iterator step');
+
+test(() => {
+  const events = [];
+  const marker = {};
+  const attributes = {
+    *[Symbol.iterator]() {
+      try {
+        yield {get name() { throw marker; }};
+        events.push('advanced');
+      } finally {
+        events.push('closed');
+      }
+    }
+  };
+  assert_throws_exactly(marker, () => new Sanitizer({attributes}));
+  // WebIDL 3.2.21.1 propagates the conversion error without IteratorClose.
+  assert_array_equals(events, []);
+}, 'An abrupt item conversion stops without advancing or closing the iterator');
+</script>
