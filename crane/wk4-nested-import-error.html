@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<title>An error an importScripts()ed script throws keeps its own location</title>
+<!-- HTML "run a classic script" with rethrow errors: the imported script's
+     exception "continues to be processed by the calling script" - the same
+     exception, with the location it was thrown at. When the worker's own
+     script leaves it uncaught, "report an exception" describes it: the
+     ErrorEvent at the Worker names the imported script that did not parse,
+     however many importScripts() calls it crossed (all three browsers:
+     workers/Worker-nested-importScripts-error.html). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function firstError(url) {
+  return new Promise(resolve => {
+    const worker = new Worker(url);
+    worker.onerror = e => { e.preventDefault(); resolve(e); };
+  });
+}
+
+promise_test(async () => {
+  const e = await firstError("wk4-import-invalid.js");
+  assert_true(e.filename.endsWith("/workers/support/invalidScript.js"), "filename: " + e.filename);
+  assert_equals(e.lineno, 1, "lineno");
+  assert_true(/SyntaxError/.test(e.message), "message: " + e.message);
+}, "One importScripts() level: the parse error is reported at the imported script");
+
+promise_test(async () => {
+  const e = await firstError("/workers/support/importScripts-1.js");
+  assert_true(e.filename.endsWith("/workers/support/invalidScript.js"), "filename: " + e.filename);
+  assert_equals(e.lineno, 1, "lineno");
+  assert_true(/SyntaxError/.test(e.message), "message: " + e.message);
+}, "Three importScripts() levels: still reported at the script that did not parse");
+
+promise_test(async () => {
+  const e = await firstError("wk4-import-throws.js");
+  assert_true(e.filename.endsWith("/crane/wk4-import-throws-inner.js"), "filename: " + e.filename);
+  assert_equals(e.lineno, 3, "lineno");
+  assert_true(/inner failure/.test(e.message), "message: " + e.message);
+}, "A runtime error in an imported script is reported where it was thrown");
+</script>

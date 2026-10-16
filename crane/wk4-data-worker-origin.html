@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<title>A data: worker's origin is opaque, and the same origin as itself</title>
+<!-- HTML "set up a worker environment settings object": the origin is "a
+     unique opaque origin if worker global scope's url's scheme is "data"".
+     One origin, asked for twice, is the same opaque origin (HTML "same
+     origin" step 1). The Origin API subtest needs Origin.from (Codex row 45);
+     until then it fails on `Origin` being undefined. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const source = `
+  const answers = { origin1: self.origin, origin2: self.origin };
+  if (typeof Origin === "function") {
+    try {
+      const a = Origin.from(self), b = Origin.from(self);
+      answers.opaque = a.opaque;
+      answers.same = a.isSameOrigin(b);
+    } catch (e) { answers.error = String(e); }
+  } else {
+    answers.error = "Origin is not defined";
+  }
+  postMessage(answers);
+`;
+
+function answersOf(worker) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = () => reject(new Error("the worker failed"));
+  });
+}
+
+const answers = answersOf(new Worker("data:text/javascript," + encodeURIComponent(source)));
+
+promise_test(async () => {
+  const a = await answers;
+  assert_equals(a.origin1, "null");
+  assert_equals(a.origin2, "null");
+}, "A data: worker's origin serializes as null, every time");
+
+promise_test(async () => {
+  const a = await answers;
+  assert_equals(a.error, undefined, "Origin.from(self)");
+  assert_true(a.opaque, "opaque");
+  assert_true(a.same, "Origin.from(self) is same origin with Origin.from(self)");
+}, "A data: worker's opaque origin is the same origin as itself");
+</script>

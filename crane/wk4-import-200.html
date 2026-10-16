@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<title>importScripts() of 200 small scripts: a timing page</title>
+<!-- A measurement page (lane workers4): a worker imports 200 small scripts,
+     as data: URLs (the run dominates) and as same-origin http URLs (the
+     fetch dominates), five times each, and logs the median milliseconds of
+     each to the console. Its one subtest only checks that every script ran;
+     the timing is read from the runner's log ("wk4-import-200"). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const workerSource = `
+  self.count = 0;
+  const N = 200, ROUNDS = 5;
+  const small = i => "data:text/javascript," + encodeURIComponent("self.count++; function f" + i + "(a, b) { return a + b + " + i + "; }");
+  const dataUrls = Array.from({ length: N }, (_, i) => small(i));
+  const httpUrls = Array.from({ length: N }, (_, i) => "${location.origin}/crane/wk4-import-small.js?" + i);
+  function median(list) { list.sort((a, b) => a - b); return list[list.length >> 1]; }
+  function time(urls) {
+    const times = [];
+    for (let r = 0; r < ROUNDS; r++) {
+      const t0 = performance.now();
+      importScripts(...urls);
+      times.push(performance.now() - t0);
+    }
+    return median(times);
+  }
+  const data = time(dataUrls);
+  const http = time(httpUrls);
+  postMessage({ data, http, count: self.count });
+`;
+
+promise_test(async () => {
+  const blob = new Blob([workerSource], { type: "text/javascript" });
+  const worker = new Worker(URL.createObjectURL(blob));
+  const result = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error("worker error: " + e.message));
+  });
+  console.log("wk4-import-200 data_ms=" + result.data.toFixed(2) + " http_ms=" + result.http.toFixed(2));
+  assert_equals(result.count, 2 * 5 * 200, "every imported script ran");
+}, "200 imported scripts run, five times over, as data: and http URLs");
+</script>

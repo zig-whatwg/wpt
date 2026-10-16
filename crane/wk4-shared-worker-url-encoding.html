@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<meta charset=windows-1252>
+<title>A SharedWorker URL is encoding-parsed with the document's encoding</title>
+<!-- HTML SharedWorker constructor step 4: "Let urlRecord be the result of
+     encoding-parsing a URL given compliantScriptURL, relative to
+     outsideSettings" - the query is encoded with the document's character
+     encoding, windows-1252 here. Its Worker counterpart is
+     workers/worker-url-encoding.html. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const worker = new SharedWorker("wk4-shared-worker-url-encoding.js?\u00DF");
+  const search = await new Promise((resolve, reject) => {
+    worker.port.onmessage = e => resolve(e.data);
+    worker.onerror = () => reject(new Error("the shared worker failed"));
+  });
+  assert_equals(search, "?%DF");
+}, "SharedWorker URL is parsed using document encoding");
+
+promise_test(async t => {
+  // The same URL written already encoded: one URL, so one worker.
+  const a = new SharedWorker("wk4-shared-worker-url-encoding.js?%DF&same");
+  const first = await new Promise(r => { a.port.onmessage = e => r(e.data); });
+  const b = new SharedWorker("wk4-shared-worker-url-encoding.js?\u00DF&same");
+  const second = await new Promise(r => { b.port.onmessage = e => r(e.data); });
+  assert_equals(first, "?%DF&same 1");
+  assert_equals(second, "?%DF&same 2", "the second connects to the first's worker");
+}, "The encoded URL is the shared worker's key");
+</script>
