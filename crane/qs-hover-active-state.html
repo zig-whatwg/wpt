@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: :hover and :active - designated, actively pointed at, formally activated</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics-other.html#selector-active">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics-other.html#selector-hover">
+<link rel="help" href="https://quirks.spec.whatwg.org/#the-active-and-hover-quirk">
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#active-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<div id="outer"><p id="para"><span id="leaf">press</span></p></div>
+<label id="label" for="control">label</label><input id="control">
+<div id="host"></div>
+<div id="holder"><button id="removable">removable</button></div>
+<button id="kb">keyboard</button><input type="checkbox" id="cb"><button id="next">next</button>
+<div id="hover-a"><span id="hover-a-child">a</span></div><div id="hover-b">b</div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const ids = list => Array.from(list, e => e.id).filter(Boolean);
+
+async function down(element) {
+  await new test_driver.Actions().pointerMove(0, 0, { origin: element }).pointerDown().send();
+}
+async function up() {
+  await new test_driver.Actions().pointerUp().send();
+}
+// One named key source for a press and its release: a key pressed by one
+// source is not released by another (WebDriver input state is per source,
+// and testdriver-actions names each new Actions() source afresh).
+function keys() {
+  return new test_driver.Actions().addKeyboard("qs-keys");
+}
+
+promise_test(async () => {
+  assert_array_equals(ids(document.querySelectorAll(":active")), [], "nothing before a press");
+  await down($("leaf"));
+  assert_true($("leaf").matches(":active"), "the pressed element");
+  assert_true($("para").matches(":active"), "its parent");
+  assert_true($("outer").matches(":active"), "its ancestor");
+  assert_true(document.documentElement.matches(":active"), "the root");
+  assert_false($("label").matches(":active"), "not an unrelated element");
+  assert_array_equals(ids(document.querySelectorAll(":active")), ["outer", "para", "leaf"]);
+  await up();
+  assert_false($("leaf").matches(":active"), "released");
+  assert_array_equals(ids(document.querySelectorAll(":active")), [], "nothing after release");
+}, "the element being actively pointed at and its ancestors match :active while the pointer is down");
+
+promise_test(async () => {
+  await down($("label"));
+  assert_true($("label").matches(":active"), "the label");
+  assert_true($("control").matches(":active"), "its labeled control, though not pointed at");
+  await up();
+  assert_false($("control").matches(":active"));
+}, "the labeled control of an :active label matches :active");
+
+promise_test(async () => {
+  const shadow = $("host").attachShadow({ mode: "open" });
+  shadow.innerHTML = "<slot></slot><b id=inner>in shadow</b>";
+  const slotted = document.createElement("i");
+  $("host").append(slotted);
+  await down(slotted);
+  assert_true(slotted.matches(":active"), "the slotted element");
+  assert_true(shadow.querySelector("slot").matches(":active"), "its flat-tree parent, the slot");
+  assert_true($("host").matches(":active"), "the host");
+  await up();
+  await down(shadow.getElementById("inner"));
+  assert_true(shadow.getElementById("inner").matches(":active"), "an element in a shadow tree");
+  assert_true($("host").matches(":active"), "its host, a flat-tree ancestor");
+  await up();
+}, "flat-tree ancestors: slots and shadow hosts");
+
+promise_test(async () => {
+  const button = $("removable");
+  await down(button);
+  assert_true(button.matches(":active"));
+  button.remove();
+  // Blink (Document::ActiveChainNodeDetached), Gecko and WebKit hand the
+  // state to the parent the element was removed from.
+  assert_false(button.matches(":active"), "an element that left the document is no longer being activated");
+  assert_array_equals(ids(document.querySelectorAll(":active")), ["holder"], "its old parent is, with its ancestors");
+  await up();
+  assert_array_equals(ids(document.querySelectorAll(":active")), [], "until the pointer is released");
+}, "an element removed while pressed hands :active to its parent");
+
+promise_test(async () => {
+  $("kb").focus();
+  await keys().keyDown("\uE00D", "qs-keys").send();
+  assert_true($("kb").matches(":active"), "a button held by Space");
+  // Chrome and Safari: the button alone, not its ancestors
+  // (html/semantics/forms/the-button-element/active-onblur.html).
+  assert_false(document.body.matches(":active"), "not its ancestors");
+  assert_equals(document.querySelector(":active"), $("kb"), "the only :active element");
+  await keys().keyUp("\uE00D", "qs-keys").send();
+  assert_false($("kb").matches(":active"), "released");
+  $("kb").focus();
+  await keys().keyDown("\uE007", "qs-keys").send();
+  assert_false($("kb").matches(":active"), "Enter does not make a button :active");
+  await keys().keyUp("\uE007", "qs-keys").send();
+}, "Space puts a focused button in a formal activation state until its keyup");
+
+promise_test(async () => {
+  $("cb").focus();
+  await keys().keyDown("\uE00D", "qs-keys").send();
+  assert_true($("cb").matches(":active"), "a checkbox held by Space");
+  await new test_driver.Actions().keyDown("\uE004").keyUp("\uE004").send();
+  assert_equals(document.querySelector(":active"), null, "Tab ends it");
+  await keys().keyUp("\uE00D", "qs-keys").send();
+  await down($("leaf"));
+  await new test_driver.Actions().keyDown("\uE004").keyUp("\uE004").send();
+  assert_equals(document.querySelector(":active"), null, "Tab ends a held pointer's :active too");
+  await up();
+}, "moving the focus with Tab ends :active");
+
+promise_test(async () => {
+  await new test_driver.Actions().pointerMove(0, 0, { origin: $("hover-a-child") }).send();
+  assert_true($("hover-a-child").matches(":hover"), "the designated element");
+  assert_true($("hover-a").matches(":hover"), "its parent");
+  assert_true(document.body.matches(":hover"), "its ancestors");
+  assert_false($("hover-b").matches(":hover"), "not another element");
+  assert_false($("hover-a-child").matches(":active"), "hovering is not pressing");
+  await new test_driver.Actions().pointerMove(0, 0, { origin: $("hover-b") }).send();
+  assert_true($("hover-b").matches(":hover"), "moved");
+  assert_false($("hover-a").matches(":hover"), "the old one no longer");
+  await new test_driver.Actions().pointerMove(0, 0, { origin: $("label") }).send();
+  assert_true($("control").matches(":hover"), "the labeled control of a hovered label");
+  await new test_driver.Actions().pointerMove(0, 0, { origin: $("hover-a-child") }).send();
+  $("hover-a-child").remove();
+  assert_true($("hover-a").matches(":hover"), "a removed element hands :hover to its parent");
+  $("hover-a").append($("hover-a-child"));
+}, ":hover follows the element the pointer designates");
+
+promise_test(async () => {
+  const iframe = document.createElement("iframe");
+  iframe.srcdoc = '<p id=p><a id=a href="#">link</a> <span id=s>text</span></p>';
+  await new Promise(resolve => { iframe.onload = resolve; document.body.append(iframe); });
+  const doc = iframe.contentDocument;
+  assert_equals(doc.compatMode, "BackCompat", "a quirks-mode document");
+  await new test_driver.Actions().pointerMove(0, 0, { origin: doc.getElementById("s") }).send();
+  assert_false(doc.getElementById("s").matches(":hover"), ":hover alone matches only links in quirks mode");
+  assert_true(doc.getElementById("s").matches("span:hover"), "with a type selector it matches");
+  assert_false(doc.getElementById("s").matches(":hover > span"), "the quirk applies to every compound: the :hover parent is no link");
+  assert_true(doc.getElementById("s").matches(":is(:hover)"), "not inside a functional pseudo-class's argument");
+  await new test_driver.Actions().pointerMove(0, 0, { origin: doc.getElementById("a") }).send();
+  assert_true(doc.getElementById("a").matches(":hover"), "a link");
+  iframe.remove();
+}, "the :active and :hover quirk");
+</script>

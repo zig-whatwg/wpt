@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: input and textarea cloning steps propagate value, dirtiness, checkedness and indeterminateness</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#the-input-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+"use strict";
+// HTML: "The cloning steps for input elements given node, copy, and subtree
+// are to propagate the value, dirty value flag, checkedness, dirty
+// checkedness flag, and indeterminateness from node to copy."
+
+test(() => {
+  const input = document.createElement("input");
+  input.setAttribute("value", "attribute");
+  input.value = "script";
+  const clone = input.cloneNode();
+  assert_equals(clone.value, "script", "value");
+  // The dirty value flag came along: the attribute no longer sets the value.
+  clone.setAttribute("value", "other");
+  assert_equals(clone.value, "script", "dirty value flag");
+}, "a dirty value and its dirty value flag are cloned");
+
+test(() => {
+  const input = document.createElement("input");
+  input.setAttribute("value", "attribute");
+  const clone = input.cloneNode();
+  clone.setAttribute("value", "changed");
+  assert_equals(clone.value, "changed", "a clean clone still follows its attribute");
+}, "a clean value stays clean in the clone");
+
+test(() => {
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = true;
+  const clone = input.cloneNode();
+  assert_true(clone.checked, "checkedness");
+  // The dirty checkedness flag came along: the attribute no longer sets it.
+  clone.setAttribute("checked", "");
+  clone.removeAttribute("checked");
+  assert_true(clone.checked, "dirty checkedness flag");
+  assert_true(clone.matches(":checked"), ":checked");
+}, "checkedness and the dirty checkedness flag are cloned");
+
+test(() => {
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.indeterminate = true;
+  const clone = input.cloneNode();
+  assert_true(clone.indeterminate, "indeterminateness");
+  assert_true(clone.matches(":indeterminate"), ":indeterminate");
+}, "indeterminateness is cloned");
+
+promise_test(async () => {
+  const input = document.createElement("input");
+  document.body.append(input);
+  await test_driver.send_keys(input, "typed");
+  input.maxLength = 1;
+  assert_true(input.matches(":invalid"), "a user edit longer than maxlength is invalid");
+  const clone = input.cloneNode(true);
+  assert_equals(clone.value, "typed", "value");
+  assert_true(clone.matches(":invalid"), "the clone's value was last changed by a user edit too");
+  assert_true(clone.validity.tooLong, "tooLong");
+  input.remove();
+}, "a value last changed by a user edit is one in the clone");
+
+// HTML: "The cloning steps for textarea elements given node, copy, and
+// subtree are to propagate the raw value and dirty value flag from node to
+// copy."
+test(() => {
+  const textarea = document.createElement("textarea");
+  textarea.textContent = "default";
+  textarea.value = "script";
+  const clone = textarea.cloneNode(true);
+  assert_equals(clone.value, "script", "raw value");
+  // The dirty value flag came along: the children no longer set the value.
+  clone.textContent = "other";
+  assert_equals(clone.value, "script", "dirty value flag");
+}, "a textarea's dirty raw value and its dirty value flag are cloned");
+
+test(() => {
+  const textarea = document.createElement("textarea");
+  textarea.textContent = "default";
+  const clone = textarea.cloneNode(true);
+  clone.textContent = "changed";
+  assert_equals(clone.value, "changed", "a clean clone still follows its children");
+}, "a clean textarea stays clean in the clone");
+
+promise_test(async () => {
+  const textarea = document.createElement("textarea");
+  document.body.append(textarea);
+  await test_driver.send_keys(textarea, "typed");
+  textarea.maxLength = 1;
+  assert_true(textarea.matches(":invalid"), "a user edit longer than maxlength is invalid");
+  const clone = textarea.cloneNode(true);
+  assert_equals(clone.value, "typed", "raw value");
+  assert_true(clone.matches(":invalid"), "the clone's value was last changed by a user edit too");
+  textarea.remove();
+}, "a textarea value last changed by a user edit is one in the clone");
+</script>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: :has() through every entry point, and combinator backtracking</title>
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#relational">
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#match-a-complex-selector-against-an-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="root">
+  <form id="form"><button id="button">b</button></form>
+  <section id="s1"><p id="p1"><span id="sp1"></span></p></section>
+  <section id="s2"><div><span id="sp2"></span></div></section>
+  <dt id="dt1"></dt><dd id="dd1"></dd><dt id="dt2"></dt><dt id="dt3"></dt>
+  <ul id="list"><li id="li1"></li><li id="li2"><em id="em2"></em></li><li id="li3"></li></ul>
+  <article id="a"><div id="b"><div id="c"><span id="t"></span></div></div></article>
+</div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const ids = list => Array.from(list, e => e.id);
+
+test(() => {
+  assert_true($("form").matches(":has(button)"), "matches");
+  assert_true($("form").webkitMatchesSelector(":has(button)"), "webkitMatchesSelector");
+  assert_false($("button").matches(":has(button)"), "not itself");
+  assert_equals($("button").closest(":has(> button)"), $("form"), "closest");
+  assert_equals(document.querySelector("form:has(button)"), $("form"), "querySelector");
+}, ":has() through matches, webkitMatchesSelector, closest and querySelector");
+
+test(() => {
+  // > p span: the span is in a p that is a child of the anchor.
+  assert_array_equals(ids(document.querySelectorAll("section:has(> p span)")), ["s1"]);
+  // The anchor relation is checked, not only the argument's own chain.
+  assert_array_equals(ids(document.querySelectorAll("section:has(> span)")), []);
+  assert_array_equals(ids(document.querySelectorAll("section:has(span)")), ["s1", "s2"]);
+}, ":has() anchors a relative selector with combinators at the element");
+
+test(() => {
+  assert_array_equals(ids(document.querySelectorAll("dt:has(+ dt)")), ["dt2"]);
+  assert_array_equals(ids(document.querySelectorAll("dt:has(~ dd)")), ["dt1"]);
+  assert_array_equals(ids(document.querySelectorAll("li:has(~ li em)")), ["li1"]);
+  assert_array_equals(ids(document.querySelectorAll("li:has(+ li > em)")), ["li1"]);
+}, ":has() with sibling combinators reaches later siblings and their subtrees");
+
+test(() => {
+  assert_array_equals(ids($("list").querySelectorAll("li:not(:has(em))")), ["li1", "li3"]);
+  assert_array_equals(ids($("list").querySelectorAll(":scope > :has(em)")), ["li2"]);
+}, ":has() inside :not() and beside :scope");
+
+test(() => {
+  // The nearest div above #t is #c, whose parent is not an article: the
+  // match needs the next ancestor div, #b.
+  assert_equals(document.querySelector("article > div span"), $("t"));
+  assert_true($("t").matches("article > div span"));
+  assert_true($("t").matches("article > div > div span"));
+  assert_false($("t").matches("article > div > div > div span"));
+}, "a descendant combinator retries farther ancestors");
+
+test(() => {
+  assert_array_equals(ids(document.querySelectorAll("#root > :nth-child(2) > :nth-child(1) span")), ["sp1"]);
+}, "nested :nth-child() with backtracking");
+
+test(() => {
+  // HTML 4.16.2 is not involved: an element with no parent is the only
+  // one among its inclusive siblings (all three engines,
+  // css/selectors/child-indexed-pseudo-class.html).
+  const detached = document.createElement("div");
+  assert_true(detached.matches(":first-child:last-child:only-child:nth-child(1):first-of-type"));
+}, "child-indexed pseudo-classes match an element with no parent");
+</script>

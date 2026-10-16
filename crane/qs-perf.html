@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane timing: querySelectorAll over 5,000 elements, 20 common selectors</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=qs-host></div>
+<script>
+// Timing page for lane selectors (not a conformance test): a 5,000-element
+// subtree, built once by innerHTML, and querySelectorAll for each selector
+// below, `rounds` times. The total and each selector's time are in the
+// subtest names; every subtest checks the match count, so a page that
+// matches differently fails rather than reports a meaningless time.
+const rounds = 20;
+// 200 cards x 25 elements = 5,000 elements.
+const card = '<article class="card item" data-kind="a"><header id="h"><h2 class="title">t</h2><span class="tag new">n</span></header>' +
+  '<ul class="list"><li class="row">1</li><li class="row odd">2</li><li class="row">3</li><li class="row odd">4</li><li class="row">5</li></ul>' +
+  '<p class="text">x <a href="#" class="link">y</a> <b>z</b></p><form><input type="text" name="q"><input type="checkbox" checked><button type="submit">go</button></form>' +
+  '<footer><em>e</em><i>i</i><small>s</small><s>d</s><u>u</u><div class="meta"><span>m</span></div></footer></article>';
+const host = document.getElementById('qs-host');
+host.innerHTML = Array.from({ length: 200 }, (_, i) => card.replace('id="h"', `id="h${i}"`)).join('');
+const selectors = [
+  ['li', 1000], ['.row', 1000], ['#h137', 1], ['.card .row', 1000], ['ul > li', 1000],
+  ['[data-kind]', 200], ['[type=checkbox]', 200], ['input[name="q"]', 200], ['li:not(.odd)', 600],
+  ['li:nth-child(2n+1)', 600], ['article:has(.new)', 200], ['.card:has(> header .tag)', 200],
+  ['header + ul', 200], ['h2 ~ span', 200], ['*', 5000], ['p a.link', 200],
+  ['footer div span', 200], ['.item.card', 200], ['li:first-child', 200], ['form :checked', 200],
+];
+// The :has() selectors are timed apart: at the lane's base, :has() matched
+// nothing, so a total including them would not compare like with like.
+let common = 0, has = 0;
+const results = selectors.map(([selector, expected]) => {
+  let count = 0;
+  const t0 = performance.now();
+  for (let i = 0; i < rounds; i++) count = host.querySelectorAll(selector).length;
+  const ms = performance.now() - t0;
+  if (selector.includes(':has(')) has += ms; else common += ms;
+  return { selector, expected, count, ms };
+});
+test(() => {
+  for (const r of results) if (!r.selector.includes(':has(')) assert_equals(r.count, r.expected, r.selector);
+}, 'qs-perf common: ' + common.toFixed(1) + ' ms for ' + rounds + ' rounds of 18 selectors');
+test(() => {
+  for (const r of results) if (r.selector.includes(':has(')) assert_equals(r.count, r.expected, r.selector);
+}, 'qs-perf has: ' + has.toFixed(1) + ' ms for ' + rounds + ' rounds of 2 selectors');
+for (const r of results) {
+  test(() => { assert_equals(r.count, r.expected); }, 'qs-perf ' + r.selector + ': ' + r.ms.toFixed(1) + ' ms');
+}
+</script>

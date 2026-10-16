@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane timing: selector matching cost at doubling sizes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=probe-host></div>
+<script>
+// A scale probe, not a conformance test (lesson: a DOM evaluator needs a
+// scale probe). Each shape is timed at 1,250, 2,500, 5,000 and 10,000
+// elements; the growth per doubling is in the subtest names - about 2x is
+// linear, about 4x quadratic. Every subtest checks its match count.
+const host = document.getElementById('probe-host');
+const sizes = [1250, 2500, 5000, 10000];
+const shapes = [
+  // One long sibling list: :nth-child counts earlier siblings per element.
+  ['siblings li:nth-child(2n+1)', n => '<ul>' + '<li></li>'.repeat(n) + '</ul>', 'li:nth-child(2n+1)', n => Math.ceil(n / 2)],
+  ['siblings li:nth-last-of-type(3)', n => '<ul>' + '<li></li>'.repeat(n) + '</ul>', 'li:nth-last-of-type(3)', n => 1],
+  // Flat sections: :has() looks into each one's small subtree.
+  ['flat section:has(b)', n => '<section><p><b></b></p></section>'.repeat(n / 3), 'section:has(b)', n => n / 3],
+  // Descendant combinator over a flat document.
+  ['flat section p b', n => '<section><p><b></b></p></section>'.repeat(n / 3), 'section p b', n => n / 3],
+];
+for (const [name, build, selector, expected] of shapes) {
+  const times = [];
+  let ok = true;
+  for (const n of sizes) {
+    host.innerHTML = build(Math.round(n / 3) * 3 === n || name.startsWith('siblings') ? n : Math.round(n / 3) * 3);
+    const t0 = performance.now();
+    const count = host.querySelectorAll(selector).length;
+    times.push(performance.now() - t0);
+    const want = expected(name.startsWith('siblings') ? n : Math.round(n / 3) * 3);
+    if (count !== Math.floor(want)) ok = false;
+  }
+  host.innerHTML = '';
+  const growth = times.slice(1).map((t, i) => (t / Math.max(times[i], 0.01)).toFixed(1) + 'x').join(' ');
+  test(() => { assert_true(ok, 'match counts'); }, name + ': ' + times.map(t => t.toFixed(1)).join(' / ') + ' ms, growth ' + growth);
+}
+</script>

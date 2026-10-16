@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: :lang(), the featureless shadow host, :scope roots, namespaces</title>
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#the-lang-pseudo">
+<link rel="help" href="https://drafts.csswg.org/css-scoping/#host-element-in-tree">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="langs" lang="de-Latn-DE">
+  <p id="de"></p>
+  <p id="fr" lang="fr-BE"></p>
+  <p id="und" lang="und"></p>
+  <p id="untagged" lang=""></p>
+</div>
+<div id="host" class="h"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const ids = list => Array.from(list, e => e.id);
+
+test(() => {
+  assert_true($("de").matches(":lang(de)"), "inherited, prefix");
+  assert_true($("de").matches(":lang(de-DE)"), "extended filtering skips Latn");
+  assert_true($("de").matches(":lang(\\*-DE)"), "wildcard primary subtag");
+  assert_true($("fr").matches(":lang(en, fr)"), "a list of ranges");
+  assert_true($("fr").matches(":lang('fr-be')"), "strings, ASCII case-insensitive");
+  assert_false($("fr").matches(":lang(de)"), "its own lang wins");
+  assert_true($("und").matches(':lang("*")'), "* matches und");
+  assert_false($("untagged").matches(':lang("*")'), "* does not match untagged");
+  assert_true($("untagged").matches(':lang("")'), "the empty range matches untagged");
+}, ":lang() by the element's language and extended filtering");
+
+test(() => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:lang", "ja");
+  const child = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  svg.append(child);
+  assert_true(child.matches(":lang(ja)"), "xml:lang, inherited");
+}, ":lang() reads xml:lang");
+
+test(() => {
+  const shadow = $("host").attachShadow({ mode: "open" });
+  shadow.innerHTML = '<p id="inner"><b id="deep"></b></p>';
+  const inner = shadow.getElementById("inner");
+  assert_equals(shadow.querySelector(":host > p"), inner, ":host > p");
+  assert_equals(shadow.querySelector(":host(.h) > p"), inner, ":host(.h) > p");
+  assert_equals(shadow.querySelector(":host(.nope) > p"), null, ":host(.nope)");
+  // :host-context() is Chrome's alone: Firefox and Safari reject it.
+  assert_throws_dom("SyntaxError", () => shadow.querySelector(":host-context(body) b"), ":host-context()");
+  assert_equals(shadow.querySelector("div > p"), null, "the host is featureless: no type selector matches it");
+  assert_equals(shadow.querySelector("* > p"), null, "the host is featureless: not even *");
+  assert_equals(shadow.querySelector(":scope > p"), null, "a shadow root as scoping root matches nothing");
+  assert_true(inner.matches(":host p"), "matches() from inside the shadow tree");
+  assert_false($("host").matches(":host"), "the host in its own tree is no featureless host");
+  assert_equals(document.querySelector(":host"), null, "outside any shadow tree");
+}, "the shadow host is the featureless parent of a shadow tree's top-level elements");
+
+test(() => {
+  const fragment = document.createDocumentFragment();
+  fragment.append(document.createElement("div"));
+  assert_equals(fragment.querySelector(":scope > div"), null, "fragment");
+  assert_equals(document.querySelector(":scope"), document.documentElement, "document");
+}, ":scope is the document element for a document, nothing for a fragment");
+
+test(() => {
+  const plain = document.createElementNS("", "div");
+  const html = document.createElement("div");
+  const box = document.createElement("div");
+  box.append(plain, html);
+  assert_array_equals(Array.from(box.querySelectorAll("|div")), [plain], "|div: no namespace");
+  assert_array_equals(Array.from(box.querySelectorAll("*|div")), [plain, html], "*|div: any");
+  assert_array_equals(Array.from(box.querySelectorAll("|*")), [plain], "|*");
+  html.setAttributeNS("urn:a", "a:k", "1");
+  html.setAttributeNS("urn:b", "b:k", "2");
+  assert_true(html.matches("[*|k='2']"), "any of several namespaced attributes");
+  assert_false(html.matches("[k]"), "no attribute in no namespace");
+}, "namespace constraints on type, universal and attribute selectors");
+
+test(() => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+  const box = document.createElement("div");
+  box.append(svg);
+  assert_equals(box.querySelector("foreignObject"), svg, "as written");
+  assert_equals(box.querySelector("foreignobject"), null, "SVG names are case-sensitive");
+  const html = document.createElementNS("http://www.w3.org/1999/xhtml", "Foo");
+  box.append(html);
+  assert_equals(box.querySelector("Foo"), null, "HTML elements compare the lowercase selector");
+}, "type selectors: HTML 4.16.2 case rules");
+</script>
