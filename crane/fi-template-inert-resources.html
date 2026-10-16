@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Elements in a template's contents fetch nothing until adopted into the document</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/images.html#updating-the-image-data">
+<link rel=help href="https://html.spec.whatwg.org/multipage/scripting.html#the-template-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+// A template's contents live in its inert template contents owner document,
+// which has no browsing context: "update the image data" waits there (step
+// 1, the node document is not fully active), and no engine loads media for a
+// document without a frame. Adopting an img into the document is a relevant
+// mutation, so it loads then. This is the document a sanitizing fragment
+// parse (setHTML) builds in, too.
+const recorder = "/fetch/metadata/resources/record-header.py";
+const recorded = async key => {
+  const response = await fetch(`${recorder}?file=${key}&retrieve=true`);
+  return !(await response.text()).includes("No header has been recorded");
+};
+const settle = () => new Promise(resolve => step_timeout(resolve, 300));
+
+promise_test(async t => {
+  const key = "image-fi-tpl-" + token();
+  const template = document.createElement("template");
+  template.innerHTML = `<img src="${recorder}?file=${key}">`;
+  document.body.append(template);
+  await settle();
+  assert_false(await recorded(key), "the template's img must not be fetched");
+}, "an img in a template's contents is not fetched");
+
+promise_test(async t => {
+  const key = "image-fi-tpl-adopt-" + token();
+  const template = document.createElement("template");
+  template.innerHTML = `<img src="${recorder}?file=${key}">`;
+  const img = template.content.firstChild;
+  const loaded = new Promise(resolve => {
+    img.addEventListener("load", resolve);
+    img.addEventListener("error", resolve);
+  });
+  document.body.append(img);
+  await loaded;
+  assert_true(await recorded(key), "the adopted img is fetched");
+}, "an img adopted out of a template's contents loads in the document");
+
+promise_test(async t => {
+  globalThis.fiHandled = 0;
+  const template = document.createElement("template");
+  template.innerHTML = `<img src="data:image/png," onerror="fiHandled++">`;
+  const img = template.content.firstChild;
+  let errors = 0;
+  img.addEventListener("error", () => errors++);
+  await settle();
+  assert_equals(errors, 0, "no error event while in the template");
+  assert_equals(fiHandled, 0, "no handler ran while in the template");
+  const fired = new Promise(resolve => img.addEventListener("error", resolve));
+  document.body.append(img);
+  await fired;
+  assert_equals(errors, 1);
+  assert_equals(fiHandled, 1, "the onerror attribute's handler runs once adopted");
+}, "a broken img in a template fires error, and runs its onerror attribute, only once adopted");
+
+promise_test(async t => {
+  const key = "video-fi-tpl-" + token();
+  const template = document.createElement("template");
+  template.innerHTML = `<video src="${recorder}?file=${key}"></video>`;
+  document.body.append(template);
+  await settle();
+  assert_false(await recorded(key), "the template's video must not be fetched");
+}, "a video in a template's contents is not fetched");
+
+promise_test(async t => {
+  const key = "audio-fi-tpl-" + token();
+  const template = document.createElement("template");
+  template.innerHTML = `<audio><source src="${recorder}?file=${key}"></audio>`;
+  document.body.append(template);
+  await settle();
+  assert_false(await recorded(key), "the template's audio source must not be fetched");
+}, "an audio element's source in a template's contents is not fetched");
+
+promise_test(async t => {
+  const key = "track-fi-tpl-" + token();
+  const template = document.createElement("template");
+  template.innerHTML = `<video><track default src="${recorder}?file=${key}"></video>`;
+  document.body.append(template);
+  await settle();
+  assert_false(await recorded(key), "the template's track must not be fetched");
+}, "a default track in a template's contents is not fetched");
+</script>
+</body>

@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>innerHTML still builds in the target's own document</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-html-fragments">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+// The HTML fragment parsing algorithm creates the elements in the target's
+// node document (its root insertion target is a fragment of that document),
+// and innerHTML in Blink, Gecko and WebKit parses into the context element's
+// document. Only the sanitizing entry points build in an inert document; the
+// default paths must not change with them.
+const recorder = "/fetch/metadata/resources/record-header.py";
+const recorded = async key => {
+  const response = await fetch(`${recorder}?file=${key}&retrieve=true`);
+  return !(await response.text()).includes("No header has been recorded");
+};
+
+test(() => {
+  const div = document.createElement("div");
+  div.innerHTML = "<p><b>x</b></p>";
+  assert_equals(div.firstChild.ownerDocument, document);
+  assert_equals(div.firstChild.firstChild.ownerDocument, document);
+}, "innerHTML's elements are made in the target's document");
+
+promise_test(async () => {
+  globalThis.fiLiveHandled = 0;
+  const div = document.createElement("div");
+  div.innerHTML = `<img src="data:image/png," onerror="fiLiveHandled++">`;
+  const img = div.firstChild;
+  assert_equals(typeof img.onerror, "function", "compiled where it is set");
+  await new Promise(resolve => img.addEventListener("error", resolve));
+  assert_equals(fiLiveHandled, 1);
+}, "a broken img made by innerHTML on a detached element fires error and runs its handler");
+
+promise_test(async () => {
+  const key = "image-fi-live-" + token();
+  const div = document.createElement("div");
+  div.innerHTML = `<img src="${recorder}?file=${key}">`;
+  const img = div.firstChild;
+  await new Promise(resolve => {
+    img.addEventListener("load", resolve);
+    img.addEventListener("error", resolve);
+  });
+  assert_true(await recorded(key));
+}, "an img made by innerHTML on a detached element is fetched");
+
+test(() => {
+  let constructed = 0;
+  class FiLive extends HTMLElement { constructor() { super(); constructed++; } }
+  customElements.define("fi-live-element", FiLive);
+  const div = document.createElement("div");
+  div.innerHTML = "<fi-live-element></fi-live-element>";
+  assert_equals(constructed, 1, "upgraded by the time innerHTML returns");
+  assert_true(div.firstChild instanceof FiLive);
+}, "innerHTML on a detached element upgrades defined custom elements");
+
+test(() => {
+  globalThis.fiLiveRan = false;
+  const div = document.body.appendChild(document.createElement("div"));
+  div.innerHTML = "<script>fiLiveRan = true<\/script>";
+  assert_false(fiLiveRan, "innerHTML's scripts are already started");
+  document.body.append(div.firstChild);
+  assert_false(fiLiveRan);
+  div.remove();
+}, "innerHTML's scripts never run");
+</script>
+</body>

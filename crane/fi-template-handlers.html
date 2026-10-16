@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Event handler content attributes on elements of a document with no browsing context</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-content-attributes">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The syntax-error case reports an exception for this window, as the spec
+// says it must; the harness would take that for its own failure.
+setup({allow_uncaught_exception: true});
+
+// Setting an event handler content attribute stores an internal raw
+// uncompiled handler; "getting the current value of the event handler"
+// compiles it - and returns null while scripting is disabled for the
+// element's document, as it is for a template's contents or a DOMParser
+// document. Adopted into this document, the element's handler works.
+const fromTemplate = markup => {
+  const template = document.createElement("template");
+  template.innerHTML = markup;
+  return template.content.firstChild;
+};
+
+test(t => {
+  globalThis.fiClicks = 0;
+  const button = fromTemplate(`<button onclick="fiClicks++">x</button>`);
+  t.add_cleanup(() => button.remove());
+  assert_equals(button.onclick, null, "scripting is disabled for the template contents owner document");
+  button.click();
+  assert_equals(fiClicks, 0, "nothing runs there");
+  document.body.append(button);
+  assert_equals(typeof button.onclick, "function", "compiled once its document has a browsing context");
+  assert_equals(button.onclick, button.onclick, "the same function each time");
+  button.click();
+  assert_equals(fiClicks, 1);
+}, "a template element's onclick attribute works once the element is adopted");
+
+test(t => {
+  globalThis.fiClicks = 0;
+  const button = fromTemplate(`<button onclick="fiClicks++">x</button>`);
+  t.add_cleanup(() => button.remove());
+  document.body.append(button);
+  button.click();
+  assert_equals(fiClicks, 1, "dispatch compiles it without a read first");
+}, "dispatch compiles an adopted element's raw handler");
+
+test(t => {
+  globalThis.fiClicked = false;
+  const button = fromTemplate(`<button onclick="fiClicked = true">x</button>`);
+  t.add_cleanup(() => button.remove());
+  button.onclick = null;
+  document.body.append(button);
+  button.click();
+  assert_equals(button.onclick, null);
+  assert_false(fiClicked, "the IDL attribute set to null deactivated the raw handler");
+}, "a raw handler set to null before adoption stays null");
+
+test(t => {
+  const button = fromTemplate(`<button onclick="}">x</button>`);
+  t.add_cleanup(() => button.remove());
+  let reported = 0;
+  const listener = () => reported++;
+  window.addEventListener("error", listener);
+  t.add_cleanup(() => window.removeEventListener("error", listener));
+  document.body.append(button);
+  assert_equals(reported, 0, "adoption compiles nothing");
+  assert_equals(button.onclick, null);
+  assert_equals(reported, 1, "the syntax error is reported when the value is first needed");
+  assert_equals(button.onclick, null);
+  assert_equals(reported, 1, "and only once");
+}, "a raw handler that does not parse is reported on first use");
+
+test(t => {
+  globalThis.fiParsed = 0;
+  const doc = new DOMParser().parseFromString(`<div onclick="fiParsed++"></div>`, "text/html");
+  const div = doc.body.firstChild;
+  assert_equals(div.onclick, null);
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  div.click();
+  assert_equals(fiParsed, 1);
+}, "a DOMParser document's element runs its handler once adopted");
+
+test(t => {
+  globalThis.fiAttr = "";
+  const button = fromTemplate(`<button onclick="fiAttr += 'a'">x</button>`);
+  t.add_cleanup(() => button.remove());
+  button.setAttribute("onclick", "fiAttr += 'b'");
+  document.body.append(button);
+  button.click();
+  assert_equals(fiAttr, "b", "the latest attribute value is the body");
+  button.setAttribute("onclick", "fiAttr += 'c'");
+  button.click();
+  assert_equals(fiAttr, "bc");
+}, "the raw handler's body follows its content attribute");
+</script>
+</body>
