@@ -1,0 +1,53 @@
+<!doctype html>
+<title>Location ancestor origins identity, GC, and detachment</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  assert_array_equals(Array.from(location.ancestorOrigins), []);
+  assert_equals(location.ancestorOrigins, location.ancestorOrigins);
+}, 'A top-level Location has a stable empty ancestor list');
+
+test(t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.append(frame);
+  const childLocation = frame.contentWindow.location;
+  let origins = childLocation.ancestorOrigins;
+  assert_array_equals(Array.from(origins), [window.origin]);
+  origins.marker = 17;
+  origins = null;
+  TestUtils.gc();
+  assert_equals(childLocation.ancestorOrigins.marker, 17);
+  assert_equals(childLocation.ancestorOrigins.item(0), window.origin);
+  assert_equals(childLocation.ancestorOrigins.item(1), null);
+  assert_true(childLocation.ancestorOrigins.contains(window.origin));
+}, 'Location keeps the same DOMStringList and its script properties through GC');
+
+test(() => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  const childLocation = frame.contentWindow.location;
+  const before = childLocation.ancestorOrigins;
+  frame.remove();
+  const after = childLocation.ancestorOrigins;
+  assert_array_equals(Array.from(before), [window.origin]);
+  assert_array_equals(Array.from(after), []);
+  assert_not_equals(after, before);
+  assert_equals(childLocation.ancestorOrigins, after);
+  TestUtils.gc();
+  assert_array_equals(Array.from(before), [window.origin]);
+  assert_equals(childLocation.ancestorOrigins, after);
+}, 'Detachment returns a new stable empty list and preserves the earlier snapshot');
+
+test(t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  frame.referrerPolicy = 'no-referrer';
+  document.body.append(frame);
+  // Chrome 154 and Safari 27 expose the ancestor despite the container's
+  // referrerpolicy; their majority takes precedence over HTML's newer masking.
+  assert_array_equals(Array.from(frame.contentWindow.location.ancestorOrigins), [window.origin]);
+}, 'Container referrerpolicy does not mask ancestor origins in the browser majority');
+</script>

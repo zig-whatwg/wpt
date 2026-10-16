@@ -1,0 +1,23 @@
+<!doctype html>
+<title>SVG anchor extraction uses its reflected hyperlink</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const useXLink of [false, true]) {
+  test(() => {
+    let anchor = document.createElementNS('http://www.w3.org/2000/svg', 'a');
+    assert_throws_js(TypeError, () => Origin.from(anchor));
+    if (useXLink) {
+      anchor.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', 'https://example.com/first');
+    } else {
+      anchor.href.baseVal = 'https://example.com/first';
+    }
+    const first = Origin.from(anchor);
+    anchor.setAttribute('href', 'https://other.example/second');
+    assert_true(Origin.from(anchor).isSameOrigin(Origin.from('https://other.example')));
+    anchor = null;
+    TestUtils.gc();
+    assert_true(first.isSameOrigin(Origin.from('https://example.com')));
+  }, 'SVG origin snapshot survives href mutation and GC; xlink=' + useXLink);
+}
+</script>

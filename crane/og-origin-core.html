@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Origin records, parsing, comparisons and extraction</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const first = new Origin();
+  const second = new Origin();
+  assert_true(first.opaque);
+  assert_true(first.isSameOrigin(first));
+  assert_true(first.isSameSite(first));
+  assert_false(first.isSameOrigin(second));
+  assert_false(first.isSameSite(second));
+}, 'Each constructor creates a unique opaque origin');
+
+test(() => {
+  let original = new Origin();
+  const copy = Origin.from(original);
+  assert_not_equals(copy, original);
+  assert_true(copy.isSameOrigin(original));
+  original = null;
+  TestUtils.gc();
+  const another = Origin.from(copy);
+  assert_true(another.opaque);
+  assert_true(another.isSameOrigin(copy));
+  assert_true(another.isSameSite(copy));
+}, 'Copied opaque origin records survive collection of the original wrapper');
+
+test(() => {
+  const a = Origin.from('https://USER:pass@EXAMPLE.com:443/path?x#y');
+  assert_false(a.opaque);
+  assert_true(a.isSameOrigin(Origin.from('https://example.com')));
+  assert_false(a.isSameOrigin(Origin.from('https://example.com:444')));
+  assert_true(a.isSameSite(Origin.from('https://sub.example.com:444')));
+  assert_false(a.isSameSite(Origin.from('http://example.com')));
+  assert_false(a.isSameSite(Origin.from('https://other.com')));
+}, 'Tuple comparisons use canonical scheme, host and port; site ignores port');
+
+for (const address of ['https://127.0.0.1', 'https://[::1]', 'https://localhost', 'https://com']) {
+  test(() => {
+    const a = Origin.from(address);
+    assert_true(a.isSameSite(Origin.from(address + ':8443')));
+    assert_false(a.isSameOrigin(Origin.from(address + ':8443')));
+  }, 'Site comparison for a host with no registrable domain: ' + address);
+}
+
+test(() => {
+  assert_false(Origin.from('https://example.com').isSameSite(Origin.from('https://example.com.')));
+  assert_true(Origin.from('https://ümlauted.example').isSameOrigin(Origin.from('https://xn--mlauted-m2a.example')));
+}, 'Trailing dots remain significant and IDNA host names are canonicalized');
+
+test(() => {
+  for (const input of ['about:blank', 'data:text/plain,a', 'weird://host/path']) {
+    const a = Origin.from(input);
+    assert_true(a.opaque);
+    assert_false(a.isSameOrigin(Origin.from(input)));
+    assert_true(a.isSameOrigin(Origin.from(a)));
+  }
+}, 'Parsing an opaque URL creates a fresh origin on every extraction');
+
+test(() => {
+  let called = false;
+  for (const value of [null, undefined, 4, true, Symbol(), {}, new String('https://example.com'),
+      {toString() { called = true; return 'https://example.com'; }}]) {
+    assert_throws_js(TypeError, () => Origin.from(value));
+  }
+  assert_false(called);
+  for (const value of ['', 'relative/path', 'http://[invalid']) {
+    assert_throws_js(TypeError, () => Origin.from(value));
+  }
+}, 'Origin.from accepts primitive strings without coercing arbitrary objects');
+
+test(() => {
+  let url = new URL('https://example.com/a');
+  const origin = Origin.from(url);
+  url.href = 'https://other.example/';
+  url = null;
+  TestUtils.gc();
+  assert_true(origin.isSameOrigin(Origin.from('https://example.com')));
+}, 'An extracted URL origin owns its record independently of URL mutation and GC');
+
+for (const tag of ['a', 'area']) {
+  test(() => {
+    let link = document.createElement(tag);
+    assert_throws_js(TypeError, () => Origin.from(link));
+    link.href = 'https://example.com/path';
+    const origin = Origin.from(link);
+    link.href = 'https://other.example/path';
+    link = null;
+    TestUtils.gc();
+    assert_true(origin.isSameOrigin(Origin.from('https://example.com')));
+  }, 'Hyperlink extraction owns the origin of ' + tag);
+}
+
+test(() => {
+  assert_true(Origin.from(window).isSameOrigin(Origin.from(location.origin)));
+  assert_throws_js(TypeError, () => Origin.from(location));
+  assert_throws_js(TypeError, () => Origin.from(new MessageEvent('message', {origin: location.origin})));
+}, 'Globals extract their settings origin; Location and scripted MessageEvents do not');
+</script>

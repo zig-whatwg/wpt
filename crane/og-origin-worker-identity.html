@@ -1,0 +1,39 @@
+<!doctype html>
+<title>A worker global has a stable opaque origin</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function workerResult(t, source) {
+  const worker = new Worker('data:text/javascript,' + encodeURIComponent(source));
+  t.add_cleanup(() => worker.terminate());
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error(e.message));
+  });
+}
+
+promise_test(async t => {
+  const result = await workerResult(t, `
+    const first = Origin.from(self);
+    const second = Origin.from(self);
+    postMessage({opaque: first.opaque, same: first.isSameOrigin(second), site: first.isSameSite(second)});
+  `);
+  assert_true(result.opaque);
+  assert_true(result.same);
+  assert_true(result.site);
+}, 'Repeated extraction from a data worker preserves opaque identity');
+
+promise_test(async t => {
+  const result = await workerResult(t, `
+    let first = Origin.from(self);
+    const kept = Origin.from(first);
+    first = null;
+    TestUtils.gc();
+    const second = Origin.from(self);
+    postMessage({opaque: kept.opaque, same: kept.isSameOrigin(second), site: kept.isSameSite(second)});
+  `);
+  assert_true(result.opaque);
+  assert_true(result.same);
+  assert_true(result.site);
+}, 'A data worker retains its origin identity across extraction and GC');
+</script>

@@ -1,0 +1,39 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<title>Ten thousand window and dedicated worker messages</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({explicit_done: true});
+const workerURL = URL.createObjectURL(new Blob([
+  'onmessage = e => postMessage(e.data); postMessage("ready");'
+], {type: 'text/javascript'}));
+const worker = new Worker(workerURL);
+let received = 0;
+let started;
+let finished = false;
+function finish(error) {
+  if (finished) return;
+  finished = true;
+  clearTimeout(watchdog);
+  worker.terminate();
+  URL.revokeObjectURL(workerURL);
+  const elapsed = started === undefined ? 0 : performance.now() - started;
+  test(() => {
+    assert_equals(error, undefined);
+    assert_equals(received, 10000);
+  }, '10000 worker round trips; elapsed_ms=' + elapsed.toFixed(3));
+  done();
+}
+const watchdog = setTimeout(() => finish('Timed out exchanging messages'), 50000);
+worker.onerror = e => finish(e.message);
+worker.onmessage = e => {
+  if (e.data === 'ready') {
+    started = performance.now();
+    for (let i = 0; i < 10000; ++i) worker.postMessage(i);
+    return;
+  }
+  ++received;
+  if (received === 10000) finish();
+};
+</script>

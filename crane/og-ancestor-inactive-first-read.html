@@ -1,0 +1,29 @@
+<!doctype html>
+<title>First ancestorOrigins access after navigation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const initialLoad = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.append(frame);
+  await initialLoad;
+  const oldLocation = frame.contentWindow.location;
+  const nextLoad = new Promise(resolve => frame.onload = resolve);
+  frame.src = get_host_info().REMOTE_ORIGIN + '/common/blank.html';
+  await nextLoad;
+  frame.onload = null;
+
+  let list = oldLocation.ancestorOrigins;
+  assert_array_equals(Array.from(list), []);
+  list.marker = 19;
+  list = null;
+  TestUtils.gc();
+  assert_array_equals(Array.from(oldLocation.ancestorOrigins), []);
+  assert_equals(oldLocation.ancestorOrigins.marker, 19);
+}, 'An inactive Location first returns a stable empty list after navigation');
+</script>

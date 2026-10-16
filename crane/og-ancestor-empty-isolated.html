@@ -1,0 +1,10 @@
+<!doctype html>
+<title>Top level Location ancestor origins</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_array_equals(Array.from(location.ancestorOrigins), []);
+  assert_equals(location.ancestorOrigins, location.ancestorOrigins);
+}, 'Top level Location returns the same empty DOMStringList');
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<title>Tuple blob URL origins survive revocation and source collection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  const creator = Origin.from(self);
+  assert_false(creator.opaque);
+  const blobURL = URL.createObjectURL(new Blob(['tuple creator']));
+  t.add_cleanup(() => URL.revokeObjectURL(blobURL));
+  let url = new URL(blobURL);
+  let link = document.createElement('a');
+  link.href = blobURL;
+  const fromString = Origin.from(blobURL);
+  const fromURL = Origin.from(url);
+  const fromLink = Origin.from(link);
+  URL.revokeObjectURL(blobURL);
+  url = link = null;
+  TestUtils.gc();
+  assert_true(creator.isSameOrigin(fromString));
+  assert_true(creator.isSameOrigin(fromURL));
+  assert_true(creator.isSameOrigin(fromLink));
+}, 'Tuple blob origins survive revocation and collection of source objects');
+</script>

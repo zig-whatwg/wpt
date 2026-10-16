@@ -3,8 +3,8 @@
 <!-- HTML "set up a worker environment settings object": the origin is "a
      unique opaque origin if worker global scope's url's scheme is "data"".
      One origin, asked for twice, is the same opaque origin (HTML "same
-     origin" step 1). The Origin API subtest needs Origin.from (Codex row 45);
-     until then it fails on `Origin` being undefined. -->
+     origin" step 1). The Origin API subtest uses Origin.from (Codex row 45,
+     merged 2026-10-16). -->
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <script>

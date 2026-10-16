@@ -1,0 +1,12 @@
+<!doctype html>
+<title>Origin constructor opaque identity regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const origin = new Origin();
+  assert_true(origin.opaque);
+  assert_true(origin.isSameOrigin(Origin.from(origin)));
+  assert_false(origin.isSameOrigin(new Origin()));
+}, 'Origin preserves one opaque identity and distinguishes new identities');
+</script>

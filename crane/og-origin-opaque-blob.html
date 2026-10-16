@@ -1,0 +1,55 @@
+<!doctype html>
+<title>Blob URL extraction preserves an opaque creator origin</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const frame = document.createElement('iframe');
+frame.sandbox = 'allow-scripts';
+const response = new Promise(resolve => {
+  window.addEventListener('message', e => {
+    if (e.source === frame.contentWindow) resolve(e.data);
+  });
+});
+promise_test(async t => {
+  t.add_cleanup(() => frame.remove());
+  frame.srcdoc = `<script>
+    try {
+      const creator = Origin.from(self);
+      const blobURL = URL.createObjectURL(new Blob(['opaque creator']));
+      let url = new URL(blobURL);
+      let link = document.createElement('a');
+      link.href = blobURL;
+      const fromString = Origin.from(blobURL);
+      const fromURL = Origin.from(url);
+      const fromLink = Origin.from(link);
+      URL.revokeObjectURL(blobURL);
+      url = link = null;
+      const collected = !!globalThis.TestUtils;
+      if (collected) TestUtils.gc();
+      parent.postMessage({opaque: creator.opaque, collected,
+        string: creator.isSameOrigin(fromString),
+        url: creator.isSameOrigin(fromURL),
+        link: creator.isSameOrigin(fromLink)}, '*');
+    } catch (e) { parent.postMessage({error: e.message}, '*'); }
+  <\/script>`;
+  document.body.append(frame);
+  const result = await response;
+  assert_equals(result.error, undefined);
+  if (globalThis.TestUtils) assert_true(result.collected, 'Crane must execute the GC branch');
+  assert_true(result.opaque);
+  assert_true(result.url, 'URL extraction retains the blob creator origin');
+  assert_true(result.link, 'Hyperlink extraction retains the blob creator origin');
+}, 'Opaque blob creator identity survives extraction, revocation and GC');
+// Origin.from(string) uses the BASIC URL parser, which sets no blob URL entry,
+// so a blob:null/... string's origin is a new opaque origin (URL Standard,
+// url.md 2712-2724, 3946-3964): not the creator's. Codex row 45 D4 inferred
+// from Blink and WebKit source that browsers may keep the creator's origin
+// here; that is unconfirmed in a running browser, so this subtest pins the
+// spec text until someone checks (row 45 review S2).
+promise_test(async () => {
+  const result = await response;
+  assert_equals(result.error, undefined);
+  assert_false(result.string, 'String extraction makes a new opaque origin (basic URL parser, no blob URL entry)');
+}, 'A blob URL string extracts a new opaque origin, not the creator\'s');
+</script>

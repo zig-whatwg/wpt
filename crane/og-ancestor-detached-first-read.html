@@ -1,0 +1,21 @@
+<!doctype html>
+<title>First ancestorOrigins read after detachment</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  let frame = document.createElement('iframe');
+  document.body.append(frame);
+  const loc = frame.contentWindow.location;
+  frame.remove();
+  frame = null;
+  let list = loc.ancestorOrigins;
+  assert_array_equals(Array.from(list), []);
+  list.marker = 'retained';
+  list = null;
+  TestUtils.gc();
+  assert_equals(loc.ancestorOrigins.marker, 'retained');
+  assert_array_equals(Array.from(loc.ancestorOrigins), []);
+}, 'A Location with no relevant Document keeps an empty list through GC');
+</script>

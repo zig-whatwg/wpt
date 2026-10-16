@@ -1,0 +1,18 @@
+<!doctype html>
+<title>Origin records survive their source global</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  let frame = document.createElement('iframe');
+  document.body.append(frame);
+  const extracted = Origin.from(frame.contentWindow);
+  frame.remove();
+  frame = null;
+  TestUtils.gc();
+  assert_false(extracted.opaque);
+  assert_true(extracted.isSameOrigin(Origin.from(window)));
+  assert_true(extracted.isSameSite(Origin.from(window)));
+}, 'An extracted origin outlives the frame that supplied its shared origin record');
+</script>
