@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The install event: its extended lifetime, its global, importScripts()</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#installation-algorithm">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#wait-until-method">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#importscripts">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const scope = "resources/sw1-scope/install-rejects/";
+  const registration = await sw1Register(t, "resources/sw1-install-rejects.js", { scope });
+  const worker = registration.installing;
+  // Install step 12: installFailed - redundant, and the registration it made
+  // is removed.
+  await new Promise(resolve => {
+    worker.addEventListener("statechange", () => { if (worker.state === "redundant") resolve(); });
+  });
+  // Install step 12.2's task (installing is null) follows 12.1's
+  // (statechange to redundant).
+  await new Promise(resolve => step_timeout(resolve, 0));
+  assert_equals(registration.installing, null);
+  assert_equals(await navigator.serviceWorker.getRegistration(scope), undefined);
+}, "an install event whose waitUntil() promise rejects fails the installation");
+
+promise_test(async t => {
+  // The worker checks its own global during its install event: a failed
+  // check rejects the event's promise, and the worker never activates.
+  const registration = await sw1Register(t, "resources/sw1-global.js", { scope: "resources/sw1-scope/global/" });
+  await sw1WaitForState(registration.installing, "activated");
+}, "a service worker's global: registration, serviceWorker, InstallEvent, waitUntil()");
+
+promise_test(async t => {
+  const registration = await sw1Register(t, "resources/sw1-import.js", { scope: "resources/sw1-scope/import/" });
+  await sw1WaitForState(registration.installing, "activated");
+}, "importScripts() while evaluating, and again from the script resource map while installing");
+</script>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A service worker registration installs and activates, and every realm object follows it</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#register-algorithm">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#installation-algorithm">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#activation-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+// Register, Update, Install and Activate run on the Browser's service worker
+// job thread; the page hears each step as a task: the job promise resolved
+// with its registration object, updatefound, and the worker object's
+// statechanges - one object per worker and per registration in this realm.
+const script = "resources/sw1-empty.js";
+const scope = "resources/sw1-scope/lifecycle/";
+
+promise_test(async t => {
+  const registration = await sw1Register(t, script, { scope });
+  let updatefound = 0;
+  registration.onupdatefound = () => updatefound++;
+  assert_true(registration instanceof ServiceWorkerRegistration);
+  assert_equals(registration.scope, new URL(scope, location.href).href);
+  assert_equals(registration.updateViaCache, "imports");
+  const worker = registration.installing;
+  assert_true(worker instanceof ServiceWorker, "installing");
+  assert_equals(worker.scriptURL, new URL(script, location.href).href);
+  assert_equals(worker.state, "installing");
+  assert_equals(registration.waiting, null);
+  assert_equals(registration.active, null);
+
+  const states = [];
+  worker.addEventListener("statechange", () => states.push(worker.state));
+  await sw1WaitForState(worker, "activated");
+  assert_array_equals(states, ["installed", "activating", "activated"]);
+  assert_equals(updatefound, 1, "updatefound");
+  assert_equals(registration.installing, null);
+  assert_equals(registration.waiting, null);
+  assert_equals(registration.active, worker, "the same ServiceWorker object");
+
+  const found = await navigator.serviceWorker.getRegistration(scope);
+  assert_equals(found, registration, "getRegistration: the same object");
+  const all = await navigator.serviceWorker.getRegistrations();
+  assert_true(Object.isFrozen(all), "a frozen array");
+  assert_true(all.includes(registration), "getRegistrations");
+
+  assert_true(await registration.unregister(), "unregister");
+  assert_equals(await navigator.serviceWorker.getRegistration(scope), undefined);
+  // No client uses it: the registration is cleared, its worker redundant.
+  await new Promise(resolve => {
+    if (worker.state === "redundant") return resolve();
+    worker.addEventListener("statechange", () => { if (worker.state === "redundant") resolve(); });
+  });
+  assert_false(await registration.unregister(), "a second unregister finds nothing");
+}, "register, install, activate, getRegistration(s), unregister");
+
+promise_test(async t => {
+  const other = "resources/sw1-scope/lifecycle-again/";
+  const first = await sw1Register(t, script, { scope: other });
+  await sw1WaitForState(first.installing, "activated");
+  // Register step 5.2: the same script url, type and update via cache mode
+  // resolve with the registration, and nothing installs.
+  const again = await navigator.serviceWorker.register(script, { scope: other });
+  assert_equals(again, first);
+  assert_equals(again.installing, null);
+  // An unchanged script: update() resolves, and no worker installs.
+  let updatefound = false;
+  first.onupdatefound = () => { updatefound = true; };
+  assert_equals(await first.update(), first);
+  assert_false(updatefound);
+}, "registering again and updating an unchanged script install nothing");
+
+promise_test(async t => {
+  const changing = "resources/sw1-changing.py";
+  const changingScope = "resources/sw1-scope/changing/";
+  const registration = await sw1Register(t, changing, { scope: changingScope });
+  const first = registration.installing;
+  await sw1WaitForState(first, "activated");
+  const found = new Promise(resolve => { registration.onupdatefound = resolve; });
+  // The script's bytes changed: a new worker installs, and with no client
+  // using the registration it activates at once.
+  assert_equals(await registration.update(), registration);
+  await found;
+  const second = registration.installing;
+  assert_not_equals(second, null);
+  assert_not_equals(second, first);
+  await sw1WaitForState(second, "activated");
+  assert_equals(registration.active, second);
+  assert_equals(first.state, "redundant");
+}, "update() of a changed script installs and activates a new worker");
+</script>

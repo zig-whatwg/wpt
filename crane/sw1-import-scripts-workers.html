@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>importScripts() in dedicated and shared workers: fetched, run, rethrown - unchanged by service workers</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/workers.html#importing-scripts-and-libraries">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A service worker's importScripts() runs Service Workers 6.3.2's fetch hook;
+// a dedicated or shared worker's runs HTML's "fetch a classic
+// worker-imported script" and "run a classic script" with rethrow errors, as
+// before: the imported script runs, a missing one is a NetworkError, and what
+// one throws reaches the caller's catch.
+const body = `
+  const results = [];
+  try { importScripts("resources/sw1-imported.js"); results.push(self.sw1ImportedValue === 42 ? "ran" : "did not run"); }
+  catch (e) { results.push("threw " + e.name); }
+  try { importScripts("resources/sw1-does-not-exist.js"); results.push("missing did not throw"); }
+  catch (e) { results.push("missing " + e.name); }
+  try { importScripts("resources/sw1-throws.js"); results.push("throwing did not throw"); }
+  catch (e) { results.push("rethrown " + e.message); }
+`;
+const base = new URL("./", location.href).href;
+
+promise_test(async () => {
+  const blob = new Blob([`const b = ${JSON.stringify(base)};` +
+    body.replaceAll('"resources/', 'b + "resources/') + `postMessage(results);`], { type: "text/javascript" });
+  const worker = new Worker(URL.createObjectURL(blob));
+  const results = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error(e.message));
+  });
+  assert_array_equals(results, ["ran", "missing NetworkError", "rethrown sw1-throws"]);
+}, "a dedicated worker's importScripts()");
+
+promise_test(async () => {
+  const blob = new Blob([`const b = ${JSON.stringify(base)};` +
+    `onconnect = e => { ${body.replaceAll('"resources/', 'b + "resources/')} e.ports[0].postMessage(results); };`], { type: "text/javascript" });
+  const worker = new SharedWorker(URL.createObjectURL(blob));
+  const results = await new Promise((resolve, reject) => {
+    worker.port.onmessage = e => resolve(e.data);
+    worker.onerror = () => reject(new Error("error at the SharedWorker"));
+  });
+  assert_array_equals(results, ["ran", "missing NetworkError", "rethrown sw1-throws"]);
+}, "a shared worker's importScripts()");
+</script>

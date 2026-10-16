@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>register() rejects what Start Register, Register and Update refuse</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#start-register-algorithm">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#update-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+const base = "resources/sw1-scope/errors/";
+
+promise_test(t => promise_rejects_js(t, TypeError,
+  navigator.serviceWorker.register("ftp://example.com/sw.js", { scope: base + "ftp/" })),
+  "Start Register step 3: a script URL that is not http(s)");
+
+promise_test(t => promise_rejects_js(t, TypeError,
+  navigator.serviceWorker.register("resources/sw1-empty.js", { scope: base + "a%2fb/" })),
+  "Start Register step 9: an escaped slash in the scope's path");
+
+promise_test(t => promise_rejects_js(t, TypeError,
+  navigator.serviceWorker.register("resources/sw1-does-not-exist.js", { scope: base + "404/" })),
+  "a script that does not exist: a TypeError, as the browsers check the status first");
+
+promise_test(t => promise_rejects_dom(t, "SecurityError",
+  navigator.serviceWorker.register("resources/sw1-text-plain.js", { scope: base + "mime/" })),
+  "Update step 7: a script that is not a JavaScript MIME type");
+
+promise_test(t => promise_rejects_dom(t, "SecurityError",
+  navigator.serviceWorker.register("resources/sw1-empty.js", { scope: "/crane/" })),
+  "Update step 16: a scope above the script's directory");
+
+promise_test(async t => {
+  // Service-Worker-Allowed: /crane/ widens the maximum scope.
+  const registration = await sw1Register(t, "resources/sw1-allowed.js", { scope: "/crane/sw1-scope-allowed/" });
+  assert_equals(registration.scope, new URL("/crane/sw1-scope-allowed/", location.href).href);
+}, "Update step 14: Service-Worker-Allowed widens the maximum scope");
+
+promise_test(t => promise_rejects_js(t, TypeError,
+  navigator.serviceWorker.register("resources/sw1-throws.js", { scope: base + "throws/" })),
+  "Update step 16: a script that throws");
+
+promise_test(async t => {
+  await promise_rejects_js(t, TypeError,
+    navigator.serviceWorker.register("resources/sw1-import-missing.js", { scope: base + "import-missing/" }));
+  // Update step 16.2: the registration it made is removed.
+  assert_equals(await navigator.serviceWorker.getRegistration(base + "import-missing/"), undefined);
+}, "a script whose importScripts() fails");
+
+promise_test(t => promise_rejects_dom(t, "SecurityError",
+  navigator.serviceWorker.getRegistration("https://example.invalid/")),
+  "getRegistration() step 6: another origin's URL");
+
+promise_test(t => promise_rejects_js(t, TypeError,
+  navigator.serviceWorker.getRegistration("http://[")),
+  "getRegistration() step 4: a URL that does not parse");
+</script>

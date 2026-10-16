@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>skipWaiting() and clients.claim(): the page becomes controlled</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#service-worker-global-scope-skipwaiting">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#clients-claim">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+// The worker's scope is this page's URL (Service-Worker-Allowed: /crane/),
+// so Match Service Worker Registration finds it for this page: its activate
+// event claims the page, which hears controllerchange, and ready resolves.
+promise_test(async t => {
+  const container = navigator.serviceWorker;
+  assert_equals(container.controller, null, "not controlled at first");
+  const scope = location.pathname;
+  const changed = new Promise(resolve => { container.oncontrollerchange = resolve; });
+  const registration = await sw1Register(t, "resources/sw1-claim.js", { scope });
+  const worker = registration.installing;
+  await changed;
+  assert_equals(container.controller, worker, "the controller is the claiming worker's object");
+  assert_equals(await container.ready, registration, "ready");
+  assert_equals(container.ready, container.ready, "the same ready promise");
+  await sw1WaitForState(worker, "activated");
+}, "a worker that claims its clients controls this page");
+</script>
