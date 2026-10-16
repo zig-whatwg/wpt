@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tables whose collections outlived their wrappers, dropped unwrapped</title>
+<!-- Crane lane orphanleak: table, section and row elements keep their rows,
+     tBodies and cells collections in a state made when script first asks.
+     Their wrappers collected while they are in the tree, then the tree
+     dropped, leaves orphans whose state needs an exit. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const collect = () => { if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); } };
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<table><thead><tr><th>h</tr></thead><tbody><tr><td>1<td>2</tr></tbody>' +
+                   '<tfoot><tr><td>f</tr></tfoot></table>';
+  (() => {
+    const table = host.firstChild;
+    assert_equals(table.rows.length, 3);
+    assert_equals(table.tBodies.length, 1);
+    assert_equals(table.tHead.rows.length, 1);
+    assert_equals(table.tBodies[0].rows.length, 1);
+    assert_equals(table.tFoot.rows.length, 1);
+    assert_equals(table.rows[1].cells.length, 2);
+  })();
+  await tick();
+  collect();
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'table collections made by script, wrappers collected, tree dropped');
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<table><tr><td>1</tr></table>';
+  const table = host.firstChild;
+  const rows = table.rows;
+  host.innerHTML = '';
+  assert_equals(rows.length, 1);
+  assert_equals(table.rows, rows);
+}, 'a retained table keeps its live rows after its tree is dropped');
+</script>

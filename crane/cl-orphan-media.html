@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Media elements dropped while unwrapped leave nothing behind</title>
+<!-- Crane lane orphanleak: audio, video, source and track elements keep their
+     state from their creation; an orphaned one needs an exit for it, and for
+     the media resources it holds. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const collect = () => { if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); } };
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<video><source src="/media/2x2-green.webm" type="video/webm"><track src="t.vtt" kind=subtitles></video>' +
+                   '<audio></audio><audio><source src="/media/sound_5.oga"></audio>';
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'parsed media elements dropped unwrapped');
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<audio src="/media/sound_5.oga" preload=auto></audio>';
+  await tick();
+  collect();
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'a media element with a src, dropped unwrapped after its selection began');
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<video><source src="/media/2x2-green.webm"></video>';
+  const video = host.firstChild;
+  host.innerHTML = '';
+  assert_equals(video.firstChild.getAttribute('src'), '/media/2x2-green.webm');
+  assert_true(video.paused);
+}, 'a retained media element is intact after its tree is dropped');
+</script>

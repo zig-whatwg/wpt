@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Canvases dropped while unwrapped leave nothing behind</title>
+<!-- Crane lane orphanleak: a canvas's state (its context mode and context) is
+     made with the element; an orphaned canvas needs an exit for it. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const collect = () => { if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); } };
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<canvas width=4 height=4></canvas><canvas></canvas>';
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'parsed canvases dropped unwrapped');
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<canvas width=4 height=4></canvas>';
+  (() => {
+    const context = host.firstChild.getContext('2d');
+    assert_equals(host.firstChild.getContext('2d'), context);
+  })();
+  await tick();
+  collect();
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'a canvas with a 2d context, wrappers collected, tree dropped');
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<canvas width=4 height=4></canvas>';
+  const canvas = host.firstChild;
+  const context = canvas.getContext('2d');
+  host.innerHTML = '';
+  assert_equals(canvas.getContext('2d'), context);
+  assert_equals(context.canvas, canvas);
+}, 'a retained canvas keeps its context after its tree is dropped');
+</script>

@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow hosts dropped while unwrapped leave nothing behind</title>
+<!-- Crane lane orphanleak: an orphaned host's shadow root is orphaned with it;
+     the root's own state needs an exit. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const collect = () => { if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); } };
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.setHTMLUnsafe('<div><template shadowrootmode=open><span>in</span><slot></slot></template>light</div>');
+  // Read without wrapping the host: its light tree only.
+  assert_equals(host.innerHTML, '<div>light</div>');
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'a declarative shadow host dropped unwrapped');
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  (() => {
+    const element = host.appendChild(document.createElement('div'));
+    const root = element.attachShadow({ mode: 'closed' });
+    root.innerHTML = '<p>shadow</p>';
+    const sheet = new CSSStyleSheet();
+    root.adoptedStyleSheets = [sheet];
+  })();
+  await tick();
+  collect();
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'a scripted shadow host, wrappers collected, dropped');
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  const element = host.appendChild(document.createElement('div'));
+  const root = element.attachShadow({ mode: 'open' });
+  host.innerHTML = '';
+  assert_equals(element.shadowRoot, root);
+  assert_equals(root.host, element);
+}, 'a retained host keeps its shadow root after its tree is dropped');
+</script>

@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Link, style, details and attribute nodes dropped while unwrapped leave nothing behind</title>
+<!-- Crane lane orphanleak: these keep state in the runtime arena; what it
+     owns beyond its block needs an exit when the node is orphaned. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const collect = () => { if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); } };
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<style>p { color: red }</style><link rel=stylesheet href="data:text/css,p{}">' +
+                   '<details open><summary>s</summary>d</details>';
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'parsed style, link and details dropped unwrapped');
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<p title="t" lang="en" data-x="y">p</p><details><summary>s</summary></details>';
+  (() => {
+    const p = host.firstChild;
+    const attr = p.getAttributeNode('title');
+    attr.value = 'changed';
+    p.attributes.lang.value = 'fr';
+    p.removeAttributeNode(p.getAttributeNode('data-x'));
+    host.lastChild.open = true;
+  })();
+  await tick();
+  collect();
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'attribute nodes and a toggled details, wrappers collected, dropped');
+</script>

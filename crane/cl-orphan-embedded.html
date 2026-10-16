@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Embedded content elements dropped while unwrapped leave nothing behind</title>
+<!-- Crane lane orphanleak: embed, object, iframe and frame elements keep
+     state in the runtime arena; what it owns beyond its block needs an exit
+     when the element is orphaned. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const collect = () => { if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); } };
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<embed type="text/plain"><object type="text/plain"></object><iframe name=f allow="" width=3></iframe>';
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'parsed embedded content dropped unwrapped');
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  (() => {
+    host.appendChild(document.createElement('frame'));
+    const object = host.appendChild(document.createElement('object'));
+    object.setCustomValidity('object error');
+    const iframe = host.appendChild(document.createElement('iframe'));
+    iframe.name = 'named';
+    iframe.allow = 'fullscreen';
+    iframe.width = '10';
+    iframe.referrerPolicy = 'no-referrer';
+    iframe.loading = 'lazy';
+    iframe.sandbox.add('allow-scripts');
+  })();
+  await tick();
+  collect();
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'embedded content with script-set state, wrappers collected, dropped');
+</script>

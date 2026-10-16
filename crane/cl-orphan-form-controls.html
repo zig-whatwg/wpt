@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form controls dropped while unwrapped leave nothing behind</title>
+<!-- Crane lane orphanleak: a node removed from its tree while script holds no
+     wrapper of it is an orphan nothing deinits; its state needs an exit
+     (dom.teardown_sweeps). The leak check is the runner's allocator report at
+     its end; the cases check the controls still work. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const tick = () => new Promise(resolve => step_timeout(resolve, 0));
+const collect = () => { if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); } };
+
+test(() => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<form><fieldset><legend>l</legend><button>b</button><output>o</output>' +
+                   '<select><option>1<option selected>2</select></fieldset></form>';
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'parsed form controls dropped unwrapped');
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<form><button>b</button><select required><option value="">none</select>' +
+                   '<input required><textarea required></textarea></form>';
+  // Matching :valid and :invalid reads each control's validity natively
+  // (form_associated.validationState), which makes a button's and a
+  // select's state - while nothing wraps them. The static list the query
+  // returns holds its nodes; it goes first, then the tree.
+  assert_equals(host.querySelectorAll(':valid, :invalid').length, 5);
+  await tick();
+  collect();
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'controls whose state constraint matching made, dropped unwrapped');
+
+test(() => {
+  // A cloned fragment's children are not wrapped: an input whose clone took
+  // the source's dirty value (its cloning steps) is unwrapped in the tree.
+  const source = document.createElement('input');
+  source.value = 'dirty value';
+  const fragment = document.createDocumentFragment();
+  fragment.append(source);
+  const host = document.body.appendChild(document.createElement('div'));
+  host.append(fragment.cloneNode(true));
+  assert_equals(host.innerHTML, '<input>');
+  host.innerHTML = '';
+  assert_equals(host.childNodes.length, 0);
+}, 'a cloned input with a dirty value, dropped unwrapped');
+
+promise_test(async () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.innerHTML = '<div><form><input name=past></form></div>';
+  (() => {
+    const form = host.querySelector('form');
+    assert_equals(form.past, form.firstChild);
+    form.firstChild.name = 'renamed';
+    assert_equals(form.past, form.firstChild, 'the past names map keeps the old name');
+    form.setAttribute('name', 'f');
+  })();
+  await tick();
+  collect();
+  host.innerHTML = '';
+  await tick();
+  collect();
+  assert_equals(host.childNodes.length, 0);
+}, 'a form with past names, its tree replaced');
+
+test(() => {
+  const button = document.createElement('button');
+  button.setCustomValidity('kept');
+  const host = document.body.appendChild(document.createElement('div'));
+  host.appendChild(button);
+  host.innerHTML = '';
+  assert_equals(button.validationMessage, 'kept');
+  assert_false(button.checkValidity());
+}, 'a retained control keeps its custom validity after its tree is dropped');
+</script>
