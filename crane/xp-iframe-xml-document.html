@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an XML document an iframe navigates to is parsed as XML</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#read-xml">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/xhtml.html#xml-parser">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function load(src) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    iframe.onload = () => resolve(iframe);
+    iframe.src = src;
+    document.body.appendChild(iframe);
+  });
+}
+
+promise_test(async () => {
+  const iframe = await load("resources/xp-document.xml");
+  const doc = iframe.contentDocument;
+  assert_equals(doc.contentType, "application/xml");
+  assert_equals(doc.characterSet, "UTF-8");
+  assert_equals(doc.readyState, "complete");
+  assert_equals(doc.doctype.name, "root");
+  const root = doc.documentElement;
+  assert_equals(root.localName, "root");
+  assert_equals(root.namespaceURI, "urn:root");
+  assert_equals(root.getAttributeNS("urn:x", "a"), "1");
+  assert_equals(root.firstChild.data, "hello ", "an internal entity's replacement text");
+  const child = root.children[0];
+  assert_equals(child.namespaceURI, "urn:x");
+  assert_equals(child.prefix, "x");
+  assert_equals(child.childNodes[0].data, "A&");
+  assert_equals(child.childNodes[1].nodeType, Node.CDATA_SECTION_NODE);
+  assert_equals(root.lastChild.nodeType, Node.COMMENT_NODE);
+  assert_equals(doc.childNodes[1].nodeType, Node.PROCESSING_INSTRUCTION_NODE, "the xml-stylesheet PI is a node");
+}, "An XML document's tree, namespaces, entities and doctype");
+
+promise_test(async () => {
+  const iframe = await load("resources/xp-ill-formed.xml");
+  const doc = iframe.contentDocument;
+  assert_equals(doc.documentElement.localName, "root");
+  const block = doc.documentElement.firstElementChild;
+  assert_equals(block.localName, "parsererror");
+  assert_equals(block.namespaceURI, "http://www.w3.org/1999/xhtml");
+  assert_equals(doc.documentElement.children[1].textContent, "kept");
+}, "An ill-formed one keeps its tree up to the error, the message block first");
+
+promise_test(async () => {
+  const message = new Promise(resolve => {
+    window.addEventListener("message", function listener(e) {
+      if (typeof e.data === "string" && e.data.startsWith("xp-script:")) {
+        window.removeEventListener("message", listener);
+        resolve(e.data);
+      }
+    });
+  });
+  const iframe = await load("resources/xp-script.xhtml");
+  assert_equals(await message, "xp-script:application/xhtml+xml:true");
+  assert_equals(iframe.contentDocument.documentElement.getAttribute("data-ran"), "too-early",
+                "a script runs at its end tag, before the rest is parsed");
+  assert_true(iframe.contentDocument.body instanceof iframe.contentWindow.HTMLBodyElement);
+}, "An XHTML document's scripts run as the XML parser meets them");
+</script>

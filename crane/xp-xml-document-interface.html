@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: the XML parser's documents are XMLDocuments, as the browsers make them</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-domparser-parsefromstring">
+<!--
+  HTML says DOMParser makes "a new Document", XHR "a document" and a
+  navigation a Document of type "xml". Chrome, Firefox and Safari make an
+  XMLDocument in each case (wpt.fyi: all three fail
+  domparsing/DOMParser-parseFromString-xml.html's "XMLDocument interface"
+  subtests). Crane follows the browsers (golden rule 2).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+test(() => {
+  for (const type of ["text/xml", "application/xml", "application/xhtml+xml", "image/svg+xml"]) {
+    const doc = new DOMParser().parseFromString("<x/>", type);
+    assert_true(doc instanceof XMLDocument, type);
+    assert_equals(Object.getPrototypeOf(doc), XMLDocument.prototype, type);
+  }
+  assert_false(new DOMParser().parseFromString("<x/>", "text/html") instanceof XMLDocument, "text/html");
+}, "DOMParser's XML documents");
+
+test(() => {
+  const doc = document.implementation.createDocument(null, "x");
+  assert_true(doc instanceof XMLDocument);
+  assert_true(doc.cloneNode(true) instanceof XMLDocument);
+}, "createDocument, and a clone of its document");
+
+test(() => {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", "data:application/xml,<x/>", false);
+  xhr.send();
+  assert_true(xhr.responseXML instanceof XMLDocument);
+}, "XHR's XML document response");
+
+promise_test(async () => {
+  const iframe = document.createElement("iframe");
+  await new Promise(resolve => {
+    iframe.onload = resolve;
+    iframe.src = "resources/xp-document.xml";
+    document.body.appendChild(iframe);
+  });
+  assert_true(iframe.contentDocument instanceof iframe.contentWindow.XMLDocument);
+}, "An XML document an iframe loads");
+</script>

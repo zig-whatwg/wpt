@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE root [ <!ENTITY greeting "hello"> ]>
+<?xml-stylesheet href="nowhere.css"?>
+<root xmlns="urn:root" xmlns:x="urn:x" x:a="1">&greeting; <x:child>&#x41;&amp;<![CDATA[<raw>]]></x:child><!-- note --></root>

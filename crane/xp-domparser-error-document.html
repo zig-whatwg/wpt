@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: DOMParser's XML error document is Chrome's and Safari's</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-domparser-parsefromstring">
+<!--
+  HTML's step 4 (and Firefox) make a document holding only a parsererror in
+  the Mozilla namespace. Chrome and Safari keep the tree built up to the
+  first error and insert an XHTML parsererror block as the document
+  element's first child (XMLErrors::insertErrorMessageBlock in both). Crane
+  follows the majority (golden rule 2).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const XHTML = "http://www.w3.org/1999/xhtml";
+const SVG = "http://www.w3.org/2000/svg";
+
+function parse(text) {
+  return new DOMParser().parseFromString(text, "application/xml");
+}
+
+function checkBlock(block) {
+  assert_equals(block.localName, "parsererror");
+  assert_equals(block.namespaceURI, XHTML);
+  assert_equals(block.children.length, 3);
+  assert_equals(block.children[0].localName, "h3");
+  assert_equals(block.children[0].textContent, "This page contains the following errors:");
+  assert_equals(block.children[1].localName, "div");
+  assert_regexp_match(block.children[1].textContent, /^error on line \d+ at column \d+: /);
+  assert_equals(block.children[2].textContent, "Below is a rendering of the page up to the first error.");
+}
+
+test(() => {
+  const doc = parse("<root><a>kept</a><b>");
+  assert_equals(doc.documentElement.localName, "root");
+  assert_equals(doc.documentElement.namespaceURI, null);
+  checkBlock(doc.documentElement.firstElementChild);
+  assert_equals(doc.documentElement.children[1].localName, "a");
+  assert_equals(doc.documentElement.children[1].textContent, "kept");
+  assert_equals(doc.getElementsByTagName("parsererror").length, 1);
+}, "The tree before the error stays, the block first in its root");
+
+test(() => {
+  const doc = parse("");
+  assert_equals(doc.documentElement.localName, "html");
+  assert_equals(doc.documentElement.namespaceURI, XHTML);
+  const body = doc.documentElement.firstElementChild;
+  assert_equals(body.localName, "body");
+  checkBlock(body.firstElementChild);
+}, "With no root, html and body hold the block");
+
+test(() => {
+  const doc = parse(`<svg xmlns="${SVG}"><g>`);
+  assert_equals(doc.documentElement.localName, "html");
+  const [head, body] = doc.documentElement.children;
+  assert_equals(head.localName, "head");
+  assert_equals(head.firstElementChild.localName, "style");
+  checkBlock(body.firstElementChild);
+  assert_equals(body.children[1].localName, "svg");
+  assert_equals(body.children[1].namespaceURI, SVG);
+}, "An SVG root moves into a body after the block");
+
+test(() => {
+  const doc = parse("<a>&nbsp;</a>");
+  checkBlock(doc.documentElement.firstElementChild);
+  assert_regexp_match(doc.querySelector("parsererror div").textContent, /nbsp/);
+}, "An undeclared entity is an error the block names");
+
+test(() => {
+  const doc = new DOMParser().parseFromString(
+    '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" ""><html xmlns="' + XHTML + '">&nbsp;&times;</html>',
+    "application/xhtml+xml");
+  assert_equals(doc.getElementsByTagName("parsererror").length, 0);
+  assert_equals(doc.documentElement.textContent, " ×");
+}, "An XHTML DTD's public identifier declares the HTML named references");
+</script>

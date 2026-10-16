@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an XML document's fragments parse with the XML fragment parsing algorithm</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/xhtml.html#parsing-xml-fragments">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const XHTML = "http://www.w3.org/1999/xhtml";
+
+function xmlDocument() {
+  return new DOMParser().parseFromString(
+    '<r xmlns="urn:r" xmlns:p="urn:p"><c/></r>', "application/xml");
+}
+
+test(() => {
+  const c = xmlDocument().querySelector("c");
+  c.innerHTML = '<d/><p:e/>text<!--x--><?pi data?>';
+  assert_equals(c.childNodes.length, 5);
+  assert_equals(c.childNodes[0].namespaceURI, "urn:r", "the default namespace in scope");
+  assert_equals(c.childNodes[1].namespaceURI, "urn:p", "a prefix in scope");
+  assert_equals(c.childNodes[1].prefix, "p");
+  assert_equals(c.childNodes[2].data, "text");
+  assert_equals(c.childNodes[3].nodeType, Node.COMMENT_NODE);
+  assert_equals(c.childNodes[4].nodeType, Node.PROCESSING_INSTRUCTION_NODE);
+}, "innerHTML parses as XML, in the context's namespaces");
+
+test(() => {
+  const c = xmlDocument().querySelector("c");
+  c.innerHTML = "<keep/>";
+  assert_throws_dom("SyntaxError", () => { c.innerHTML = "<d>"; });
+  assert_throws_dom("SyntaxError", () => { c.innerHTML = "<q:d/>"; });
+  assert_throws_dom("SyntaxError", () => { c.innerHTML = "<A></a>"; });
+  assert_equals(c.firstChild.localName, "keep", "the children are left as they were");
+}, "A string that is not well-formed throws SyntaxError");
+
+test(() => {
+  const doc = document.implementation.createDocument(XHTML, "html", null);
+  const body = doc.createElementNS(XHTML, "body");
+  doc.documentElement.appendChild(body);
+  body.innerHTML = '<template id="t"><div>x</div></template><P>y</P>';
+  const template = doc.getElementById("t");
+  assert_true(template instanceof HTMLTemplateElement);
+  assert_equals(template.childNodes.length, 0);
+  assert_equals(template.content.firstChild.localName, "div");
+  assert_equals(body.lastChild.localName, "P", "XML keeps the name's case");
+}, "An XHTML document's template contents and case-sensitive names");
+
+test(() => {
+  const doc = xmlDocument();
+  const c = doc.querySelector("c");
+  c.innerHTML = '<script xmlns="' + XHTML + '">window.xpRan = true;<\/script>';
+  document.body.appendChild(document.importNode(c.firstChild, true));
+  assert_equals(window.xpRan, undefined);
+}, "A script the XML fragment parser makes is already started");
+
+test(() => {
+  const doc = xmlDocument();
+  doc.querySelector("c").outerHTML = "<x/><p:y/>";
+  const root = doc.documentElement;
+  assert_equals(root.childNodes.length, 2);
+  assert_equals(root.childNodes[0].namespaceURI, "urn:r");
+  assert_equals(root.childNodes[1].namespaceURI, "urn:p");
+}, "outerHTML on an XML element parses its replacement as XML, in its parent's namespaces");
+</script>
