@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MIDI validates its second descriptor conversion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const second of ["bogus", undefined, Symbol("name")]) {
+  promise_test(async t => {
+    let reads = 0;
+    let sysexRead = false;
+    const result = navigator.permissions.query({
+      get name() { return ++reads === 1 ? "midi" : second; },
+      get sysex() { sysexRead = true; return true; }
+    });
+    await promise_rejects_js(t, TypeError, result);
+    assert_equals(reads, 2);
+    assert_false(sysexRead);
+  }, `MIDI rejects an invalid second name (${String(second)}) before reading sysex`);
+}
+
+promise_test(t => promise_rejects_exactly(t, undefined, navigator.permissions.query({
+  name: "midi", get sysex() { throw undefined; }
+})), "An undefined exception from sysex is preserved as the promise rejection");
+</script>

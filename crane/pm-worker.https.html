@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WorkerNavigator permissions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const source = `
+    (async () => {
+      try {
+        const permissions = navigator.permissions;
+        const status = await permissions.query({name: "geolocation"});
+        let events = 0;
+        status.onchange = () => ++events;
+        status.dispatchEvent(new Event("change"));
+        postMessage({same: permissions === navigator.permissions,
+          permissions: permissions instanceof Permissions,
+          status: status instanceof PermissionStatus,
+          target: status instanceof EventTarget,
+          name: status.name, state: status.state, events});
+      } catch (e) { postMessage({error: String(e)}); }
+    })();`;
+  const url = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const worker = new Worker(url);
+  t.add_cleanup(() => worker.terminate());
+  const result = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = reject;
+  });
+  assert_false("error" in result, result.error);
+  assert_true(result.same);
+  assert_true(result.permissions);
+  assert_true(result.status);
+  assert_true(result.target);
+  assert_equals(result.name, "geolocation");
+  assert_in_array(result.state, ["granted", "denied", "prompt"]);
+  assert_equals(result.events, 1);
+}, "Workers expose SameObject permissions and query an EventTarget PermissionStatus");
+</script>

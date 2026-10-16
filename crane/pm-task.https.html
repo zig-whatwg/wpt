@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permission query settles in a task</title>
+<link rel="help" href="https://w3c.github.io/permissions/#query-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  let settled = false;
+  const result = navigator.permissions.query({name: "geolocation"});
+  result.then(() => { settled = true; });
+  await Promise.resolve();
+  assert_false(settled, "query must still be pending after the microtask checkpoint");
+  const status = await result;
+  assert_true(settled);
+  assert_equals(status.name, "geolocation");
+}, "query resolves from a later task, after descriptor conversion");
+</script>

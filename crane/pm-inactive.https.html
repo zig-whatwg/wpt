@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permission query in a detached frame</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body></body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  await new Promise(resolve => {
+    frame.onload = resolve;
+    frame.src = "/common/blank.html";
+    document.body.appendChild(frame);
+  });
+  const win = frame.contentWindow;
+  const permissions = win.navigator.permissions;
+  const exception = win.DOMException;
+  await permissions.query({name: "geolocation"});
+  frame.remove();
+  let read = false;
+  const result = permissions.query({get name() { read = true; return "unknown"; }});
+  await promise_rejects_dom(t, "InvalidStateError", exception, result);
+  assert_false(read);
+}, "Detached-frame query rejects before descriptor conversion in the method's realm");
+</script>

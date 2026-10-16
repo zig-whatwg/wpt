@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permissions objects survive collection while reachable</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const marker = {};
+  (() => { navigator.permissions.marker = marker; })();
+  TestUtils.gc();
+  assert_equals(navigator.permissions.marker, marker);
+  const status = await navigator.permissions.query({name: "geolocation"});
+  status.marker = marker;
+  let events = 0;
+  status.onchange = () => ++events;
+  TestUtils.gc();
+  assert_equals(status.marker, marker);
+  assert_equals(status.name, "geolocation");
+  assert_in_array(status.state, ["granted", "denied", "prompt"]);
+  status.dispatchEvent(new Event("change"));
+  assert_equals(events, 1);
+}, "Navigator keeps its permissions child and a retained status keeps its own data");
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permission query tasks are released when an iframe is detached</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body></body>
+<script>
+promise_test(async t => {
+  for (let iteration = 0; iteration < 4; ++iteration) {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    await new Promise(resolve => {
+      frame.onload = resolve;
+      frame.src = "/common/blank.html";
+      document.body.appendChild(frame);
+    });
+    const pending = frame.contentWindow.navigator.permissions.query({name: "geolocation"});
+    assert_true(typeof pending.then === "function");
+    frame.remove();
+    TestUtils.gc();
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+}, "Detaching a frame with pending permission queries safely drops their tasks");
+</script>

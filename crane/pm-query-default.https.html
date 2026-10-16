@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane's ungoverned permission default in a secure context</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  assert_true(isSecureContext);
+  const result = await navigator.permissions.query({name: "geolocation"});
+  assert_equals(result.state, "prompt");
+}, "The testing platform's ungoverned default is prompt in a secure context");
+</script>

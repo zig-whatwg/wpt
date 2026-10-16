@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permission descriptor conversions follow the supported browser behavior</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const name of ["geolocation", "notifications", "push", "camera", "microphone", "persistent-storage", "storage-access", "screen-wake-lock"]) {
+  promise_test(async () => {
+    let reads = 0;
+    const result = await navigator.permissions.query({
+      get name() { ++reads; return name; },
+      get userVisibleOnly() { throw "must not read userVisibleOnly"; },
+      get panTiltZoom() { throw "must not read panTiltZoom"; },
+      get sysex() { throw "must not read sysex"; }
+    });
+    assert_equals(result.name, name);
+    assert_equals(reads, 1);
+  }, `${name} reads its name once and ignores unrelated extension members`);
+}
+
+promise_test(async () => {
+  let reads = 0;
+  const result = await navigator.permissions.query({
+    get name() { return ++reads === 1 ? "midi" : "geolocation"; },
+    sysex: true
+  });
+  assert_equals(reads, 2);
+  assert_equals(result.name, "midi");
+}, "MIDI's second conversion preserves the initially selected permission kind");
+</script>

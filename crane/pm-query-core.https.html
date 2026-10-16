@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permissions query descriptors and PermissionStatus</title>
+<link rel="help" href="https://w3c.github.io/permissions/#query-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_true(navigator.permissions instanceof Permissions);
+  assert_equals(navigator.permissions, navigator.permissions);
+}, "Navigator.permissions is a Permissions object and SameObject");
+
+promise_test(async () => {
+  const first = await navigator.permissions.query({name: "geolocation"});
+  const second = await navigator.permissions.query({name: "geolocation"});
+  assert_true(first instanceof PermissionStatus);
+  assert_true(first instanceof EventTarget);
+  assert_not_equals(first, second);
+  assert_equals(first.name, "geolocation");
+  assert_in_array(first.state, ["granted", "denied", "prompt"]);
+  assert_equals(first.onchange, null);
+  let count = 0;
+  const handler = () => ++count;
+  first.onchange = handler;
+  assert_equals(first.onchange, handler);
+  first.dispatchEvent(new Event("change"));
+  assert_equals(count, 1);
+  first.onchange = null;
+  first.dispatchEvent(new Event("change"));
+  assert_equals(count, 1);
+}, "Each query creates a status with name, state and a working onchange attribute");
+
+for (const name of ["", "not-a-permission", "Geolocation", "geolocation ", "geolocation\0", "midi\0junk"]) {
+  promise_test(t => promise_rejects_js(t, TypeError, navigator.permissions.query({name})),
+    `Unsupported name ${JSON.stringify(name)} rejects with TypeError`);
+}
+
+for (const value of [undefined, null, true, 1, "geolocation", Symbol("permission")]) {
+  promise_test(t => promise_rejects_js(t, TypeError, navigator.permissions.query(value)),
+    `Non-object descriptor ${String(value)} rejects with TypeError`);
+}
+
+promise_test(t => promise_rejects_js(t, TypeError, navigator.permissions.query({})),
+  "Missing required name rejects with TypeError");
+promise_test(t => promise_rejects_js(t, TypeError, navigator.permissions.query({name: Symbol()})),
+  "A Symbol name rejects with TypeError");
+promise_test(async () => {
+  const descriptor = Object.create({name: {toString() { return "geolocation"; }}});
+  assert_equals((await navigator.permissions.query(descriptor)).name, "geolocation");
+}, "Descriptor conversion reads inherited names and applies DOMString conversion");
+
+for (const reason of [undefined, null, 17, "sentinel", {marker: true}]) {
+  promise_test(t => promise_rejects_exactly(t, reason, navigator.permissions.query({
+    get name() { throw reason; }
+  })), `A throwing name getter rejects with the exact ${String(reason)} value`);
+}
+
+promise_test(async () => {
+  const reads = [];
+  const result = await navigator.permissions.query({
+    get name() { reads.push("name"); return "midi"; },
+    get sysex() { reads.push("sysex"); return {valueOf() { throw "must not coerce"; }}; }
+  });
+  assert_equals(result.name, "midi");
+  assert_array_equals(reads, ["name", "name", "sysex"]);
+}, "MIDI performs the base and derived dictionary conversions in order");
+
+promise_test(async t => {
+  const reason = {secondConversion: true};
+  let reads = 0;
+  await promise_rejects_exactly(t, reason, navigator.permissions.query({
+    get name() { if (++reads === 2) throw reason; return "midi"; }
+  }));
+  assert_equals(reads, 2);
+}, "An exception from the second dictionary conversion rejects unchanged");
+
+promise_test(async () => {
+  const descriptor = {name: "geolocation"};
+  const promise = navigator.permissions.query(descriptor);
+  descriptor.name = "notifications";
+  assert_equals((await promise).name, "geolocation");
+}, "query copies its descriptor before returning");
+</script>
