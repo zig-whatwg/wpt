@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A resizable ArrayBuffer transferred to a worker and back stays resizable</title>
+<!-- HTML StructuredSerializeWithTransfer step 5.4.1 ("ResizableArrayBuffer" data holder) and
+     StructuredDeserializeWithTransfer step 3.3: [[ArrayBufferMaxByteLength]] crosses with the
+     buffer, so a length-tracking view of it deserializes and tracks its length. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function roundTrip(worker, data, transfer) {
+  return new Promise(resolve => {
+    worker.onmessage = e => resolve(e.data);
+    worker.postMessage({ data, transfer }, transfer);
+  });
+}
+
+promise_test(async t => {
+  const worker = new Worker("resources/ser-resizable-echo-worker.js");
+  t.add_cleanup(() => worker.terminate());
+  const ab = new ArrayBuffer(8, { maxByteLength: 64 });
+  new Uint8Array(ab)[7] = 42;
+  const view = new Uint8Array(ab);
+  const back = (await roundTrip(worker, { view }, [ab])).data;
+  assert_equals(ab.byteLength, 0, "the sender's buffer is detached");
+  assert_true(back.view.buffer.resizable);
+  assert_equals(back.view.buffer.maxByteLength, 64);
+  assert_equals(back.view[7], 42);
+  back.view.buffer.resize(16);
+  assert_equals(back.view.length, 16, "the view tracks the buffer's length");
+}, "a length-tracking view of a transferred resizable buffer");
+</script>

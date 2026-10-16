@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A transferred MessagePort inside the message arrives as the transferred port</title>
+<!-- HTML StructuredSerializeWithTransfer step 2.4 puts every transfer-list object in memory before
+     the value is serialized; StructuredDeserializeWithTransfer steps 3.5 and 4 resolve the value's
+     references to the objects the transfer-receiving steps made. So postMessage(port, [port]) and
+     postMessage({ port }, [port]) deliver the received port inside the data, not a DataCloneError. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const worker = new Worker("resources/ser-port-in-value-worker.js");
+  const channel = new MessageChannel();
+  const reply = new Promise(resolve => channel.port1.onmessage = e => resolve(e.data));
+  worker.postMessage(channel.port2, [channel.port2]);
+  assert_array_equals(await reply, [true, true]);
+  worker.terminate();
+}, "worker.postMessage(port, [port]): the worker receives the port as the message");
+
+promise_test(async () => {
+  const channel = new MessageChannel();
+  const received = new Promise(resolve => window.addEventListener("message", e => resolve(e), { once: true }));
+  window.postMessage({ port: channel.port2, again: [channel.port2] }, "*", [channel.port2]);
+  const e = await received;
+  assert_true(e.data.port instanceof MessagePort);
+  assert_equals(e.data.port, e.ports[0], "the data's port is the event's port");
+  assert_equals(e.data.again[0], e.ports[0], "one port, however often the data refers to it");
+  const echo = new Promise(resolve => channel.port1.onmessage = m => resolve(m.data));
+  e.data.port.postMessage("through the received port");
+  assert_equals(await echo, "through the received port");
+}, "window.postMessage({ port }, '*', [port]): the data refers to the received port");
+
+promise_test(async () => {
+  const channel = new MessageChannel();
+  const other = new MessageChannel();
+  assert_throws_dom("DataCloneError", () => window.postMessage({ port: channel.port1 }, "*", [other.port1]));
+}, "a port in the data but not in the transfer list is still a DataCloneError");
+</script>
