@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="windows-1252">
+<title>XHR open uses the relevant document's encoding</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [query, expected] of [["\u00df", "%DF"], ["\uD800", "%26%2365533%3B"], ["\uD83D\uDE80", "%26%23128640%3B"]]) {
+  test(() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/xhr/resources/content.py?" + query, false);
+    xhr.send();
+    assert_equals(xhr.getResponseHeader("x-request-query"), expected);
+  }, "Document encoding query " + expected);
+}
+</script>

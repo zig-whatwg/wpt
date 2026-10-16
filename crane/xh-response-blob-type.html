@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>XHR response Blob type preserves serialized MIME values</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [input, expected] of [['TEXT/PLAIN;CHARSET=GBK', 'text/plain;charset=GBK'], ['text/plain;name="ÿ"', 'text/plain;name="ÿ"']]) {
+  promise_test(t => new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest(); x.open('GET', '/xhr/resources/content.py');
+    x.responseType = 'blob'; x.overrideMimeType(input);
+    x.onload = t.step_func(() => { assert_equals(x.response.type, expected); resolve(); });
+    x.onerror = () => reject(new Error('network error')); x.send();
+  }), 'XHR serialized MIME: ' + input);
+}
+</script>

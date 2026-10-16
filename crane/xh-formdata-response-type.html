@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FormData preserves a response Blob's type</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/xhr/resources/content.py');
+  xhr.responseType = 'blob';
+  xhr.overrideMimeType('text/plain;charset=GBK');
+  const loaded = new Promise((resolve, reject) => {
+    xhr.onload = resolve;
+    xhr.onerror = reject;
+  });
+  xhr.send();
+  await loaded;
+  const data = new FormData();
+  data.append('append', xhr.response);
+  data.set('set', xhr.response);
+  assert_equals(data.get('append').type, xhr.response.type, 'append preserves the type');
+  assert_equals(data.get('set').type, xhr.response.type, 'set preserves the type');
+}, 'Converting a response Blob to a FormData File preserves its type');
+</script>

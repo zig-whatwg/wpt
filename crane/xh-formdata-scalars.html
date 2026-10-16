@@ -1,0 +1,17 @@
+<!doctype html>
+<title>FormData entry construction converts DOM strings to scalar strings</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const form = document.createElement("form");
+  const input = document.createElement("input");
+  input.name = "name\uD800";
+  input.value = "a\uDC00b\uD83D\uDE80";
+  form.appendChild(input);
+  const data = new FormData(form);
+  assert_equals(data.get("name\uFFFD"), "a\uFFFDb\uD83D\uDE80");
+  assert_array_equals(Array.from(data.keys()), ["name\uFFFD"]);
+}, "FormData(form) normalizes lone surrogates in both the control name and value");
+</script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<title>XHR serializes document bodies as UTF-8</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const html of [false, true]) {
+  test(() => {
+    const doc = html ? document.implementation.createHTMLDocument("") : document.implementation.createDocument(null, "root");
+    const node = html ? doc.body : doc.documentElement;
+    node.textContent = "a\uD800b\uDC00c\uD83D\uDE80";
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/xhr/resources/content.py?response_charset_label=UTF-8", false);
+    xhr.send(doc);
+    assert_equals(xhr.getResponseHeader("X-Request-Content-Type"), (html ? "text/html" : "application/xml") + ";charset=UTF-8");
+    assert_true(xhr.responseText.includes("a\uFFFDb\uFFFDc\uD83D\uDE80"));
+  }, (html ? "HTML" : "XML") + " document serialization replaces lone surrogates and keeps pairs");
+}
+test(() => {
+  const doc = document.implementation.createDocument(null, null);
+  doc.appendChild(doc.createElement("test:test"));
+  doc.documentElement.setAttribute("x", "\uD800");
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/xhr/resources/content.py?response_charset_label=UTF-8", false);
+  xhr.setRequestHeader("Content-Type", "Text/XML; custom=KeEp; charset=windows-1252");
+  xhr.send(doc);
+  assert_equals(xhr.responseText, '<test:test x="\uFFFD"/>');
+  assert_equals(xhr.getResponseHeader("X-Request-Content-Type"), "text/xml;custom=KeEp;charset=UTF-8");
+}, "XML send permits serialization errors and rewrites only the charset");
+</script>

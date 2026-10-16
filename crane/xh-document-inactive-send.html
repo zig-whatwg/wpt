@@ -1,0 +1,24 @@
+<!doctype html><title>Inactive document send</title><body>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+// The XHR Standard checks "fully active" only in open() step 1; send() has no
+// such step. Browsers split three ways after the iframe is removed (Chrome
+// NetworkError, Firefox InvalidStateError, Safari no exception); with no
+// majority the spec decides (Crane golden rule 2), so send() does not throw.
+test(() => {
+  const f = document.createElement('iframe'); document.body.append(f);
+  const XHR = f.contentWindow.XMLHttpRequest;
+  const xhr = new XHR();
+  xhr.open('GET', '/xhr/resources/content.py');
+  f.remove();
+  xhr.send();
+}, 'send() on a request opened before its document became inactive does not throw (spec; three-way browser split)');
+test(() => {
+  const f = document.createElement('iframe'); document.body.append(f);
+  const XHR = f.contentWindow.XMLHttpRequest;
+  const DOMException = f.contentWindow.DOMException;
+  const xhr = new XHR();
+  f.remove();
+  assert_throws_dom('InvalidStateError', DOMException, () => xhr.open('GET', '/xhr/resources/content.py'));
+}, 'open() rejects an inactive document (XHR open() step 1)');
+</script>

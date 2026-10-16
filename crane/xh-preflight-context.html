@@ -1,0 +1,17 @@
+<!doctype html><title>Partitioned preflight child</title><body><script>
+const q = new URLSearchParams(location.search);
+if (q.get('role') === 'top') {
+  const frame = document.createElement('iframe');
+  frame.src = q.get('frame');
+  addEventListener('message', event => {
+    if (event.source === frame.contentWindow) opener.postMessage(event.data, '*');
+  });
+  document.body.append(frame);
+} else {
+  const xhr = new XMLHttpRequest();
+  xhr.open('PUT', q.get('url'));
+  xhr.onload = () => parent.postMessage({token:q.get('token'), preflight:xhr.getResponseHeader('x-did-preflight')}, '*');
+  xhr.onerror = () => parent.postMessage({token:q.get('token'), error:true}, '*');
+  xhr.send();
+}
+</script>

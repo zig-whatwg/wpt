@@ -1,0 +1,16 @@
+<!doctype html>
+<title>XHR open rejects an inactive relevant document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const XHR = frame.contentWindow.XMLHttpRequest;
+  const DOMExceptionCtor = frame.contentWindow.DOMException;
+  const xhr = new XHR();
+  frame.remove();
+  assert_throws_dom("InvalidStateError", DOMExceptionCtor, () => xhr.open("GET", "/xhr/resources/content.py"));
+}, "open checks the request's relevant document after iframe removal");
+</script>

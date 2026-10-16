@@ -1,0 +1,21 @@
+<!doctype html>
+<title>XHR network errors do not report a completed upload</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  const events = [];
+  xhr.onreadystatechange = () => events.push(xhr.readyState);
+  for (const name of ["loadstart", "progress", "load", "error", "loadend"]) {
+    xhr.addEventListener(name, () => events.push(name));
+    xhr.upload.addEventListener(name, () => events.push("upload." + name));
+  }
+  xhr.addEventListener("loadend", t.step_func_done(() => {
+    assert_array_equals(events, [1, "loadstart", "upload.loadstart", 4,
+      "upload.error", "upload.loadend", "error", "loadend"]);
+  }));
+  xhr.open("POST", "http://nonexistent." + location.hostname + ":" + location.port + "/");
+  xhr.send("Test Message");
+}, "An in-band network error runs request error steps before any upload completion events");
+</script>

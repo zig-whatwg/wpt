@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cloning an XHR response Blob preserves its type</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/xhr/resources/content.py');
+  xhr.responseType = 'blob';
+  xhr.overrideMimeType('text/plain;charset=GBK');
+  const loaded = new Promise((resolve, reject) => {
+    xhr.onload = resolve;
+    xhr.onerror = reject;
+  });
+  xhr.send();
+  await loaded;
+  const copy = structuredClone(xhr.response);
+  assert_equals(copy.type, xhr.response.type, 'serialized type is preserved');
+  assert_equals(copy.size, xhr.response.size);
+  assert_equals(await copy.text(), await xhr.response.text());
+}, 'Structured cloning preserves an XHR response Blob type and bytes');
+</script>

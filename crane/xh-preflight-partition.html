@@ -1,0 +1,46 @@
+<!doctype html><title>XHR preflight cache reuse and top-level partition</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script><script src="/common/get-host-info.sub.js"></script>
+<script>
+const remote = get_host_info().HTTP_REMOTE_ORIGIN;
+function send(method, url) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    xhr.onload = () => resolve(xhr);
+    xhr.onerror = () => reject(new Error('XHR network error'));
+    xhr.send();
+  });
+}
+function endpoint(id) {
+  return remote + '/fetch/api/resources/preflight.py?token=' + id + '&allow_methods=PUT&max_age=600';
+}
+promise_test(async t => {
+  const url = endpoint(token());
+  assert_equals((await send('PUT', url)).getResponseHeader('x-did-preflight'), '1');
+  await send('GET', url + '&clear-stash=1');
+  assert_equals((await send('PUT', url)).getResponseHeader('x-did-preflight'), '0', 'second PUT sends no OPTIONS');
+}, 'A second same-partition request reuses a successful preflight');
+promise_test(async t => {
+  const id = token(), url = endpoint(id);
+  assert_equals((await send('PUT', url)).getResponseHeader('x-did-preflight'), '1');
+  await send('GET', url + '&clear-stash=1');
+  const child = new URL('/crane/xh-preflight-context.html', location.origin);
+  child.search = new URLSearchParams({role:'frame', token:id, url});
+  const top = new URL('/crane/xh-preflight-context.html', get_host_info().HTTP_NOTSAMESITE_ORIGIN);
+  top.search = new URLSearchParams({role:'top', frame:child.href});
+  const received = new Promise(resolve => {
+    const listener = t.step_func(event => {
+      if (event.source === popup && event.data.token === id) resolve(event.data);
+    });
+    addEventListener('message', listener);
+    t.add_cleanup(() => removeEventListener('message', listener));
+  });
+  const popup = window.open(top.href);
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  const result = await received;
+  assert_false(!!result.error);
+  assert_equals(result.preflight, '1', 'same frame origin under another top-level site sends OPTIONS');
+}, 'Preflight permissions do not cross top-level sites');
+</script>

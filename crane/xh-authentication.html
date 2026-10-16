@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XHR URL credentials use a challenge and retry once</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script>
+for (const asynchronous of [false, true]) {
+  promise_test(async () => {
+    const user = token();
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/xhr/resources/authentication.py', asynchronous, user, 'pass');
+    xhr.setRequestHeader('X-User', user);
+    const done = asynchronous ? new Promise((resolve, reject) => {
+      xhr.onload = resolve; xhr.onerror = reject;
+    }) : Promise.resolve();
+    xhr.send();
+    await done;
+    assert_equals(xhr.status, 200);
+    assert_equals(xhr.responseText, user + '\npass');
+    assert_equals(xhr.getResponseHeader('X-challenge'), 'DID', 'URL credentials wait for the first challenge');
+  }, (asynchronous ? 'Async' : 'Sync') + ' challenge and URL-credential retry');
+}
+promise_test(async () => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/fetch/api/resources/authentication.py?realm=' + token(), true, 'wrong', 'wrong');
+  const done = new Promise((resolve, reject) => { xhr.onload = resolve; xhr.onerror = reject; });
+  xhr.send();
+  await done;
+  assert_equals(xhr.status, 401, 'The second 401 is returned rather than retried again');
+}, 'Rejected URL credentials finish with 401');
+</script>

@@ -1,0 +1,26 @@
+<!doctype html><title>XHR decoded progress does not claim a smaller encoded total</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+async_test(t => {
+  const xhr = new XMLHttpRequest();
+  let exceeded = false;
+  xhr.open('GET', '/xhr/resources/gzip.py?content=' + 'x'.repeat(2048));
+  xhr.onprogress = t.step_func(e => {
+    const encoded = Number(xhr.getResponseHeader('Content-Length'));
+    if (e.loaded > encoded) {
+      exceeded = true;
+      assert_false(e.lengthComputable);
+      assert_equals(e.total, 0);
+    }
+  });
+  xhr.onload = t.step_func_done(e => {
+    assert_equals(xhr.status, 200);
+    assert_true(exceeded, 'decoded progress exceeds the gzip size');
+    assert_equals(e.loaded, new TextEncoder().encode(xhr.responseText).length);
+    assert_false(e.lengthComputable);
+    assert_equals(e.total, 0);
+  });
+  xhr.onerror = t.unreached_func('network error');
+  xhr.send();
+}, 'Gzip progress reports decoded bytes and an unknown total');
+</script>
