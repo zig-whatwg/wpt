@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A window whose document has an opaque origin has an opaque origin, whatever its URL</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/browsers.html#sandboxed-origin-browsing-context-flag">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#dom-origin">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The frame loads this same file over http from the same origin, sandboxed
+// without allow-same-origin: its document's origin is a new opaque origin, so
+// its window's origin is "null" and its parent reaches it only cross-origin.
+// Crane derived a window's origin from its document's URL alone.
+if (location.search.startsWith("?child")) {
+  parent.postMessage({ origin: self.origin, isSecureContext: self.isSecureContext }, "*");
+} else {
+  promise_test(async t => {
+    const iframe = document.createElement("iframe");
+    iframe.sandbox = "allow-scripts";
+    const message = new Promise(resolve => addEventListener("message", e => resolve(e.data), { once: true }));
+    iframe.src = location.pathname + "?child";
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+    const data = await message;
+    assert_equals(data.origin, "null", "self.origin inside the sandboxed frame");
+    assert_throws_dom("SecurityError", () => iframe.contentWindow.location.href, "parent reading the frame's location.href");
+    assert_throws_dom("SecurityError", () => iframe.contentWindow.document, "parent reading the frame's document");
+  }, "A sandboxed http: frame's window has an opaque origin");
+
+  promise_test(async t => {
+    // The response sandboxes itself (CSP sandbox, without allow-same-origin):
+    // the iframe has no sandbox attribute, the document an opaque origin.
+    const iframe = document.createElement("iframe");
+    const message = new Promise(resolve => addEventListener("message", e => resolve(e.data), { once: true }));
+    iframe.src = location.pathname + "?child&pipe=header(Content-Security-Policy,sandbox allow-scripts)";
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+    const data = await message;
+    assert_equals(data.origin, "null", "self.origin inside the frame");
+    assert_throws_dom("SecurityError", () => iframe.contentWindow.location.href, "parent reading the frame's location.href");
+  }, "A frame whose response is CSP-sandboxed has an opaque origin");
+
+  promise_test(async t => {
+    // frame-ancestors 'none' blocks the response: the frame shows an error
+    // document, whose origin is a new opaque origin.
+    const iframe = document.createElement("iframe");
+    const loaded = new Promise(resolve => iframe.onload = resolve);
+    iframe.src = location.pathname + "?blocked&pipe=header(Content-Security-Policy,frame-ancestors 'none')";
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+    await loaded;
+    assert_throws_dom("SecurityError", () => iframe.contentWindow.location.href, "parent reading the error document's location.href");
+    assert_throws_dom("SecurityError", () => iframe.contentWindow.document, "parent reading the error document");
+  }, "A frame blocked by frame-ancestors shows a document of an opaque origin");
+}
+</script>
