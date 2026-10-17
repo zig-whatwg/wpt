@@ -1,0 +1,16 @@
+<!doctype html>
+<title>Dynamic imports use integrity from the import map</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script type="importmap">{"integrity":{
+"./sri-script.js?dynamic-good":"sha256-5XflVAZ06rIPFW7MEg8x7ShHWvkljMdmw1FFdSnKgyQ=",
+"./sri-script.js?dynamic-bad":"sha256-AAAA"
+}}</script>
+<script>
+promise_test(async () => {
+  await import('./sri-script.js?dynamic-good');
+  assert_true(globalThis.sriExecuted);
+}, 'Dynamic import uses a matching integrity map entry');
+promise_test(t => promise_rejects_js(t, TypeError, import('./sri-script.js?dynamic-bad')),
+  'Dynamic import rejects a mismatching integrity map entry');
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Script cost with integrity</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const start = performance.now();
+  for (let i = 0; i < 200; ++i) {
+    const script = document.createElement('script');
+    script.src = 'sri-script.js?sriperf=' + i;
+    script.integrity = 'sha256-5XflVAZ06rIPFW7MEg8x7ShHWvkljMdmw1FFdSnKgyQ=';
+    await new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+    });
+    script.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_greater_than_equal(elapsed, 0), 'SRI script200 elapsed_ms=' + elapsed);
+}, '200 same-origin scripts with matching integrity');
+</script>

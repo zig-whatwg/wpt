@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Fetch cost without integrity</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const start = performance.now();
+  for (let i = 0; i < 200; ++i) {
+    const response = await fetch('/fetch/api/resources/top.txt?sriperf=' + i);
+    assert_equals(response.status, 200);
+    await response.text();
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_greater_than_equal(elapsed, 0), 'SRI fetch200 elapsed_ms=' + elapsed);
+}, '200 same-origin resources without integrity');
+</script>

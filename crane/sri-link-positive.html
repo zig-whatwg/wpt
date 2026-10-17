@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Link loaders accept matching integrity</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const rel of ['stylesheet', 'preload', 'modulepreload']) {
+  promise_test(async t => {
+    const link = document.createElement('link');
+    link.rel = rel;
+    link.as = rel === 'stylesheet' ? 'style' : 'script';
+    link.href = rel === 'stylesheet' ? '/subresource-integrity/style.css?sri-positive' : 'sri-script.js?positive=' + rel;
+    link.integrity = rel === 'stylesheet'
+      ? 'sha256-CzHgdJ7wOccM8L89n4bhcJMz3F+SPLT7YZk7gyCWUV4='
+      : 'sha256-5XflVAZ06rIPFW7MEg8x7ShHWvkljMdmw1FFdSnKgyQ=';
+    t.add_cleanup(() => link.remove());
+    const outcome = new Promise(resolve => {
+      link.onload = () => resolve('load');
+      link.onerror = () => resolve('error');
+    });
+    document.head.append(link);
+    assert_equals(await outcome, 'load');
+  }, rel + ' loads a resource with matching integrity');
+}
+</script>

@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Subresource integrity metadata and response handoff</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const good = 'sha256-ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=';
+const bad = 'sha512-AAAA';
+for (const [name, metadata, succeeds] of [
+  ['matching SHA-256', good, true],
+  ['unknown algorithm', 'unknown-AAAA', true],
+  ['malformed metadata', 'sha256-...', true],
+  ['missing digest', 'sha256-', true],
+  ['base64url without padding', 'sha256-ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0', true],
+  ['ASCII whitespace and options', '\t' + good + '?future=1\r\n', true],
+  ['stronger mismatch', good + ' ' + bad, false],
+  ['same strength alternative', 'sha256-AAAA ' + good, true],
+  ['undecodable stronger digest', good + ' sha512-A', false],
+]) {
+  promise_test(async t => {
+    const response = fetch('data:text/plain,abc', {integrity: metadata});
+    if (!succeeds) return promise_rejects_js(t, TypeError, response);
+    const r = await response;
+    assert_equals(r.type, 'basic');
+    assert_false(r.bodyUsed);
+    assert_equals(await r.clone().text(), 'abc');
+    assert_equals(await r.text(), 'abc');
+  }, name);
+}
+promise_test(async t => {
+  const req = new Request('data:text/plain,abc', {integrity: bad});
+  assert_equals(req.clone().integrity, bad);
+  await promise_rejects_js(t, TypeError, fetch(req));
+  const changed = new Request(req, {integrity: good});
+  assert_equals(changed.integrity, good);
+  assert_equals(await (await fetch(changed)).text(), 'abc');
+  assert_equals(req.integrity, bad);
+  assert_equals(new Request(req, {integrity: ''}).integrity, '');
+}, 'Request cloning and overriding preserve independent integrity metadata');
+promise_test(t => promise_rejects_js(t, TypeError,
+  fetch('/fetch/api/resources/top.txt', {method: 'HEAD', integrity: good})),
+  'A null response body cannot pass integrity');
+promise_test(async t => {
+  const response = await fetch('data:text/plain,', {
+    integrity: 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='
+  });
+  assert_equals(await response.text(), '');
+}, 'An empty byte sequence has a verifiable digest');
+promise_test(t => promise_rejects_js(t, TypeError,
+  fetch('/fetch/api/resources/trickle.py?ms=10&count=3', {integrity: bad})),
+  'A streamed mismatch rejects fetch before exposing its Response');
+promise_test(async t => {
+  const controller = new AbortController();
+  const pending = fetch('/fetch/api/resources/trickle.py?ms=100&count=20', {
+    integrity: good, signal: controller.signal
+  });
+  t.step_timeout(() => controller.abort(), 150);
+  await promise_rejects_dom(t, 'AbortError', pending);
+}, 'Abort while integrity is waiting for the body rejects fetch');
+</script>

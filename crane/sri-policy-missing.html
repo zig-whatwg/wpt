@@ -1,0 +1,26 @@
+<!doctype html>
+<title>Integrity-Policy rejects a script without metadata</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const ready = new Promise(resolve => frame.onload = resolve);
+  const value = 'blocked-destinations=(script)'.replace(/[(),]/g, '\\$&');
+  frame.src = '/common/blank.html?pipe=' + encodeURIComponent('header(Integrity-Policy,' + value + ')');
+  document.body.append(frame);
+  await ready;
+  const script = frame.contentDocument.createElement('script');
+  script.crossOrigin = 'anonymous';
+  script.src = new URL('sri-script.js?policy-isolated', location.href).href;
+  const outcome = new Promise(resolve => {
+    script.onload = () => resolve('load');
+    script.onerror = () => resolve('error');
+  });
+  frame.contentDocument.body.append(script);
+  assert_equals(await outcome, 'error');
+  assert_false(!!frame.contentWindow.sriExecuted);
+}, 'Integrity-Policy blocks a script without integrity before execution');
+</script>

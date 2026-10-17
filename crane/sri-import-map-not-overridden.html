@@ -1,0 +1,17 @@
+<!doctype html>
+<title>A later import map cannot replace an earlier integrity entry</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script type="importmap">{"integrity":{"./sri-script.js?kept":"sha256-5XflVAZ06rIPFW7MEg8x7ShHWvkljMdmw1FFdSnKgyQ="}}</script>
+<script type="importmap">{"integrity":{"./sri-script.js?kept":"sha256-AAAA"}}</script>
+<script>
+promise_test(async t => {
+  const script = document.createElement('script');
+  script.type = 'module'; script.src = 'sri-script.js?kept';
+  t.add_cleanup(() => script.remove());
+  await new Promise((resolve, reject) => {
+    script.onload = resolve; script.onerror = reject; document.head.append(script);
+  });
+  assert_true(globalThis.sriExecuted);
+}, 'A later map leaves the original integrity metadata in place');
+</script>

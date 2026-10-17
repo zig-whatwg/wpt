@@ -1,0 +1,63 @@
+<!doctype html>
+<title>Integrity-Policy blocks before script execution and reports violations</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const good = 'sha256-5XflVAZ06rIPFW7MEg8x7ShHWvkljMdmw1FFdSnKgyQ=';
+const cases = [
+  {name: 'missing metadata', cors: true, metadata: '', loaded: false, report: true},
+  {name: 'unknown algorithm', cors: true, metadata: 'unknown-AAAA', loaded: false, report: true},
+  {name: 'no-CORS with matching metadata', cors: false, metadata: good, loaded: false, report: true},
+  {name: 'CORS with matching metadata', cors: true, metadata: good, loaded: true, report: false},
+  {name: 'report-only missing metadata', cors: true, metadata: '', loaded: true, report: true, reportOnly: true},
+  {name: 'empty sources disables policy', cors: true, metadata: '', loaded: true, report: false, sources: '()'},
+  {name: 'scalar sources defaults to inline', cors: true, metadata: '', loaded: false, report: true, sources: 'elsewhere'},
+];
+for (const [index, c] of cases.entries()) promise_test(async t => {
+  const header = c.reportOnly ? 'Integrity-Policy-Report-Only' : 'Integrity-Policy';
+  const value = 'blocked-destinations=(script), endpoints=(sri)' +
+    (c.sources === undefined ? '' : ', sources=' + c.sources);
+  const escaped = value.replace(/[(),]/g, '\\$&');
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const ready = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html?pipe=' + encodeURIComponent('header(' + header + ',' + escaped + ')');
+  document.body.append(frame);
+  await ready;
+  const target = new URL('sri-script.js?policy=' + index, location.href).href;
+  const reports = [];
+  let reportReady;
+  const reported = new Promise(resolve => reportReady = resolve);
+  const observer = new frame.contentWindow.ReportingObserver(items => {
+    for (const report of items) {
+      if (report.type === 'integrity-violation' && report.body.blockedURL === target) {
+        reports.push(report);
+        reportReady();
+      }
+    }
+  });
+  observer.observe();
+  t.add_cleanup(() => observer.disconnect());
+  const script = frame.contentDocument.createElement('script');
+  if (c.cors) script.crossOrigin = 'anonymous';
+  script.integrity = c.metadata;
+  script.src = target;
+  const loaded = await new Promise(resolve => {
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    frame.contentDocument.body.append(script);
+  });
+  assert_equals(loaded, c.loaded, 'load/error event');
+  assert_equals(!!frame.contentWindow.sriExecuted, c.loaded, 'script execution');
+  if (c.report) {
+    await reported;
+    assert_equals(reports[0].body.documentURL, frame.src);
+    assert_equals(reports[0].body.destination, 'script');
+    assert_equals(reports[0].body.reportOnly, !!c.reportOnly);
+  } else {
+    await new Promise(resolve => t.step_timeout(resolve, 50));
+    assert_equals(reports.length, 0);
+  }
+}, 'Integrity-Policy: ' + c.name);
+</script>

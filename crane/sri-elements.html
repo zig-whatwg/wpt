@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Script and link loaders enforce integrity</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const mismatch = 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=';
+const scriptHash = 'sha256-5XflVAZ06rIPFW7MEg8x7ShHWvkljMdmw1FFdSnKgyQ=';
+function load(t, element) {
+  t.add_cleanup(() => element.remove());
+  return new Promise(resolve => {
+    element.onload = () => resolve('load');
+    element.onerror = () => resolve('error');
+    document.head.append(element);
+  });
+}
+for (const type of ['', 'module']) {
+  promise_test(async t => {
+    const script = document.createElement('script');
+    script.type = type;
+    script.src = 'sri-script.js?mismatch=' + encodeURIComponent(type);
+    script.integrity = mismatch;
+    assert_equals(await load(t, script), 'error');
+  }, (type || 'classic') + ' script rejects a mismatched digest');
+  promise_test(async t => {
+    const script = document.createElement('script');
+    script.type = type;
+    script.src = 'sri-script.js?match=' + encodeURIComponent(type);
+    script.integrity = scriptHash;
+    assert_equals(await load(t, script), 'load');
+  }, (type || 'classic') + ' script accepts a matching digest');
+}
+for (const rel of ['stylesheet', 'preload', 'modulepreload']) {
+  promise_test(async t => {
+    const link = document.createElement('link');
+    link.rel = rel;
+    link.as = rel === 'stylesheet' ? 'style' : 'script';
+    link.href = rel === 'stylesheet' ? '/subresource-integrity/style.css' : 'sri-script.js?link=' + rel;
+    link.integrity = mismatch;
+    assert_equals(await load(t, link), 'error');
+  }, rel + ' rejects a mismatched digest');
+}
+</script>

@@ -1,0 +1,61 @@
+<!doctype html>
+<title>Import-map integrity for module roots descendants and modulepreload</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const good = 'sha256-5XflVAZ06rIPFW7MEg8x7ShHWvkljMdmw1FFdSnKgyQ=';
+const bad = 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=';
+const map = document.createElement('script');
+map.type = 'importmap';
+map.textContent = JSON.stringify({integrity: {
+  './sri-script.js?root-good': good,
+  './sri-script.js?root-bad': bad,
+  './sri-script.js?desc-good': good,
+  './sri-script.js?desc-bad': bad,
+  './sri-script.js?preload-good': good,
+  './sri-script.js?preload-bad': bad,
+  './sri-script.js?empty-attribute': bad,
+  './sri-script.js?explicit-attribute': good
+}});
+document.head.append(map);
+function loaded(element) {
+  return new Promise(resolve => {
+    element.onload = () => resolve('load');
+    element.onerror = () => resolve('error');
+    document.head.append(element);
+  });
+}
+for (const success of [true, false]) {
+  const suffix = success ? 'good' : 'bad';
+  promise_test(async t => {
+    const script = document.createElement('script');
+    script.type = 'module'; script.src = 'sri-script.js?root-' + suffix;
+    t.add_cleanup(() => script.remove());
+    assert_equals(await loaded(script), success ? 'load' : 'error');
+  }, 'Module root uses import-map integrity: ' + suffix);
+  promise_test(async t => {
+    const script = document.createElement('script');
+    script.type = 'module'; script.src = 'sri-parent-' + suffix + '.js';
+    t.add_cleanup(() => script.remove());
+    assert_equals(await loaded(script), success ? 'load' : 'error');
+  }, 'Module descendant uses its own import-map integrity: ' + suffix);
+  promise_test(async t => {
+    const link = document.createElement('link');
+    link.rel = 'modulepreload'; link.href = 'sri-script.js?preload-' + suffix;
+    t.add_cleanup(() => link.remove());
+    assert_equals(await loaded(link), success ? 'load' : 'error');
+  }, 'Modulepreload uses import-map integrity: ' + suffix);
+}
+promise_test(async t => {
+  const script = document.createElement('script');
+  script.type = 'module'; script.src = 'sri-script.js?empty-attribute';
+  script.integrity = ''; t.add_cleanup(() => script.remove());
+  assert_equals(await loaded(script), 'load');
+}, 'An explicitly empty integrity attribute overrides the import map');
+promise_test(async t => {
+  const script = document.createElement('script');
+  script.type = 'module'; script.src = 'sri-script.js?explicit-attribute';
+  script.integrity = bad; t.add_cleanup(() => script.remove());
+  assert_equals(await loaded(script), 'error');
+}, 'An explicit mismatching integrity attribute overrides the import map');
+</script>

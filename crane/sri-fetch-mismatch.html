@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fetch rejects a mismatched integrity digest before response handoff</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(t => promise_rejects_js(t, TypeError,
+  fetch('/fetch/api/resources/top.txt', {
+    integrity: 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='
+  })), 'A mismatched integrity digest rejects fetch itself');
+</script>

@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>SRI metadata syntax and strongest-hash selection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const good = 'sha256-ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=';
+const cases = [
+  ['padding only', 'sha512-=', false],
+  ['two padding characters only', 'sha512-==', false],
+  ['excess padding', 'sha512-A===', true],
+  ['interior padding', 'sha512-A=A', true],
+  ['invalid alphabet', 'sha512-AA!A', true],
+  ['empty digest', 'sha512-', true],
+  ['options without digest', 'sha512-?future', true],
+  ['ASCII options', 'sha512-AAAA?future=value', false],
+  ['non-ASCII options', 'sha512-AAAA?\u00e9', false],
+  ['control character options', 'sha512-AAAA?\x01', false],
+  ['empty options', 'sha512-AAAA?', false],
+];
+for (const [name, strong, allowed] of cases) promise_test(async t => {
+  const result = fetch('data:text/plain,abc', {integrity: good + ' ' + strong});
+  if (allowed) assert_equals(await (await result).text(), 'abc');
+  else await promise_rejects_js(t, TypeError, result);
+}, 'SRI metadata edge: ' + name);
+</script>
