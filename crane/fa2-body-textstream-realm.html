@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Body textStream uses the receiver relevant realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const kind of ['Response', 'Request']) {
+  for (const body of [null, 'foreign bytes']) {
+    promise_test(async t => {
+      const frame = document.createElement('iframe');
+      document.body.append(frame);
+      t.add_cleanup(() => frame.remove());
+      const foreign = frame.contentWindow;
+      const owner = kind === 'Response' ? new foreign.Response(body) :
+        new foreign.Request(location.href, {method: 'POST', body});
+      const stream = window[kind].prototype.textStream.call(owner);
+      assert_true(stream instanceof foreign.ReadableStream);
+      const reader = stream.getReader();
+      let result = '';
+      for (;;) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        result += value;
+      }
+      assert_equals(result, body === null ? '' : body);
+    }, kind + ' borrowed textStream uses the relevant realm with ' +
+       (body === null ? 'null' : 'non-null') + ' body');
+  }
+}
+</script>

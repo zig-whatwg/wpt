@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blob URL lookup excludes the fragment</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(['fragment bytes']));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const response = await fetch(url + '#path/inside?the#fragment');
+  assert_equals(await response.text(), 'fragment bytes');
+}, 'Fetching a Blob URL excludes the entire fragment from lookup');
+</script>

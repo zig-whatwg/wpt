@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Inline handler compilation cost with and without a form scope</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const form = document.createElement("form");
+document.body.append(form);
+let parent = form;
+for (let depth = 0; depth < 10; ++depth) {
+  const container = document.createElement("div");
+  parent.append(container);
+  parent = container;
+}
+for (const tag of ["button", "div"]) {
+  const element = document.createElement(tag);
+  parent.append(element);
+  const start = performance.now();
+  for (let i = 0; i < 20000; ++i) {
+    element.setAttribute("onclick", "return " + i);
+  }
+  const elapsed = performance.now() - start;
+  test(() => {
+    assert_equals(element.onclick(), 19999);
+  }, "Inline " + tag + ": " + elapsed.toFixed(3) + " ms for 20000 compilations");
+  element.onclick = null;
+  element.remove();
+}
+form.remove();
+</script>

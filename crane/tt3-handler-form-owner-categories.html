@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inline handler form scope follows form-associated categories</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function makeForm(t) {
+  const form = document.createElement("form");
+  form.__tt3ScopeValue = "form";
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  return form;
+}
+for (const tag of ["button", "fieldset", "input", "object", "output", "select", "textarea", "img"]) {
+  test(t => {
+    const form = makeForm(t);
+    const element = document.createElement(tag);
+    form.append(element);
+    element.setAttribute("onclick", "return __tt3ScopeValue;");
+    assert_equals(element.onclick(), "form");
+  }, tag + " receives its form owner's handler scope after association");
+}
+customElements.define("tt3-form-control", class extends HTMLElement { static formAssociated = true; });
+test(t => {
+  const form = makeForm(t);
+  const element = document.createElement("tt3-form-control");
+  form.append(element);
+  element.setAttribute("onclick", "return __tt3ScopeValue;");
+  assert_equals(element.onclick(), "form");
+}, "a form-associated custom element receives its form owner's handler scope");
+
+for (const tag of ["div", "meter", "progress"]) {
+  test(t => {
+    const form = makeForm(t);
+    const element = document.createElement(tag);
+    form.append(element);
+    element.setAttribute("onclick", "return typeof __tt3ScopeValue;");
+    assert_equals(element.onclick(), "undefined");
+  }, tag + " does not acquire a form scope just by having a form ancestor");
+}
+
+test(t => {
+  const ancestor = makeForm(t);
+  const owner = makeForm(t);
+  owner.id = "tt3-explicit-owner";
+  owner.__tt3ScopeValue = "explicit";
+  const input = document.createElement("input");
+  input.setAttribute("form", owner.id);
+  ancestor.append(input);
+  input.setAttribute("onclick", "return __tt3ScopeValue;");
+  assert_equals(input.onclick(), "explicit");
+}, "the form attribute selects the scope instead of a different ancestor form");
+
+test(t => {
+  const form = makeForm(t);
+  const image = document.createElement("img");
+  image.setAttribute("form", "tt3-missing-owner");
+  form.append(image);
+  image.setAttribute("onclick", "return __tt3ScopeValue;");
+  assert_equals(image.onclick(), "form");
+}, "img has a form owner but does not use the listed-element form attribute");
+
+test(t => {
+  const form = makeForm(t);
+  const input = document.createElement("input");
+  form.append(input);
+  input.__tt3ScopeValue = "element";
+  document.__tt3ScopeValue = "document";
+  t.add_cleanup(() => { delete document.__tt3ScopeValue; });
+  input.setAttribute("onclick", "return __tt3ScopeValue;");
+  assert_equals(input.onclick(), "element");
+  delete input.__tt3ScopeValue;
+  assert_equals(input.onclick(), "form");
+  delete form.__tt3ScopeValue;
+  assert_equals(input.onclick(), "document");
+}, "handler object environments resolve element, form, then document");
+
+test(() => {
+  let form = document.createElement("form");
+  let input = document.createElement("input");
+  form.__tt3ScopeValue = "retained form";
+  form.append(input);
+  input.setAttribute("onclick", "return __tt3ScopeValue;");
+  const handler = input.onclick;
+  input.remove();
+  input = null;
+  form = null;
+  TestUtils.gc();
+  assert_equals(handler(), "retained form");
+}, "a compiled handler retains its captured form scope across GC");
+</script>

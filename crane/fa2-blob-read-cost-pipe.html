@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>10 MB Blob read cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({explicit_done: true});
+(async () => {
+  const size = 10 * 1024 * 1024;
+  const blob = new Blob(['x'.repeat(size)]);
+  const pipe = true;
+  async function textStream() {
+    const reader = (pipe ? blob.stream().pipeThrough(new TextDecoderStream()) : blob.textStream()).getReader();
+    let length = 0;
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) return length;
+      length += value.length;
+    }
+  }
+  const operations = [
+    ['text', async () => (await blob.text()).length],
+    ['arrayBuffer', async () => (await blob.arrayBuffer()).byteLength],
+    ['textStream', textStream]
+  ];
+  for (const [name, read] of operations) {
+    assert_equals(await read(), size);
+    const start = performance.now();
+    let length = 0;
+    for (let i = 0; i < 8; i++) length += await read();
+    const elapsed = performance.now() - start;
+    test(() => assert_equals(length, 8 * size), 'fa2 cost ' + name + ': ' + elapsed.toFixed(3) + ' ms');
+  }
+})().catch(e => test(() => { throw e; }, 'Blob read cost completes')).finally(done);
+</script>

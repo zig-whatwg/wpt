@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Event handler access cost without a Trusted Types policy</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const element = document.createElement("button");
+document.body.append(element);
+const handler = () => {};
+let matches = 0;
+const handlerStart = performance.now();
+for (let i = 0; i < 100000; ++i) {
+  element.onclick = handler;
+  if (element.onclick === handler) ++matches;
+}
+const handlerElapsed = performance.now() - handlerStart;
+test(() => {
+  assert_equals(matches, 100000);
+}, "Onclick access: " + handlerElapsed.toFixed(3) + " ms for 100000 pairs");
+element.onclick = null;
+element.remove();
+</script>

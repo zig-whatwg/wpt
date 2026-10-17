@@ -1,0 +1,22 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<title>1000 Blob URL create fetch revoke operations</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({explicit_done: true});
+(async () => {
+  const blob = new Blob(['blob-url-cost'], {type: 'text/plain'});
+  async function once() {
+    const url = URL.createObjectURL(blob);
+    try { return (await (await fetch(url)).text()).length; }
+    finally { URL.revokeObjectURL(url); }
+  }
+  for (let i = 0; i < 20; i++) await once();
+  const start = performance.now();
+  let length = 0;
+  for (let i = 0; i < 1000; i++) length += await once();
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(length, 13000), 'fa2 cost blob URLs: ' + elapsed.toFixed(3) + ' ms');
+})().catch(e => test(() => { throw e; }, 'Blob URL cost completes')).finally(done);
+</script>

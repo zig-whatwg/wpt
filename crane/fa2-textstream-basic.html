@@ -1,0 +1,11 @@
+<!doctype html>
+<title>Blob textStream produces text</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const reader = new Blob(['hello']).textStream().getReader();
+  assert_equals((await reader.read()).value, 'hello');
+  assert_true((await reader.read()).done);
+}, 'Blob textStream yields its contents as a string');
+</script>

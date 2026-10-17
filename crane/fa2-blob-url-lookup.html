@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blob URL lookup and revocation use the complete URL key</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(['live']));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const uuid = url.slice(url.lastIndexOf('/') + 1);
+  for (const fragment of ['#', '#part', '#part/with/slashes?query#again', '#/' + uuid]) {
+    assert_equals(await (await fetch(url + fragment)).text(), 'live');
+    URL.revokeObjectURL(url + fragment);
+    assert_equals(await (await fetch(url)).text(), 'live');
+  }
+  for (const suffix of ['?query', '?query#fragment', '/other']) {
+    await promise_rejects_js(t, TypeError, fetch(url + suffix));
+  }
+}, 'Resolution excludes fragments while revocation requires an exact URL');
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(['original']));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const uuid = url.slice(url.lastIndexOf('/') + 1);
+  for (const changed of ['blob:https://other.invalid/' + uuid,
+                         'blob:' + location.origin + '/extra/' + uuid]) {
+    await promise_rejects_js(t, TypeError, fetch(changed));
+    URL.revokeObjectURL(changed);
+    assert_equals(await (await fetch(url)).text(), 'original');
+  }
+}, 'The UUID alone does not identify a Blob URL entry');
+</script>

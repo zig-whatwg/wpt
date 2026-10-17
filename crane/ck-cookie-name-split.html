@@ -8,8 +8,8 @@ test(t => {
   const path = '; Path=' + location.pathname;
   t.add_cleanup(() => { document.cookie = 'ck_explicit; Max-Age=0' + path; });
   document.cookie = '=ck_explicit' + path;
-  assert_false(document.cookie.split('; ').includes('ck_explicit'));
-}, 'An explicitly empty name is rejected (Firefox/Safari majority)');
+  assert_true(document.cookie.split('; ').includes('ck_explicit'));
+}, 'An explicitly empty name is a nameless cookie (RFC 6265bis PR #1018; Chrome ships it; gr2audit D2)');
 test(t => {
   const path = '; Path=' + location.pathname;
   t.add_cleanup(() => { document.cookie = 'ck_token; Max-Age=0' + path; });

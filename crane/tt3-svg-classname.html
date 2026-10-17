@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG className reflects class without a Trusted Types sink</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#InterfaceSVGElement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<body>
+<script>
+const svgNamespace = "http://www.w3.org/2000/svg";
+test(() => {
+  const element = document.createElementNS(svgNamespace, "script");
+  const value = element.className;
+  assert_true(value instanceof SVGAnimatedString);
+  assert_equals(element.className, value);
+  assert_equals(value.baseVal, "");
+  assert_equals(value.animVal, "");
+  element.setAttribute("class", "first");
+  assert_equals(value.baseVal, "first");
+  value.baseVal = "second";
+  assert_equals(element.getAttribute("class"), "second");
+  assert_equals(value.animVal, "second");
+  element.removeAttribute("class");
+  assert_equals(value.baseVal, "");
+}, "className is a SameObject live reflection of the class attribute");
+
+test(() => {
+  const element = document.createElementNS(svgNamespace, "script");
+  element.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:class", "namespaced");
+  assert_equals(element.className.baseVal, "");
+  element.className.baseVal = "ordinary";
+  assert_equals(element.getAttribute("class"), "ordinary");
+  assert_equals(element.getAttributeNS("http://www.w3.org/1999/xlink", "class"), "namespaced");
+}, "className has no deprecated namespaced fallback");
+
+test(() => {
+  const policy = trustedTypes.createPolicy("tt3-class", { createScriptURL: value => value });
+  const element = document.createElementNS(svgNamespace, "script");
+  element.className.baseVal = "plain";
+  assert_equals(element.getAttribute("class"), "plain");
+  element.className.baseVal = policy.createScriptURL("trusted");
+  assert_equals(element.getAttribute("class"), "trusted");
+}, "className accepts strings and TrustedScriptURL data under enforcement");
+
+test(() => {
+  let calls = 0;
+  trustedTypes.createPolicy("default", { createScriptURL: () => { ++calls; return "rewritten"; } });
+  const element = document.createElementNS(svgNamespace, "script");
+  element.className.baseVal = "unchanged";
+  assert_equals(element.className.baseVal, "unchanged");
+  assert_equals(calls, 0);
+}, "className never invokes the default Trusted Types policy");
+
+test(() => {
+  let element = document.createElementNS(svgNamespace, "script");
+  element.setAttribute("class", "retained");
+  const value = element.className;
+  element = null;
+  TestUtils.gc();
+  assert_equals(value.baseVal, "retained");
+  value.baseVal = "still alive";
+  assert_equals(value.animVal, "still alive");
+}, "holding only className keeps its reflected element alive across GC");
+</script>

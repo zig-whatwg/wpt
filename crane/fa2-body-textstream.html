@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Body textStream state and decoding</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function collect(stream) {
+  let text = '';
+  for await (const chunk of stream) {
+    assert_equals(typeof chunk, 'string');
+    text += chunk;
+  }
+  return text;
+}
+for (const kind of ['Response', 'Request']) {
+  const make = body => kind === 'Response' ? new Response(body) :
+    new Request(location.href, {method: 'POST', body, duplex: 'half'});
+  promise_test(async () => {
+    const body = make(new ReadableStream({start(c) {
+      c.enqueue(new Uint8Array([0xef, 0xbb]));
+      c.enqueue(new Uint8Array([0xbf, 0xf0, 0x9f]));
+      c.enqueue(new Uint8Array([0x98, 0x80, 0xe2]));
+      c.close();
+    }}));
+    const stream = body.textStream();
+    assert_true(body.bodyUsed);
+    assert_true(body.body.locked);
+    assert_throws_js(TypeError, () => body.textStream());
+    assert_equals(await collect(stream), '😀�');
+  }, kind + ' textStream marks used synchronously and decodes across chunks');
+  promise_test(async () => {
+    const body = make(null);
+    const a = body.textStream(), b = body.textStream();
+    assert_not_equals(a, b);
+    assert_false(body.bodyUsed);
+    assert_false(a.locked);
+    assert_false(b.locked);
+    assert_throws_js(TypeError, () => a.getReader({mode: 'byob'}));
+    assert_equals(await collect(a), '');
+    assert_equals(await collect(b), '');
+    assert_false(body.bodyUsed);
+  }, kind + ' null body produces fresh closed default streams');
+  promise_test(async () => {
+    let observeCancel;
+    const cancelled = new Promise(resolve => { observeCancel = resolve; });
+    const body = make(new ReadableStream({cancel(reason) { observeCancel(reason); }}));
+    const reason = {reason: 'stop'};
+    await body.textStream().cancel(reason);
+    // Transform cancellation settles before the separate pipe necessarily
+    // finishes propagating its writable error backward to the source.
+    assert_equals(await cancelled, reason);
+  }, kind + ' textStream cancellation reaches the source');
+  promise_test(async t => {
+    const error = {cause: 'source'};
+    const body = make(new ReadableStream({start(c) { c.error(error); }}));
+    await promise_rejects_exactly(t, error, body.textStream().getReader().read());
+  }, kind + ' textStream preserves source rejection identity');
+  promise_test(async () => {
+    const stream = (() => make(new Uint8Array([0x6b, 0x65, 0x70, 0x74])).textStream())();
+    await TestUtils.gc();
+    assert_equals(await collect(stream), 'kept');
+  }, kind + ' textStream keeps unread data after its body owner is dropped');
+}
+</script>

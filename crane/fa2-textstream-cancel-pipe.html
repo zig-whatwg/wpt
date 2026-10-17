@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Text decoder pipe cancellation preserves its source reason</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const kind of ['Response', 'Request']) {
+  promise_test(async () => {
+    let observeCancel;
+    const cancelled = new Promise(resolve => { observeCancel = resolve; });
+    const source = new ReadableStream({cancel(reason) { observeCancel(reason); }});
+    const body = kind === 'Response' ? new Response(source) :
+      new Request(location.href, {method: 'POST', body: source, duplex: 'half'});
+    const output = body.body.pipeThrough(new TextDecoderStream());
+    const reason = {reason: 'stop'};
+    await output.cancel(reason);
+    // Observe the source callback itself; output cancellation does not await
+    // completion of the separate pipe's backward-error propagation.
+    assert_equals(await cancelled, reason);
+  }, kind + ' decoder pipe forwards cancellation reason to its source');
+}
+</script>

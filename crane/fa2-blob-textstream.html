@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blob textStream decodes incrementally and retains unread data</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function collect(stream) {
+  const reader = stream.getReader();
+  let text = '';
+  for (;;) {
+    const {value, done} = await reader.read();
+    if (done) return text;
+    assert_equals(typeof value, 'string');
+    text += value;
+  }
+}
+promise_test(async () => {
+  const bytes = new Uint8Array(65540);
+  bytes.fill(0x61);
+  bytes.set([0xef, 0xbb, 0xbf], 0);
+  bytes.set([0xf0, 0x9f, 0x98, 0x80, 0xe2], 65535);
+  const blob = new Blob([bytes], {type: 'text/plain;charset=utf-16le'});
+  assert_equals(await collect(blob.textStream()), 'a'.repeat(65532) + '😀�');
+}, 'Blob textStream strips BOM, joins split UTF-8 and flushes truncated input');
+promise_test(async () => {
+  const stream = (() => new Blob(['kept '.repeat(20000)]).textStream())();
+  await TestUtils.gc();
+  assert_equals(await collect(stream), 'kept '.repeat(20000));
+}, 'An unread text stream keeps Blob data after script drops the Blob');
+promise_test(async () => {
+  const blob = new Blob(['cancel does not consume the Blob']);
+  await blob.textStream().cancel('done');
+  assert_equals(await collect(blob.textStream()), 'cancel does not consume the Blob');
+}, 'Cancelling one Blob text stream leaves other reads usable');
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const blob = new frame.contentWindow.Blob(['other realm']);
+  const stream = Blob.prototype.textStream.call(blob);
+  assert_true(stream instanceof frame.contentWindow.ReadableStream);
+  assert_equals(await collect(stream), 'other realm');
+}, 'Blob textStream creates its result in the Blob relevant realm');
+</script>
