@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="gbk">
+<title>GBK URL encoding</title>
+<link rel="help" href="https://encoding.spec.whatwg.org/#gb18030-encoder">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [input, expected] of [['\u20ac','%80'], ['\ud83d\udca9','%26%23128169%3B'], ['\u00a5','%26%23165%3B']]) {
+  test(() => {
+    const a = document.createElement('a');
+    a.href = 'https://example.test/?' + input;
+    assert_equals(a.search.slice(1), expected);
+  }, 'GBK URL query for ' + input.codePointAt(0));
+}
+</script>

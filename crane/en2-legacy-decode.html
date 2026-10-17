@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Legacy decode recovery across writes</title>
+<link rel="help" href="https://encoding.spec.whatwg.org/#decoders">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const cases = [
+  ['big5', [0x81, 0x40], '\ufffd@'],
+  ['big5', [0x87, 0x87, 0x40], '\ufffd@'],
+  ['big5', [0x80], '\ufffd'],
+  ['euc-kr', [0x81, 0x3c], '\ufffd<'],
+  ['euc-jp', [0x8f, 0xa1, 0x3c], '\ufffd<'],
+  ['euc-jp', [0x8e, 0xe0], '\ufffd'],
+  ['gb18030', [0x81, 0x30, 0x2b], '\ufffd0+'],
+  ['gb18030', [0x81, 0x30, 0x81, 0x2b], '\ufffd0\ufffd+'],
+  ['gbk', [0x81, 0x30, 0x81, 0x2b], '\ufffd0\ufffd+']
+];
+for (const [label, values, expected] of cases) {
+  const input = Uint8Array.from(values);
+  test(() => {
+    for (let split = 0; split <= input.length; split++) {
+      const decoder = new TextDecoder(label);
+      const a = decoder.decode(input.subarray(0, split), {stream: true});
+      const b = decoder.decode(input.subarray(split), {stream: true});
+      assert_equals(a + b + decoder.decode(), expected, 'split ' + split);
+    }
+  }, label + ' restores bytes at every split: ' + values);
+  test(() => {
+    assert_throws_js(TypeError, () => new TextDecoder(label, {fatal: true}).decode(input));
+  }, label + ' exposes malformed input to fatal mode: ' + values);
+}
+</script>

@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Big5 retries the ASCII byte after an unmapped pair</title>
+<link rel="help" href="https://encoding.spec.whatwg.org/#big5-decoder">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_equals(new TextDecoder('big5').decode(new Uint8Array([0x81, 0x40])), '\ufffd@');
+}, 'Big5 end-of-queue retains the restored ASCII trail byte');
+</script>

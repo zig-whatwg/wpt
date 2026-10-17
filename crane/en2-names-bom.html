@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>TextDecoder names and BOM serialization</title>
+<link rel="help" href="https://encoding.spec.whatwg.org/#textdecodercommon">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const label of ['Big5', 'UTF-16LE', 'UTF-16BE']) {
+  test(() => assert_equals(new TextDecoder(label).encoding, label.toLowerCase()), label + ' is exposed lowercase');
+}
+for (const [label, bom, ascii, small] of [
+  ['utf-8', [0xef,0xbb,0xbf], [0x41], [0xc2,0xa0]],
+  ['utf-16le', [0xff,0xfe], [0x41,0], [0xa0,0]],
+  ['utf-16be', [0xfe,0xff], [0,0x41], [0,0xa0]]
+]) {
+  for (const ignoreBOM of [false, true]) {
+    test(() => {
+      const bytes = Uint8Array.from([...bom, ...ascii]);
+      for (let split = 0; split <= bytes.length; split++) {
+        const decoder = new TextDecoder(label, {ignoreBOM});
+        assert_equals(decoder.decode(bytes.subarray(0,split), {stream:true}) + decoder.decode(bytes.subarray(split)), (ignoreBOM ? '\ufeff' : '') + 'A');
+      }
+    }, label + ' split BOM, ignoreBOM=' + ignoreBOM);
+  }
+  test(() => {
+    const decoder = new TextDecoder(label);
+    assert_equals(decoder.decode(Uint8Array.from(small), {stream:true}), '\u00a0');
+    assert_equals(decoder.decode(Uint8Array.from(bom)), '\ufeff');
+  }, label + ' a short first scalar settles BOM handling');
+}
+</script>

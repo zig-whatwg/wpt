@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Pair iterables iterate in many dedicated and shared workers</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-iterator-prototype-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL 3.7.10: each realm has its own "%<Interface> Iterator Prototype%".
+// Crane's V8 adapter makes it from a template kept per isolate, and a worker
+// realm's template storage ends with the realm: it left every iterator
+// prototype template behind - one Global per iterable interface iterated, per
+// worker (lane bindsafe). This makes WORKERS dedicated workers and WORKERS
+// shared workers, each iterating Headers, FormData and URLSearchParams, so
+// that leaks --atExit over this file counts what each worker leaves.
+const WORKERS = 8;
+const expected = '20,[object Headers Iterator],[object FormData Iterator],[object URLSearchParams Iterator]';
+
+promise_test(async t => {
+  for (let i = 0; i < WORKERS; i++) {
+    const worker = new Worker('resources/bindsafe-iterate-worker.js');
+    const answer = await new Promise((resolve, reject) => {
+      worker.onmessage = e => resolve(e.data);
+      worker.onerror = e => reject(new Error(e.message));
+    });
+    worker.terminate();
+    assert_equals(answer, expected, `dedicated worker ${i}`);
+  }
+}, `${WORKERS} dedicated workers each iterate Headers, FormData and URLSearchParams`);
+
+promise_test(async t => {
+  for (let i = 0; i < WORKERS; i++) {
+    const worker = new SharedWorker('resources/bindsafe-iterate-worker.js', `bindsafe-${i}`);
+    const answer = await new Promise((resolve, reject) => {
+      worker.port.onmessage = e => resolve(e.data);
+      worker.onerror = e => reject(new Error(e.message || 'error'));
+    });
+    worker.port.close();
+    assert_equals(answer, expected, `shared worker ${i}`);
+  }
+}, `${WORKERS} shared workers each iterate Headers, FormData and URLSearchParams`);
+</script>

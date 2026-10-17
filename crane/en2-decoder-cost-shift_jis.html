@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Encoding decoder cost and complete output</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const pattern = [144, 133, 65];
+const input = new Uint8Array(Math.floor(1 * 1024 * 1024 / pattern.length) * pattern.length);
+for (let i = 0; i < input.length; i++) input[i] = pattern[i % pattern.length];
+const decoder = new TextDecoder('shift_jis');
+decoder.decode(input.subarray(0, pattern.length * 1024));
+const start = performance.now();
+let actual;
+for (let round = 0; round < 16; round++) actual = decoder.decode(input);
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(actual, '水A'.repeat(input.length / pattern.length));
+}, 'TextDecoder shift_jis: ' + elapsed.toFixed(3) + ' ms, 16 x ' + input.length + ' bytes');
+</script>
