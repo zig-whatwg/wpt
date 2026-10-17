@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Module imports use the referring script URL</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script type="module">
+import { staticReferrer, dynamicReferrer } from "./sc2-referring-module.js";
+const expected = new URL("sc2-referring-module.js", location.href).href;
+test(() => assert_equals(staticReferrer, expected), "A static import uses its module's URL as referrer");
+promise_test(async () => assert_equals(await dynamicReferrer, expected), "A dynamic import uses its module's URL as referrer");
+</script>

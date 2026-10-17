@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Navigation source-element origin helper</title>
+<script>
+navigation.addEventListener("navigate", e => {
+  parent.postMessage({marker: "nv2-source", isNull: e.sourceElement === null, id: e.sourceElement && e.sourceElement.id}, "*");
+});
+parent.postMessage({marker: "nv2-source", ready: true}, "*");
+</script>

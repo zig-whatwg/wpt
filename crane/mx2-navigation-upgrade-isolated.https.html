@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>One top-level navigation upgrade regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Isolate the measured basic-link-upgrade case from the upstream eight-case
+// link-upgrade file. Chrome and Safari pass that file 8/8 at cc74d2669f.
+promise_test(t => new Promise((resolve, reject) => {
+  let popup;
+  const listener = event => {
+    if (event.source === popup && event.data === "basic-link-upgrade") resolve();
+  };
+  window.addEventListener("message", listener);
+  t.add_cleanup(() => window.removeEventListener("message", listener));
+  popup = window.open("/upgrade-insecure-requests/link-upgrade/basic-link-upgrade.sub.html");
+  assert_not_equals(popup, null, "popup opens");
+  t.add_cleanup(() => popup.close());
+  t.step_timeout(() => reject(new Error("upgraded navigation did not arrive")), 5000);
+}), "An enforced UIR policy upgrades an opted-in top-level navigation");
+</script>

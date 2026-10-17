@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>One worker mixed-content network-delivery regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+promise_test(async t => {
+  const urls = getRequestURLs("fetch", "same-http", "no-redirect");
+  await xhrRequest(urls.announceUrl);
+  const worker = new Worker("mx2-worker-request.js?case=" + encodeURIComponent(urls.testUrl));
+  t.add_cleanup(() => worker.terminate());
+  const result = new Promise((resolve, reject) => {
+    worker.onmessage = event => resolve(event.data);
+    worker.onerror = event => {
+      event.preventDefault();
+      reject(new Error("worker failed to load"));
+    };
+  });
+  worker.postMessage({url: urls.testUrl, operation: "fetch"});
+  const outcome = await result;
+  const observed = await xhrRequest(urls.assertUrl);
+  assert_equals(observed.status, "blocked", "server-observed network delivery");
+  assert_equals(outcome, "TypeError");
+}, "An HTTPS dedicated classic worker blocks an HTTP fetch before delivery");
+</script>

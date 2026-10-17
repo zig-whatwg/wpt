@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Navigation focus reset selects an autofocus delegate in tree order</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#potentially-reset-the-focus">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#autofocus-delegate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const container = document.createElement("div");
+  container.innerHTML = '<button id="initial">Initial</button>' +
+    '<button disabled>Disabled</button><div>Not focusable</div>' +
+    '<button hidden>Hidden</button><section><button id="first">First</button></section>' +
+    '<button id="last">Last</button>';
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  const initial = container.querySelector("#initial");
+  const first = container.querySelector("#first");
+  initial.focus();
+  assert_equals(document.activeElement, initial);
+  navigation.addEventListener("navigate", e => e.intercept({handler() {
+    // Set autofocus only after ordinary initial autofocus has finished.
+    // The navigation reset must query the current descendants itself.
+    for (const element of container.querySelectorAll("button, div")) {
+      if (element !== initial) element.autofocus = true;
+    }
+  }}), {once: true});
+  await navigation.navigate("#nv2-autofocus-delegate").finished;
+  assert_equals(document.activeElement, first, "the first focusable autofocus descendant wins");
+}, "Focus reset skips disabled, hidden and nonfocusable autofocus descendants");
+
+promise_test(async t => {
+  const container = document.createElement("div");
+  container.innerHTML = '<button>Initial</button><button>Moved focus</button>';
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  const [initial, target] = container.children;
+  initial.focus();
+  navigation.addEventListener("navigate", e => e.intercept({handler() {
+    target.focus();
+  }}), {once: true});
+  await navigation.navigate("#nv2-preserve-changed-focus").finished;
+  assert_equals(document.activeElement, target, "an intercept handler's focus survives completion");
+}, "Focus reset preserves focus changed during the intercepted navigation");
+</script>

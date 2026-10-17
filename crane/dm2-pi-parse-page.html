@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>PI-heavy parsing without attribute access</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const container = document.createElement('div');
+const source = '<?task a="one" b="two" c="three"?>'.repeat(5000);
+const started = performance.now();
+container.innerHTML = source;
+const elapsed = performance.now() - started;
+test(() => {
+  assert_equals(container.childNodes.length, 5000);
+  assert_equals(container.firstChild.nodeType, Node.PROCESSING_INSTRUCTION_NODE);
+  assert_equals(container.lastChild.data, 'a="one" b="two" c="three"');
+}, 'Parse 5000 PIs without attribute access: ' + elapsed.toFixed(3) + ' ms');
+</script>

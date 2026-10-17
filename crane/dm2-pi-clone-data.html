@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cloning a PI copies data without factory validation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const original = document.createProcessingInstruction('test', 'valid');
+  original.data = 'changed ?> data';
+  const clone = original.cloneNode();
+  assert_equals(clone.target, original.target);
+  assert_equals(clone.data, original.data);
+  assert_equals(clone.ownerDocument, original.ownerDocument);
+}, 'A PI clone copies data containing ?> set after construction');
+</script>

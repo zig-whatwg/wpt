@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ProcessingInstruction attributes preserve their map across data replacement</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#interface-processinginstruction">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const pi = document.createProcessingInstruction('target', 'a="one" b="&amp;&#x1F600;"');
+  assert_array_equals(pi.getAttributeNames(), ['a', 'b']);
+  assert_equals(pi.getAttribute('b'), '&😀');
+  const observer = new MutationObserver(() => {});
+  observer.observe(pi, {characterData: true, characterDataOldValue: true});
+  pi.setAttribute('a', '<"&>');
+  assert_equals(pi.data, 'a="&lt;&quot;&amp;&gt;" b="&amp;😀"');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1);
+  assert_equals(records[0].type, 'characterData');
+  assert_equals(records[0].oldValue, 'a="one" b="&amp;&#x1F600;"');
+  pi.data = 'new="value" new="duplicate"';
+  assert_false(pi.hasAttributes(), 'invalid pseudo-attributes discard the whole map');
+  pi.data = 'again="yes"';
+  pi.replaceData(7, 3, 'no');
+  assert_equals(pi.getAttribute('again'), 'no');
+  observer.disconnect();
+}, 'PI attribute mutations emit characterData records and data mutations reparse attributes');
+</script>

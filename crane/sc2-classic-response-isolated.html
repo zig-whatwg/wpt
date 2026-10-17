@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Classic scripts resolve imports against their response URL</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const responseURL = new URL("sc2-redirected-classic.js", location.href);
+const redirectedURL = "/common/redirect.py?location=" + encodeURIComponent(responseURL.href);
+const dependencyURL = new URL("sc2-redirect-dependency.js", responseURL).href;
+
+promise_test(async t => {
+  const script = document.createElement("script");
+  t.add_cleanup(() => script.remove());
+  script.src = redirectedURL;
+  await new Promise((resolve, reject) => {
+    script.onload = resolve;
+    script.onerror = reject;
+    document.body.append(script);
+  });
+  assert_equals(await window.sc2RedirectResult, dependencyURL);
+}, "A dynamically inserted classic script uses the final response URL");
+
+</script>

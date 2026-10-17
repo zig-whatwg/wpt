@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Script type essence matching and legacy language precedence</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function runs(type, language) {
+  window.sc2Ran = false;
+  const script = document.createElement('script');
+  if (type !== null) script.setAttribute('type', type);
+  if (language !== null) script.setAttribute('language', language);
+  script.text = 'window.sc2Ran = true';
+  document.body.appendChild(script);
+  script.remove();
+  return window.sc2Ran;
+}
+test(() => assert_true(runs('', 'unrecognized')), 'An explicitly empty type overrides language');
+for (const language of ['ecmascript', 'javascript1.0', 'javascript1.1', 'javascript1.2', 'javascript1.3', 'javascript1.4', 'javascript1.5', 'jscript', 'livescript', 'x-ecmascript', 'x-javascript']) {
+  for (const value of [language, language.toUpperCase()]) {
+    test(() => assert_true(runs(null, value)), 'Legacy language ' + value + ' executes');
+  }
+}
+for (const type of ['text/javascript; charset=utf-8', 'application/javascript; x=1', 'text/javascript' + 'x'.repeat(80), ' ', '\vtext/javascript', 'text/javascript\u00a0']) {
+  test(() => assert_false(runs(type, 'javascript')), 'Non-essence type ' + JSON.stringify(type) + ' stays inert');
+}
+test(() => assert_true(runs(' \tTEXT/JAVASCRIPT\r\n\f', 'unrecognized')), 'Type strips only surrounding ASCII whitespace');
+test(() => assert_false(runs(null, ' javascript ')), 'Language is not whitespace stripped');
+test(() => assert_false(runs('text/plain', 'javascript')), 'A nonempty type overrides language');
+test(() => assert_true(runs(null, '')), 'An empty language defaults to classic');
+</script>

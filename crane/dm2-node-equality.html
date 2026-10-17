@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Node equality reads each interface's own data</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const left = document.createElementNS('urn:one', 'p:e');
+  const right = document.createElementNS('urn:two', 'p:e');
+  assert_false(left.isEqualNode(right));
+  const copy = document.createElementNS('urn:one', 'p:e');
+  left.setAttributeNS('urn:a', 'a:key', 'value');
+  copy.setAttributeNS('urn:b', 'b:key', 'value');
+  assert_false(left.isEqualNode(copy));
+  copy.removeAttributeNS('urn:b', 'key');
+  copy.setAttributeNS('urn:a', 'other:key', 'value');
+  assert_true(left.isEqualNode(copy), 'attribute prefixes do not affect equality');
+}, 'Element equality compares namespaces and attribute values, independent of attribute prefix');
+test(() => {
+  const first = document.implementation.createDocumentType('root', 'public', 'system');
+  const second = document.implementation.createDocumentType('root', 'public', 'other');
+  assert_false(first.isEqualNode(second));
+  const a = document.createProcessingInstruction('one', 'data');
+  const b = document.createProcessingInstruction('two', 'data');
+  assert_false(a.isEqualNode(b));
+}, 'DocumentType identifiers and ProcessingInstruction targets participate in equality');
+test(() => {
+  const a = document.createAttributeNS('urn:a', 'p:key');
+  const b = document.createAttributeNS('urn:a', 'q:key');
+  a.value = b.value = 'value';
+  assert_true(a.isEqualNode(b));
+  b.value = 'other';
+  assert_false(a.isEqualNode(b));
+}, 'Attr equality compares value but ignores prefix');
+</script>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Script insertion cost: 1000 inline and 200 external classic scripts</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  window.sc2InlineCount = 0;
+  const inlineStart = performance.now();
+  for (let i = 0; i < 1000; ++i) {
+    const script = document.createElement('script');
+    script.text = '++window.sc2InlineCount';
+    document.body.appendChild(script);
+    script.remove();
+  }
+  const inlineMs = performance.now() - inlineStart;
+  assert_equals(window.sc2InlineCount, 1000);
+  window.sc2ExternalCount = 0;
+  const externalStart = performance.now();
+  const scripts = [];
+  const loads = [];
+  for (let i = 0; i < 200; ++i) {
+    const script = document.createElement('script');
+    script.src = 'sc2-cost-external.js';
+    scripts.push(script);
+    loads.push(new Promise((resolve, reject) => { script.onload = resolve; script.onerror = reject; }));
+    document.body.appendChild(script);
+  }
+  await Promise.all(loads);
+  const externalMs = performance.now() - externalStart;
+  for (const script of scripts) script.remove();
+  assert_equals(window.sc2ExternalCount, 200);
+  test(() => {
+    assert_equals(window.sc2InlineCount, 1000);
+    assert_equals(window.sc2ExternalCount, 200);
+  }, 'SC2_COST inline_ms=' + inlineMs + ' external_ms=' + externalMs);
+  console.log('SC2_COST inline_ms=' + inlineMs + ' external_ms=' + externalMs);
+}, 'All inserted inline and external scripts execute exactly once');
+</script>

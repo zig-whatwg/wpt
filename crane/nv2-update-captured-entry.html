@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>updateCurrentEntry keeps the entry captured before serialization</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-navigation-updatecurrententry">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const before = navigation.currentEntry;
+  let nested;
+  let changedFrom;
+  const listener = e => { if (e.navigationType === null) changedFrom = e.from; };
+  navigation.addEventListener("currententrychange", listener);
+  t.add_cleanup(() => navigation.removeEventListener("currententrychange", listener));
+  navigation.updateCurrentEntry({state: {
+    get reentered() {
+      nested = navigation.navigate("#nv2-serialization", {state: {nested: true}});
+      return true;
+    },
+    marker: "original entry"
+  }});
+  await nested.finished;
+  assert_equals(changedFrom, before, "event refers to the entry captured before serialization");
+  assert_equals(before.getState().marker, "original entry");
+  assert_true(before.getState().reentered);
+  assert_true(navigation.currentEntry.getState().nested, "nested navigation keeps its own state");
+  await navigation.traverseTo(before.key).finished;
+  assert_equals(navigation.currentEntry.getState().marker, "original entry");
+}, "A navigation from a serialized getter does not redirect updateCurrentEntry's state");
+</script>

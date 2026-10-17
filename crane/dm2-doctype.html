@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DocumentType creation preserves identifiers and accepts valid empty names</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const type = document.implementation.createDocumentType('root', 'public', 'system');
+  assert_equals(type.name, 'root');
+  assert_equals(type.nodeName, 'root');
+  assert_equals(type.publicId, 'public');
+  assert_equals(type.systemId, 'system');
+  assert_equals(type.ownerDocument, document);
+}, 'A doctype exposes its own identifiers through Node and DocumentType');
+test(() => {
+  const type = document.implementation.createDocumentType('', '', '');
+  assert_equals(type.name, '');
+  assert_equals(type.nodeName, '');
+}, 'An empty string is a valid doctype name');
+</script>

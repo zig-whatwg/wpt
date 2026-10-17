@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PI attributes survive cloning and are released with replaced subtrees</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const original = document.createProcessingInstruction('test', 'a="one"');
+  original.setAttribute('b', 'two');
+  const copy = original.cloneNode();
+  assert_equals(copy.target, 'test');
+  assert_equals(copy.data, original.data);
+  assert_array_equals(copy.getAttributeNames(), ['a', 'b']);
+  original.data = 'different="value"';
+  assert_equals(copy.getAttribute('a'), 'one');
+}, 'A PI clone parses its copied data independently');
+test(() => {
+  const container = document.createElement('div');
+  for (let i = 0; i < 100; ++i) {
+    container.innerHTML = '<?test a="one" b="two"?>';
+    container.firstChild.setAttribute('c', 'three');
+    assert_equals(container.firstChild.getAttribute('c'), 'three');
+    container.innerHTML = '';
+  }
+  TestUtils.gc();
+  assert_equals(container.childNodes.length, 0);
+}, 'Replacing PI subtrees releases parsed attribute storage');
+</script>

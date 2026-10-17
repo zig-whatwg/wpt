@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTTPS query flag selects a secure test origin</title>
+<meta name="variant" content="?wss&wpt_flags=https">
+<link rel="help" href="https://web-platform-tests.org/writing-tests/server-features.html#test-features-specified-as-query-params">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_equals(location.protocol, 'https:', 'wpt_flags=https must select HTTPS');
+  assert_true(isSecureContext, 'the selected origin must be secure');
+}, 'The HTTPS variant runs in a secure context');
+</script>

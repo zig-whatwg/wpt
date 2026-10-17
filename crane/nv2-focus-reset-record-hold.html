@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A navigate-event record survives a navigation started by its focus reset</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body tabindex="-1">
+<button id="focused">Initially focused</button>
+<script>
+promise_test(async t => {
+  // A focusable body already invokes blur on the base implementation;
+  // this exercises the existing Wait hold independently of viewport fallback.
+  focused.focus();
+  let inner;
+  let releaseInner;
+  const innerGate = new Promise(resolve => releaseInner = resolve);
+  const onNavigate = e => {
+    e.intercept(e.destination.url.endsWith("#nv2-inner")
+      ? {focusReset: "manual", handler: () => innerGate}
+      : {handler: () => Promise.resolve()});
+  };
+  navigation.addEventListener("navigate", onNavigate);
+  t.add_cleanup(() => navigation.removeEventListener("navigate", onNavigate));
+  focused.onblur = () => {
+    focused.onblur = null;
+    inner = navigation.navigate("#nv2-inner");
+  };
+  t.add_cleanup(() => { focused.onblur = null; });
+  const outer = navigation.navigate("#nv2-outer");
+  await outer.finished;
+  assert_not_equals(inner, undefined, "focus reset started another navigation");
+  releaseInner();
+  await inner.finished;
+  assert_equals(location.hash, "#nv2-inner");
+}, "Nested navigation during focus reset does not reclaim the delivering event record");
+</script>

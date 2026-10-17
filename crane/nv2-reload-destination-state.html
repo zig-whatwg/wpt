@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>reload exposes supplied state in its destination and committed entry</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-navigation-reload">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  navigation.updateCurrentEntry({state: {before: true}});
+  const original = navigation.currentEntry;
+  const state = {after: true};
+  const info = {marker: "reload info"};
+  let fired = false;
+  navigation.addEventListener("navigate", t.step_func(e => {
+    e.intercept();
+    fired = true;
+    assert_equals(e.navigationType, "reload");
+    assert_equals(e.info, info);
+    assert_true(e.destination.getState().after);
+    assert_not_equals(e.destination.getState(), state);
+  }), {once: true});
+  await navigation.reload({state, info}).finished;
+  assert_true(fired);
+  assert_equals(navigation.currentEntry, original);
+  assert_true(original.getState().after);
+  assert_not_equals(original.getState(), state);
+}, "An intercepted reload uses the supplied state before and after commit");
+</script>

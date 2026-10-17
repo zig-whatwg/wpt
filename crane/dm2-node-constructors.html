@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Text and Comment constructor node documents</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-text-text">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const Constructor of [Text, Comment]) {
+  test(() => {
+    const node = new Constructor('a\ud800b');
+    assert_equals(node.ownerDocument, document);
+    assert_equals(node.data, 'a\ud800b');
+    assert_equals(node.parentNode, null);
+  }, Constructor.name + ' assigns the current global document at construction');
+}
+</script>

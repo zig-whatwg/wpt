@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Secure cookies are sent by a same-origin WSS handshake</title>
+<link rel="help" href="https://websockets.spec.whatwg.org/#opening-handshake">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/websockets/constants.sub.js"></script>
+<script>
+promise_test(async t => {
+  assert_equals(location.protocol, 'https:', 'secure cookie precondition');
+  const name = 'ws3_secure_' + Math.random().toString(36).slice(2);
+  document.cookie = name + '=test; Path=/; Secure';
+  t.add_cleanup(() => {
+    document.cookie = name + '=; Path=/; Secure; Max-Age=0';
+  });
+  assert_true(document.cookie.split('; ').includes(name + '=test'),
+              'the secure document stored the cookie');
+  const ws = new WebSocket(SCHEME_DOMAIN_PORT + '/echo-cookie');
+  t.add_cleanup(() => ws.close());
+  await new Promise((resolve, reject) => {
+    ws.onerror = () => reject(new Error('WSS connection failed'));
+    ws.onmessage = t.step_func(event => {
+      assert_true(event.data.includes(name + '=test'),
+                  'the WSS handshake carries the Secure cookie');
+      ws.onclose = resolve;
+      ws.close();
+    });
+    ws.onclose = () => reject(new Error('WSS closed before its cookie echo'));
+  });
+}, 'A Secure cookie set by HTTPS is visible to WSS');
+</script>

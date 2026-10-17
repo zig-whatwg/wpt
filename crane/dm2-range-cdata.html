@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Range algorithms treat CDATASection as Text</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createDocument(null, 'root');
+  const first = doc.createCDATASection('abcd');
+  const last = doc.createTextNode('efgh');
+  doc.documentElement.append(first, last);
+  const range = doc.createRange();
+  range.setStart(first, 2);
+  range.setEnd(last, 2);
+  const wrapper = doc.createElement('wrapper');
+  range.surroundContents(wrapper);
+  assert_equals(wrapper.textContent, 'cdef');
+  assert_equals(doc.documentElement.textContent, 'abcdefgh');
+  assert_equals(range.startContainer, doc.documentElement);
+  assert_equals(range.endOffset, range.startOffset + 1);
+}, 'surroundContents permits a partially contained CDATASection');
+test(() => {
+  const doc = document.implementation.createDocument(null, 'root');
+  const cdata = doc.createCDATASection('data');
+  const range = doc.createRange();
+  range.setStart(doc, 0);
+  range.collapse(true);
+  assert_throws_dom('HierarchyRequestError', () => range.insertNode(cdata));
+  assert_equals(cdata.parentNode, null);
+  assert_equals(range.startContainer, doc);
+  assert_equals(range.startOffset, 0);
+}, 'insertNode rejects CDATASection directly under Document before mutation');
+test(() => {
+  const doc = document.implementation.createDocument(null, 'root');
+  assert_throws_dom('HierarchyRequestError', () => doc.appendChild(doc.createCDATASection('data')));
+}, 'pre-insert validity treats CDATASection as Text');
+</script>

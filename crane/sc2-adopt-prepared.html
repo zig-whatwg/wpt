@@ -1,0 +1,41 @@
+<!doctype html>
+<title>Prepared scripts execute only in their preparation-time document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const type of ['', 'module']) {
+  for (const moveBack of [false, true]) {
+    promise_test(async t => {
+      const frame = document.createElement('iframe');
+      frame.srcdoc = '<!doctype html><body>';
+      t.add_cleanup(() => frame.remove());
+      await new Promise(resolve => {
+        frame.onload = resolve;
+        document.body.append(frame);
+      });
+      const source = frame.contentWindow;
+      source.sc2ExternalCount = 0;
+      window.sc2ExternalCount = 0;
+      const script = source.document.createElement('script');
+      script.type = type;
+      script.src = new URL('sc2-cost-external.js?pipe=trickle(d0.2)', location.href);
+      const events = [];
+      const completed = new Promise(resolve => {
+        script.onload = () => { events.push('load'); resolve(); };
+        script.onerror = () => { events.push('error'); resolve(); };
+      });
+      t.add_cleanup(() => script.remove());
+      source.document.body.append(script);
+      document.body.append(script);
+      if (moveBack) source.document.body.append(script);
+      if (moveBack) await completed;
+      else await new Promise(resolve => t.step_timeout(resolve, 3000));
+      assert_equals(source.sc2ExternalCount, moveBack ? 1 : 0);
+      assert_equals(window.sc2ExternalCount, 0);
+      assert_array_equals(events, moveBack ? ['load'] : []);
+    }, (type || 'classic') + ': prepared script moved ' + (moveBack ? 'out and back before completion' : 'to another document'));
+  }
+}
+</script>

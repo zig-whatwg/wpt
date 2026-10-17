@@ -1,0 +1,1 @@
+++window.sc2ExternalCount;

@@ -1,0 +1,25 @@
+<!doctype html>
+<title>URL-like import-map keys are normalized before lookup</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "./sc2-start": "./sc2-mapped-one.js",
+    "./sc2-mapped-one.js": "./sc2-mapped-two.js",
+    "./unused/../sc2-alias": "data:text/javascript,export default 3",
+    "sc2-bare": "data:text/javascript,export default 4"
+  },
+  "scopes": {
+    "./": {
+      "./sc2-scoped": "data:text/javascript,export default 5"
+    }
+  }
+}
+</script>
+<script type="module">
+promise_test(async () => {
+  assert_equals((await import('./sc2-start')).default, 1);
+  assert_equals((await import(import.meta.resolve('./sc2-start'))).default, 2);
+}, 'Importing a resolved URL applies the import map to the URL again');
+</script>

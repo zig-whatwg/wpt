@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Event timestamps use the relevant global time origin</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#inner-event-creation-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [name, init] of [
+  ['Event', {}], ['CustomEvent', {}], ['MouseEvent', {}], ['KeyboardEvent', {}],
+  ['ErrorEvent', {}], ['ProgressEvent', {}], ['CloseEvent', {}],
+  ['PromiseRejectionEvent', { promise: Promise.resolve(), reason: null }],
+]) {
+  test(() => {
+    const Constructor = self[name];
+    assert_equals(typeof Constructor, 'function', name + ' is constructible');
+    const before = performance.now();
+    const event = new Constructor('test', init);
+    const after = performance.now();
+    assert_greater_than_equal(event.timeStamp, before);
+    assert_less_than_equal(event.timeStamp, after);
+    const saved = event.timeStamp;
+    event.initEvent('changed', false, false);
+    assert_equals(event.timeStamp, saved, 'initEvent preserves the creation timestamp');
+  }, name + ' timestamps share the performance.now time origin');
+}
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A focus change during blur takes precedence over the pending focus</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const refocusOriginal of [false, true]) {
+  test(t => {
+    const buttons = Array.from({length: 3}, () => document.createElement("button"));
+    for (const button of buttons) document.body.appendChild(button);
+    t.add_cleanup(() => buttons.forEach(button => button.remove()));
+    const [original, pending, third] = buttons;
+    original.focus();
+    const target = refocusOriginal ? original : third;
+    original.onblur = () => {
+      original.onblur = null;
+      target.focus();
+    };
+    pending.focus();
+    assert_equals(document.activeElement, target);
+  }, "A blur handler focusing " + (refocusOriginal ? "the original" : "a third") + " element wins");
+}
+</script>

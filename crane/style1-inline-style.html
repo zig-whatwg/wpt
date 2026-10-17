@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane style1: element.style and the style attribute</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="d" style="color: red; margin: 1px 2px">x</div>
+<script>
+const d = document.getElementById("d");
+test(() => {
+  assert_equals(d.style.color, "red");
+  assert_equals(d.style.marginRight, "2px");
+  assert_equals(d.style.margin, "1px 2px");
+  assert_equals(d.style.length, 5);
+  assert_equals(d.style.cssText, "color: red; margin: 1px 2px;");
+}, "The style attribute parses into the declaration block");
+test(() => {
+  d.style.color = "blue";
+  assert_equals(d.getAttribute("style"), "color: blue; margin: 1px 2px;");
+  d.style.removeProperty("margin");
+  assert_equals(d.getAttribute("style"), "color: blue;");
+  d.style.cssText = "display: none";
+  assert_equals(d.getAttribute("style"), "display: none;");
+  assert_equals(getComputedStyle(d).display, "none");
+}, "Changes write back to the style attribute");
+test(() => {
+  d.setAttribute("style", "width: 5px");
+  assert_equals(d.style.width, "5px");
+  assert_equals(d.style.display, "");
+  d.removeAttribute("style");
+  assert_equals(d.style.length, 0);
+}, "The attribute is the source when script sets it");
+test(() => {
+  d.style.setProperty("color", "red", "important");
+  assert_equals(d.style.getPropertyPriority("color"), "important");
+  d.style.setProperty("color", "nope");
+  assert_equals(d.style.color, "red", "an invalid value changes nothing");
+  d.style.foo = 1;
+  assert_equals(d.style.foo, 1, "an expando");
+  assert_equals(d.getAttribute("style"), "color: red !important;");
+}, "setProperty, priorities, expandos");
+async_test(t => {
+  const target = document.createElement("div");
+  document.body.appendChild(target);
+  new MutationObserver(t.step_func_done(records => {
+    assert_equals(records[0].attributeName, "style");
+  })).observe(target, { attributes: true });
+  target.style.color = "green";
+}, "A change is an attribute mutation");
+</script>

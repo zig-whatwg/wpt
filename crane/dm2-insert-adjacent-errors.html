@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>insertAdjacent preserves pre-insertion exceptions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.implementation.createHTMLDocument().documentElement;
+  assert_throws_dom('HierarchyRequestError', () =>
+    root.insertAdjacentElement('beforebegin', document.createElement('extra')));
+}, 'insertAdjacentElement preserves Document hierarchy validation');
+test(() => {
+  const root = document.implementation.createHTMLDocument().documentElement;
+  assert_throws_dom('HierarchyRequestError', () =>
+    root.insertAdjacentText('afterend', 'text'));
+}, 'insertAdjacentText preserves Document hierarchy validation');
+</script>

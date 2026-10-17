@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DocumentFragment constructor sets its node document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const fragment = new DocumentFragment();
+  assert_equals(fragment.ownerDocument, document);
+  assert_equals(fragment.parentNode, null);
+  assert_equals(fragment.childNodes.length, 0);
+}, 'A new DocumentFragment belongs to the current global document');
+</script>

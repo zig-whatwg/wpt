@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<meta name="timeout" content="long">
+<title>Crane: static routing - addRoutes() rules and Handle Fetch's router sources</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+// Lane sw1-b4. InstallEvent.addRoutes() verifies each rule (Verify Router
+// Condition, the fetch-event source), checks the registration limit on the
+// job thread, and the worker's rules decide a request before its fetch event
+// (Handle Fetch step 13): network, a cache, or the event.
+const SCOPE = '/crane/resources/sw1b4-routes/';
+let registration, frame, results;
+
+promise_test(async t => {
+  registration = await service_worker_unregister_and_register(t, '/crane/resources/sw1b4-routes-worker.js', SCOPE);
+  await wait_for_state(t, registration.installing, 'activated');
+  frame = await with_iframe(SCOPE + 'blank.html');
+  results = await new Promise(resolve => {
+    navigator.serviceWorker.onmessage = e => resolve(e.data);
+    registration.active.postMessage('results');
+  });
+}, 'setup');
+
+const expected = {
+  'good': 'ok',
+  'bad-method': 'TypeError',
+  'forbidden-method': 'TypeError',
+  'regexp-group': 'TypeError',
+  'or-with-other': 'TypeError',
+  'empty-condition': 'TypeError',
+  'no-source': 'TypeError',
+  'bad-source': 'TypeError',
+  'bad-mode': 'TypeError',
+  'too-many': 'TypeError',
+  'after-install': 'InvalidStateError',
+};
+for (const [name, value] of Object.entries(expected)) {
+  promise_test(async () => assert_equals(results[name], value), `addRoutes(): ${name}`);
+}
+
+promise_test(async t => {
+  const r = await frame.contentWindow.fetch('net.txt');
+  assert_equals(await r.text(), 'network\n');
+}, 'a urlPattern string rule with the network source: the network answers');
+
+promise_test(async t => {
+  const r = await frame.contentWindow.fetch('cached.txt');
+  assert_equals(await r.text(), 'From cache');
+}, 'a URLPattern object rule (ignoreCase) with a cache source: the named cache answers');
+
+promise_test(async t => {
+  const r = await frame.contentWindow.fetch('other.txt');
+  assert_equals(await r.text(), 'from-sw');
+}, 'no rule matches: the fetch event answers');
+
+promise_test(async t => {
+  const post = await frame.contentWindow.fetch('echo.py', {method: 'POST', body: 'x', mode: 'cors'});
+  assert_equals(await post.text(), 'network POST', 'a cors POST');
+  const get = await frame.contentWindow.fetch('echo.py', {mode: 'cors'});
+  assert_equals(await get.text(), 'from-sw', 'a cors GET (the not rule)');
+}, 'requestMethod (normalized) and requestMode together: the network');
+
+promise_test(async t => {
+  const r = await frame.contentWindow.fetch('blank.html');
+  assert_equals(await r.text(), 'from-sw');
+}, 'a not condition: the fetch event');
+
+promise_test(async t => {
+  frame.remove();
+  await registration.unregister();
+  await caches.delete('sw1b4');
+}, 'cleanup');
+</script>

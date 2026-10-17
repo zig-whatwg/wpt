@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reload state reaches the destination document and survives canceled reloads</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#reload">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  frame.src = "/common/blank.html";
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.appendChild(frame);
+  await loaded;
+  const nav = frame.contentWindow.navigation;
+  nav.updateCurrentEntry({state: {version: "old"}});
+  let seenDestination;
+  nav.onnavigate = t.step_func(e => {
+    assert_equals(e.navigationType, "reload");
+    seenDestination = e.destination.getState();
+    assert_equals(e.info, "reload-info");
+    assert_equals(nav.currentEntry.getState().version, "old", "state is unchanged during navigate");
+  });
+  const reloaded = new Promise(resolve => frame.onload = resolve);
+  nav.reload({state: {version: "new"}, info: "reload-info"});
+  await reloaded;
+  assert_equals(seenDestination.version, "new", "navigate destination gets the requested state");
+  assert_equals(frame.contentWindow.navigation.currentEntry.getState().version, "new", "the new document gets the requested state");
+}, "A normal cross-document reload carries NavigationReloadOptions.state");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  frame.src = "/common/blank.html";
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.appendChild(frame);
+  await loaded;
+  const win = frame.contentWindow;
+  const nav = win.navigation;
+  nav.updateCurrentEntry({state: {version: "old"}});
+  nav.onnavigate = t.step_func(e => {
+    assert_equals(e.destination.getState().version, "new");
+    e.preventDefault();
+  });
+  const result = nav.reload({state: {version: "new"}});
+  await promise_rejects_dom(t, "AbortError", win.DOMException, result.committed);
+  await promise_rejects_dom(t, "AbortError", win.DOMException, result.finished);
+  assert_equals(nav.currentEntry.getState().version, "old");
+}, "A canceled reload exposes its destination state but preserves the current entry state");
+</script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ProcessingInstruction constructor and factory initialization</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#processinginstruction-initialize">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const pi = new ProcessingInstruction('xml:target', 'x="one"');
+  assert_equals(pi.ownerDocument, document);
+  assert_equals(pi.target, 'xml:target');
+  assert_equals(pi.nodeName, 'xml:target');
+  assert_equals(pi.data, 'x="one"');
+  assert_equals(pi.getAttribute('x'), 'one');
+  assert_equals(new ProcessingInstruction('target').data, '');
+}, 'The PI constructor initializes its node document, target, data, and attributes');
+test(() => {
+  for (const create of [(target, data) => new ProcessingInstruction(target, data),
+                        (target, data) => document.createProcessingInstruction(target, data)]) {
+    for (const target of ['', '1name', '\u00b7name', 'a b', '\ud800', '\u{F0000}']) {
+      assert_throws_dom('InvalidCharacterError', () => create(target, 'data'), target);
+    }
+    assert_throws_dom('InvalidCharacterError', () => create('target', '?>'));
+    for (const target of [':', '_', '\u00c0', 'a\u00b7', '\u{10000}']) {
+      assert_equals(create(target, '').target, target);
+    }
+  }
+}, 'Both PI entry points validate XML Names and reject the closing delimiter');
+</script>

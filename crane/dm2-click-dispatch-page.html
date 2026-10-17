@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Repeated event dispatch through a ten-deep tree</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const root = document.createElement('div');
+let leaf = root;
+for (let depth = 1; depth < 10; ++depth) {
+  leaf = leaf.appendChild(document.createElement('div'));
+}
+let count = 0;
+root.addEventListener('click', () => ++count);
+const started = performance.now();
+for (let i = 0; i < 100000; ++i) {
+  leaf.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+}
+const elapsed = performance.now() - started;
+test(() => {
+  assert_equals(count, 100000);
+}, 'Dispatch 100000 activation events through 10 nodes: ' + elapsed.toFixed(3) + ' ms');
+</script>

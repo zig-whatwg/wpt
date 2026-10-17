@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Qualified names retain the suffix after the first colon</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const node = document.createElementNS('urn:test', 'p:local:tail');
+  assert_equals(node.prefix, 'p');
+  assert_equals(node.localName, 'local:tail');
+  assert_equals(node.tagName, 'p:local:tail');
+  node.setAttributeNS('urn:attr', 'a:value:tail', 'yes');
+  const attr = node.getAttributeNodeNS('urn:attr', 'value:tail');
+  assert_not_equals(attr, null);
+  assert_equals(attr.prefix, 'a');
+  assert_equals(attr.name, 'a:value:tail');
+  assert_equals(attr.value, 'yes');
+}, 'Element and attribute names preserve every colon after the first');
+</script>

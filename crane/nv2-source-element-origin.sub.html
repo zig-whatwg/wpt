@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NavigateEvent.sourceElement respects the destination document's origin</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#inner-navigate-event-firing-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const crossOrigin of [false, true]) {
+  promise_test(t => new Promise(resolve => {
+    const frame = document.createElement("iframe");
+    frame.name = "nv2-target-" + crossOrigin;
+    const anchor = document.createElement("a");
+    anchor.id = "nv2-source-" + crossOrigin;
+    anchor.target = frame.name;
+    const url = (crossOrigin ? "http://{{domains[www1]}}:{{ports[http][0]}}" : location.origin) + "/crane/nv2-source-element-frame.html";
+    anchor.href = url + "#nv2-link";
+    const receive = t.step_func(e => {
+      if (e.source !== frame.contentWindow || e.data.marker !== "nv2-source") return;
+      if (e.data.ready) {
+        anchor.click();
+      } else {
+        assert_equals(e.data.isNull, crossOrigin);
+        if (!crossOrigin) assert_equals(e.data.id, anchor.id);
+        resolve();
+      }
+    });
+    window.addEventListener("message", receive);
+    t.add_cleanup(() => {
+      window.removeEventListener("message", receive);
+      anchor.remove();
+      frame.remove();
+    });
+    document.body.appendChild(anchor);
+    frame.src = url;
+    document.body.appendChild(frame);
+  }), (crossOrigin ? "Cross-origin" : "Same-origin") + " link source in a named frame's navigate event");
+}
+</script>

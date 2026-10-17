@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="referrer" content="unsafe-url">
+<title>Inherited origins and srcdoc referrer sources</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function frame(t, srcdoc, parent = document.body) {
+  const iframe = document.createElement("iframe");
+  if (srcdoc !== null) iframe.srcdoc = srcdoc;
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  t.add_cleanup(() => iframe.remove());
+  parent.appendChild(iframe);
+  await loaded;
+  return iframe;
+}
+
+for (const srcdoc of [null, "<!doctype html><body>"]) {
+  promise_test(async t => {
+    const iframe = await frame(t, srcdoc);
+    const target = location.origin + "/common/security-features/subresource/xhr.py";
+    const referrer = location.origin + "/explicit-referrer";
+    const request = new iframe.contentWindow.Request(target, {referrer});
+    assert_equals(request.referrer, referrer);
+    const foreign = new iframe.contentWindow.Request(target, {referrer: "https://not-same-origin.test/"});
+    assert_equals(foreign.referrer, "about:client");
+  }, `${srcdoc === null ? "about:blank" : "srcdoc"}: Request referrer uses the inherited settings origin`);
+}
+
+async function echoedReferrer(t, iframe) {
+  const token = Math.random().toString();
+  const reply = new Promise(resolve => {
+    const listener = event => {
+      if (event.source === iframe.contentWindow && event.data.token === token) {
+        window.removeEventListener("message", listener);
+        resolve(event.data);
+      }
+    };
+    window.addEventListener("message", listener);
+    t.add_cleanup(() => window.removeEventListener("message", listener));
+  });
+  const script = iframe.contentDocument.createElement("script");
+  script.textContent = `fetch(${JSON.stringify(location.origin + "/common/security-features/subresource/xhr.py")})
+    .then(response => response.json())
+    .then(value => top.postMessage({token: ${JSON.stringify(token)}, referrer: value.headers.referer}, "*"))
+    .catch(error => top.postMessage({token: ${JSON.stringify(token)}, error: error.name}, "*"));`;
+  iframe.contentDocument.body.appendChild(script);
+  const result = await reply;
+  assert_false("error" in result, "request succeeds");
+  return result.referrer;
+}
+
+promise_test(async t => {
+  const outer = await frame(t, '<!doctype html><base href="https://wrong-base.test/"><body>');
+  const inner = await frame(t, '<!doctype html><body>', outer.contentDocument.body);
+  assert_equals(await echoedReferrer(t, inner), location.href.split("#")[0]);
+}, "Nested srcdoc client referrer walks to the ancestor document URL, ignoring base elements");
+
+promise_test(async t => {
+  const iframe = await frame(t, '<!doctype html><meta name="referrer" content="no-referrer"><body>');
+  assert_equals(await echoedReferrer(t, iframe), undefined);
+  iframe.contentDocument.querySelector("meta").content = "origin";
+  assert_equals(await echoedReferrer(t, iframe), location.origin + "/");
+}, "A srcdoc document applies changes to its own meta referrer policy");
+</script>

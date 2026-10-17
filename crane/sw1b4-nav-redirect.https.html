@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta name="timeout" content="long">
+<title>Crane: every hop of a frame navigation reaches its service worker</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+// Lane sw1-b4. Frame navigations fetch with redirect mode "manual" and follow
+// each redirect themselves (HTML "create navigation params by fetching" step
+// 21), so a service worker sees every hop: its own Response.redirect(), and a
+// network 302 after it - the same resultingClientId while the hops stay
+// same-origin - and the frame ends at the last URL.
+const SCOPE = '/crane/resources/sw1b4-redir/';
+let registration;
+
+function seenByWorker() {
+  return new Promise(resolve => {
+    navigator.serviceWorker.addEventListener('message', function once(e) {
+      navigator.serviceWorker.removeEventListener('message', once);
+      resolve(e.data);
+    });
+    registration.active.postMessage('seen');
+  });
+}
+
+promise_test(async t => {
+  registration = await service_worker_unregister_and_register(t, '/crane/resources/sw1b4-redir-worker.js', SCOPE);
+  await wait_for_state(t, registration.installing, 'activated');
+}, 'setup');
+
+promise_test(async t => {
+  const frame = await with_iframe(SCOPE + 'start.html');
+  t.add_cleanup(() => frame.remove());
+  const seen = await seenByWorker();
+  assert_equals(frame.contentWindow.location.pathname, SCOPE + 'final.html', 'the frame ends at the last hop');
+  assert_equals(frame.contentDocument.body.textContent.trim(), 'final');
+  assert_array_equals(seen.map(s => s.path), ['start.html', 'redirect.py?to=final.html', 'final.html'], 'every hop');
+  assert_equals(new Set(seen.map(s => s.resultingClientId)).size, 1, 'one reserved client, same-origin hops');
+  assert_not_equals(seen[0].resultingClientId, '');
+}, 'a worker redirect, then a network 302: the worker sees all three hops');
+
+promise_test(async t => {
+  // Out of scope, then back in: the worker sees the hop that comes back.
+  const back = new URL(SCOPE + 'final.html?back', location.href).href;
+  const out = '/common/redirect.py?location=' + encodeURIComponent(back);
+  const frame = await with_iframe(out);
+  t.add_cleanup(() => frame.remove());
+  assert_equals(frame.contentWindow.location.search, '?back');
+  const seen = await seenByWorker();
+  assert_array_equals(seen.map(s => s.path), ['final.html?back']);
+}, 'a redirect from out of scope into scope: the worker sees the hop into its scope');
+
+promise_test(async t => {
+  // A cross-origin hop: the reserved client is discarded and a new one made.
+  const other = get_host_info().HTTPS_REMOTE_ORIGIN + '/common/redirect.py?location=' +
+      encodeURIComponent(new URL(SCOPE + 'final.html?cross', location.href).href);
+  const frame = await with_iframe(SCOPE + 'redirect.py?to=' + encodeURIComponent(other));
+  t.add_cleanup(() => frame.remove());
+  assert_equals(frame.contentWindow.location.search, '?cross');
+  const seen = await seenByWorker();
+  assert_equals(seen.length, 2, 'the first hop and the last');
+  assert_not_equals(seen[0].resultingClientId, seen[1].resultingClientId, 'a new reserved client after the cross-origin hop');
+}, 'a cross-origin hop in the middle: two reserved clients');
+
+promise_test(async t => {
+  await registration.unregister();
+}, 'cleanup');
+</script>

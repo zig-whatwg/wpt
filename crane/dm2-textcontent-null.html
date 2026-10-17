@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document and DocumentType textContent is null</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createDocument(null, 'root');
+  const doctype = document.implementation.createDocumentType('root', '', '');
+  for (const node of [doc, doctype]) {
+    assert_equals(node.textContent, null);
+    node.textContent = 'ignored';
+    assert_equals(node.textContent, null);
+  }
+  assert_equals(doc.documentElement.localName, 'root');
+}, 'Document and DocumentType return null and ignore textContent writes');
+</script>

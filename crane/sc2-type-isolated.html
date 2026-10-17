@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated empty type precedence regression</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  window.sc2EmptyTypeRan = false;
+  const script = document.createElement('script');
+  script.type = '';
+  script.setAttribute('language', 'unrecognized');
+  script.text = 'window.sc2EmptyTypeRan = true';
+  document.body.appendChild(script);
+  script.remove();
+  assert_true(window.sc2EmptyTypeRan);
+}, 'An empty type overrides an unrecognized legacy language');
+</script>

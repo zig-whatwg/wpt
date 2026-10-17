@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Request referrer uses an inherited settings origin</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  t.add_cleanup(() => iframe.remove());
+  document.body.appendChild(iframe);
+  await loaded;
+  const referrer = location.origin + "/explicit-referrer";
+  const request = new iframe.contentWindow.Request(location.href, {referrer});
+  assert_equals(request.referrer, referrer);
+}, "An about:blank Request accepts a referrer matching its inherited origin");
+</script>

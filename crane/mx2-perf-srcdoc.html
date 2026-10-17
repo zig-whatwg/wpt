@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Policy inheritance cost for 100 srcdoc frames</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async () => {
+  const start = performance.now();
+  for (let i = 0; i < 100; ++i) {
+    const iframe = document.createElement("iframe");
+    iframe.srcdoc = "<!doctype html><p>policy inheritance</p>";
+    const loaded = new Promise(resolve => iframe.onload = resolve);
+    document.body.appendChild(iframe);
+    await loaded;
+    assert_equals(iframe.contentDocument.querySelector("p").textContent, "policy inheritance");
+    iframe.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_greater_than_equal(elapsed, 0), "MX2 srcdoc100 elapsed_ms=" + elapsed);
+}, "Create and remove 100 srcdoc frames");
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NodeIterator stays within its root on removal and reaches following siblings</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const parent = document.createElement('div');
+  const root = document.createElement('section');
+  const child = document.createElement('span');
+  parent.appendChild(root).appendChild(child);
+  document.body.appendChild(parent);
+  const iterator = document.createNodeIterator(root);
+  assert_equals(iterator.nextNode(), root);
+  parent.remove();
+  assert_equals(iterator.referenceNode, root);
+  assert_false(iterator.pointerBeforeReferenceNode);
+  assert_equals(iterator.nextNode(), child);
+}, 'Removing an ancestor of root leaves the iterator position within root');
+test(() => {
+  const root = document.createElement('div');
+  const a = document.createElement('a');
+  const nested = document.createElement('b');
+  const after = document.createElement('i');
+  a.append(nested);
+  root.append(a, after);
+  const iterator = document.createNodeIterator(root);
+  const nodes = [];
+  for (let node; node = iterator.nextNode();) nodes.push(node);
+  assert_array_equals(nodes, [root, a, nested, after]);
+}, 'Forward traversal climbs to the sibling of a root child');
+</script>

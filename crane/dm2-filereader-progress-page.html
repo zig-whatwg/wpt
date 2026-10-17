@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Repeated FileReader progress events</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({ explicit_done: true });
+const reads = 10000;
+const blob = new Blob([new Uint8Array(64)]);
+const reader = new FileReader();
+const counts = { loadstart: 0, progress: 0, load: 0, loadend: 0 };
+let completed = 0;
+let failed = false;
+for (const type of Object.keys(counts)) {
+  reader.addEventListener(type, () => ++counts[type]);
+}
+reader.addEventListener('error', () => {
+  failed = true;
+  test(() => assert_unreached('FileReader failed: ' + reader.error), 'FileReader workload completes');
+  done();
+});
+const started = performance.now();
+reader.addEventListener('loadend', () => {
+  if (failed) return;
+  if (++completed < reads) {
+    reader.readAsArrayBuffer(blob);
+    return;
+  }
+  const elapsed = performance.now() - started;
+  test(() => {
+    assert_equals(completed, reads);
+    for (const type of Object.keys(counts)) assert_equals(counts[type], reads, type);
+    assert_equals(reader.result.byteLength, 64);
+  }, 'FileReader 10000 reads: ' + elapsed.toFixed(3) + ' ms');
+  done();
+});
+reader.readAsArrayBuffer(blob);
+</script>

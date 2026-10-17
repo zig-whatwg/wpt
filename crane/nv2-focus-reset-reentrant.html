@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Two nested intercepted navigations during focus reset keep their records alive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body tabindex="-1">
+<button id="first">First focus</button>
+<button id="second">Second focus</button>
+<script>
+promise_test(async t => {
+  const nav = navigation;
+  let inner;
+  let nested;
+  const navigate = e => e.intercept({
+    focusReset: e.destination.url.endsWith("#nv2-nested") ? "manual" : "after-transition",
+    handler: () => Promise.resolve()
+  });
+  nav.addEventListener("navigate", navigate);
+  t.add_cleanup(() => nav.removeEventListener("navigate", navigate));
+  first.focus();
+  first.onblur = () => {
+    first.onblur = null;
+    second.focus();
+    inner = nav.navigate("#nv2-inner");
+  };
+  second.onblur = () => {
+    second.onblur = null;
+    nested = nav.navigate("#nv2-nested");
+  };
+  t.add_cleanup(() => { first.onblur = null; second.onblur = null; });
+  const outer = nav.navigate("#nv2-outer");
+  await outer.finished;
+  assert_not_equals(inner, undefined, "the first reset starts an intercepted navigation");
+  await inner.finished;
+  assert_not_equals(nested, undefined, "the inner reset starts another intercepted navigation");
+  const finalEntry = await nested.finished;
+  assert_equals(finalEntry, nav.currentEntry);
+  assert_equals(new URL(finalEntry.url).hash, "#nv2-nested");
+  assert_equals(location.hash, "#nv2-nested");
+}, "Each delivering navigate event survives its focus reset's nested navigation");
+</script>

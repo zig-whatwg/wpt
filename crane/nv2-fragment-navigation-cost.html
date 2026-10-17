@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<meta name="variant" content="?none">
+<meta name="variant" content="?listener">
+<title>10,000 fragment navigations preserve the URL with and without a listener</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+setup({explicit_done: true});
+(async () => {
+  // Each navigable permits 200 history updates per ten-second interval.
+  // Prepare and remove one fresh frame outside each timed interval, so the
+  // measured batches execute 10,000 updates without accumulating old frames.
+  const listener = location.search === "?listener";
+  const expected = Array.from({length: 100}, (_, n) => "#nv2-" + n);
+  const durations = [];
+  let seen = 0;
+  let completed = 0;
+  try {
+    for (let repetition = 0; repetition < 100; ++repetition) {
+      const frame = document.createElement("iframe");
+      try {
+        const loaded = new Promise(resolve => frame.onload = resolve);
+        frame.src = "/common/blank.html";
+        document.body.appendChild(frame);
+        await loaded;
+        if (listener) frame.contentWindow.navigation.addEventListener("navigate", () => ++seen);
+        const frameLocation = frame.contentWindow.location;
+        const observed = new Array(100);
+        const started = performance.now();
+        for (let n = 0; n < 100; ++n) {
+          frameLocation.hash = expected[n];
+          observed[n] = frameLocation.hash;
+        }
+        durations.push(performance.now() - started);
+        // Capture each resulting URL in the interval; verify outside it.
+        assert_array_equals(observed, expected, "every update in repetition " + repetition);
+        completed += 100;
+      } finally {
+        frame.remove();
+      }
+    }
+    const elapsed = durations.reduce((sum, value) => sum + value, 0);
+    const sorted = durations.slice().sort((a, b) => a - b);
+    const median = (sorted[49] + sorted[50]) / 2;
+    test(() => {
+      assert_equals(completed, 10000, "every fragment assignment was verified");
+      if (listener) assert_equals(seen, 10000, "every navigation fires an event");
+    }, "Fragment navigation " + (listener ? "listener" : "no listener") + ": " +
+      elapsed.toFixed(3) + " ms for 10000 updates; batch median " + median.toFixed(3) + " ms");
+  } catch (error) {
+    test(() => { throw error; }, "Fragment navigation setup and execution");
+  } finally {
+    done();
+  }
+})();
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>replaceChildren validates a Document after excluding its removed children</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const replacement of ['element', 'fragment', 'doctype']) {
+  test(() => {
+    const doc = document.implementation.createHTMLDocument();
+    const node = replacement === 'doctype'
+      ? document.implementation.createDocumentType('replacement', '', '')
+      : doc.createElement('replacement');
+    let input = node;
+    if (replacement === 'fragment') {
+      input = doc.createDocumentFragment();
+      input.append(node);
+    }
+    doc.replaceChildren(input);
+    assert_equals(doc.childNodes.length, 1);
+    assert_equals(doc.firstChild, node);
+    assert_equals(node.ownerDocument, doc);
+  }, 'Document replacement with ' + replacement + ' excludes its old children');
+}
+</script>

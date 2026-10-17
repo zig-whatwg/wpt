@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Interactive descendants do not activate their summary</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interactive-elements.html#the-summary-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<details><summary>
+  <audio controls src="/media/sound_5.mp3"></audio>
+  <textarea>text</textarea>
+  <iframe srcdoc="frame"></iframe>
+  <embed src="/images/blue.png" height="100" width="100">
+</summary></details>
+<script>
+for (const name of ['audio', 'textarea', 'iframe', 'embed']) {
+  promise_test(async () => {
+    const details = document.querySelector('details');
+    details.open = false;
+    await test_driver.click(document.querySelector(name));
+    assert_false(details.open);
+  }, `Clicking interactive ${name} content does not toggle its ancestor details`);
+}
+</script>

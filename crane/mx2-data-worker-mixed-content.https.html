@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Data workers inherit their owner's mixed-content restriction</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+// Browser rule: aligned stable cc74d2669f, sharedworker classic/module
+// data opt-in fetch: Chrome and Firefox 8/8, Safari 6/8 (the two failures
+// upgrade instead of blocking). An opaque worker still restricts HTTP.
+for (const shared of [false, true]) {
+  for (const type of ["classic", "module"]) {
+    for (const nested of [false, true]) {
+      for (const [origin, expected] of [["same-http", "blocked"], ["same-https", "allowed"]]) {
+        promise_test(async t => {
+          const urls = getRequestURLs("fetch", origin, "no-redirect");
+          await xhrRequest(urls.announceUrl);
+          const leaf = await (await fetch("mx2-worker-request.js")).text();
+          let source = leaf;
+          if (nested) {
+            const childURL = "data:text/javascript," + encodeURIComponent(leaf);
+            source = `
+              function relay(port, data) {
+                const child = new Worker(${JSON.stringify(childURL)}, {type:${JSON.stringify(type)}});
+                child.onmessage = event => { port.postMessage(event.data); child.terminate(); self.close(); };
+                child.onerror = event => { event.preventDefault(); port.postMessage('child-error'); self.close(); };
+                child.postMessage(data);
+              }
+              self.onmessage = event => relay(self, event.data);
+              self.onconnect = event => {
+                const port = event.ports[0];
+                port.onmessage = message => relay(port, message.data);
+                port.start();
+              };
+            `;
+          }
+          source += "\n// unique case " + urls.testUrl;
+          const script = "data:text/javascript," + encodeURIComponent(source);
+          const worker = shared ? new SharedWorker(script, {type}) : new Worker(script, {type});
+          const port = shared ? worker.port : worker;
+          t.add_cleanup(() => shared ? port.close() : worker.terminate());
+          const outcome = await new Promise((resolve, reject) => {
+            const timer = t.step_timeout(() => reject(new Error("data worker did not reply")), 8000);
+            t.add_cleanup(() => clearTimeout(timer));
+            port.onmessage = event => { clearTimeout(timer); resolve(event.data); };
+            worker.onerror = event => { event.preventDefault(); reject(new Error("data worker failed to load")); };
+            if (shared) port.start();
+            port.postMessage({url: urls.testUrl, operation: "fetch"});
+          });
+          const observed = await xhrRequest(urls.assertUrl);
+          assert_equals(observed.status, expected, "server-observed network delivery");
+          assert_equals(outcome, expected === "blocked" ? "TypeError" : "loaded");
+        }, `${shared ? "shared" : "dedicated"} ${type} data worker${nested ? " with nested data worker" : ""}: ${origin} is ${expected}`);
+      }
+    }
+  }
+}
+</script>

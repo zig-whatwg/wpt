@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Summary activation chooses the summary and toggles its details</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const details = document.createElement('details');
+  details.innerHTML = '<summary><span>first</span><button>button</button></summary><summary>second</summary>';
+  const first = details.firstChild;
+  const second = details.lastChild;
+  second.click();
+  assert_false(details.open, 'second summary is inert');
+  first.querySelector('span').click();
+  assert_true(details.open, 'a noninteractive descendant activates its summary');
+  first.querySelector('button').click();
+  assert_true(details.open, 'interactive content has its own activation');
+  first.click();
+  assert_false(details.open);
+}, 'Only the first summary toggles details, and interactive descendants retain their activation');
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  const details = document.createElement('details');
+  details.innerHTML = '<summary>summary</summary>';
+  input.append(details);
+  details.firstChild.click();
+  assert_true(details.open);
+  assert_false(input.checked);
+}, 'A summary inside another activation target wins over its ancestor');
+</script>

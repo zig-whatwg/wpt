@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>updateCurrentEntry keeps its captured entry through serialization reentry</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-navigation-updatecurrententry">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const originalKey = navigation.currentEntry.key;
+  let changed = 0;
+  const onChange = t.step_func(event => {
+    if (event.navigationType !== null) return;
+    ++changed;
+    assert_equals(event.from.key, originalKey, "from is the captured entry");
+    assert_equals(event.from.index, -1, "the captured entry was disposed");
+    assert_not_equals(event.from, navigation.currentEntry);
+  });
+  navigation.addEventListener("currententrychange", onChange);
+  t.add_cleanup(() => navigation.removeEventListener("currententrychange", onChange));
+  navigation.updateCurrentEntry({state: {get value() {
+    navigation.navigate("#nv2-replaced-during-serialize", {history: "replace", state: "replacement"});
+    // No script reference to the original NavigationHistoryEntry remains.
+    TestUtils.gc();
+    const churn = [];
+    for (let n = 0; n < 100; ++n) churn.push(document.createElement("i"));
+    TestUtils.gc();
+    return "serialized";
+  }}});
+  assert_equals(changed, 1, "the update fires its one currententrychange");
+  assert_equals(navigation.currentEntry.getState(), "replacement", "the replacement state is untouched");
+}, "Replacing and collecting the captured entry preserves currententrychange.from");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = "/common/blank.html";
+  document.body.append(frame);
+  await loaded;
+  const nav = frame.contentWindow.navigation;
+  let serialized = 0;
+  nav.updateCurrentEntry({state: {get value() {
+    frame.remove();
+    TestUtils.gc();
+    ++serialized;
+    return {detached: true};
+  }}});
+  assert_equals(serialized, 1, "serialization completed after detaching the document");
+  assert_equals(nav.currentEntry, null, "the detached navigation has no current entry");
+}, "Detaching the frame during serialization skips the history write safely");
+</script>

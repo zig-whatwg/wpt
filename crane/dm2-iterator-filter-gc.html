@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NodeIterator keeps an in-flight filtered node through removal and collection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const collectDuringCoercion of [false, true]) {
+  test(() => {
+    const root = document.createElement('div');
+    root.innerHTML = '<a-el></a-el><b-el></b-el><c-el></c-el>';
+    const iterator = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, node => {
+      if (node.localName !== 'b-el') return NodeFilter.FILTER_ACCEPT;
+      node.remove();
+      node = null;
+      if (collectDuringCoercion) {
+        return { valueOf() { TestUtils.gc(); return NodeFilter.FILTER_ACCEPT; } };
+      }
+      TestUtils.gc();
+      return NodeFilter.FILTER_ACCEPT;
+    });
+    assert_equals(iterator.nextNode(), root);
+    assert_equals(iterator.nextNode(), root.firstChild);
+    const result = iterator.nextNode();
+    assert_equals(result.localName, 'b-el');
+    assert_equals(result.parentNode, null);
+    assert_equals(iterator.referenceNode, root.firstChild);
+    assert_false(iterator.pointerBeforeReferenceNode);
+    assert_equals(iterator.nextNode(), root.lastChild);
+  }, 'Removed accepted candidate survives GC during ' +
+     (collectDuringCoercion ? 'filter result coercion' : 'the filter callback'));
+}
+test(() => {
+  const root = document.createElement('div');
+  root.innerHTML = '<a-el></a-el><b-el></b-el><c-el></c-el>';
+  const thrown = {};
+  const iterator = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, node => {
+    if (node.localName === 'b-el') { node.remove(); throw thrown; }
+    return NodeFilter.FILTER_ACCEPT;
+  });
+  iterator.nextNode();
+  iterator.nextNode();
+  assert_throws_exactly(thrown, () => iterator.nextNode());
+  TestUtils.gc();
+  assert_equals(iterator.referenceNode, root.firstChild);
+  assert_equals(iterator.nextNode(), root.lastChild);
+}, 'A throwing filter clears the candidate and preserves the adjusted reference');
+
+test(() => {
+  const root = document.createElement('div');
+  root.innerHTML = '<a-el></a-el><b-el></b-el><c-el></c-el>';
+  const a = root.firstChild;
+  const iterator = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, node => {
+    if (node.localName === 'b-el') {
+      assert_throws_dom('InvalidStateError', () => iterator.nextNode());
+      node.remove();
+    }
+    return NodeFilter.FILTER_ACCEPT;
+  });
+  iterator.nextNode();
+  iterator.nextNode();
+  assert_equals(iterator.nextNode().localName, 'b-el');
+  assert_equals(iterator.referenceNode, a);
+  assert_equals(iterator.nextNode().localName, 'c-el');
+}, 'A rejected recursive traversal preserves the outer candidate');
+</script>

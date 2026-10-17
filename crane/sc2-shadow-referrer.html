@@ -1,0 +1,19 @@
+<!doctype html>
+<title>Module imports in a ShadowRealm use the referring module URL</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const realm = new ShadowRealm();
+  const moduleURL = new URL('sc2-shadow-referring-module.js', location.href).href;
+  assert_equals(await realm.importValue(moduleURL, 'staticReferrer'), moduleURL);
+  assert_equals(await realm.importValue(moduleURL, 'dynamicReferrer'), moduleURL);
+}, 'ShadowRealm static and dynamic imports send the referring module URL');
+promise_test(async () => {
+  const realm = new ShadowRealm();
+  const moduleURL = new URL('sc2-shadow-policy-module.js?pipe=header(Referrer-Policy,no-referrer)', location.href).href;
+  assert_equals(await realm.importValue(moduleURL, 'staticReferrer'), '');
+  assert_equals(await realm.importValue(moduleURL, 'dynamicReferrer'), '');
+}, 'ShadowRealm descendants inherit the referring module response policy');
+</script>

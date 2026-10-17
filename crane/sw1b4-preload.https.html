@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<meta name="timeout" content="long">
+<title>Crane: navigation preload - the registration's state, the preload request and preloadResponse</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+// Lane sw1-b4. NavigationPreloadManager's methods read and write the
+// registration's navigation preload enabled flag and header value (3.6); a
+// GET navigation of a registration whose flag is set is fetched again with
+// `Service-Worker-Navigation-Preload` (Handle Fetch step 15), and the fetch
+// event's preloadResponse resolves with that response - undefined otherwise.
+const SCOPE = '/crane/resources/sw1b4-scope/';
+const TARGET = SCOPE + 'preload-echo.py';
+let registration;
+
+function ask(worker, message) {
+  return new Promise(resolve => {
+    navigator.serviceWorker.addEventListener('message', function once(e) {
+      navigator.serviceWorker.removeEventListener('message', once);
+      resolve(e.data);
+    });
+    worker.postMessage(message);
+  });
+}
+
+async function bodyOf(t, url) {
+  const frame = await with_iframe(url);
+  t.add_cleanup(() => frame.remove());
+  return frame.contentDocument.body.textContent;
+}
+
+promise_test(async t => {
+  registration = await service_worker_unregister_and_register(t, '/crane/resources/sw1b4-preload-worker.js', SCOPE);
+  const worker = registration.installing;
+  const np = registration.navigationPreload;
+  assert_equals(registration.navigationPreload, np, '[SameObject]');
+  // (No active worker: InvalidStateError - get-state.https.html's "no active
+  // worker" holds its worker installing; this one activates at once.)
+  const before = await np.getState();
+  assert_equals(before.enabled, false);
+  assert_equals(before.headerValue, 'true');
+  await wait_for_state(t, worker, 'activated');
+}, 'setup: the default state');
+
+promise_test(async t => {
+  const np = registration.navigationPreload;
+  assert_equals(await np.enable(), undefined);
+  assert_equals(await np.setHeaderValue('  spaced\t'), undefined);
+  let state = await np.getState();
+  assert_equals(state.enabled, true);
+  assert_equals(state.headerValue, '  spaced\t', 'leading and trailing whitespace kept (Chromium, Gecko)');
+  await promise_rejects_js(t, TypeError, np.setHeaderValue('\rcarriage'));
+  await promise_rejects_js(t, TypeError, np.setHeaderValue('new\nline'));
+  await promise_rejects_js(t, TypeError, np.setHeaderValue('zer\0o'));
+  // The worker sees the same registration state.
+  assert_equals(await ask(registration.active, 'state'), JSON.stringify({enabled: true, headerValue: '  spaced\t'}));
+  assert_equals(await np.setHeaderValue('hello'), undefined);
+}, 'enable(), setHeaderValue() and getState(), from the page and the worker');
+
+promise_test(async t => {
+  assert_equals(await bodyOf(t, TARGET + '?use-preload'), 'hello GET');
+}, 'a GET navigation: preloadResponse is the preload request\'s response, with the header');
+
+promise_test(async t => {
+  assert_equals(await bodyOf(t, TARGET + '?describe'), 'type=basic status=200');
+}, 'preloadResponse resolves with a basic Response');
+
+promise_test(async t => {
+  const frame = await with_iframe(SCOPE + 'blank.html?none');
+  t.add_cleanup(() => frame.remove());
+  const r = await frame.contentWindow.fetch(TARGET + '?describe');
+  assert_equals(await r.text(), 'undefined');
+}, 'a subresource request: preloadResponse resolves with undefined');
+
+promise_test(async t => {
+  assert_equals(await ask(registration.active, 'disable'), 'disabled');
+  assert_equals(await bodyOf(t, TARGET + '?use-preload'), 'undefined');
+}, 'disabled: no preload, preloadResponse resolves with undefined');
+
+promise_test(async t => {
+  await registration.unregister();
+}, 'cleanup');
+</script>

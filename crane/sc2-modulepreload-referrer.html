@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Modulepreload retains its referrer policy in the module map</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#link-type-modulepreload">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+window.referrers = {};
+promise_test(async t => {
+  const uid = 'sc2-' + Math.random();
+  const url = '/preload/resources/echo-referrer.py?uid=' + uid;
+  const link = document.createElement('link');
+  link.rel = 'modulepreload';
+  link.referrerPolicy = 'no-referrer';
+  link.href = url;
+  const loaded = new Promise((resolve, reject) => { link.onload = resolve; link.onerror = reject; });
+  t.add_cleanup(() => link.remove());
+  document.head.appendChild(link);
+  await loaded;
+  await import(url);
+  assert_equals(window.referrers[uid], '', 'import reuses the preloaded module');
+}, 'Import uses the modulepreload result and its no-referrer policy');
+</script>

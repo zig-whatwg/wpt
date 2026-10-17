@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>classList has no supported tokens</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  for (const token of ['', 'known', 'two words']) {
+    assert_throws_js(TypeError, () => element.classList.supports(token));
+  }
+}, 'DOMTokenList.supports throws TypeError when no supported tokens are defined');
+</script>

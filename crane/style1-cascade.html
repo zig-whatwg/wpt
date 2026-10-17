@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane style1: the cascade - UA sheet, author sheets, the style attribute, layers, media</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+  #t1 { margin-left: 2px }
+  .c1 { margin-left: 9px; color: rgb(1, 2, 3) }
+  div.c1 { color: rgb(4, 5, 6) }
+  .imp { color: rgb(7, 8, 9) !important }
+  @layer base, top;
+  @layer top { .lay { color: rgb(0, 0, 2) } }
+  @layer base { .lay { color: rgb(0, 0, 1) } }
+  @media print { .media { color: rgb(9, 9, 9) } }
+  @media (min-width: 1px) { .media { width: 10px } }
+  @supports (display: block) { .sup { height: 3px } }
+  .rev { display: revert }
+  .logical { margin-inline-start: 4px; padding-block: 1px }
+</style>
+<div id="t1" class="c1">a<span id="child">b</span></div>
+<div id="t2" class="imp" style="color: rgb(1, 1, 1)">x</div>
+<div id="t3" style="color: rgb(1, 1, 1) !important" class="imp">x</div>
+<div id="t4" class="lay">x</div>
+<div id="t5" class="media sup">x</div>
+<p id="t6" class="rev" style="display: inline">x</p>
+<div id="t7" class="logical" dir="rtl">x</div>
+<span id="t8" hidden>x</span>
+<script>
+const cs = (id, p) => getComputedStyle(document.getElementById(id)).getPropertyValue(p);
+test(() => {
+  assert_equals(cs("t1", "display"), "block", "div");
+  assert_equals(cs("child", "display"), "inline", "span");
+  assert_equals(getComputedStyle(document.documentElement).display, "block", "root");
+  assert_equals(getComputedStyle(document.head).display, "none", "head");
+  assert_equals(cs("t8", "display"), "none", "[hidden]");
+}, "The HTML UA style sheet applies");
+test(() => {
+  assert_equals(cs("t1", "margin-left"), "2px", "id beats class");
+  assert_equals(cs("t1", "color"), "rgb(4, 5, 6)", "type+class beats class");
+  assert_equals(cs("child", "color"), "rgb(4, 5, 6)", "color inherits");
+  assert_equals(cs("child", "margin-left"), "0px", "margin does not inherit");
+}, "Specificity, then order; inheritance");
+test(() => {
+  assert_equals(cs("t2", "color"), "rgb(7, 8, 9)", "an important rule beats the style attribute");
+  assert_equals(cs("t3", "color"), "rgb(1, 1, 1)", "an important style attribute beats an important rule");
+}, "Importance and the style attribute");
+test(() => {
+  assert_equals(cs("t4", "color"), "rgb(0, 0, 2)", "later layer wins");
+}, "Cascade layers order by first declaration");
+test(() => {
+  assert_equals(cs("t5", "color"), "rgb(0, 0, 0)", "@media print does not apply");
+  assert_equals(cs("t5", "width"), "10px", "a matching @media applies");
+  assert_equals(cs("t5", "height"), "3px", "@supports applies");
+}, "Conditional rules");
+test(() => {
+  assert_equals(cs("t6", "display"), "inline", "the style attribute");
+  assert_equals(cs("t7", "margin-right"), "4px", "inline-start is right in rtl");
+  assert_equals(cs("t7", "margin-inline-start"), "4px");
+  assert_equals(cs("t7", "padding-top"), "1px");
+  assert_equals(cs("t7", "direction"), "rtl", "[dir=rtl]");
+}, "Logical properties and direction");
+test(() => {
+  const el = document.getElementById("t1");
+  const style = getComputedStyle(el);
+  assert_equals(style.marginLeft, "2px");
+  el.id = "";
+  assert_equals(style.marginLeft, "9px", "the object is live");
+  el.id = "t1";
+  assert_equals(style.marginLeft, "2px");
+}, "getComputedStyle's object is live");
+</script>

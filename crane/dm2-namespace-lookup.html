@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Namespace lookup covers documents, attributes, and undeclarations</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#locate-a-namespace">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const xmlns = 'http://www.w3.org/2000/xmlns/';
+  const xml = 'http://www.w3.org/XML/1998/namespace';
+  const doc = document.implementation.createDocument('urn:root', 'r:root');
+  doc.insertBefore(doc.createComment('before root'), doc.documentElement);
+  const root = doc.documentElement;
+  root.setAttributeNS(xmlns, 'xmlns:p', 'urn:parent');
+  root.setAttributeNS(xmlns, 'xmlns', 'urn:default');
+  const child = doc.createElementNS(null, 'child');
+  root.appendChild(child);
+  child.setAttribute('ordinary', 'value');
+  const attr = child.getAttributeNode('ordinary');
+  const text = child.appendChild(doc.createTextNode('text'));
+  for (const node of [doc, root, child, attr, text]) {
+    assert_equals(node.lookupNamespaceURI('p'), 'urn:parent');
+    assert_equals(node.lookupPrefix('urn:parent'), 'p');
+    assert_equals(node.lookupNamespaceURI('xml'), xml);
+    assert_equals(node.lookupNamespaceURI('xmlns'), xmlns);
+    assert_true(node.isDefaultNamespace('urn:default'));
+  }
+  child.setAttributeNS(xmlns, 'xmlns', '');
+  assert_equals(child.lookupNamespaceURI(null), null);
+  assert_true(child.isDefaultNamespace(''));
+  for (const node of [doc.createDocumentFragment(), doc.createAttribute('detached')]) {
+    assert_equals(node.lookupNamespaceURI('xml'), null);
+    assert_equals(node.lookupPrefix('urn:parent'), null);
+  }
+}, 'Namespace lookup uses each node kind and preserves null namespace results');
+</script>

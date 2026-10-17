@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worker requests enforce mixed content before sending to the network</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+// Mixed Content 4.3/4.4 and Fetch main fetch 7. A rejected fetch alone
+// cannot distinguish a mixed-content block from a later CORS failure.
+for (const shared of [false, true]) {
+  for (const type of ["classic", "module"]) {
+    for (const operation of ["fetch", "xhr"]) {
+      for (const [origin, expected] of [["same-http", "blocked"], ["same-https", "allowed"]]) {
+        if (location.search === "?isolated" && (shared || type !== "classic" || operation !== "fetch" || origin !== "same-http")) continue;
+        promise_test(async t => {
+          const urls = getRequestURLs(operation, origin, "no-redirect");
+          await xhrRequest(urls.announceUrl);
+          const script = "mx2-worker-request.js?case=" + encodeURIComponent(urls.testUrl);
+          const worker = shared ? new SharedWorker(script, {type}) : new Worker(script, {type});
+          const port = shared ? worker.port : worker;
+          t.add_cleanup(() => shared ? port.close() : worker.terminate());
+          const outcome = await new Promise((resolve, reject) => {
+            const timer = t.step_timeout(() => reject(new Error("worker did not reply")), 8000);
+            t.add_cleanup(() => clearTimeout(timer));
+            port.onmessage = event => { clearTimeout(timer); resolve(event.data); };
+            worker.onerror = event => { event.preventDefault(); reject(new Error("worker failed to load")); };
+            if (shared) port.start();
+            port.postMessage({url: urls.testUrl, operation});
+          });
+          const observed = await xhrRequest(urls.assertUrl);
+          assert_equals(observed.status, expected, "server-observed network delivery");
+          assert_equals(outcome, expected === "blocked" ? "TypeError" : "loaded");
+        }, `${shared ? "shared" : "dedicated"} ${type}: ${operation} to ${origin} is ${expected}`);
+      }
+    }
+  }
+}
+</script>

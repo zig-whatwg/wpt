@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane style1: getComputedStyle's declarations</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+  #e { color: rgb(10, 20, 30); border: 2px solid; float: left }
+  #e::before { color: rgb(1, 1, 1) }
+</style>
+<div id="e">x</div>
+<script>
+const e = document.getElementById("e");
+test(() => {
+  const s = getComputedStyle(e);
+  assert_true(s instanceof CSSStyleProperties);
+  assert_greater_than(s.length, 50, "every supported longhand");
+  const names = [];
+  for (let i = 0; i < s.length; i++) names.push(s.item(i));
+  assert_array_equals(names, names.slice().sort(), "lexicographic order");
+  assert_equals(s.item(100000), "");
+  assert_equals(s.cssText, "", "cssText of a computed declaration");
+}, "The declarations are every supported longhand, in order");
+test(() => {
+  const s = getComputedStyle(e);
+  assert_equals(s.color, "rgb(10, 20, 30)");
+  assert_equals(s.borderTopColor, "rgb(10, 20, 30)", "currentcolor resolves");
+  assert_equals(s.borderLeftWidth, "2px");
+  assert_equals(s.cssFloat, "left");
+  assert_equals(s.float, "left");
+  assert_equals(s.getPropertyValue("border-top"), "2px solid rgb(10, 20, 30)", "a shorthand from its longhands");
+  assert_equals(s.display, "block", "a float is blockified");
+}, "Resolved values");
+test(() => {
+  const s = getComputedStyle(e);
+  assert_throws_dom("NoModificationAllowedError", () => { s.cssText = "color: red"; });
+  assert_throws_dom("NoModificationAllowedError", () => { s.setProperty("color", "red"); });
+  assert_throws_dom("NoModificationAllowedError", () => { s.removeProperty("color"); });
+}, "A computed declaration is read-only");
+test(() => {
+  assert_equals(getComputedStyle(e, "::before").color, "rgb(1, 1, 1)", "::before");
+  assert_equals(getComputedStyle(e, ":before").color, "rgb(1, 1, 1)", ":before");
+  assert_equals(getComputedStyle(e, "::after").color, "rgb(10, 20, 30)", "::after inherits");
+  assert_equals(getComputedStyle(e, "::bogus").length, 0, "an invalid pseudo-element: no declarations");
+  assert_equals(getComputedStyle(e, "before").color, "rgb(10, 20, 30)", "no colon: the element");
+}, "pseudoElt");
+test(() => {
+  const d = document.createElement("div");
+  assert_equals(getComputedStyle(d).length, 0, "disconnected");
+  assert_equals(getComputedStyle(d).color, "");
+}, "A disconnected element has no declarations");
+</script>

@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Attachment navigation keeps the current document and pending navigation promises</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#attempt-to-populate-the-history-entry's-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const disposition of ["attachment", "ATTACHMENT;filename=page.html"]) {
+  promise_test(async t => {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    frame.src = "/common/blank.html";
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    document.body.appendChild(frame);
+    await loaded;
+    const win = frame.contentWindow;
+    const documentBefore = win.document;
+    const nav = win.navigation;
+    const entryBefore = nav.currentEntry;
+    let navigateCount = 0;
+    let committed = false;
+    let finished = false;
+    nav.onnavigate = () => ++navigateCount;
+    const result = nav.navigate("/common/blank.html?pipe=header(Content-Disposition," + encodeURIComponent(disposition) + ")");
+    result.committed.then(() => committed = true, () => committed = true);
+    result.finished.then(() => finished = true, () => finished = true);
+    await new Promise(resolve => t.step_timeout(resolve, 100));
+    assert_equals(navigateCount, 1);
+    assert_equals(frame.contentDocument, documentBefore);
+    assert_equals(nav.currentEntry, entryBefore);
+    assert_false(committed, "committed remains pending");
+    assert_false(finished, "finished remains pending");
+  }, "Content-Disposition " + disposition + " does not commit a document");
+}
+</script>

@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="referrer" content="unsafe-url">
+<title>Srcdoc fetch uses its parent's document URL as referrer</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  const reply = new Promise(resolve => {
+    const listener = event => {
+      if (event.source === iframe.contentWindow) resolve(event.data);
+    };
+    window.addEventListener("message", listener);
+    t.add_cleanup(() => window.removeEventListener("message", listener));
+  });
+  iframe.srcdoc = `<!doctype html><script>
+    fetch(${JSON.stringify(location.origin + "/common/security-features/subresource/xhr.py")})
+      .then(response => response.json())
+      .then(result => parent.postMessage({referrer:result.headers.referer}, '*'))
+      .catch(error => parent.postMessage({error:error.name}, '*'));
+  <\/script>`;
+  t.add_cleanup(() => iframe.remove());
+  document.body.appendChild(iframe);
+  const result = await reply;
+  assert_false("error" in result, "fetch succeeds");
+  assert_equals(result.referrer, location.href.split("#")[0]);
+}, "A srcdoc fetch sends its first non-srcdoc ancestor's document URL");
+</script>

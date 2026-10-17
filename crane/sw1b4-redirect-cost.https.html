@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One hundred frame navigations through one 302, no service worker</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane sw1-b4's cost probe, timed by the runner: frame navigations now follow
+// their redirects by hand (redirect mode "manual", HTML step 21) instead of
+// fetch following them - this page, base against tip, is that cost for an
+// uncontrolled frame.
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  for (let i = 0; i < 100; i++) {
+    await new Promise(resolve => {
+      frame.onload = resolve;
+      frame.src = 'resources/sw1b4-cost-redir/redirect.py?to=final.html%3Fn%3D' + i;
+    });
+    assert_equals(frame.contentWindow.location.search, '?n=' + i);
+  }
+}, 'one hundred navigations of one frame through a 302');
+</script>

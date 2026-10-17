@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NodeIterator pre-removal follows its root's document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const foreign = document.implementation.createHTMLDocument();
+  foreign.body.innerHTML = '<a-el></a-el><b-el></b-el>';
+  const iterator = document.createNodeIterator(foreign.body);
+  assert_equals(iterator.nextNode(), foreign.body);
+  assert_equals(iterator.nextNode(), foreign.body.firstChild);
+  foreign.body.firstChild.remove();
+  assert_equals(iterator.referenceNode, foreign.body);
+  assert_false(iterator.pointerBeforeReferenceNode);
+  assert_equals(iterator.nextNode(), foreign.body.firstChild);
+}, 'An iterator created by another document still adjusts when its root tree changes');
+
+test(() => {
+  let foreign = document.implementation.createHTMLDocument();
+  foreign.body.innerHTML = '<a-el></a-el><b-el></b-el>';
+  const iterator = document.createNodeIterator(foreign.body);
+  iterator.nextNode();
+  iterator.nextNode();
+  foreign = null;
+  if (self.TestUtils) TestUtils.gc();
+  iterator.root.firstChild.remove();
+  assert_equals(iterator.referenceNode, iterator.root);
+  assert_equals(iterator.nextNode(), iterator.root.firstChild);
+}, 'The iterator remains usable after script drops its foreign document');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.appendChild(frame);
+  await loaded;
+  frame.contentDocument.body.innerHTML = '<a-el></a-el><b-el></b-el>';
+  const iterator = document.createNodeIterator(frame.contentDocument.body);
+  iterator.nextNode();
+  iterator.nextNode();
+  frame.remove();
+  if (self.TestUtils) TestUtils.gc();
+  iterator.root.firstChild.remove();
+  assert_equals(iterator.referenceNode, iterator.root);
+  assert_equals(iterator.nextNode(), iterator.root.firstChild);
+}, 'An iterator over a removed frame document keeps its root usable');
+</script>

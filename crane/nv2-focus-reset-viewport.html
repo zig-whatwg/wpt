@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Intercepted navigation resets focus to the viewport before completion</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#potentially-reset-the-focus">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const rejects of [false, true]) {
+  promise_test(async t => {
+    const button = document.body.appendChild(document.createElement("button"));
+    t.add_cleanup(() => button.remove());
+    button.focus();
+    assert_equals(document.activeElement, button);
+    const rejection = new Error("intercept rejected");
+    navigation.addEventListener("navigate", e => {
+      e.intercept({handler: () => rejects ? Promise.reject(rejection) : Promise.resolve()});
+    }, {once: true});
+    let blurred = false;
+    button.addEventListener("blur", () => { blurred = true; }, {once: true});
+    let completed = false;
+    const eventName = rejects ? "navigateerror" : "navigatesuccess";
+    const listener = t.step_func(() => {
+      completed = true;
+      assert_true(blurred, "focus resets before the completion event");
+      assert_equals(document.activeElement, document.body, "viewport fallback is reflected as body");
+    });
+    navigation.addEventListener(eventName, listener, {once: true});
+    t.add_cleanup(() => navigation.removeEventListener(eventName, listener));
+    const result = navigation.navigate(rejects ? "#nv2-rejected" : "#nv2-fulfilled");
+    await result.committed;
+    if (rejects) await promise_rejects_exactly(t, rejection, result.finished);
+    else await result.finished;
+    assert_true(completed);
+    assert_equals(document.activeElement, document.body);
+  }, "Viewport fallback after " + (rejects ? "rejected" : "fulfilled") + " interception");
+}
+</script>
