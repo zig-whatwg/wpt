@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>An unsupported file picker queues cancel and retains the input</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<body>
+<script>
+promise_test(async t => {
+  await test_driver.bless('open unsupported file picker');
+  let synchronous = true;
+  const canceled = new Promise(resolve => {
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.fm2Marker = 'retained';
+    input.addEventListener('cancel', t.step_func(event => {
+      assert_false(synchronous, 'cancel is an element task');
+      assert_true(event.bubbles);
+      assert_true(event.isTrusted);
+      assert_equals(event.target.fm2Marker, 'retained');
+      assert_equals(event.target.files.length, 0);
+      resolve();
+    }), {once: true});
+    input.showPicker();
+    assert_false(navigator.userActivation.isActive);
+    input = null;
+  });
+  synchronous = false;
+  // A microtask leaves showPicker's native handles before its queued task.
+  await Promise.resolve();
+  TestUtils.gc();
+  await canceled;
+}, 'The queued cancel event keeps a detached file input alive');
+</script>

@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Editable links do not activate navigation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Browser rule, not explicitly specified: Chrome, Firefox and Safari all
+// pass anchor-contenteditable-navigate.html. Editable ancestry counts too.
+promise_test(async t => {
+  const parent = document.createElement('div');
+  parent.contentEditable = 'true';
+  const link = document.createElement('a');
+  link.href = 'javascript:globalThis.fm2EditableLinkRan = true';
+  parent.append(link);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  globalThis.fm2EditableLinkRan = false;
+  link.click();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_false(globalThis.fm2EditableLinkRan);
+  link.contentEditable = 'false';
+  link.click();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_true(globalThis.fm2EditableLinkRan);
+}, 'Inherited editability suppresses link activation; contenteditable=false restores it');
+</script>

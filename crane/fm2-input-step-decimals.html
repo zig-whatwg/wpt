@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Decimal input stepping preserves decimal values and direction</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+function input(value, step, attributes = {}) {
+  const element = document.createElement('input');
+  element.type = 'number';
+  element.step = step;
+  for (const [name, text] of Object.entries(attributes)) element.setAttribute(name, text);
+  element.value = value;
+  return element;
+}
+test(() => {
+  const element = input('1.2', '0.3');
+  element.stepDown();
+  assert_equals(element.value, '0.9');
+}, 'stepDown subtracts decimal steps without exposing binary rounding');
+if (!location.search.includes('isolated')) {
+  for (const [start, step, count, expected] of [
+    ['0.1', '0.1', 2, '0.3'],
+    ['-0.3', '0.1', 2, '-0.1'],
+    ['1.2', '0.3', -1, '0.9'],
+    ['0.000000012', '0.000000003', 1, '1.5e-8'],
+  ]) test(() => {
+    const element = input(start, step);
+    element.stepUp(count);
+    assert_equals(element.valueAsNumber, Number(expected));
+    assert_false(element.validity.stepMismatch);
+  }, `stepUp(${count}) from ${start} by ${step}`);
+  test(() => {
+    const element = input('0.25', '0.1', {min: '0.05', max: '0.45'});
+    element.stepUp(100);
+    assert_equals(element.value, '0.45');
+    element.stepDown(100);
+    assert_equals(element.value, '0.05');
+  }, 'Decimal bounds and base clamp to the boundary step');
+  test(() => {
+    const element = input('0.26', '0.1', {min: '0.05'});
+    element.stepDown(100);
+    assert_equals(element.value, '0.05');
+    element.value = '0.26';
+    element.stepUp(100);
+    assert_equals(element.value, '10.25');
+  }, 'An off-step snap counts as the first requested step');
+}
+</script>

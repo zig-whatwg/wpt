@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Datalist options are the live HTML option descendants</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  const list = document.createElement('datalist');
+  list.innerHTML = '<option disabled value=""></option><select><option value="nested"></option></select>';
+  const options = list.options;
+  assert_equals(options.length, 2);
+  assert_equals(list.options, options);
+  const added = document.createElement('option');
+  list.append(added);
+  assert_equals(options.length, 3);
+  assert_equals(options[2], added);
+  options[0].remove();
+  assert_equals(options.length, 2);
+}, 'Options include disabled and empty options and stay live');
+
+if (!location.search.includes('isolated')) {
+  test(() => {
+    const list = document.createElement('datalist');
+    const foreign = document.createElementNS('urn:foreign', 'option');
+    const html = document.createElement('option');
+    list.append(foreign, html);
+    assert_array_equals(Array.from(list.options), [html]);
+  }, 'Only HTML option elements belong to datalist.options');
+
+  promise_test(async () => {
+    const retained = await new Promise(resolve => setTimeout(() => {
+      const list = document.createElement('datalist');
+      list.append(document.createElement('option'));
+      resolve({options: list.options, root: new WeakRef(list)});
+    }, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    TestUtils.gc();
+    TestUtils.gc();
+    assert_not_equals(retained.root.deref(), undefined);
+    assert_equals(retained.options[0].parentNode, retained.root.deref());
+    retained.options[0].remove();
+    assert_equals(retained.options.length, 0);
+  }, 'A retained options collection keeps its detached datalist alive');
+}
+</script>

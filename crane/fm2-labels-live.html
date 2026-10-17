@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Retained labels lists track associations and retain their control</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#dom-lfe-labels">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.createElement('div');
+  root.innerHTML = '<label for="a"></label><input id="a"><input id="b">';
+  const [label, a, b] = root.children;
+  const labelsA = a.labels;
+  const labelsB = b.labels;
+  assert_equals(a.labels, labelsA);
+  assert_equals(b.labels, labelsB);
+  assert_array_equals(labelsA, [label]);
+  label.htmlFor = 'b';
+  assert_array_equals(labelsA, []);
+  assert_array_equals(labelsB, [label]);
+  label.remove();
+  assert_array_equals(labelsB, []);
+  root.append(label);
+  assert_array_equals(labelsB, [label]);
+}, 'Retained labels lists update after association changes and removal');
+
+if (!location.search.includes('isolated')) {
+  test(() => {
+    const label = document.createElement('label');
+    label.innerHTML = '<input><input>';
+    const first = label.firstChild;
+    const second = first.nextSibling;
+    const labels = second.labels;
+    assert_array_equals(labels, []);
+    first.remove();
+    assert_array_equals(labels, [label]);
+    second.type = 'hidden';
+    assert_equals(second.labels, null);
+    assert_array_equals(labels, []);
+    second.type = 'text';
+    assert_equals(second.labels, labels);
+    assert_array_equals(labels, [label]);
+  }, 'Implicit labels track the first labelable descendant and hidden state');
+
+  promise_test(async t => {
+    let labels;
+    let weak;
+    await new Promise(resolve => t.step_timeout(() => {
+      let label = document.createElement('label');
+      let input = document.createElement('input');
+      label.append(input);
+      labels = input.labels;
+      weak = new WeakRef(input);
+      label = null;
+      input = null;
+      resolve();
+    }, 0));
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+    TestUtils.gc();
+    TestUtils.gc();
+    assert_not_equals(weak.deref(), undefined, 'The retained list holds its control');
+    assert_equals(labels.length, 1);
+    const control = weak.deref();
+    assert_equals(labels[0].control, control);
+    assert_equals(control.labels, labels);
+    labels[0].removeChild(control);
+    assert_equals(labels.length, 0);
+    const added = document.createElement('label');
+    added.append(control);
+    assert_array_equals(labels, [added]);
+  }, 'A labels list keeps its detached control alive across garbage collection');
+}
+</script>

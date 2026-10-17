@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Form target policy is captured when submission is planned</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+const cases = [
+  ['', false, true],
+  ['opener', true, true],
+  ['NoOpEnEr', false, true],
+  ['opener\tNOREFeRRER', false, false],
+  ['opener noopener', false, true],
+];
+for (const [rel, opener, referrer] of location.search.includes('isolated') ? cases.slice(0, 1) : cases) {
+  promise_test(t => new Promise(resolve => {
+    const form = document.createElement('form');
+    form.target = '_blank';
+    form.rel = rel;
+    form.action = '/html/semantics/forms/form-submission-target/resources/endpoint.html';
+    const name = `fm2-target-${Date.now()}-${rel}`;
+    const input = document.createElement('input');
+    input.name = 'channelname';
+    input.value = name;
+    form.append(input);
+    document.body.append(form);
+    const channel = new BroadcastChannel(name);
+    t.add_cleanup(() => {
+      channel.postMessage(null);
+      channel.close();
+      form.remove();
+    });
+    channel.onmessage = t.step_func(event => {
+      assert_equals(event.data.haveOpener, opener);
+      assert_equals(event.data.referrer, referrer ? location.href : '');
+      resolve();
+    });
+    form.submit();
+    form.rel = 'opener';
+    form.target = '_self';
+  }), `rel=${JSON.stringify(rel)} uses the target and policy at submission`);
+}
+</script>

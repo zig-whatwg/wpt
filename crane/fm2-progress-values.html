@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Progress values derive from attributes without losing indeterminate state</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#the-progress-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const progress = document.createElement('progress');
+  assert_equals(progress.value, 0);
+  assert_equals(progress.position, -1);
+  assert_false(progress.hasAttribute('value'));
+}, 'Missing value is indeterminate and its getter does not add an attribute');
+
+if (!location.search.includes('isolated')) {
+  test(() => {
+    const progress = document.createElement('progress');
+    progress.value = 2;
+    assert_equals(progress.value, 1);
+    assert_equals(progress.position, 1);
+    progress.max = 4;
+    assert_equals(progress.value, 2);
+    assert_equals(progress.position, .5);
+    assert_equals(progress.getAttribute('value'), '2');
+  }, 'Maximum clamps the observed value without replacing the value attribute');
+
+  test(() => {
+    const progress = document.createElement('progress');
+    for (const invalid of ['', 'invalid', 'NaN', 'Infinity', '1e999', '-2']) {
+      progress.setAttribute('value', invalid);
+      assert_equals(progress.value, 0, invalid);
+      assert_equals(progress.position, 0, invalid);
+    }
+    progress.setAttribute('max', '  +4tail');
+    progress.setAttribute('value', '  +2tail');
+    assert_equals(progress.value, 2);
+    assert_equals(progress.position, .5);
+    progress.setAttribute('max', '0');
+    assert_equals(progress.value, 1);
+    progress.removeAttribute('value');
+    assert_equals(progress.position, -1);
+  }, 'Progress parses floating point prefixes, rejects nonfinite values, and follows attribute changes');
+}
+</script>

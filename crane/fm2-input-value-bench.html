@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>Repeated sanitized input values retain their values</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+for (const [type, values] of [
+  ['text', ['form value one', 'form value two']],
+  ['number', ['123.5', '456.25']],
+  ['color', ['#123456', '#abcdef']],
+]) {
+  const input = document.createElement('input');
+  input.type = type;
+  for (let index = 0; index < 1000; ++index) input.value = values[index & 1];
+  const start = performance.now();
+  for (let index = 0; index < 100000; ++index) input.value = values[index & 1];
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(input.value, values[1]),
+       `${type}: ${elapsed.toFixed(3)} ms for 100000 value setters`);
+}
+</script>

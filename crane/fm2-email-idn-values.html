@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Email value sanitization preserves Unicode domain labels</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#email-state-(type=email)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<input id="parsed" type="email" value="test@exämle.com">
+<input id="multiple" type="email" multiple value="test@exämle.com, user@お.com">
+<script>
+// Golden rule 2: no newer sanitizer change. Firefox 157 and Safari 27 keep
+// these Unicode values; their four email-value-idn.html failure messages
+// at WPT cc74d2669f explicitly report them. Chromium converts them.
+test(() => {
+  assert_equals(document.getElementById('parsed').value, 'test@exämle.com');
+  assert_equals(document.getElementById('multiple').value, 'test@exämle.com,user@お.com');
+}, 'Parser values preserve Unicode domains and trim each multiple token');
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'email';
+  input.setAttribute('value', 'user@お.com');
+  assert_equals(input.value, 'user@お.com');
+  input.type = 'text';
+  input.setAttribute('value', 'test@exämle.com');
+  input.type = 'email';
+  assert_equals(input.value, 'test@exämle.com');
+}, 'Attribute and type changes do not apply the display/editing IDN transform');
+</script>

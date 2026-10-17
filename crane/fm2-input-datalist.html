@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input suggestions use the first matching ID in the input's tree</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#attr-input-list">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.createElement('div');
+  const input = document.createElement('input');
+  const list = document.createElement('datalist');
+  input.setAttribute('list', 'suggestions');
+  list.id = 'suggestions';
+  root.append(input, list);
+  assert_equals(input.list, list);
+}, 'Suggestions resolve in a detached tree');
+
+if (!location.search.includes('isolated')) {
+  test(() => {
+    const root = document.createElement('div');
+    root.innerHTML = '<input list="x"><div id="x"></div><datalist id="x"></datalist>';
+    const input = root.firstChild;
+    const blocker = input.nextSibling;
+    const list = blocker.nextSibling;
+    assert_equals(input.list, null, 'A non-datalist first match prevents association');
+    blocker.remove();
+    assert_equals(input.list, list);
+    list.id = 'y';
+    assert_equals(input.list, null);
+    input.setAttribute('list', 'y');
+    assert_equals(input.list, list);
+    for (const type of ['hidden', 'password', 'checkbox', 'radio', 'file', 'submit', 'image', 'reset', 'button']) {
+      input.type = type;
+      assert_equals(input.list, null, type);
+    }
+    input.type = 'color';
+    assert_equals(input.list, list);
+  }, 'Suggestions follow attributes and applicability, and never skip the first ID match');
+
+  test(() => {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({mode: 'open'});
+    shadow.innerHTML = '<input list="shadow-list"><datalist id="shadow-list"></datalist>';
+    const input = shadow.firstChild;
+    const list = input.nextSibling;
+    assert_equals(input.list, list);
+    host.append(list);
+    assert_equals(input.list, null, 'Suggestions do not cross a shadow boundary');
+  }, 'Suggestions use the input tree, including a shadow root');
+}
+</script>

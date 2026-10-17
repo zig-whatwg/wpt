@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Color values serialize in the chosen color space and preserve dirty state</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#color-state-(type=color)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Newer spec, one shipping browser: HTML PR10456 added alpha/colorspace;
+// aligned stable WPT cc74d2669f has Safari 196/196 color cases, Chrome
+// 24/196 and Firefox 70/196. Gecko bug1919718 is fixed for149; Chromium
+// implements InputTypeColorEnhancements behind a flag. The other engines lag.
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.alpha = true;
+  input.value = 'transparent';
+  assert_equals(input.value, 'color(srgb 0 0 0 / 0)');
+}, 'Alpha color inputs use color() serialization');
+
+if (!location.search.includes('isolated')) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.setAttribute('value', '#ffffff08');
+    assert_equals(input.value, '#ffffff');
+    input.alpha = true;
+    assert_regexp_match(input.value, /^color\(srgb 1 1 1 \/ 0\.03137/);
+    input.value = '#ffffff08';
+    input.alpha = false;
+    input.alpha = true;
+    assert_equals(input.value, 'color(srgb 1 1 1)');
+  }, 'Clean colors reparse the attribute; dirty colors cannot recover removed alpha');
+
+  test(() => {
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.alpha = true;
+    input.colorSpace = 'display-p3';
+    input.value = 'color(display-p3 3 none .2 / .6)';
+    assert_equals(input.value, 'color(display-p3 3 0 0.2 / 0.6)');
+    input.setAttribute('colorspace', 'LIMITED-SRGB');
+    assert_equals(input.colorSpace, 'limited-srgb');
+    assert_regexp_match(input.value, /^color\(srgb /);
+    input.alpha = false;
+    assert_regexp_match(input.value, /^#[0-9a-f]{6}$/);
+  }, 'Display P3 preserves extended channels and reacts to attribute changes');
+}
+</script>

@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Picker preconditions preserve and consume user activation</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<body>
+<script>
+test(() => {
+  const input = document.createElement('input');
+  input.disabled = true;
+  assert_throws_dom('InvalidStateError', () => input.showPicker());
+}, 'An immutable input rejects before the user activation check');
+if (!location.search.includes('isolated')) {
+  test(() => {
+    const input = document.createElement('input');
+    assert_throws_dom('NotAllowedError', () => input.showPicker());
+  }, 'An input without transient activation rejects');
+  promise_test(async t => {
+    const input = document.createElement('input');
+    input.readOnly = true;
+    document.body.append(input);
+    t.add_cleanup(() => input.remove());
+    await test_driver.bless('check readonly picker');
+    assert_throws_dom('InvalidStateError', () => input.showPicker());
+    assert_true(navigator.userActivation.isActive);
+    input.readOnly = false;
+    input.showPicker();
+    assert_false(navigator.userActivation.isActive);
+    assert_not_equals(document.activeElement, input);
+    assert_throws_dom('NotAllowedError', () => input.showPicker());
+  }, 'A rejected call preserves activation; a successful call consumes it without focus');
+  promise_test(async () => {
+    const input = document.createElement('input');
+    input.type = 'color';
+    await test_driver.bless('activate a color input');
+    input.click();
+    assert_false(navigator.userActivation.isActive);
+    // Activation behavior without transient activation returns quietly.
+    input.click();
+  }, 'Color input activation uses the same picker activation-consumption steps');
+}
+</script>
