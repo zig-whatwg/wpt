@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Service workers: clients at creation and Handle Fetch (lane sw1-b3)</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#control-and-use">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#handle-fetch">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#fetch-event-respondwith">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+const scope = "resources/sw1b3-scope/";
+const script = "resources/sw1b3-fetch-worker.js";
+let registration;
+
+function withFrame(t, src) {
+  return new Promise((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    frame.src = src;
+    frame.onload = () => resolve(frame);
+    frame.onerror = reject;
+    document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+  });
+}
+
+promise_test(async t => {
+  await sw1Unregister(scope);
+  registration = await navigator.serviceWorker.register(script, { scope });
+  await sw1WaitForState(registration.installing, "activated");
+}, "setup: a service worker with a fetch handler is activated at the scope");
+
+promise_test(async t => {
+  const frame = await withFrame(t, scope + "blank.html");
+  const controller = frame.contentWindow.navigator.serviceWorker.controller;
+  assert_not_equals(controller, null, "a frame created in scope is controlled");
+  assert_equals(controller.scriptURL, new URL(script, location.href).href);
+  // An about:blank frame its document makes inherits the controller.
+  const inner = frame.contentDocument.createElement("iframe");
+  frame.contentDocument.body.appendChild(inner);
+  assert_not_equals(inner.contentWindow.navigator.serviceWorker.controller, null, "the nested about:blank inherits it");
+  // Out of scope: not controlled.
+  const outside = await withFrame(t, "resources/iframe-src-hello.html");
+  assert_equals(outside.contentWindow.navigator.serviceWorker.controller, null, "a frame out of scope is not controlled");
+  // This page was not controlled, and is not.
+  assert_equals(navigator.serviceWorker.controller, null);
+}, "a frame in scope is controlled from its creation; one out of scope is not");
+
+promise_test(async t => {
+  const frame = await withFrame(t, scope + "blank.html");
+  const w = frame.contentWindow;
+  const response = await w.fetch("data.txt?sw=respond");
+  assert_equals(await response.text(), "from the service worker");
+  assert_equals(response.headers.get("x-sw"), "1");
+  assert_equals(response.type, "basic", "a new Response() is filtered by the request's tainting");
+  // No respondWith(): the network answers.
+  assert_equals((await (await w.fetch("data.txt")).text()).trim(), "the network's data");
+  // respondWith(fetch(event.request)): the service worker's own fetch.
+  assert_equals((await (await w.fetch("data.txt?sw=passthrough")).text()).trim(), "the network's data");
+  // This page's fetch is not the controlled frame's: the network answers.
+  assert_equals((await (await fetch(scope + "data.txt?sw=respond")).text()).trim(), "the network's data");
+}, "a controlled frame's fetch() is answered by its service worker's respondWith(), or by the network");
+
+promise_test(async t => {
+  const frame = await withFrame(t, scope + "blank.html");
+  const w = frame.contentWindow;
+  await promise_rejects_js(t, w.TypeError, w.fetch("data.txt?sw=reject"), "respondWith() a rejected promise");
+  await promise_rejects_js(t, w.TypeError, w.fetch("data.txt?sw=cancel"), "a canceled fetch event");
+  await promise_rejects_js(t, w.TypeError, w.fetch("data.txt?sw=not-a-response"), "respondWith() a value that is no Response");
+  assert_equals(await (await w.fetch("data.txt?sw=twice")).text(), "first answer", "a second respondWith() throws, the first stands");
+}, "respondWith()'s network errors: a rejection, a canceled event, a value that is no Response");
+
+promise_test(async t => {
+  const frame = await withFrame(t, scope + "blank.html");
+  const w = frame.contentWindow;
+  const response = await w.fetch("data.txt?sw=stream");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  assert_equals(text, "first,second");
+}, "a response body streamed by the service worker reaches the client whole");
+
+promise_test(async t => {
+  const frame = await withFrame(t, scope + "blank.html");
+  const w = frame.contentWindow;
+  const event = await (await w.fetch("data.txt?sw=event", { headers: { "x-test": "abc" } })).json();
+  assert_true(event.isFetchEvent, "a FetchEvent");
+  assert_true(event.cancelable, "cancelable");
+  assert_equals(event.mode, "cors");
+  assert_equals(event.destination, "");
+  assert_equals(event.method, "GET");
+  assert_true(event.clientIdIsSet, "a subresource request names its client");
+  assert_equals(event.resultingClientId, "", "a subresource request has no resulting client");
+  assert_equals(event.replacesClientId, "");
+  assert_true(event.handledIsPromise, "handled is a promise");
+  assert_true(event.preloadIsPromise, "preloadResponse is a promise");
+  assert_equals(event.header, "abc", "the request's headers");
+  const xhr = new w.XMLHttpRequest();
+  xhr.open("GET", "data.txt?sw=respond");
+  const loaded = new Promise(resolve => xhr.onload = resolve);
+  xhr.send();
+  await loaded;
+  assert_equals(xhr.responseText, "from the service worker", "an XMLHttpRequest is answered too");
+}, "the fetch event: its request, client ids and promises; an XMLHttpRequest goes through it too");
+
+promise_test(async t => {
+  const message = new Promise(resolve => window.addEventListener("message", function listener(e) {
+    if (!e.data || e.data.type !== "sw1b3-frame") return;
+    window.removeEventListener("message", listener);
+    resolve(e.data);
+  }));
+  await withFrame(t, scope + "page.html?sw=html");
+  const data = await message;
+  assert_equals(data.text, "from the service worker", "the navigation was answered by the service worker");
+  assert_true(data.controlled, "the document it answered is controlled");
+}, "a frame's navigation is answered by the service worker its URL's scope names");
+
+promise_test(async t => {
+  const frame = await withFrame(t, scope + "blank.html");
+  const xhr = new frame.contentWindow.XMLHttpRequest();
+  // Synchronous: the frame's thread waits for the service worker, whose
+  // fetch handler asks clients.matchAll() - which needs this frame's data.
+  xhr.open("GET", "data.txt?sw=matchall", false);
+  xhr.send();
+  assert_greater_than_equal(Number(xhr.responseText), 1, "the service worker matched the clients and answered");
+}, "a synchronous XMLHttpRequest whose fetch handler asks clients.matchAll() finishes");
+
+promise_test(async t => {
+  const frame = await withFrame(t, scope + "blank.html");
+  const worker = new frame.contentWindow.Worker("worker.js");
+  const data = await new Promise(resolve => worker.onmessage = e => resolve(e.data));
+  worker.terminate();
+  assert_true(data.controlled, "a dedicated worker whose script is in scope is controlled");
+  assert_equals(data.text, "from the service worker", "its fetch() is answered by the service worker");
+}, "a dedicated worker in scope is a controlled client");
+
+promise_test(async t => {
+  await registration.unregister();
+}, "cleanup");
+</script>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<meta name="timeout" content="long">
+<title>Crane: a blocking request whose fetch handler needs its page answers in time</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+// Lane sw1-b3. A synchronous XMLHttpRequest blocks its page's thread while
+// a service worker answers. This worker answers only after the page replies
+// to a message it posts, and the blocked page cannot reply. Crane bounds
+// the wait (service_worker_fetch.blocking_wait_limit_ms, 10 s): the
+// request ends as a network error and the page goes on, instead of hanging
+// for good. (Crane also fetches a parser-blocking script this way, where
+// browsers spin the event loop: postmessage-to-client-message-queue.)
+const scope = 'resources/sw1b3-cost-scope/reply';
+
+promise_test(async t => {
+  await sw1Unregister(scope);
+  const registration = await navigator.serviceWorker.register('resources/sw1b3-reply-worker.js', { scope });
+  t.add_cleanup(() => registration.unregister());
+  await sw1WaitForState(registration.installing, 'activated');
+  const frame = document.createElement('iframe');
+  frame.src = scope + '-frame';
+  await new Promise(resolve => { frame.onload = resolve; document.body.appendChild(frame); });
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  assert_not_equals(w.navigator.serviceWorker.controller, null, 'controlled');
+  // Once the page can run again, it replies: too late for the blocked
+  // request, which the worker's later answer must not reach.
+  w.navigator.serviceWorker.onmessage = () => w.navigator.serviceWorker.controller.postMessage('reply');
+  const xhr = new w.XMLHttpRequest();
+  xhr.open('GET', 'data.txt?wait', false);
+  const started = performance.now();
+  assert_throws_dom('NetworkError', w.DOMException, () => xhr.send());
+  assert_greater_than_equal(performance.now() - started, 9000, 'it waited for the limit');
+  // The page is not stuck: an ordinary request goes on.
+  const after = new w.XMLHttpRequest();
+  after.open('GET', 'data.txt', false);
+  after.send();
+  assert_equals(after.status, 200);
+}, 'a synchronous request whose fetch handler waits for its blocked page ends as a network error after the limit');
+</script>

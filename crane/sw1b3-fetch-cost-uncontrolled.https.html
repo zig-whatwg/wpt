@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Two hundred same-origin fetches from a page no service worker controls (the Handle Fetch hot path)</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane sw1-b3's cost probe: HTTP fetch step 3 must cost nothing when no
+// service worker can see a request. Timed by the runner (paired rounds
+// against the base runner).
+promise_test(async t => {
+  let bytes = 0;
+  for (let index = 0; index < 200; index++) {
+    const response = await fetch("resources/sw1b3-cost-out/data.txt?cost=" + index);
+    bytes += (await response.text()).length;
+  }
+  assert_greater_than(bytes, 0);
+}, "two hundred fetches, one after another, from an uncontrolled page");
+</script>

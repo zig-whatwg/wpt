@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Two hundred same-origin fetches from a frame a service worker with a fetch listener controls (no respondWith: every fetch falls back)</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+// Lane sw1-b3's cost probe, timed by the runner: the controlled file against
+// its uncontrolled-frame twin is the stated cost of passing every fetch
+// through a service worker.
+const scope = "resources/sw1b3-cost-scope/";
+promise_test(async t => {
+  await sw1Unregister(scope);
+  const registration = await navigator.serviceWorker.register("resources/sw1b3-passthrough-worker.js", { scope });
+  t.add_cleanup(() => registration.unregister());
+  await sw1WaitForState(registration.installing, "activated");
+  const frame = document.createElement("iframe");
+  frame.src = "resources/sw1b3-cost-scope/blank.html";
+  await new Promise(resolve => { frame.onload = resolve; document.body.appendChild(frame); });
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  let bytes = 0;
+  for (let index = 0; index < 200; index++) {
+    const response = await w.fetch("data.txt?cost=" + index);
+    bytes += (await response.text()).length;
+  }
+  assert_greater_than(bytes, 0);
+}, "two hundred fetches, one after another, from a frame a service worker with a fetch listener controls (no respondWith: every fetch falls back)");
+</script>

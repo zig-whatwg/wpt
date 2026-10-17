@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A response body that ends while nobody reads it closes its stream</title>
+<link rel=help href="https://fetch.spec.whatwg.org/#concept-body-stream">
+<link rel=help href="https://streams.spec.whatwg.org/#readable-byte-stream-controller-close">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+// Lane sw1-b3: a body's stream closes once the body ends, whether or not a
+// read is pending (ReadableByteStreamControllerClose with an empty queue
+// closes at once). The service worker writes one chunk, and closes its
+// stream only when told: by then the client has read the chunk and waits on
+// reader.closed with no read in flight.
+const script = "resources/sw1b3-body-close-worker.js";
+const scope = "resources/sw1b3-scope/body-close-frame.html";
+promise_test(async t => {
+  const registration = await sw1Register(t, script, { scope });
+  await sw1WaitForState(registration.installing, "activated");
+  const frame = document.createElement("iframe");
+  frame.src = scope;
+  await new Promise(resolve => { frame.onload = resolve; document.body.appendChild(frame); });
+  t.add_cleanup(() => frame.remove());
+  assert_not_equals(frame.contentWindow.navigator.serviceWorker.controller, null, "the frame is controlled");
+  const timeout = ms => new Promise(resolve => t.step_timeout(() => resolve("timeout"), ms));
+  const response = await Promise.race([frame.contentWindow.fetch("partial-stream.txt"), timeout(3000)]);
+  assert_not_equals(response, "timeout", "fetch() resolves before the body ends");
+  const reader = response.body.getReader();
+  const chunk = await Promise.race([reader.read(), timeout(3000)]);
+  assert_not_equals(chunk, "timeout", "the first chunk is read before the body ends");
+  assert_equals(new TextDecoder().decode(chunk.value), "partial-stream-content");
+  const reply = new Promise(resolve => navigator.serviceWorker.onmessage = e => resolve(e.data));
+  registration.active.postMessage("done");
+  assert_equals(await Promise.race([reply, timeout(3000)]), "got done: closed", "the worker closed its stream");
+  const closed = await Promise.race([reader.closed.then(() => "closed"), timeout(3000)]);
+  assert_equals(closed, "closed", "reader.closed resolves with no read pending");
+}, "a body that ends while no read is pending closes its stream");
+</script>

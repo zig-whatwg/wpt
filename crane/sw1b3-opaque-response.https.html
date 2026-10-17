@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<title>Crane: what script sees of an opaque response stays filtered</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+// Lane sw1-b3 pin. An opaque Response object's response now keeps its
+// internal response (the network's status, headers and body) for the
+// user agent - a service worker's respondWith(), the Cache API. None of it
+// may reach script: an opaque filtered response's status is 0, its status
+// message, URL and header list empty, its body null.
+const URL_ = get_host_info().HTTPS_REMOTE_ORIGIN + '/service-workers/service-worker/resources/opaque-script-small.js';
+
+async function assertFiltered(response, label) {
+  assert_equals(response.type, 'opaque', label + ' type');
+  assert_equals(response.status, 0, label + ' status');
+  assert_equals(response.statusText, '', label + ' statusText');
+  assert_equals(response.url, '', label + ' url');
+  assert_false(response.ok, label + ' ok');
+  assert_array_equals([...response.headers], [], label + ' headers');
+  assert_equals(response.body, null, label + ' body');
+  const buffer = await response.arrayBuffer();
+  assert_equals(buffer.byteLength, 0, label + ' arrayBuffer() length');
+}
+
+promise_test(async t => {
+  const response = await fetch(URL_, { mode: 'no-cors' });
+  const copy = response.clone();
+  await assertFiltered(response, 'fetched');
+  await assertFiltered(copy, 'clone');
+}, 'a fetched opaque response and its clone show nothing but their type');
+
+promise_test(async t => {
+  const cache = await caches.open('sw1b3-opaque-pin');
+  t.add_cleanup(() => caches.delete('sw1b3-opaque-pin'));
+  await cache.put(URL_, await fetch(URL_, { mode: 'no-cors' }));
+  const matched = await cache.match(URL_);
+  assert_not_equals(matched, undefined, 'stored');
+  await assertFiltered(matched, 'matched');
+  const all = await cache.matchAll(URL_);
+  assert_equals(all.length, 1, 'matchAll');
+  await assertFiltered(all[0], 'matchAll');
+}, 'an opaque response put in a cache comes back as filtered');
+</script>

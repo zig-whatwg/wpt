@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An interface-typed value of another interface is a TypeError</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<form id="form"><button id="submitter">go</button></form>
+<select id="select"><option>a</option></select>
+<script>
+// WebIDL 3.2.15: converting V to an interface type I - "1. If V implements
+// I, then return the IDL interface type value that represents a reference to
+// that platform object. 2. Throw a TypeError." Every member below converts an
+// interface-typed value: an operation's argument (plain, nullable, of an
+// overload chosen by count), a constructor's, an attribute's value, an
+// indexed setter's value, a dictionary member and a sequence's element. A
+// platform object of ANOTHER interface must be a TypeError, before the
+// member's steps run - not handed to them as the interface it is not.
+
+const wrong = () => new URLSearchParams();
+
+test(() => {
+  const fd = new FormData(document.getElementById("form"));
+  assert_throws_js(TypeError, () => fd.append("name", wrong(), "filename"));
+  assert_throws_js(TypeError, () => fd.set("name", wrong(), "filename"));
+  assert_false(fd.has("name"), "nothing was appended");
+}, "FormData.append/set(name, blobValue, filename): a URLSearchParams is no Blob");
+
+test(() => {
+  const fd = new FormData();
+  fd.append("name", new File(["x"], "a.txt"), "b.txt");
+  assert_equals(fd.get("name").name, "b.txt");
+  fd.set("other", new Blob(["y"]), "c.txt");
+  assert_equals(fd.get("other").name, "c.txt");
+}, "FormData.append/set(name, blobValue, filename): a Blob, and a File, which is one");
+
+test(() => {
+  const div = document.createElement("div");
+  assert_throws_js(TypeError, () => div.appendChild(wrong()));
+  assert_throws_js(TypeError, () => div.appendChild(new Blob()));
+  assert_throws_js(TypeError, () => div.insertBefore(document.createElement("p"), new Blob()));
+  assert_equals(div.childNodes.length, 0, "nothing was inserted");
+  div.insertBefore(document.createElement("p"), null);
+  assert_equals(div.childNodes.length, 1);
+}, "Node.appendChild/insertBefore: a platform object that is no Node");
+
+test(() => {
+  assert_throws_js(TypeError, () => document.body.contains(new Blob()));
+  assert_false(document.body.contains(null));
+  assert_throws_js(TypeError, () => document.importNode(new Blob()));
+  assert_throws_js(TypeError, () => document.adoptNode(wrong()));
+  assert_throws_js(TypeError, () => document.body.insertAdjacentElement("beforeend", new Text("x")));
+}, "Node and Document operations: other interfaces, and a Node that is no Element");
+
+test(() => {
+  const range = document.createRange();
+  assert_throws_js(TypeError, () => range.setStart(new Blob(), 0));
+  assert_throws_js(TypeError, () => range.selectNode(wrong()));
+  range.setStart(document.body, 0);
+}, "Range boundary points: a platform object that is no Node");
+
+test(() => {
+  assert_throws_js(TypeError, () => new StaticRange({
+    startContainer: new Blob(), startOffset: 0, endContainer: document.body, endOffset: 0,
+  }));
+  const range = new StaticRange({ startContainer: document.body, startOffset: 0, endContainer: document.body, endOffset: 0 });
+  assert_equals(range.startContainer, document.body);
+}, "a required dictionary member: StaticRangeInit.startContainer is a Node");
+
+test(() => {
+  assert_throws_js(TypeError, () => new MouseEvent("x", { relatedTarget: new Blob() }));
+  assert_equals(new MouseEvent("x", { relatedTarget: document }).relatedTarget, document);
+  assert_equals(new MouseEvent("x", { relatedTarget: null }).relatedTarget, null);
+  assert_throws_js(TypeError, () => new FocusEvent("focus", { relatedTarget: wrong() }));
+}, "a nullable dictionary member: relatedTarget is an EventTarget");
+
+test(() => {
+  assert_throws_js(TypeError, () => new MessageEvent("message", { ports: [new Blob()] }));
+  const { port1 } = new MessageChannel();
+  assert_equals(new MessageEvent("message", { ports: [port1] }).ports[0], port1);
+}, "a sequence member's elements: MessageEventInit.ports holds MessagePorts");
+
+test(() => {
+  assert_throws_js(TypeError, () => new FormData(new Blob()));
+  assert_throws_js(TypeError, () => new FormData(document.getElementById("form"), new Blob()));
+  const fd = new FormData(document.getElementById("form"), document.getElementById("submitter"));
+  assert_true(fd instanceof FormData);
+}, "constructor arguments: FormData(form, submitter)");
+
+test(() => {
+  const walker = document.createTreeWalker(document.body);
+  assert_throws_js(TypeError, () => { walker.currentNode = new Blob(); });
+  assert_equals(walker.currentNode, document.body, "unchanged");
+  const div = document.createElement("div");
+  assert_throws_js(TypeError, () => { div.ariaActiveDescendantElement = new Blob(); });
+  div.ariaActiveDescendantElement = null;
+}, "attribute values: TreeWalker.currentNode, and an inherited mixin's Element?");
+
+test(() => {
+  const select = document.getElementById("select");
+  assert_throws_js(TypeError, () => { select[0] = new Blob(); });
+  assert_throws_js(TypeError, () => { select.options[0] = new Blob(); });
+  assert_equals(select.length, 1, "unchanged");
+  assert_equals(select[0].text, "a");
+  select[1] = new Option("b");
+  assert_equals(select.length, 2);
+}, "an indexed setter's value: an option collection takes HTMLOptionElement?");
+</script>
