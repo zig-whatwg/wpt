@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: frames nested in a sandboxed document inherit its sandboxing flags</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#determining-the-creation-sandboxing-flags">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#sandboxed-scripts-browsing-context-flag">
+<!--
+  sandbox lane (2026-10-16, SECURITY). "Determine the creation sandboxing
+  flags" unions the container document's active sandboxing flag set into a
+  child navigable's: a frame with no sandbox attribute, inside a sandboxed
+  document, is sandboxed as much as that document. Crane took a frame's flags
+  from its own attribute alone, so script ran in any frame nested in a
+  sandboxed document, and a frame nested in an opaque sandboxed document got
+  a tuple origin.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function settle() {
+  return new Promise(resolve => step_timeout(resolve, 150));
+}
+
+// Every message posted here, with the window that posted it.
+const messages = [];
+addEventListener("message", e => messages.push({ source: e.source, data: e.data }));
+function from(win) {
+  return messages.filter(m => m.source === win).map(m => m.data);
+}
+
+async function outerFrame(t, variant) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  if (variant.attr !== undefined) frame.sandbox = variant.attr;
+  frame.src = variant.csp !== undefined
+    ? "resources/sbx-outer-csp.sub.html?sandbox=" + encodeURIComponent(variant.csp)
+    : "resources/sbx-outer.html";
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+  document.body.append(frame);
+  await loaded;
+  await settle();
+  return frame;
+}
+
+const variants = [
+  { name: "iframe sandbox=allow-same-origin", attr: "allow-same-origin", runs: false },
+  { name: "iframe sandbox='allow-same-origin allow-scripts' (control)", attr: "allow-same-origin allow-scripts", runs: true },
+  { name: "CSP sandbox allow-same-origin", csp: "allow-same-origin", runs: false },
+  { name: "CSP sandbox allow-same-origin allow-scripts (control)", csp: "allow-same-origin allow-scripts", runs: true },
+];
+
+function expectRan(variant, got, label) {
+  if (variant.runs)
+    assert_true(got.includes(label), `${label} runs`);
+  else
+    assert_false(got.includes(label), `${label} must not run`);
+}
+
+for (const variant of variants) {
+  promise_test(async t => {
+    const outer = await outerFrame(t, variant);
+    const inner = outer.contentDocument.getElementById("inner");
+    assert_not_equals(inner, null, "the embedder reaches the outer document");
+    const got = from(inner.contentWindow);
+    expectRan(variant, got, "inline");
+    expectRan(variant, got, "onload");
+  }, `${variant.name}: a fetched frame nested in it, with no sandbox attribute`);
+
+  promise_test(async t => {
+    const outer = await outerFrame(t, variant);
+    const inner = outer.contentDocument.getElementById("inner-srcdoc");
+    expectRan(variant, from(inner.contentWindow), "srcdoc-inline");
+  }, `${variant.name}: a srcdoc frame nested in it, with no sandbox attribute`);
+
+  promise_test(async t => {
+    const outer = await outerFrame(t, variant);
+    const doc = outer.contentDocument;
+    const inner = doc.createElement("iframe");
+    inner.srcdoc = "<script>top.postMessage('dynamic-inline', '*')<\/script>";
+    const loaded = new Promise(resolve => inner.addEventListener("load", resolve, { once: true }));
+    doc.body.append(inner);
+    await loaded;
+    await settle();
+    expectRan(variant, from(inner.contentWindow), "dynamic-inline");
+  }, `${variant.name}: a frame the embedder inserts into it`);
+
+  promise_test(async t => {
+    const outer = await outerFrame(t, variant);
+    const inner = outer.contentDocument.getElementById("inner");
+    const deeper = inner.contentDocument.createElement("iframe");
+    deeper.srcdoc = "<script>top.postMessage('deeper-inline', '*')<\/script>";
+    const loaded = new Promise(resolve => deeper.addEventListener("load", resolve, { once: true }));
+    inner.contentDocument.body.append(deeper);
+    await loaded;
+    await settle();
+    expectRan(variant, from(deeper.contentWindow), "deeper-inline");
+  }, `${variant.name}: a frame two levels down`);
+}
+
+// A frame nested in a document sandboxed into an opaque origin is sandboxed
+// into one too: its creation flags have the sandboxed origin browsing
+// context flag, whatever its own URL.
+for (const variant of [
+  { name: "iframe sandbox=allow-scripts", attr: "allow-scripts" },
+  { name: "CSP sandbox allow-scripts", csp: "allow-scripts" },
+]) {
+  promise_test(async t => {
+    const before = messages.length;
+    const outer = await outerFrame(t, variant);
+    const reports = messages.slice(before).map(m => m.data).filter(d => d && typeof d === "object" && "origin" in d);
+    assert_equals(reports.length, 1, "the nested frame reports its origin");
+    assert_equals(reports[0].origin, "null");
+  }, `${variant.name}: a frame nested in it has an opaque origin`);
+}
+</script>
+</body>

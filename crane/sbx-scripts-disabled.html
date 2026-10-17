@@ -1,0 +1,143 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a document sandboxed without allow-scripts runs no script</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#sandboxed-scripts-browsing-context-flag">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-noscript">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#csp-derived-sandboxing-flags">
+<!--
+  sandbox lane (2026-10-16, SECURITY). Crane never disabled scripting for a
+  sandboxed document: SandboxFlags.blocksScripts() had no caller, scripting
+  was a stored flag nothing derived from the document's active sandboxing
+  flag set, and a CSP `sandbox` reached only the frame's origin. Only the
+  parser of a frame whose iframe attribute was sandboxed skipped its inline
+  scripts; event handlers, javascript: URLs, timers and inserted scripts ran,
+  and a CSP-sandboxed document ran everything.
+
+  Each case is checked for the iframe sandbox attribute and for the CSP
+  sandbox directive of the frame's response, both with allow-same-origin so
+  the embedder can reach into the document, and against a control with
+  allow-scripts that must run the same script.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function settle() {
+  return new Promise(resolve => step_timeout(resolve, 150));
+}
+
+// A frame embedding resources/sbx-frame.html (the attribute variants) or its
+// CSP-header copy, the messages its documents post here, and its load.
+async function sbxFrame(t, variant) {
+  const frame = document.createElement("iframe");
+  const got = [];
+  const listener = e => {
+    if (e.source === frame.contentWindow) got.push(e.data);
+  };
+  addEventListener("message", listener);
+  t.add_cleanup(() => {
+    removeEventListener("message", listener);
+    frame.remove();
+  });
+  if (variant.attr !== undefined) frame.sandbox = variant.attr;
+  frame.src = variant.csp !== undefined
+    ? "resources/sbx-frame-csp.sub.html?sandbox=" + encodeURIComponent(variant.csp)
+    : "resources/sbx-frame.html";
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+  document.body.append(frame);
+  await loaded;
+  await settle();
+  return { frame, got };
+}
+
+const variants = [
+  { name: "iframe sandbox=allow-same-origin", attr: "allow-same-origin", runs: false },
+  { name: "iframe sandbox='allow-same-origin allow-scripts' (control)", attr: "allow-same-origin allow-scripts", runs: true },
+  { name: "CSP sandbox allow-same-origin", csp: "allow-same-origin", runs: false },
+  { name: "CSP sandbox allow-same-origin allow-scripts (control)", csp: "allow-same-origin allow-scripts", runs: true },
+];
+
+function expectRan(variant, got, label) {
+  if (variant.runs)
+    assert_true(got.includes(label), `${label} runs`);
+  else
+    assert_false(got.includes(label), `${label} must not run`);
+}
+
+for (const variant of variants) {
+  promise_test(async t => {
+    const { got } = await sbxFrame(t, variant);
+    expectRan(variant, got, "inline");
+    expectRan(variant, got, "onload");
+  }, `${variant.name}: the parser's inline script and body onload`);
+
+  promise_test(async t => {
+    const { frame, got } = await sbxFrame(t, variant);
+    const target = frame.contentDocument.getElementById("target");
+    assert_not_equals(target, null, "the embedder reaches the document");
+    if (variant.runs)
+      assert_equals(typeof target.onclick, "function", "the content attribute compiles");
+    else
+      assert_equals(target.onclick, null, "the content attribute does not compile");
+    target.click();
+    await settle();
+    expectRan(variant, got, "onclick");
+  }, `${variant.name}: an event handler content attribute the embedder fires`);
+
+  promise_test(async t => {
+    const { frame, got } = await sbxFrame(t, variant);
+    const doc = frame.contentDocument;
+    const inline = doc.createElement("script");
+    inline.text = "parent.postMessage('inserted-inline', '*');";
+    doc.body.append(inline);
+    const external = doc.createElement("script");
+    external.src = "data:text/javascript,parent.postMessage('inserted-external', '*');";
+    doc.body.append(external);
+    await settle();
+    expectRan(variant, got, "inserted-inline");
+    expectRan(variant, got, "inserted-external");
+  }, `${variant.name}: script elements the embedder inserts`);
+
+  promise_test(async t => {
+    const { frame, got } = await sbxFrame(t, variant);
+    frame.contentDocument.getElementById("js").click();
+    await settle();
+    expectRan(variant, got, "anchor");
+  }, `${variant.name}: a javascript: URL link in the document, followed`);
+
+  promise_test(async t => {
+    const { frame, got } = await sbxFrame(t, variant);
+    frame.src = "javascript:void parent.postMessage('js-url', '*')";
+    await settle();
+    expectRan(variant, got, "js-url");
+  }, `${variant.name}: a javascript: URL the frame is navigated to`);
+
+  promise_test(async t => {
+    const { frame, got } = await sbxFrame(t, variant);
+    const fired = [];
+    frame.contentWindow.setTimeout(() => fired.push("timer-function"), 0);
+    frame.contentWindow.setTimeout("parent.postMessage('timer-string', '*')", 0);
+    await settle();
+    expectRan(variant, fired, "timer-function");
+    expectRan(variant, got, "timer-string");
+  }, `${variant.name}: timers on the document's window`);
+}
+
+// Without allow-same-origin the embedder cannot reach in; what the document
+// runs on its own is all there is to see.
+for (const variant of [
+  { name: "iframe sandbox (empty)", attr: "", runs: false },
+  { name: "iframe sandbox=allow-scripts (control)", attr: "allow-scripts", runs: true },
+  { name: "CSP sandbox (empty)", csp: "", runs: false },
+  { name: "CSP sandbox allow-scripts (control)", csp: "allow-scripts", runs: true },
+]) {
+  promise_test(async t => {
+    const { got } = await sbxFrame(t, variant);
+    expectRan(variant, got, "inline");
+    expectRan(variant, got, "onload");
+  }, `${variant.name}: the parser's inline script and body onload`);
+}
+</script>
+</body>

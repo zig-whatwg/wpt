@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a sandbox attribute change takes effect at the frame's next navigation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-sandbox">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#active-sandboxing-flag-set">
+<!--
+  sandbox lane (2026-10-16). "These flags only take effect when the content
+  navigable of the iframe element is navigated": a document's active
+  sandboxing flag set is fixed when the document is created. Crane applied
+  the attribute to the frame's browsing context as it changed, so adding one
+  made the current document's origin opaque at once, and removing one undid
+  a sandbox the current document was created with.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function settle() {
+  return new Promise(resolve => step_timeout(resolve, 150));
+}
+
+async function frameWith(t, sandbox) {
+  const frame = document.createElement("iframe");
+  const got = [];
+  const listener = e => {
+    if (e.source === frame.contentWindow) got.push(e.data);
+  };
+  addEventListener("message", listener);
+  t.add_cleanup(() => {
+    removeEventListener("message", listener);
+    frame.remove();
+  });
+  if (sandbox !== null) frame.sandbox = sandbox;
+  frame.src = "resources/sbx-frame.html";
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+  document.body.append(frame);
+  await loaded;
+  await settle();
+  return { frame, got };
+}
+
+async function navigateAgain(frame) {
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+  frame.src = "resources/sbx-frame.html?again";
+  await loaded;
+  await settle();
+}
+
+promise_test(async t => {
+  const { frame, got } = await frameWith(t, null);
+  assert_true(got.includes("inline"), "the unsandboxed document ran its script");
+  frame.sandbox = "";
+  assert_not_equals(frame.contentDocument, null, "the current document keeps its origin");
+  assert_not_equals(frame.contentWindow.origin, "null");
+  frame.contentDocument.getElementById("target").click();
+  await settle();
+  assert_true(got.includes("onclick"), "the current document keeps running script");
+  got.length = 0;
+  await navigateAgain(frame);
+  assert_equals(frame.contentDocument, null, "the next document is sandboxed into an opaque origin");
+  assert_false(got.includes("inline"), "the next document runs no script");
+}, "adding a sandbox attribute changes nothing until the frame navigates");
+
+promise_test(async t => {
+  const { frame, got } = await frameWith(t, "allow-same-origin");
+  assert_false(got.includes("inline"), "the sandboxed document ran no script");
+  frame.removeAttribute("sandbox");
+  const target = frame.contentDocument.getElementById("target");
+  assert_equals(target.onclick, null, "the content attribute still does not compile");
+  target.click();
+  const fired = [];
+  frame.contentWindow.setTimeout(() => fired.push("timer"), 0);
+  await settle();
+  assert_false(got.includes("onclick"), "the current document still runs no script");
+  assert_equals(fired.length, 0, "its timers still do not fire");
+  await navigateAgain(frame);
+  assert_true(got.includes("inline"), "the next document runs script");
+}, "removing a sandbox attribute changes nothing until the frame navigates");
+</script>
+</body>

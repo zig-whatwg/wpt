@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a popup opened from a sandboxed document inherits its sandbox</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#the-rules-for-choosing-a-navigable">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#sandbox-propagates-to-auxiliary-browsing-contexts-flag">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#sandboxed-auxiliary-navigation-browsing-context-flag">
+<!--
+  sandbox lane (2026-10-16, SECURITY). "The rules for choosing a navigable"
+  copy a sandboxed document's flags into the popup's popup sandboxing flag
+  set unless it has allow-popups-to-escape-sandbox, and refuse a new popup
+  without allow-popups. The frame here has allow-same-origin and no
+  allow-scripts, so the embedder calls its window's open().
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function settle() {
+  return new Promise(resolve => step_timeout(resolve, 300));
+}
+
+async function sandboxedFrame(t, sandbox) {
+  const frame = document.createElement("iframe");
+  frame.sandbox = sandbox;
+  frame.srcdoc = "<p>sandboxed</p>";
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+  document.body.append(frame);
+  await loaded;
+  return frame;
+}
+
+async function openFrom(t, sandbox) {
+  const frame = await sandboxedFrame(t, sandbox);
+  const got = [];
+  let popup = null;
+  const listener = e => {
+    if (popup !== null && e.source === popup) got.push(e.data);
+  };
+  addEventListener("message", listener);
+  t.add_cleanup(() => removeEventListener("message", listener));
+  popup = frame.contentWindow.open(new URL("resources/sbx-frame.html", location.href).href);
+  t.add_cleanup(() => { if (popup) popup.close(); });
+  await settle();
+  return { popup, got };
+}
+
+promise_test(async t => {
+  const { popup, got } = await openFrom(t, "allow-same-origin allow-popups");
+  assert_not_equals(popup, null, "the popup opens");
+  assert_false(got.includes("inline"), "inline script must not run");
+  assert_false(got.includes("onload"), "body onload must not run");
+}, "a popup opened from a document sandboxed without allow-scripts runs no script");
+
+promise_test(async t => {
+  const { popup, got } = await openFrom(t, "allow-same-origin allow-popups allow-popups-to-escape-sandbox");
+  assert_not_equals(popup, null, "the popup opens");
+  assert_true(got.includes("inline"), "inline script runs");
+}, "with allow-popups-to-escape-sandbox the popup runs script (control)");
+
+promise_test(async t => {
+  const { popup, got } = await openFrom(t, "allow-same-origin allow-popups allow-scripts");
+  assert_not_equals(popup, null, "the popup opens");
+  assert_true(got.includes("inline"), "inline script runs");
+}, "a popup opened from a document sandboxed with allow-scripts runs script (control)");
+
+promise_test(async t => {
+  const frame = await sandboxedFrame(t, "allow-same-origin");
+  const popup = frame.contentWindow.open(new URL("resources/sbx-frame.html", location.href).href);
+  t.add_cleanup(() => { if (popup) popup.close(); });
+  assert_equals(popup, null);
+}, "without allow-popups open() opens no popup");
+</script>
+</body>

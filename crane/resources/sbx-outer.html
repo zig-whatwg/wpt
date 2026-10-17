@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<!--
+  sandbox lane: a document holding two frames with no sandbox attribute of
+  their own - one fetched, one srcdoc - which inherit this document's active
+  sandboxing flag set (HTML "determine the creation sandboxing flags").
+-->
+<iframe id="inner" src="sbx-frame.html"></iframe>
+<iframe id="inner-srcdoc" srcdoc="<script>top.postMessage('srcdoc-inline', '*')</script>"></iframe>
+<iframe id="inner-origin" src="sbx-origin.html"></iframe>

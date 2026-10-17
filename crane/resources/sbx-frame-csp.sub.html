@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<!--
+  sandbox lane: a document that tries every way of running script it has -
+  an inline script, two event handler content attributes that fire on their
+  own (body onload, img onerror), one the embedder fires (onclick), and a
+  javascript: URL anchor - and reports each to its top-level window, or its opener's top-level window.
+-->
+<body onload="(top !== self ? top : opener.top).postMessage('onload', '*')">
+<script>(top !== self ? top : opener.top).postMessage('inline', '*');</script>
+<img src="/crane/resources/sbx-no-such-image.png" onerror="(top !== self ? top : opener.top).postMessage('onerror', '*')">
+<div id="target" onclick="(top !== self ? top : opener.top).postMessage('onclick', '*')">target</div>
+<a id="js" href="javascript:void (top !== self ? top : opener.top).postMessage('anchor', '*')">javascript: link</a>
+</body>
