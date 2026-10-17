@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Service worker messages: ServiceWorker.postMessage, Client.postMessage, Clients</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#service-worker-postmessage-options">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#client-postmessage-options">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#clients-matchall">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+const scope = "resources/sw1b2-messages-scope";
+
+// A fresh registration for each test (each test's cleanup unregisters it).
+async function worker(t) {
+  const registration = await sw1Register(t, "resources/sw1b2-messages.js", { scope });
+  await sw1WaitForState(registration.installing, "activated");
+  return registration.active;
+}
+
+// A message the worker sends back: the container hears it (its client
+// message queue is enabled after DOMContentLoaded; addEventListener does not
+// enable it).
+function reply() {
+  return new Promise(resolve => navigator.serviceWorker.addEventListener("message", resolve, { once: true }));
+}
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const channel = new MessageChannel();
+  const answered = new Promise(resolve => { channel.port1.onmessage = e => resolve(e.data); });
+  sw.postMessage({ port: channel.port2 }, [channel.port2]);
+  assert_equals(await answered, "pong");
+}, "a transferred port reaches the service worker, and its answer comes back on it");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const heard = reply();
+  sw.postMessage("describe");
+  const e = await heard;
+  assert_true(e instanceof MessageEvent, "a MessageEvent at the container");
+  assert_equals(e.source, sw, "its source is the service worker's object");
+  assert_equals(e.origin, location.origin, "its origin is the worker's");
+  const d = e.data;
+  assert_true(d.isExtendable, "the worker's event is an ExtendableMessageEvent");
+  assert_true(d.isTrusted, "trusted");
+  assert_equals(d.origin, location.origin, "the worker's event's origin is this page's");
+  assert_equals(d.lastEventId, "");
+  assert_equals(d.ports, 0);
+  assert_true(d.portsFrozen, "ports is a frozen array");
+  assert_true(d.isWindowClient, "the source is a WindowClient");
+  assert_equals(d.sourceType, "window");
+  assert_equals(d.sourceUrl, location.href);
+  assert_equals(d.frameType, "top-level");
+  assert_equals(d.visibilityState, "visible");
+  assert_equals(typeof d.focused, "boolean");
+  assert_array_equals(d.ancestorOrigins, []);
+  assert_true(d.sameAncestorOrigins, "ancestorOrigins is the same array each time");
+  assert_true(d.idIsUuid, "the client id is a UUID: " + d.id);
+}, "a message reaches the service worker as an ExtendableMessageEvent whose source is this window's WindowClient");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const heard = reply();
+  sw.postMessage("clients");
+  const d = (await heard).data;
+  assert_true(d.count >= 1, "matchAll({includeUncontrolled}) lists this page");
+  assert_in_array(location.href, d.urls);
+  assert_true(d.allWindowClients, "window clients are WindowClients");
+  assert_equals(d.controlledCount, 0, "nothing is controlled");
+  assert_true(d.sameId, "get(id) finds the client");
+  assert_equals(d.gotUrl, location.href);
+  assert_true(d.unknownIsUndefined, "get() of an unknown id is undefined");
+}, "clients.matchAll() and clients.get() find this page");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const dedicated = new Worker("resources/sw1b2-client-worker.js");
+  t.add_cleanup(() => dedicated.terminate());
+  const forwarded = [];
+  let ready;
+  const readyPromise = new Promise(r => { ready = r; });
+  let got;
+  const gotPromise = new Promise(r => { got = r; });
+  dedicated.onmessage = e => { if (e.data.ready) ready(); else { forwarded.push(e.data); got(); } };
+  dedicated.postMessage("start");
+  await readyPromise;
+  const heard = reply();
+  sw.postMessage("to-workers");
+  const d = (await heard).data;
+  assert_equals(d.workers, 1, "matchAll({type: 'worker'}) finds the dedicated worker client");
+  assert_array_equals(d.types, ["worker"]);
+  assert_true(d.allPlainClients, "worker clients are Clients, not WindowClients");
+  await gotPromise;
+  assert_equals(forwarded[0].data, "hello worker worker");
+  assert_true(forwarded[0].fromServiceWorker, "its source is a ServiceWorker");
+}, "Client.postMessage reaches a dedicated worker client, whose message queue is enabled");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const heard = reply();
+  sw.postMessage("transfer");
+  const data = (await heard).data;
+  assert_true(data instanceof ArrayBuffer);
+  assert_array_equals(new Uint8Array(data), [1, 2, 3]);
+}, "Client.postMessage transfers an ArrayBuffer");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const heard = reply();
+  sw.postMessage("waituntil");
+  assert_equals((await heard).data, "extended");
+}, "a message event can be extended");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const heard = reply();
+  sw.postMessage("constructor");
+  const d = (await heard).data;
+  assert_equals(d.plainData, null);
+  assert_equals(d.plainOrigin, "");
+  assert_equals(d.plainSource, null);
+  assert_equals(d.plainPorts, 0);
+  assert_equals(d.fullData, 1);
+  assert_equals(d.fullOrigin, "x");
+  assert_equals(d.fullLastEventId, "y");
+  assert_true(d.fullSourceIsPort);
+  assert_equals(d.fullPorts, 1);
+  assert_equals(d.badSource, "TypeError");
+}, "new ExtendableMessageEvent() in the service worker");
+</script>

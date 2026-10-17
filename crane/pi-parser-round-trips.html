@@ -1,0 +1,139 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Processing instructions through every HTML parser entry point</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#processing-instruction-open-state">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#insert-a-processing-instruction">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#serialising-html-fragments">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="static"><?page-pi in page?><?xml no?></div>
+<script>
+function assert_pi(node, target, data, description) {
+  assert_equals(node && node.nodeType, Node.PROCESSING_INSTRUCTION_NODE, `${description}: a ProcessingInstruction`);
+  assert_equals(node.target, target, `${description}: target`);
+  assert_equals(node.data, data, `${description}: data`);
+}
+
+test(() => {
+  const div = document.getElementById('static');
+  assert_pi(div.firstChild, 'page-pi', 'in page', 'first child');
+  assert_equals(div.firstChild.ownerDocument, document);
+  assert_equals(div.lastChild.nodeType, Node.COMMENT_NODE, 'an xml target stays a bogus comment');
+  assert_equals(div.lastChild.data, '?xml no?');
+  assert_equals(div.innerHTML, '<?page-pi in page?><!--?xml no?-->');
+}, 'the top-level page parse makes processing instructions');
+
+test(() => {
+  const div = document.createElement('div');
+  div.innerHTML = '<?pi data>x<?empty><?q a??b>';
+  assert_pi(div.childNodes[0], 'pi', 'data', 'first');
+  assert_equals(div.childNodes[1].data, 'x');
+  assert_pi(div.childNodes[2], 'empty', '', 'second');
+  assert_pi(div.childNodes[3], 'q', 'a??b', 'third');
+  assert_equals(div.innerHTML, '<?pi data?>x<?empty ?><?q a??b?>');
+  // Serializing and parsing again gives the same tree.
+  const again = document.createElement('div');
+  again.innerHTML = div.innerHTML;
+  assert_equals(again.innerHTML, div.innerHTML);
+  assert_equals(again.childNodes.length, 4);
+}, 'innerHTML parses processing instructions and serializes them as <?target data?>');
+
+test(() => {
+  const div = document.createElement('div');
+  div.innerHTML = '<?xml v?><?XML-Stylesheet a?><?1a><?a$b><? x>';
+  assert_array_equals(Array.from(div.childNodes, n => n.nodeType), Array(5).fill(Node.COMMENT_NODE));
+  assert_array_equals(Array.from(div.childNodes, n => n.data), ['?xml v?', '?XML-Stylesheet a?', '?1a', '?a$b', '? x']);
+}, 'disallowed and invalid targets are still bogus comments');
+
+test(() => {
+  const div = document.createElement('div');
+  div.innerHTML = '<p>a<?pi t';
+  assert_equals(div.innerHTML, '<p>a</p>', 'end of file inside a processing instruction drops it');
+}, 'a processing instruction cut off by the end of the input is dropped');
+
+test(() => {
+  const div = document.createElement('div');
+  div.setHTMLUnsafe('<?pi a><span><?inner b?></span>');
+  assert_pi(div.firstChild, 'pi', 'a', 'setHTMLUnsafe child');
+  assert_pi(div.lastChild.firstChild, 'inner', 'b', 'setHTMLUnsafe grandchild');
+  div.insertAdjacentHTML('beforeend', '<?adj c>');
+  assert_pi(div.lastChild, 'adj', 'c', 'insertAdjacentHTML');
+  const range = document.createRange();
+  range.selectNodeContents(div);
+  const fragment = range.createContextualFragment('<?ctx d>');
+  assert_pi(fragment.firstChild, 'ctx', 'd', 'createContextualFragment');
+}, 'setHTMLUnsafe, insertAdjacentHTML and createContextualFragment make processing instructions');
+
+test(() => {
+  const div = document.createElement('div');
+  div.innerHTML = '<table><?pi t><tr><td><?cell c></td></tr></table><template><?tpl x></template>';
+  const table = div.firstChild;
+  assert_pi(table.firstChild, 'pi', 't', 'in table');
+  assert_pi(table.querySelector('td').firstChild, 'cell', 'c', 'in cell');
+  const template = div.lastChild;
+  assert_equals(template.childNodes.length, 0, 'not a child of the template itself');
+  assert_pi(template.content.firstChild, 'tpl', 'x', 'in template contents');
+  assert_equals(template.content.firstChild.ownerDocument, template.content.ownerDocument);
+}, 'the table and template insertion modes insert processing instructions');
+
+test(() => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.innerHTML = '<?foreign f><g/>';
+  assert_pi(svg.firstChild, 'foreign', 'f', 'in foreign content');
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = '<?not-a-pi>';
+  assert_equals(textarea.value, '<?not-a-pi>', 'RCDATA keeps <? as text');
+}, 'foreign content inserts them; RCDATA keeps <? as text');
+
+test(() => {
+  const doc = new DOMParser().parseFromString('<?first one><!DOCTYPE html><html><?html-child h><body><?second two?></body></html><?last z>', 'text/html');
+  assert_pi(doc.firstChild, 'first', 'one', 'before the doctype');
+  assert_equals(doc.compatMode, 'CSS1Compat', 'the doctype still decides the mode');
+  assert_pi(doc.documentElement.firstChild, 'html-child', 'h', 'before head');
+  assert_pi(doc.body.firstChild, 'second', 'two', 'in body');
+  assert_pi(doc.lastChild, 'last', 'z', 'after after body');
+  assert_equals(doc.firstChild.ownerDocument, doc);
+}, 'DOMParser text/html puts processing instructions in the Document, the html element and the body');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<?doc-level d><body><?srcdoc s></body>';
+  document.body.append(frame);
+  await loaded;
+  const doc = frame.contentDocument;
+  assert_pi(doc.firstChild, 'doc-level', 'd', 'srcdoc document child');
+  assert_pi(doc.body.firstChild, 'srcdoc', 's', 'srcdoc body child');
+}, 'a frame\'s document parse makes processing instructions');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.append(frame);
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write('<body><?w');
+  doc.write('rite da');
+  doc.write('ta??');
+  doc.write('><?xm');
+  doc.write('l x?><p>after</p>');
+  doc.close();
+  assert_pi(doc.body.firstChild, 'write', 'data?', 'written across five writes');
+  assert_equals(doc.body.childNodes[1].nodeType, Node.COMMENT_NODE, 'xml split across writes is still a bogus comment');
+  assert_equals(doc.body.childNodes[1].data, '?xml x?');
+  assert_equals(doc.body.innerHTML, '<?write data??><!--?xml x?--><p>after</p>');
+}, 'document.write keeps processing instruction state across writes');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.append(frame);
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write('<body><p>x<?unfinished da');
+  doc.close();
+  assert_equals(doc.body.innerHTML, '<p>x</p>', 'close supplies the end of file, which drops it');
+}, 'document.close inside a processing instruction drops it');
+</script>

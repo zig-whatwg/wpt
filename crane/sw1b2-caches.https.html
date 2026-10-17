@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Cache Storage: one Browser's caches, from a page and its worker</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#cache-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const name = "sw1b2-shared";
+  await caches.delete(name);
+  t.add_cleanup(() => caches.delete(name));
+  const cache = await caches.open(name);
+  await cache.put("https://example.test/shared", new Response("from the page"));
+  const worker = new Worker("resources/sw1b2-caches-worker.js");
+  t.add_cleanup(() => worker.terminate());
+  const answer = new Promise(resolve => { worker.onmessage = e => resolve(e.data); });
+  worker.postMessage({ name, url: "https://example.test/shared" });
+  assert_equals(await answer, "from the page");
+}, "a dedicated worker, on its own thread, reads what its page put in a cache");
+
+promise_test(async t => {
+  const name = "sw1b2-doomed";
+  const cache = await caches.open(name);
+  await cache.put("https://example.test/kept", new Response("kept"));
+  assert_true(await caches.delete(name));
+  assert_false(await caches.has(name));
+  const response = await cache.match("https://example.test/kept");
+  assert_equals(await response.text(), "kept", "a deleted cache stays functional for its object");
+  const reopened = await caches.open(name);
+  t.add_cleanup(() => caches.delete(name));
+  assert_equals(await reopened.match("https://example.test/kept"), undefined, "a cache opened anew is empty");
+}, "a deleted cache stays functional for the objects that represent it");
+
+promise_test(async t => {
+  const name = "sw1b2-keys";
+  await caches.delete(name);
+  t.add_cleanup(() => caches.delete(name));
+  const cache = await caches.open(name);
+  await cache.put(new Request("https://example.test/k", { headers: { "X-Test": "1" } }), new Response("k"));
+  const [request] = await cache.keys();
+  assert_equals(request.url, "https://example.test/k");
+  assert_equals(request.headers.get("X-Test"), "1");
+  assert_throws_js(TypeError, () => request.headers.set("X-Test", "2"), "its headers are immutable");
+  assert_false(request.signal.aborted, "it has a signal");
+  const [response] = await cache.matchAll();
+  assert_throws_js(TypeError, () => response.headers.set("X", "y"), "a cached response's headers are immutable");
+  assert_equals(await response.text(), "k");
+  const names = await caches.keys();
+  assert_true(Array.isArray(names) && !Object.isFrozen(names), "keys() is a plain array");
+  assert_in_array(name, names);
+}, "keys(): Request objects with immutable headers and a signal; CacheStorage.keys() an array");
+
+promise_test(async t => {
+  const name = "sw1b2-put-body";
+  await caches.delete(name);
+  t.add_cleanup(() => caches.delete(name));
+  const cache = await caches.open(name);
+  const response = new Response("body");
+  await cache.put("https://example.test/b", response);
+  assert_true(response.bodyUsed, "put() reads the response's body");
+  await promise_rejects_js(t, TypeError, cache.put("https://example.test/b", response), "a used body is refused");
+  await promise_rejects_js(t, TypeError, cache.put("https://example.test/v", new Response("", { headers: { Vary: "*" } })));
+  await promise_rejects_js(t, TypeError, cache.put(new Request("https://example.test/p", { method: "POST" }), new Response("")));
+}, "put() reads the body, and refuses a used body, Vary: * and a non-GET request");
+</script>

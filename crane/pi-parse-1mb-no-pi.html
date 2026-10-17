@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>1 MB document with no processing instructions: parse benchmark</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A timing page, not a conformance test: the tokenizer's hot path on a
+// document with no "<?" (lane pi-parser's base-vs-tip guard). Same fixed
+// input and five samples on the baseline and lane runners; the times are in
+// the subtest names.
+const section = '<section class="sample" id="s"><p>A &amp; B <b>bold</b> <i>it</i></p>' +
+  '<ul><li>one<li>two</ul><!-- note --><table><tr><td>c</td></tr></table></section>\n';
+const count = Math.ceil(1024 * 1024 / section.length);
+const markup = '<!doctype html><html><head><title>1 MB page</title></head><body>' +
+  section.repeat(count) + '</body></html>';
+for (let sample = 0; sample < 5; ++sample) {
+  const start = performance.now();
+  const parsed = new DOMParser().parseFromString(markup, 'text/html');
+  const elapsed = performance.now() - start;
+  test(() => {
+    assert_equals(parsed.querySelectorAll('section').length, count);
+    assert_equals(parsed.querySelectorAll('li').length, 2 * count);
+  }, 'DOMParser sample ' + sample + ': ' + elapsed.toFixed(3) + ' ms for ' + markup.length + ' bytes');
+}
+</script>
