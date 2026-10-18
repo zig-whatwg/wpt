@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>innerText collapses spaces across inline descendants</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#rendered-text-collection-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const element = document.createElement('div');
+  element.innerHTML = '  one <span> </span> two  <br> three  ';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(element.innerText, 'one two\nthree');
+  assert_equals(element.outerText, 'one two\nthree');
+}, 'Whitespace collapses across inline boundaries and is trimmed beside a br');
+</script>

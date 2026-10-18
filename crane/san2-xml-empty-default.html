@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XML serialization keeps an explicit empty default namespace</title>
+<link rel="help" href="https://w3c.github.io/DOM-Parsing/#xml-serializing-an-element-node">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.implementation.createDocument(null, "root").documentElement;
+  const xmlns = "http://www.w3.org/2000/xmlns/";
+  root.setAttributeNS(xmlns, "xmlns", "");
+  root.setAttributeNS(xmlns, "xmlns:foo", "");
+  assert_equals(new XMLSerializer().serializeToString(root),
+    '<root xmlns="" xmlns:foo=""/>');
+}, "Retain an explicit empty default declaration alongside an undeclared prefix");
+</script>

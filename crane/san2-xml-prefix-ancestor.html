@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XML serialization preserves an ancestor's namespace prefix binding</title>
+<link rel="help" href="https://w3c.github.io/DOM-Parsing/#xml-serialization-of-the-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createDocument(null, "root");
+  const root = doc.documentElement;
+  root.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:p", "urn:one");
+  const child = root.appendChild(doc.createElement("child"));
+  child.setAttributeNS("urn:two", "p:value", "kept");
+  assert_equals(new XMLSerializer().serializeToString(root),
+    '<root xmlns:p="urn:one"><child xmlns:ns1="urn:two" ns1:value="kept"/></root>');
+  assert_equals(child.getAttributeNodeNS("urn:two", "value").prefix, "p",
+    "Serialization must not change the attribute's DOM prefix");
+}, "Generate a fresh attribute prefix when an ancestor binds its prefix to another namespace");
+</script>

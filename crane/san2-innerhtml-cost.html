@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>innerHTML fragment replacement and serialization cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const host = document.createElement("div");
+const markup = '<section><p>A &amp; B <b>bold</b></p><ul><li>one</li><li>two</li></ul></section>';
+let serialized;
+const start = performance.now();
+for (let i = 0; i < 1000; ++i) {
+  host.innerHTML = markup;
+  serialized = host.innerHTML;
+}
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(serialized, markup);
+  assert_equals(host.querySelectorAll("li").length, 2);
+}, "san2 innerHTML 1000 fragments elapsed_ms=" + elapsed.toFixed(3));
+</script>

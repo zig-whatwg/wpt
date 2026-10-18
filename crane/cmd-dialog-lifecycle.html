@@ -1,0 +1,112 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dialog command transitions preserve source, cancellation and value</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const button = document.createElement('button');
+  const dialog = document.createElement('dialog');
+  document.body.append(button, dialog);
+  button.type = 'button';
+  button.commandForElement = dialog;
+  t.add_cleanup(() => { button.remove(); dialog.remove(); });
+  return {button, dialog};
+}
+test(t => {
+  const {button, dialog} = fixture(t);
+  const transitions = [];
+  dialog.addEventListener('beforetoggle', t.step_func(event => {
+    assert_equals(event.source, button);
+    transitions.push([event.oldState, event.newState, event.cancelable]);
+  }));
+  button.command = 'show-modal';
+  button.click();
+  assert_true(dialog.open);
+  assert_true(dialog.matches(':modal'));
+  button.command = 'close';
+  button.value = 'accepted';
+  button.click();
+  assert_false(dialog.open);
+  assert_false(dialog.matches(':modal'));
+  assert_equals(dialog.returnValue, 'accepted');
+  assert_array_equals(transitions[0], ['closed', 'open', true]);
+  assert_array_equals(transitions[1], ['open', 'closed', false]);
+}, 'Dialog command beforetoggle events carry source and transition-specific cancelability');
+test(t => {
+  const {button, dialog} = fixture(t);
+  let delivered = 0;
+  dialog.addEventListener('beforetoggle', event => {
+    ++delivered;
+    event.preventDefault();
+  }, {once: true});
+  button.command = 'show-modal';
+  button.click();
+  assert_equals(delivered, 1);
+  assert_false(dialog.open);
+  assert_false(dialog.matches(':modal'));
+}, 'Canceling the opening beforetoggle prevents a command from opening the dialog');
+test(t => {
+  const {button, dialog} = fixture(t);
+  dialog.show();
+  dialog.returnValue = 'original';
+  button.command = 'request-close';
+  button.value = 'replacement';
+  let canceled = 0;
+  dialog.addEventListener('cancel', t.step_func(event => {
+    ++canceled;
+    assert_true(event.cancelable);
+    event.preventDefault();
+  }), {once: true});
+  button.click();
+  assert_equals(canceled, 1);
+  assert_true(dialog.open);
+  assert_equals(dialog.returnValue, 'original');
+  button.click();
+  assert_false(dialog.open);
+  assert_equals(dialog.returnValue, 'replacement');
+}, 'request-close sends a cancelable cancel event before changing open or returnValue');
+test(t => {
+  const {button, dialog} = fixture(t);
+  dialog.show();
+  dialog.returnValue = 'saved';
+  button.command = 'close';
+  button.click();
+  assert_equals(dialog.returnValue, 'saved');
+  dialog.show();
+  button.setAttribute('value', '');
+  button.click();
+  assert_equals(dialog.returnValue, '');
+}, 'A close command distinguishes an absent value attribute from an empty one');
+test(t => {
+  const {button, dialog} = fixture(t);
+  button.command = 'show-modal';
+  dialog.addEventListener('command', () => { button.command = 'close'; }, {once: true});
+  button.click();
+  assert_true(dialog.open);
+  assert_true(dialog.matches(':modal'));
+}, 'The command is captured before dispatch and survives invoker mutation');
+promise_test(async t => {
+  const {button, dialog} = fixture(t);
+  const toggles = [];
+  let closes = 0;
+  dialog.addEventListener('toggle', t.step_func(event => {
+    toggles.push(event);
+    assert_equals(event.source, button);
+  }));
+  dialog.addEventListener('close', () => ++closes);
+  button.command = 'show-modal';
+  button.click();
+  button.command = 'close';
+  button.click();
+  assert_equals(toggles.length, 0, 'toggle is queued');
+  assert_equals(closes, 0, 'close is queued');
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(toggles.length, 1, 'toggle tasks coalesce');
+  assert_equals(toggles[0].oldState, 'closed');
+  assert_equals(toggles[0].newState, 'closed');
+  assert_equals(closes, 1);
+}, 'Opening and closing by command coalesces toggle and queues close');
+</script>

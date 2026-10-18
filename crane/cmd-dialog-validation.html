@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dialog command validity precedes dialog state and cancellation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#determine-if-command-is-valid">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const command of ['show-modal', 'close', 'request-close', 'sHoW-mOdAl']) {
+  test(t => {
+    const button = document.createElement('button');
+    const dialog = document.createElement('dialog');
+    document.body.append(button, dialog);
+    t.add_cleanup(() => { button.remove(); dialog.remove(); });
+    button.commandForElement = dialog;
+    button.command = command;
+    let delivered = 0;
+    dialog.addEventListener('command', t.step_func(event => {
+      ++delivered;
+      assert_true(event instanceof CommandEvent);
+      assert_equals(event.command, command);
+      assert_equals(event.source, button);
+      assert_true(event.isTrusted);
+      assert_true(event.cancelable);
+      assert_false(event.bubbles);
+      assert_false(event.composed);
+      event.preventDefault();
+    }));
+    button.click();
+    assert_equals(delivered, 1);
+    assert_false(dialog.open);
+  }, command + ' dispatches on a closed dialog before cancellation');
+}
+test(t => {
+  const button = document.createElement('button');
+  const target = document.createElement('div');
+  document.body.append(button, target);
+  t.add_cleanup(() => { button.remove(); target.remove(); });
+  button.commandForElement = target;
+  let delivered = 0;
+  target.addEventListener('command', () => ++delivered);
+  for (const command of ['show-modal', 'close', 'request-close']) {
+    button.command = command;
+    button.click();
+  }
+  assert_equals(delivered, 0);
+}, 'Dialog commands are invalid for ordinary HTML elements');
+test(t => {
+  const button = document.createElement('button');
+  const dialog = document.createElement('dialog');
+  document.body.append(button, dialog);
+  t.add_cleanup(() => { button.remove(); dialog.remove(); });
+  button.commandForElement = dialog;
+  button.command = 'show-modal';
+  let delivered = false;
+  dialog.addEventListener('command', () => {
+    delivered = true;
+    dialog.remove();
+  });
+  button.click();
+  assert_true(delivered);
+  assert_false(dialog.isConnected);
+  assert_false(dialog.open);
+}, 'A dialog removed during command dispatch is not shown');
+</script>

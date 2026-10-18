@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicit composed source events reach a shadow host</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const EventClass of [CommandEvent, ToggleEvent]) {
+  test(t => {
+    const outerHost = document.createElement('div');
+    document.body.append(outerHost);
+    t.add_cleanup(() => outerHost.remove());
+    const outer = outerHost.attachShadow({mode: 'open'});
+    const source = document.createElement('button');
+    const innerHost = document.createElement('div');
+    outer.append(source, innerHost);
+    const inner = innerHost.attachShadow({mode: 'open'});
+    const target = document.createElement('div');
+    inner.append(target);
+    const calls = [];
+    for (const [node, label] of [[innerHost, 'host'], [target, 'target']]) {
+      for (const capture of [true, false]) {
+        node.addEventListener('cmd-probe', t.step_func(event => {
+          assert_equals(event.source, source);
+          assert_equals(event.eventPhase, Event.AT_TARGET);
+          calls.push(label + (capture ? ':capture' : ':bubble'));
+        }), {capture});
+      }
+    }
+    const event = new EventClass('cmd-probe', {composed: true, source});
+    assert_true(event.composed);
+    target.dispatchEvent(event);
+    assert_array_equals(calls, ['host:capture', 'target:capture', 'target:bubble', 'host:bubble']);
+    assert_equals(event.source, outerHost);
+  }, EventClass.name + ' honors explicit composed at a nested shadow boundary');
+}
+</script>

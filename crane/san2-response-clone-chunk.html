@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Response clone copies a typed array chunk for its second branch</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const chunk = new Uint8Array([7, 8, 9]);
+  const response = new Response(new ReadableStream({start(controller) {
+    controller.enqueue(chunk);
+    controller.close();
+  }}));
+  const copy = response.clone();
+  const original = await response.body.getReader().read();
+  const cloned = await copy.body.getReader().read();
+  assert_equals(original.value, chunk);
+  assert_not_equals(cloned.value, chunk);
+  assert_not_equals(cloned.value.buffer, chunk.buffer);
+  assert_array_equals(cloned.value, chunk);
+  chunk[0] = 42;
+  assert_equals(cloned.value[0], 7);
+}, "Response.clone uses structured cloning only for the second branch");
+</script>

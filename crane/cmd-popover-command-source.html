@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Popover commands preserve the invoker on opening and closing events</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const hideCommand of ['hide-popover', 'toggle-popover']) {
+  promise_test(async t => {
+    const button = document.createElement('button');
+    const popover = document.createElement('div');
+    button.type = 'button';
+    popover.popover = 'manual';
+    document.body.append(button, popover);
+    button.commandForElement = popover;
+    t.add_cleanup(() => { button.remove(); popover.remove(); });
+    const events = [];
+    for (const type of ['beforetoggle', 'toggle']) {
+      popover.addEventListener(type, t.step_func(event => {
+        assert_equals(event.source, button, type + ' source');
+        events.push([type, event.oldState, event.newState]);
+      }));
+    }
+    button.command = 'show-popover';
+    button.click();
+    await new Promise(resolve => t.step_timeout(resolve, 50));
+    button.command = hideCommand;
+    button.click();
+    await new Promise(resolve => t.step_timeout(resolve, 50));
+    assert_equals(events.length, 4);
+    assert_array_equals(events[0], ['beforetoggle', 'closed', 'open']);
+    assert_array_equals(events[1], ['toggle', 'closed', 'open']);
+    assert_array_equals(events[2], ['beforetoggle', 'open', 'closed']);
+    assert_array_equals(events[3], ['toggle', 'open', 'closed']);
+  }, hideCommand + ' preserves the command source through beforetoggle and toggle');
+}
+</script>

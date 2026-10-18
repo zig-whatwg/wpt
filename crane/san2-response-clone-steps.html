@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fetch body tee structured clone steps</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function sourceOf(chunk) {
+  return new ReadableStream({start(controller) {
+    controller.enqueue(chunk);
+    controller.close();
+  }});
+}
+promise_test(async () => {
+  const chunk = {map: new Map([["key", [1, 2]]])};
+  chunk.self = chunk;
+  const response = new Response(sourceOf(chunk));
+  const copy = response.clone();
+  const a = (await response.body.getReader().read()).value;
+  const b = (await copy.body.getReader().read()).value;
+  assert_equals(a, chunk);
+  assert_not_equals(b, chunk);
+  assert_equals(b.self, b);
+  assert_true(b.map instanceof Map);
+  assert_array_equals(b.map.get("key"), [1, 2]);
+  assert_not_equals(b.map.get("key"), chunk.map.get("key"));
+}, "Fetch body tee clones object graphs and cycles, not just byte views");
+promise_test(async () => {
+  const chunk = {value: 7};
+  const [left, right] = sourceOf(chunk).tee();
+  assert_equals((await left.getReader().read()).value, chunk);
+  assert_equals((await right.getReader().read()).value, chunk);
+}, "ReadableStream.tee keeps chunk identity in both default-stream branches");
+promise_test(async () => {
+  const chunk = () => {};
+  const response = new Response(sourceOf(chunk));
+  const copy = response.clone();
+  const canceled = copy.body.cancel("unused");
+  const reader = response.body.getReader();
+  assert_equals((await reader.read()).value, chunk);
+  assert_true((await reader.read()).done);
+  await canceled;
+}, "A canceled second branch does not require cloneable chunks");
+promise_test(async t => {
+  let canceledWith;
+  const response = new Response(new ReadableStream({
+    start(controller) { controller.enqueue(() => {}); },
+    cancel(reason) { canceledWith = reason; }
+  }));
+  const copy = response.clone();
+  const a = response.body.getReader(), b = copy.body.getReader();
+  a.closed.catch(() => {});
+  b.closed.catch(() => {});
+  const errors = await Promise.all([a.read(), b.read()].map(p => p.then(
+    () => assert_unreached("Uncloneable chunk must not be delivered"),
+    error => error
+  )));
+  assert_true(errors[0] instanceof DOMException);
+  assert_equals(errors[0].name, "DataCloneError");
+  assert_equals(errors[1], errors[0]);
+  assert_equals(canceledWith, errors[0]);
+}, "Clone failure errors both branches before delivery and cancels the source with that error");
+promise_test(async () => {
+  const chunk = new Uint8Array([4, 5]);
+  const request = new Request("/", {method: "POST", body: sourceOf(chunk), duplex: "half"});
+  const copy = request.clone();
+  const a = (await request.body.getReader().read()).value;
+  const b = (await copy.body.getReader().read()).value;
+  assert_equals(a, chunk);
+  assert_not_equals(b, chunk);
+  assert_array_equals(b, chunk);
+}, "Request.clone uses the same cloning body-tee algorithm");
+promise_test(async () => {
+  let response;
+  let calls = 0;
+  const chunk = {get value() {
+    ++calls;
+    response.body.cancel("discard original");
+    return 7;
+  }};
+  response = new Response(sourceOf(chunk));
+  const copy = response.clone();
+  const b = (await copy.body.getReader().read()).value;
+  assert_equals(calls, 1);
+  assert_equals(b.value, 7);
+}, "Serialization may cancel the first branch reentrantly without preventing the clone's delivery");
+</script>

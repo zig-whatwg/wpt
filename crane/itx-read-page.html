@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Repeated rendered text collection benchmark</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const root = document.createElement('div');
+for (let i = 0; i < 1000; ++i) {
+  const span = document.createElement('span');
+  span.appendChild(document.createTextNode('word '));
+  root.appendChild(span);
+}
+document.body.appendChild(root);
+// 1,000 elements plus 1,000 text nodes. Warm the same tree before timing.
+root.innerText;
+const started = performance.now();
+let total = 0;
+for (let i = 0; i < 500; ++i) total += root.innerText.length;
+const elapsed = performance.now() - started;
+test(() => {
+  assert_equals(root.childNodes.length, 1000);
+  assert_greater_than(total, 0);
+}, 'innerText: ' + elapsed.toFixed(3) + ' ms for 2000 nodes x 500 reads');
+</script>

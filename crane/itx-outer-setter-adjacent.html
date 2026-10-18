@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>outerText replaces an element and merges only adjacent text</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-outertext">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const parent = document.createElement('div');
+  const element = document.createElement('span');
+  parent.append('A', 'B', element, 'D', 'E');
+  const previous = element.previousSibling;
+  const next = element.nextSibling;
+  element.outerText = 'C';
+  assert_equals(element.parentNode, null);
+  assert_array_equals(Array.from(parent.childNodes, node => node.data), ['A', 'BCD', 'E']);
+  assert_equals(parent.childNodes[1], previous);
+  assert_equals(next.parentNode, null);
+}, 'Replacement merges each immediate text sibling once without normalizing other siblings');
+</script>

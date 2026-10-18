@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>DOM mutation benchmark without rendered text reads</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const root = document.createElement('div');
+document.body.appendChild(root);
+const started = performance.now();
+for (let i = 0; i < 10000; ++i) {
+  const span = document.createElement('span');
+  span.classList.toggle('first');
+  root.appendChild(span);
+  span.classList.toggle('second');
+  span.classList.toggle('first');
+}
+const elapsed = performance.now() - started;
+test(() => {
+  assert_equals(root.childNodes.length, 10000);
+  assert_equals(root.firstChild.className, 'second');
+}, 'No innerText: ' + elapsed.toFixed(3) + ' ms for 10000 class toggles and appends');
+</script>

@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An explicit default namespace undeclaration is valid XML</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createDocument(null, "root");
+  const child = doc.documentElement.appendChild(doc.createElementNS(null, "child"));
+  child.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns", "");
+  assert_in_array(child.outerHTML, ['<child/>', '<child xmlns=""/>']);
+  assert_in_array(doc.documentElement.innerHTML, ['<child/>', '<child xmlns=""/>']);
+}, "XML innerHTML and outerHTML accept a valid default namespace undeclaration");
+</script>

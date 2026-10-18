@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A dedicated worker's animation frames: they run, cancel, and are released when the worker ends</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML 8.12: a DedicatedWorkerGlobalScope whose owner set contains a Document is a supported
+// AnimationFrameProvider, and its callbacks run in the worker event loop's step 6.1. Crane threw
+// NotSupportedError and dropped the callback without releasing it (lane leaks2: 2 roots under
+// leaks --atExit over workers/). The last test ends N workers with frames still requested, so
+// that leaks --atExit over this file counts what a queued callback leaves (lane leaks4).
+
+function workerFrom(source) {
+  const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+  const worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  return worker;
+}
+
+function nextMessage(worker) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (e) => resolve(e.data);
+    worker.onerror = (e) => reject(new Error(e.message));
+  });
+}
+
+promise_test(async () => {
+  const worker = workerFrom(`
+    const times = [];
+    const frame = (t) => {
+      times.push(t);
+      if (times.length < 3) requestAnimationFrame(frame);
+      else postMessage(times);
+    };
+    const handle = requestAnimationFrame(frame);
+    postMessage(typeof handle === 'number' && handle > 0 ? 'handle' : 'no handle ' + handle);
+  `);
+  const first = nextMessage(worker);
+  assert_equals(await first, 'handle');
+  const times = await nextMessage(worker);
+  assert_equals(times.length, 3);
+  assert_true(times.every((t) => typeof t === 'number' && t >= 0), 'DOMHighResTimeStamps');
+  assert_less_than(times[0], times[1]);
+  assert_less_than(times[1], times[2]);
+  worker.terminate();
+}, 'requestAnimationFrame callbacks run in a dedicated worker, one frame after another');
+
+promise_test(async () => {
+  const worker = workerFrom(`
+    let ran = [];
+    const cancelled = requestAnimationFrame(() => ran.push('cancelled'));
+    requestAnimationFrame(() => {
+      ran.push('kept');
+      setTimeout(() => postMessage(ran), 50);
+    });
+    cancelAnimationFrame(cancelled);
+    cancelAnimationFrame(123456);
+  `);
+  assert_array_equals(await nextMessage(worker), ['kept']);
+  worker.terminate();
+}, 'cancelAnimationFrame removes a callback, and ignores a handle it never gave');
+
+promise_test(async () => {
+  const worker = workerFrom(`
+    const order = [];
+    let second;
+    requestAnimationFrame(() => { order.push(1); cancelAnimationFrame(second); });
+    second = requestAnimationFrame(() => order.push(2));
+    requestAnimationFrame(() => { order.push(3); setTimeout(() => postMessage(order), 50); });
+  `);
+  assert_array_equals(await nextMessage(worker), [1, 3]);
+  worker.terminate();
+}, 'a callback cancelled by an earlier one in the same frame does not run');
+
+const N = 20;
+
+promise_test(async () => {
+  const workers = [];
+  for (let i = 0; i < N; i++) {
+    const worker = workerFrom(`
+      for (let k = 0; k < 10; k++) requestAnimationFrame(() => {});
+      postMessage('requested');
+      close();
+    `);
+    assert_equals(await nextMessage(worker), 'requested');
+    workers.push(worker);
+  }
+  for (let i = 0; i < N; i++) {
+    const worker = workerFrom(`
+      for (let k = 0; k < 10; k++) requestAnimationFrame(() => {});
+      postMessage('requested');
+    `);
+    assert_equals(await nextMessage(worker), 'requested');
+    worker.terminate();
+  }
+}, `${N} workers closed and ${N} terminated with frames still requested`);
+</script>

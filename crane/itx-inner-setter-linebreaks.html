@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>innerText builds a rendered text fragment</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#rendered-text-fragment">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  element.innerText = '\r\none\n\n<&\r';
+  assert_array_equals(Array.from(element.childNodes, node => node.nodeName),
+                      ['BR', '#text', 'BR', 'BR', '#text', 'BR']);
+  assert_equals(element.childNodes[1].data, 'one');
+  assert_equals(element.childNodes[4].data, '<&');
+  assert_true(Array.from(element.childNodes).every(node => node.ownerDocument === document));
+}, 'CRLF is one br, adjacent breaks stay separate, and no empty text nodes are added');
+</script>

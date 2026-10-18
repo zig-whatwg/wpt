@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>User-agent command events stay in the target tree</title>
+<link rel="help" href="https://github.com/whatwg/html/pull/11255">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  const root = host.attachShadow({mode: 'closed'});
+  const button = document.createElement('button');
+  const target = document.createElement('div');
+  root.append(button, target);
+  button.commandForElement = target;
+  button.command = '--Scoped';
+  let delivered = 0;
+  let escaped = 0;
+  target.addEventListener('command', t.step_func(event => {
+    ++delivered;
+    assert_equals(event.command, '--Scoped');
+    assert_equals(event.source, button);
+    assert_false(event.composed);
+    assert_false(event.bubbles);
+    assert_true(event.cancelable);
+  }));
+  host.addEventListener('command', () => ++escaped, {capture: true});
+  button.click();
+  assert_equals(delivered, 1);
+  assert_equals(escaped, 0);
+}, 'HTML PR 11255: a generated command event is not composed');
+</script>

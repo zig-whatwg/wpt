@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>innerText uses full Unicode mappings and inherited content language</title>
+<link rel="help" href="https://drafts.csswg.org/css-text-4/#text-transform-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function casing(t, markup, transform, language = '') {
+  const e = document.createElement('div');
+  e.lang = language;
+  e.style.textTransform = transform;
+  e.innerHTML = markup;
+  document.body.append(e);
+  t.add_cleanup(() => e.remove());
+  return e;
+}
+test(t => {
+  const e = casing(t, 'Maß ﬃ ａ 𐐨', 'uppercase');
+  assert_equals(e.innerText, 'MASS FFI Ａ 𐐀');
+}, 'Full Unicode uppercase expands mappings and includes supplementary letters');
+test(t => {
+  const e = casing(t, '<span>i ı</span>', 'uppercase', 'tr-TR');
+  assert_equals(e.firstChild.innerText, 'İ I');
+  e.lang = 'en';
+  assert_equals(e.firstChild.innerText, 'I I');
+}, 'Content language is inherited outside the requested subtree and responds to mutation');
+test(t => {
+  const e = casing(t, 'he<span>llo</span> <span>ßeta</span> ǆung', 'capitalize');
+  assert_equals(e.innerText, 'Hello Sseta ǅung');
+}, 'Capitalize uses full title mapping without creating inline word boundaries');
+</script>

@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fetch combines repeated header values without changing the first name</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const response = await fetch("/xhr/resources/echo-headers.py", {
+    headers: [["San2-Mixed-CASE", "one"], ["SAN2-MIXED-case", "two"]]
+  });
+  const lines = (await response.text()).split(/\r?\n/)
+    .filter(line => /^san2-mixed-case:/i.test(line));
+  assert_array_equals(lines, ["San2-Mixed-CASE: one, two"]);
+}, "One outgoing field uses the first spelling and combines its values in order");
+</script>

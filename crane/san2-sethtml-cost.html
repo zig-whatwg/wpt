@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>setHTML default configuration fragment cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const host = document.createElement("div");
+const markup = '<section><p>A &amp; B <b>bold</b></p><ul><li>one</li><li>two</li></ul></section>';
+const start = performance.now();
+for (let i = 0; i < 1000; ++i) host.setHTML(markup);
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(host.querySelectorAll("section").length, 1);
+  assert_equals(host.querySelectorAll("li").length, 2);
+  assert_equals(host.textContent, "A & B boldonetwo");
+}, "san2 setHTML 1000 fragments elapsed_ms=" + elapsed.toFixed(3));
+</script>

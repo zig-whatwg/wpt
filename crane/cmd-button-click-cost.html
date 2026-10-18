@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<meta name="variant" content="?command=0">
+<meta name="variant" content="?command=1">
+<title>Click 10000 buttons with and without commandfor</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const withCommand = new URLSearchParams(location.search).get('command') === '1';
+const container = document.createElement('div');
+const target = document.createElement('div');
+document.body.append(container, target);
+const buttons = [];
+let clicks = 0;
+let commands = 0;
+container.addEventListener('click', () => ++clicks);
+target.addEventListener('command', () => ++commands);
+for (let i = 0; i < 10000; ++i) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  container.append(button);
+  if (withCommand) {
+    button.commandForElement = target;
+    button.command = '--measure';
+  }
+  buttons.push(button);
+}
+const started = performance.now();
+for (const button of buttons) button.click();
+const elapsed = performance.now() - started;
+test(() => {
+  assert_equals(clicks, 10000);
+  assert_equals(commands, withCommand ? 10000 : 0);
+}, 'Click 10000 buttons ' + (withCommand ? 'with' : 'without') + ' commandfor: ' + elapsed.toFixed(3) + ' ms');
+</script>

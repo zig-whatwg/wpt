@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>innerText uses computed display and visibility in DOM order</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#rendered-text-collection-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function rendered(t, markup) {
+  const e = document.createElement('div');
+  e.innerHTML = markup;
+  document.body.append(e);
+  t.add_cleanup(() => e.remove());
+  return e;
+}
+test(t => {
+  const e = rendered(t, 'a<p>b</p><div></div><p>c</p>d');
+  assert_equals(e.innerText, 'a\n\nb\n\nc\n\nd');
+  assert_equals(e.outerText, e.innerText);
+}, 'Required breaks collapse to their maximum, including across empty blocks');
+test(t => {
+  const e = rendered(t, '<span style="visibility:hidden">hidden<span style="visibility:visible">shown</span></span><span style="display:none">gone</span>');
+  assert_equals(e.innerText, 'shown');
+  e.style.display = 'none';
+  assert_equals(e.innerText, 'hiddenshowngone');
+}, 'Visibility can be overridden, while display:none root returns raw text');
+test(t => {
+  const e = rendered(t, '<table><tbody><tr><td>a<td><td>b<tr><td>c</tbody><tfoot><tr><td>d</tfoot></table>');
+  assert_equals(e.innerText, 'a\t\tb\nc\nd');
+  assert_equals(e.querySelector('tr').innerText, 'a\t\tb');
+  assert_equals(e.querySelector('td').innerText, 'a');
+}, 'Table delimiters include empty cells and cross row groups, but exclude the getter root');
+test(t => {
+  const e = rendered(t, 'a <span style="display:inline-block"> b </span> c <img> d');
+  assert_equals(e.innerText, 'a b c  d');
+}, 'Atomic inline boxes stop whitespace collapsing across their boundaries');
+test(t => {
+  const e = rendered(t, '<span style="display:contents">  a <span> </span>b  </span>');
+  assert_equals(e.firstChild.innerText, 'a b');
+}, 'display:contents root uses rendered text collection');
+test(t => {
+  const e = rendered(t, '<span style="white-space:pre-line"> a \n b </span><br><span style="white-space:pre"> c \n </span>');
+  assert_equals(e.innerText, 'a\nb\n c \n ');
+}, 'Preserved newlines trim only collapsible neighboring spaces');
+</script>

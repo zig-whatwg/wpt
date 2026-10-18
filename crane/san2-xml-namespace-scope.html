@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XML serializer uses active namespace bindings</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const XMLNS = "http://www.w3.org/2000/xmlns/";
+const serialize = node => new XMLSerializer().serializeToString(node);
+const documentWithRoot = () => document.implementation.createDocument(null, "root");
+test(() => {
+  const doc = documentWithRoot(), root = doc.documentElement;
+  root.setAttributeNS(XMLNS, "xmlns:p", "urn:one");
+  root.setAttributeNS(XMLNS, "xmlns:q", "urn:one");
+  const child = root.appendChild(doc.createElementNS(null, "child"));
+  child.setAttributeNS(XMLNS, "xmlns:q", "urn:two");
+  child.setAttributeNS("urn:one", "value", "kept");
+  assert_equals(serialize(root), '<root xmlns:p="urn:one" xmlns:q="urn:one"><child xmlns:q="urn:two" p:value="kept"/></root>');
+}, "A shadowed prefix cannot name an attribute in its former namespace");
+test(() => {
+  const doc = documentWithRoot(), root = doc.documentElement;
+  root.setAttributeNS(XMLNS, "xmlns:ns2", "urn:two");
+  const child = root.appendChild(doc.createElementNS(null, "child"));
+  child.setAttributeNS(XMLNS, "xmlns:ns1", "urn:one");
+  child.setAttributeNS("urn:three", "value", "kept");
+  assert_equals(serialize(root), '<root xmlns:ns2="urn:two"><child xmlns:ns1="urn:one" xmlns:ns3="urn:three" ns3:value="kept"/></root>');
+}, "Generated prefixes skip local and inherited declarations");
+test(() => {
+  const doc = documentWithRoot(), root = doc.documentElement;
+  root.setAttributeNS(XMLNS, "xmlns:p", "urn:one");
+  const child = root.appendChild(doc.createElementNS("urn:one", "child"));
+  child.setAttributeNS(XMLNS, "xmlns", "urn:one");
+  assert_equals(serialize(root), '<root xmlns:p="urn:one"><child xmlns="urn:one"/></root>');
+}, "A matching explicit default namespace takes precedence over an ancestor prefix");
+test(() => {
+  const doc = document.implementation.createDocument("urn:one", "root");
+  const root = doc.documentElement;
+  root.setAttributeNS(XMLNS, "xmlns", "urn:one");
+  const child = root.appendChild(doc.createElementNS("urn:one", "p:child"));
+  child.setAttributeNS(XMLNS, "xmlns:p", "urn:one");
+  assert_equals(serialize(root), '<root xmlns="urn:one"><p:child xmlns:p="urn:one"/></root>');
+}, "An element keeps its prefix when its namespace is also the default namespace");
+</script>
