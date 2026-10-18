@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A recognized obsolete HTML element can be customized</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#dom-customelementregistry-define">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const changes = [];
+  class CustomParam extends HTMLParamElement {
+    static observedAttributes = ['name'];
+    attributeChangedCallback(...args) { changes.push(args); }
+  }
+  customElements.define('ac4-custom-param', CustomParam, {extends: 'param'});
+  const param = document.createElement('param', {is: 'ac4-custom-param'});
+  assert_true(param instanceof CustomParam);
+  assert_true(param instanceof HTMLParamElement);
+  param.name = 'source';
+  assert_equals(param.getAttribute('name'), 'source');
+  assert_array_equals(changes[0], ['name', null, 'source', null]);
+}, 'param is a recognized HTML element for customized built-in registration and reflection');
+</script>

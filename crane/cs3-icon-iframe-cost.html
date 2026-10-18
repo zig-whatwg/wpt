@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One hundred iframe documents with icon links</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frames = [];
+  let violations = 0;
+  const receive = e => { if (e.data === 'cs3-icon-violation') ++violations; };
+  addEventListener('message', receive);
+  t.add_cleanup(() => {
+    removeEventListener('message', receive);
+    for (const frame of frames) frame.remove();
+  });
+  const start = performance.now();
+  await Promise.all(Array.from({length: 100}, (_, index) => new Promise(resolve => {
+    const frame = document.createElement('iframe');
+    frames.push(frame);
+    frame.onload = resolve;
+    frame.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="img-src 'none'">
+      <link rel="icon" href="/images/green.png?cs3=child-${index}">
+      <script>addEventListener('securitypolicyviolation', () => parent.postMessage('cs3-icon-violation', '*'));<\/script>`;
+    document.body.append(frame);
+  })));
+  console.log('CS3_ICON_IFRAMES_MS=' + (performance.now() - start).toFixed(3));
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(violations, 0, 'child documents do not fetch favicon links');
+}, 'Only top-level documents fetch icons; one hundred child documents finish loading');
+</script>

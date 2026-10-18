@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB constructed File and Blob storage without file picker setup</title>
+<link rel="help" href="https://w3c.github.io/IndexedDB/#clone-a-value">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+'use strict';
+
+for (const kind of ['file', 'slice', 'composed']) {
+  promise_test(async t => {
+    const text = 'IndexedDB preserves constructed file contents.';
+    const file = new File([text], 'iw1.txt', {
+      type: 'text/plain', lastModified: 123456789
+    });
+    const value = kind === 'file' ? file : kind === 'slice' ?
+      file.slice(5, -5, 'text/plain') :
+      new Blob([file.slice(0, 12), file.slice(12)], {type: 'text/plain'});
+    const expected = kind === 'slice' ? text.slice(5, -5) : text;
+    const db = await createDatabase(t, db => db.createObjectStore('store'));
+    t.add_cleanup(() => db.close());
+    const write = db.transaction('store', 'readwrite');
+    const written = promiseForTransaction(t, write);
+    write.objectStore('store').put({value, tag: 'nested'}, 1);
+    await written;
+
+    const read = db.transaction('store');
+    const finished = promiseForTransaction(t, read);
+    const record = await promiseForRequest(t, read.objectStore('store').get(1));
+    await finished;
+    assert_equals(record.tag, 'nested');
+    assert_true(record.value instanceof Blob);
+    assert_not_equals(record.value, value);
+    assert_equals(record.value.size, value.size);
+    assert_equals(record.value.type, 'text/plain');
+    if (kind === 'file') {
+      assert_true(record.value instanceof File);
+      assert_equals(record.value.name, 'iw1.txt');
+      assert_equals(record.value.lastModified, 123456789);
+    }
+    assert_equals(await record.value.text(), expected);
+    const url = URL.createObjectURL(record.value);
+    t.add_cleanup(() => URL.revokeObjectURL(url));
+    assert_equals(await (await fetch(url)).text(), expected);
+  }, 'IndexedDB round-trips a constructed ' + kind + ' with metadata and bytes');
+}
+</script>

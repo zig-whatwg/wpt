@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="img-src 'none'">
+<title>Blocked top-level icon reports img-src without link events</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const reports = [];
+  const receive = e => reports.push(e);
+  document.addEventListener('securitypolicyviolation', receive);
+  t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', receive));
+  let link = document.createElement('link');
+  link.id = 'cs3-icon';
+  link.rel = 'shortcut icon';
+  link.href = '/images/green.png?cs3=blocked';
+  link.onload = t.unreached_func('icons do not fire link load');
+  link.onerror = t.unreached_func('icons do not fire link error');
+  document.head.append(link);
+  link = null;
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_equals(reports.length, 1, 'the request reports one blocked image');
+  assert_equals(reports[0].effectiveDirective, 'img-src');
+  assert_equals(reports[0].blockedURI, new URL('/images/green.png?cs3=blocked', location).href);
+  assert_equals(reports[0].target, document);
+  assert_equals(document.getElementById('cs3-icon').rel, 'shortcut icon',
+                'the connected link survives dropping its script reference');
+  document.getElementById('cs3-icon').remove();
+}, 'An icon fetch is subject to img-src and reports after script references are dropped');
+</script>

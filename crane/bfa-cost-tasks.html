@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Event loop cost: 10,000 window tasks (postMessage) to this window and to a frame</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#concept-task-runnable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane bfcache-a's cost page: every message is a task on the window event
+// loop's queue, whose document (the target Window) the loop classifies
+// before it runs it. Identical inputs before and after; the times are in the
+// result names, so the journal's subtest stream keeps them.
+const COUNT = 10000;
+
+function flood(label, target, listenerWindow) {
+  promise_test(async () => {
+    // Warm: one round of 1,000.
+    await send(target, listenerWindow, 1000);
+    const start = performance.now();
+    const received = await send(target, listenerWindow, COUNT);
+    const elapsed = performance.now() - start;
+    assert_equals(received, COUNT);
+    // The time is reported through the name of a test that runs after.
+    test(() => {}, label + ": " + COUNT + " tasks: " + elapsed.toFixed(3) + " ms");
+  }, label + ": all delivered");
+}
+
+function send(target, listenerWindow, count) {
+  return new Promise(resolve => {
+    let received = 0;
+    function onMessage(e) {
+      if (e.data !== "bfa") return;
+      if (++received === count) {
+        listenerWindow.removeEventListener("message", onMessage);
+        resolve(received);
+      }
+    }
+    listenerWindow.addEventListener("message", onMessage);
+    for (let i = 0; i < count; i++) target.postMessage("bfa", "*");
+  });
+}
+
+flood("This window", window, window);
+
+const frame = document.createElement("iframe");
+document.body.append(frame);
+flood("A frame's window", frame.contentWindow, frame.contentWindow);
+</script>

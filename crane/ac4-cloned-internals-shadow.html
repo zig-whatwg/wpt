@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cloned declarative roots remain available to element internals</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-clone">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<ac4-shadow-host id="original"><template shadowrootmode="closed" shadowrootclonable shadowrootcustomelementregistry><span>content</span></template></ac4-shadow-host>
+<script>
+customElements.define('ac4-shadow-host', class extends HTMLElement {
+  constructor() { super(); this.internals = this.attachInternals(); }
+});
+test(() => {
+  assert_not_equals(original.internals.shadowRoot, null, 'original root is available');
+  const clone = original.cloneNode(true);
+  assert_true(clone instanceof customElements.get('ac4-shadow-host'), 'clone was upgraded');
+  assert_not_equals(clone.internals.shadowRoot, null, 'clone root remains available');
+  assert_equals(clone.internals.shadowRoot.textContent, 'content');
+  assert_equals(clone.internals.shadowRoot.customElementRegistry, null);
+}, 'A cloned custom element exposes its declarative closed root through ElementInternals');
+</script>

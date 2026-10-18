@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>DOM churn cost with 100 live ranges: 10,000 insertions and removals</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-insert">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-remove">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Every insert and remove runs the live-range steps over each of the
+// document's live ranges (insert step 5, remove steps 4-7). Identical inputs
+// before and after; the times are in the result names, so the journal's
+// subtest stream keeps them.
+function churn(label, onParent) {
+  const parent = document.createElement("div");
+  const elsewhere = document.createElement("div");
+  document.body.append(parent, elsewhere);
+  for (let i = 0; i < 100; i++) {
+    parent.append(document.createElement("p"));
+    elsewhere.append(document.createElement("p"));
+  }
+  // 100 live ranges: on the churned parent, every insert at its front and
+  // every removal there moves each one's offsets; elsewhere, none moves.
+  const container = onParent ? parent : elsewhere;
+  const ranges = [];
+  for (let i = 0; i < 100; i++) {
+    const range = document.createRange();
+    range.setStart(container, i);
+    range.setEnd(container, i + 1);
+    ranges.push(range);
+  }
+  const elements = [];
+  for (let i = 0; i < 100; i++) elements.push(document.createElement("span"));
+  // Warm.
+  for (const element of elements) parent.insertBefore(element, parent.firstChild);
+  for (const element of elements) element.remove();
+  const start = performance.now();
+  for (let round = 0; round < 100; round++) {
+    for (const element of elements) parent.insertBefore(element, parent.firstChild);
+    for (const element of elements) element.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => {
+    assert_equals(parent.childNodes.length, 100);
+    ranges.forEach((range, i) => {
+      assert_equals(range.startContainer, container, "start container " + i);
+      assert_equals(range.startOffset, i, "start offset " + i);
+      assert_equals(range.endContainer, container, "end container " + i);
+      assert_equals(range.endOffset, i + 1, "end offset " + i);
+    });
+  }, label + ": 10000 insertions and removals: " + elapsed.toFixed(3) + " ms");
+  // Mid-churn the boundaries moved with the children.
+  test(() => {
+    parent.insertBefore(elements[0], parent.firstChild);
+    if (onParent) {
+      assert_equals(ranges[0].startOffset, 0, "a start at the insertion point stays");
+      assert_equals(ranges[0].endOffset, 2, "an end after the inserted child moves up");
+      assert_equals(ranges[1].startOffset, 2, "a start after the inserted child moves up");
+      assert_equals(ranges[1].endOffset, 3, "an end after the inserted child moves up");
+    } else {
+      assert_equals(ranges[1].startOffset, 1, "a range elsewhere stays");
+      assert_equals(ranges[1].endOffset, 2, "a range elsewhere stays");
+    }
+    elements[0].remove();
+    assert_equals(ranges[0].startOffset, 0);
+    assert_equals(ranges[0].endOffset, 1);
+    assert_equals(ranges[1].startOffset, 1);
+    assert_equals(ranges[1].endOffset, 2);
+  }, label + ": the boundaries follow the children");
+  parent.remove();
+  elsewhere.remove();
+}
+churn("100 live ranges on the churned parent", true);
+churn("100 live ranges elsewhere in the document", false);
+</script>

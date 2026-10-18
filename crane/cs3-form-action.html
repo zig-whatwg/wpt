@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="form-action 'none'">
+<title>HTTP form navigation checks CSP before fetching</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function targetFrame(t, name) {
+  const frame = document.createElement('iframe');
+  frame.name = name;
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = 'about:blank';
+  document.body.append(frame);
+  await loaded;
+  return frame;
+}
+
+for (const method of ['get', 'post']) {
+  promise_test(async t => {
+    const frame = await targetFrame(t, 'cs3-' + method);
+    const form = document.createElement('form');
+    t.add_cleanup(() => form.remove());
+    form.method = method;
+    form.target = frame.name;
+    const action = new URL('/common/blank.html?cs3=' + method, location);
+    form.action = action.href;
+    const input = document.createElement('input');
+    input.name = 'cs3';
+    input.value = method;
+    form.append(input);
+    document.body.append(form);
+    const result = new Promise(resolve => {
+      const onViolation = e => {
+        if (e.effectiveDirective === 'form-action') resolve({event: e});
+      };
+      document.addEventListener('securitypolicyviolation', onViolation);
+      t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', onViolation));
+      frame.onload = () => resolve({loaded: true});
+    });
+    form.submit();
+    const outcome = await result;
+    assert_false(!!outcome.loaded, 'a disallowed form must be checked before its target loads');
+    assert_equals(outcome.event.blockedURI, action.href);
+    assert_equals(outcome.event.disposition, 'enforce');
+    assert_equals(outcome.event.target, document);
+  }, 'form-action blocks an HTTP ' + method.toUpperCase() + ' submission');
+}
+
+promise_test(async t => {
+  const frame = await targetFrame(t, 'cs3-nonform');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html?cs3=nonform';
+  await loaded;
+  assert_equals(frame.contentWindow.location.search, '?cs3=nonform');
+}, 'form-action does not restrict an ordinary iframe navigation');
+</script>

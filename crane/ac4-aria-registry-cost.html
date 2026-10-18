@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>ARIA strings and registry definition cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const properties = ['role', 'ariaAtomic', 'ariaBusy', 'ariaChecked', 'ariaCurrent',
+  'ariaDisabled', 'ariaExpanded', 'ariaHidden', 'ariaLabel', 'ariaValueText'];
+const element = document.createElement('div');
+let length = 0;
+const start = performance.now();
+for (let i = 0; i < 100000; ++i) {
+  for (const property of properties) {
+    element[property] = 'value';
+    length += element[property].length;
+  }
+}
+const ariaDuration = performance.now() - start;
+const defineStart = performance.now();
+for (let i = 0; i < 1000; ++i) customElements.define('ac4-cost-' + i, class extends HTMLElement {});
+const defineDuration = performance.now() - defineStart;
+test(() => { assert_equals(length, 5000000); }, 'ARIA 10 attributes x 100000, ms=' + ariaDuration);
+test(() => { assert_equals(typeof customElements.get('ac4-cost-999'), 'function'); }, 'Define 1000 custom elements, ms=' + defineDuration);
+</script>

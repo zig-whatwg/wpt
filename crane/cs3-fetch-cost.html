@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'; img-src 'self'; font-src 'self'; media-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'self'">
+<title>Two thousand fetches under ten CSP directives</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const start = performance.now();
+  for (let batch = 0; batch < 100; ++batch) {
+    await Promise.all(Array.from({length: 20}, async () => {
+      const response = await fetch('/common/blank.html');
+      assert_true(response.ok);
+      await response.text();
+    }));
+  }
+  console.log('CS3_FETCH_MS=' + (performance.now() - start).toFixed(3));
+}, '2,000 fetches with ten directives finish');
+</script>

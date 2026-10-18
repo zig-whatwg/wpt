@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Same-origin IndexedDB factories observe committed database names</title>
+<link rel="help" href="https://w3c.github.io/IndexedDB/#dom-idbfactory-databases">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<body>
+<script>
+'use strict';
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const db = await createDatabase(t, db => db.createObjectStore('store'));
+  t.add_cleanup(() => db.close());
+  assert_true((await indexedDB.databases()).some(info => info.name === db.name),
+    'creating factory sees the committed database');
+  const names = await frame.contentWindow.indexedDB.databases();
+  assert_true(names.some(info => info.name === db.name),
+    'another factory with the same storage key sees the committed database');
+}, 'Same-origin frames share committed IndexedDB database metadata');
+</script>

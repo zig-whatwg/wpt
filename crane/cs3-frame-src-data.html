@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Data navigation checks its initiator's frame-src policy</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => {
+    const receive = e => {
+      if (e.source === frame.contentWindow && e.data && e.data.cs3)
+        resolve(e.data);
+    };
+    addEventListener('message', receive);
+    t.add_cleanup(() => removeEventListener('message', receive));
+  });
+  const source = `<!doctype html>
+    <meta http-equiv="Content-Security-Policy" content="frame-src 'self'">
+    <body><script>
+      let reported = false;
+      addEventListener('securitypolicyviolation', e => {
+        if (e.effectiveDirective !== 'frame-src') return;
+        reported = true;
+        parent.postMessage({cs3: true, directive: e.effectiveDirective,
+                            blocked: e.blockedURI, disposition: e.disposition}, '*');
+      });
+      const child = document.createElement('iframe');
+      child.onload = () => setTimeout(() => {
+        if (!reported) parent.postMessage({cs3: true, loadedWithoutReport: true}, '*');
+      }, 50);
+      child.src = 'data:text/html,blocked';
+      document.body.append(child);
+    <\/script>`;
+  frame.src = 'data:text/html,' + encodeURIComponent(source);
+  document.body.append(frame);
+  const report = await result;
+  assert_false(!!report.loadedWithoutReport, 'an opaque-origin data document cannot match self');
+  assert_equals(report.directive, 'frame-src');
+  assert_equals(report.blocked, 'data');
+  assert_equals(report.disposition, 'enforce');
+}, 'A data iframe gets the initiator CSP and reports a blocked child data navigation');
+</script>

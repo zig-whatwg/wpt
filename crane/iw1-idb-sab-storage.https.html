@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB SharedArrayBuffer storage rejection</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeforstorage">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+'use strict';
+// Same HTTPS + COOP/COEP setup as IndexedDB/serialize-sharedarraybuffer-throws.https.html.
+// That source's storage-rejection assertion passes Chrome, Firefox and Safari
+// in aligned WPT 23b0b89b1a (2026-10-18). This control tests storage only;
+// the upstream source retains its separate crossOriginIsolated assertion.
+for (const kind of ['buffer', 'view', 'nested']) {
+  promise_test(async t => {
+    assert_equals(typeof SharedArrayBuffer, 'function', 'control prerequisite');
+    const buffer = new SharedArrayBuffer(8);
+    const value = kind === 'buffer' ? buffer : kind === 'view' ?
+      new Uint8Array(buffer) : {nested: [buffer]};
+    const db = await createDatabase(t, db => db.createObjectStore('store'));
+    t.add_cleanup(() => db.close());
+    const tx = db.transaction('store', 'readwrite');
+    const finished = promiseForTransaction(t, tx);
+    const store = tx.objectStore('store');
+    assert_throws_dom('DataCloneError', () => store.put(value, 1));
+    const request = store.put('still active', 2);
+    assert_equals(await promiseForRequest(t, request), 2);
+    await finished;
+  }, 'IndexedDB rejects shared ' + kind + ' values and keeps the transaction active');
+}
+</script>

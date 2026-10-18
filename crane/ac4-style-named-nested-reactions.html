@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named CSS mutation reaction boundaries</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#dom-cssstyledeclaration-setproperty">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const log = [];
+  let other;
+  class Observed extends HTMLElement {
+    static observedAttributes = ['style'];
+    attributeChangedCallback(name, before, after) {
+      log.push(this.id + ':enter');
+      if (this.id === 'outer') other.style['font-size'] = '20px';
+      log.push(this.id + ':exit');
+    }
+  }
+  customElements.define('ac4-nested-style', Observed);
+  const outer = document.createElement('ac4-nested-style');
+  other = document.createElement('ac4-nested-style');
+  outer.id = 'outer'; other.id = 'inner';
+  outer.style.fontSize = '10px';
+  log.push('returned');
+  assert_array_equals(log, ['outer:enter', 'inner:enter', 'inner:exit', 'outer:exit', 'returned']);
+  log.length = 0;
+  other.style.fontSize = '';
+  assert_array_equals(log, ['inner:enter', 'inner:exit']);
+  assert_equals(other.style.fontSize, '');
+  log.length = 0;
+  other.style.fontSize = 'not-a-size';
+  assert_array_equals(log, [], 'invalid declaration does not mutate the attribute');
+}, 'Camel-cased and dashed CSS setters run nested reactions and removals synchronously');
+</script>

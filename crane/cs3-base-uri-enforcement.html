@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSP base-uri freezes once and reports the rejected URL</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function blankFrame(t) {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html><head></head><body></body>';
+  document.body.append(frame);
+  await loaded;
+  return frame;
+}
+function setPolicy(doc, content) {
+  const meta = doc.createElement('meta');
+  meta.httpEquiv = 'Content-Security-Policy';
+  meta.content = content;
+  doc.head.append(meta);
+}
+function nextTasks(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 50));
+}
+promise_test(async t => {
+  const frame = await blankFrame(t);
+  const doc = frame.contentDocument;
+  const reports = [];
+  doc.addEventListener('securitypolicyviolation', e => reports.push(e));
+  setPolicy(doc, "base-uri 'none'");
+  const base = doc.createElement('base');
+  base.href = 'https://rejected.example/path?q=1#fragment';
+  doc.head.append(base);
+  await nextTasks(t);
+  assert_equals(reports.length, 1, 'insertion reports without any baseURI read');
+  assert_equals(reports[0].blockedURI, 'https://rejected.example/path?q=1');
+  assert_equals(reports[0].effectiveDirective, 'base-uri');
+  assert_equals(reports[0].disposition, 'enforce');
+  assert_equals(reports[0].target, doc);
+  for (let i = 0; i < 5; ++i)
+    assert_equals(doc.baseURI, document.baseURI, 'blocked base keeps fallback');
+  await nextTasks(t);
+  assert_equals(reports.length, 1, 'baseURI reads do not report again');
+}, 'A rejected base reports once when frozen, even without a getter read');
+
+promise_test(async t => {
+  const frame = await blankFrame(t);
+  const doc = frame.contentDocument;
+  const base = doc.createElement('base');
+  base.href = 'https://accepted.example/first/';
+  doc.head.append(base);
+  setPolicy(doc, "base-uri 'none'");
+  const reports = [];
+  doc.addEventListener('securitypolicyviolation', e => reports.push(e));
+  assert_equals(doc.baseURI, 'https://accepted.example/first/',
+                'a later policy does not change the already frozen base');
+  base.href = 'https://rejected.example/second/';
+  await nextTasks(t);
+  assert_equals(reports.length, 1, 'href change freezes and reports once');
+  assert_equals(doc.baseURI, document.baseURI);
+}, 'A later policy applies when href changes, not retroactively on a baseURI read');
+</script>
+</body>

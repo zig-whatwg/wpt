@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>IndexedDB cost: 10,000 put/get pairs in one transaction</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/IndexedDB/resources/support-promises.js"></script>
+<script>
+'use strict';
+promise_test(async t => {
+  const db = await createDatabase(t, db => db.createObjectStore('records'));
+  t.add_cleanup(() => db.close());
+  const start = performance.now();
+  const transaction = db.transaction('records', 'readwrite');
+  const completed = promiseForTransaction(t, transaction);
+  const store = transaction.objectStore('records');
+  let read = 0;
+  for (let i = 0; i < 10000; ++i) {
+    store.put({index: i, text: 'iw1 payload'}, i);
+    const request = store.get(i);
+    request.onsuccess = t.step_func(() => {
+      assert_equals(request.result.index, i);
+      assert_equals(request.result.text, 'iw1 payload');
+      ++read;
+    });
+  }
+  await completed;
+  const elapsed = performance.now() - start;
+  assert_equals(read, 10000);
+  test(() => assert_greater_than_equal(elapsed, 0),
+       'IndexedDB put/get: ' + elapsed.toFixed(3) + ' ms for 10000 pairs');
+}, 'All 10000 put/get pairs complete in one transaction');
+</script>

@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'none'">
+<title>Allowed icon fetch uses image destination without stylesheet processing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const endpoint = '/common/security-features/subresource/image.py?id=' + token();
+  let link = document.createElement('link');
+  link.id = 'cs3-allowed-icon';
+  link.rel = 'icon';
+  link.type = 'image/bmp';
+  link.href = endpoint;
+  link.onload = t.unreached_func('icons do not fire link load');
+  link.onerror = t.unreached_func('icons do not fire link error');
+  document.head.append(link);
+  link = null;
+  TestUtils.gc();
+  let record = null;
+  for (let attempt = 0; attempt < 20; ++attempt) {
+    await new Promise(resolve => t.step_timeout(resolve, 50));
+    const response = await fetch(endpoint + '&report-headers=1');
+    if (!response.ok) continue;
+    const text = await response.text();
+    if (text && text !== 'null') {
+      record = JSON.parse(text);
+      break;
+    }
+  }
+  assert_not_equals(record, null, 'the server observed the icon request');
+  assert_equals(document.getElementById('cs3-allowed-icon').sheet, null);
+  assert_equals(document.styleSheets.length, 0, 'the icon is never parsed as CSS');
+  document.getElementById('cs3-allowed-icon').remove();
+}, 'A top-level icon fetch reaches the server, survives GC, and creates no stylesheet');
+
+promise_test(async t => {
+  const reports = [];
+  const receive = e => reports.push(e);
+  document.addEventListener('securitypolicyviolation', receive);
+  t.add_cleanup(() => document.removeEventListener('securitypolicyviolation', receive));
+  const link = document.createElement('link');
+  t.add_cleanup(() => link.remove());
+  link.rel = 'icon';
+  link.href = 'cs3-icon-as-css.css?cs3=' + token();
+  const url = link.href;
+  document.head.append(link);
+  for (let attempt = 0; attempt < 20 && performance.getEntriesByName(url).length === 0; ++attempt)
+    await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(performance.getEntriesByName(url).length, 1, 'the icon response arrived');
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(reports.length, 0, 'an icon response must not start CSS imports');
+  assert_equals(link.sheet, null);
+}, 'An icon response labeled text/css is never parsed for @imports');
+</script>

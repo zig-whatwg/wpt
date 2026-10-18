@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An enforced empty sandbox header prevents script execution</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  let ran = false;
+  const receive = e => { if (e.data === 'cs3-sandbox-script-ran') ran = true; };
+  addEventListener('message', receive);
+  t.add_cleanup(() => removeEventListener('message', receive));
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = 'cs3-sandbox-header-child.html';
+  document.body.append(frame);
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_false(ran, 'the correctly named response header blocks the child script');
+}, 'CSP sandbox delivered in the response blocks scripts');
+</script>

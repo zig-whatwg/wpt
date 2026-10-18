@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Event loop cost: 50,000 timers at once, timers interleaved with messages, and a frame's timers</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#run-steps-after-a-timeout">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane bfcache-a's cost page: every timer's run asks whether its window's
+// document is fully active. Identical inputs before and after; the times are
+// in the result names, so the journal's subtest stream keeps them.
+function timed(label, run) {
+  promise_test(async () => {
+    await run(200);
+    const start = performance.now();
+    const n = await run();
+    const elapsed = performance.now() - start;
+    test(() => {}, label + ": " + n + " runs: " + elapsed.toFixed(3) + " ms");
+  }, label + ": all ran");
+}
+
+function burst(win, count) {
+  return new Promise(resolve => {
+    let ran = 0;
+    for (let i = 0; i < count; i++) {
+      win.setTimeout(() => { if (++ran === count) resolve(ran); }, 0);
+    }
+  });
+}
+
+function mixed(win, count) {
+  return new Promise(resolve => {
+    let left = 2 * count;
+    const done = () => { if (--left === 0) resolve(2 * count); };
+    win.addEventListener("message", function onMessage(e) {
+      if (e.data !== "bfa-mixed") return;
+      done();
+      if (left === 0) win.removeEventListener("message", onMessage);
+    });
+    for (let i = 0; i < count; i++) {
+      win.setTimeout(done, 0);
+      win.postMessage("bfa-mixed", "*");
+    }
+  });
+}
+
+timed("setTimeout(0) burst in this window", n => burst(window, n || 50000));
+timed("Timers and messages interleaved", n => mixed(window, n || 10000));
+
+const frame = document.createElement("iframe");
+document.body.append(frame);
+timed("setTimeout(0) burst in a frame's window", n => burst(frame.contentWindow, n || 20000));
+</script>

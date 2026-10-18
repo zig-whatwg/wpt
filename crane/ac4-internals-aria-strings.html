@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals ARIA strings are independent nullable defaults</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#the-elementinternals-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  class AriaDefaults extends HTMLElement {}
+  customElements.define('ac4-aria-defaults', AriaDefaults);
+  const element = document.createElement('ac4-aria-defaults');
+  const internals = element.attachInternals();
+  for (const [property, attribute] of [
+    ['role', 'role'], ['ariaLabel', 'aria-label'], ['ariaChecked', 'aria-checked'],
+    ['ariaBrailleLabel', 'aria-braillelabel'], ['ariaValueNow', 'aria-valuenow']
+  ]) {
+    assert_equals(internals[property], null, property + ' initial value');
+    element.setAttribute(attribute, 'author value');
+    assert_equals(internals[property], null, property + ' independent from author value');
+    for (const value of ['', 'MiXeD invalid value', '\uD800\u0000\u2603']) {
+      internals[property] = value;
+      assert_equals(internals[property], value, property + ' exact DOMString');
+      assert_equals(element.getAttribute(attribute), 'author value');
+    }
+    internals[property] = null;
+    assert_equals(internals[property], null, property + ' null deletes internal default');
+    assert_equals(element.getAttribute(attribute), 'author value');
+  }
+}, 'ElementInternals role and aria strings preserve values without modifying author attributes');
+</script>

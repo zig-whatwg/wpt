@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named CSS setters complete custom element reactions synchronously</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#dom-cssstyledeclaration-setproperty">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const calls = [];
+  class StyleObserver extends HTMLElement {
+    static observedAttributes = ['style'];
+    attributeChangedCallback(...args) { calls.push(args); }
+  }
+  customElements.define('ac4-style-observer', StyleObserver);
+  const element = document.createElement('ac4-style-observer');
+  element.style.fontSize = '10px';
+  assert_equals(element.getAttribute('style'), 'font-size: 10px;');
+  assert_equals(calls.length, 1, 'callback completes before the named setter returns');
+  assert_array_equals(calls[0], ['style', null, 'font-size: 10px;', null]);
+}, 'fontSize setter invokes the observed style reaction before returning');
+</script>

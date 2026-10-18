@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cloning preserves each shadow root's internals availability</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-node-clone">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const host = document.createElement('ac4-late-shadow');
+  host.attachShadow({mode: 'closed', clonable: true});
+  customElements.define('ac4-late-shadow', class extends HTMLElement {
+    constructor() { super(); this.internals = this.attachInternals(); }
+  });
+  customElements.upgrade(host);
+  assert_equals(host.internals.shadowRoot, null, 'root predates customization');
+  assert_equals(host.cloneNode(true).internals.shadowRoot, null, 'unavailable remains unavailable');
+}, 'A root attached before customization remains unavailable on the clone');
+test(() => {
+  customElements.define('ac4-early-shadow', class extends HTMLElement {
+    constructor() { super(); this.internals = this.attachInternals(); }
+  });
+  const host = document.createElement('ac4-early-shadow');
+  const shadow = host.attachShadow({mode: 'closed', clonable: true});
+  shadow.innerHTML = '<span>kept</span>';
+  assert_equals(host.internals.shadowRoot, shadow);
+  const clone = host.cloneNode(true);
+  assert_not_equals(clone.internals.shadowRoot, null, 'available remains available');
+  assert_not_equals(clone.internals.shadowRoot, shadow, 'clone has its own root');
+  assert_equals(clone.internals.shadowRoot.textContent, 'kept');
+}, 'A root attached after customization remains available on the clone');
+</script>
