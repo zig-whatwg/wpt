@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane style2: matchMedia and MediaQueryList</title>
+<link rel="help" href="https://drafts.csswg.org/cssom-view/#dom-window-matchmedia">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const a = matchMedia("all");
+  assert_true(a instanceof MediaQueryList);
+  assert_true(a instanceof EventTarget);
+  assert_not_equals(matchMedia("all"), a, "[NewObject]");
+}, "matchMedia returns a new MediaQueryList");
+
+test(() => {
+  assert_equals(matchMedia("(MIN-WIDTH: 100px)").media, "(min-width: 100px)");
+  assert_equals(matchMedia("").media, "");
+  assert_equals(matchMedia("screen, print").media, "screen, print");
+  assert_equals(matchMedia("not all and (monochrome)").media, "not all and (monochrome)");
+  assert_equals(matchMedia("(bogus)").media, "(bogus)", "an unknown feature is <general-enclosed> (MQ4 3.1)");
+  assert_equals(matchMedia("&").media, "not all", "a syntax error");
+}, "media is the serialized media query list");
+
+test(() => {
+  assert_true(matchMedia("").matches, "an empty list matches");
+  assert_true(matchMedia("all").matches);
+  assert_true(matchMedia("screen").matches);
+  assert_false(matchMedia("print").matches);
+  assert_true(matchMedia("(min-width: 1px)").matches);
+  assert_false(matchMedia("(max-width: 1px)").matches);
+  assert_true(matchMedia(`(width: ${innerWidth}px)`).matches, "the width is the window's innerWidth");
+  assert_true(matchMedia(`(height: ${innerHeight}px)`).matches, "the height is the window's innerHeight");
+  assert_false(matchMedia("(bogus)").matches);
+  assert_true(matchMedia("(scripting: enabled)").matches);
+}, "matches evaluates the list against the document");
+
+test(() => {
+  const m = matchMedia("all");
+  let calls = 0, seen = null;
+  const f = e => { calls++; seen = e; };
+  m.addListener(f);
+  m.addListener(f);
+  m.dispatchEvent(new Event("change"));
+  assert_equals(calls, 1, "addListener adds a change listener once");
+  assert_equals(seen.type, "change");
+  m.removeListener(f);
+  m.dispatchEvent(new Event("change"));
+  assert_equals(calls, 1, "removeListener removes it");
+  m.addListener(null);
+  m.removeListener(null);
+  m.addEventListener("change", f, true);
+  m.removeListener(f);
+  m.dispatchEvent(new Event("change"));
+  assert_equals(calls, 2, "removeListener leaves a capture listener");
+}, "addListener and removeListener alias the change listener");
+
+test(() => {
+  const m = matchMedia("all");
+  let calls = 0;
+  m.onchange = () => calls++;
+  m.dispatchEvent(new Event("change"));
+  assert_equals(calls, 1);
+  assert_equals(typeof m.onchange, "function");
+}, "onchange is an event handler");
+
+promise_test(async () => {
+  const lists = [matchMedia("all"), matchMedia("print"), matchMedia("(min-width: 1px)")];
+  const fired = [];
+  for (const m of lists) m.onchange = e => fired.push(e.media);
+  for (let i = 0; i < 3; i++) await new Promise(r => requestAnimationFrame(r));
+  assert_array_equals(fired, [], "no change event while the environment is the same");
+  assert_true(lists[0].matches);
+}, "Rendering updates report no change when nothing changed");
+
+test(() => {
+  const e = new MediaQueryListEvent("change", { media: "print", matches: true });
+  assert_equals(e.type, "change");
+  assert_equals(e.media, "print");
+  assert_true(e.matches);
+  assert_false(e.isTrusted);
+  const d = new MediaQueryListEvent("x");
+  assert_equals(d.media, "");
+  assert_false(d.matches);
+}, "MediaQueryListEvent's constructor");
+
+promise_test(async () => {
+  const frame = document.createElement("iframe");
+  frame.style.width = "123px";
+  frame.style.height = "45px";
+  document.body.appendChild(frame);
+  await new Promise(r => { if (frame.contentDocument.readyState === "complete") r(); else frame.onload = r; });
+  const w = frame.contentWindow;
+  const m = w.matchMedia(`(width: ${w.innerWidth}px)`);
+  assert_true(m instanceof w.MediaQueryList, "made in the window's realm");
+  assert_true(m.matches, "an iframe's media queries see its own viewport");
+  frame.remove();
+}, "matchMedia in an iframe");
+</script>
+</body>

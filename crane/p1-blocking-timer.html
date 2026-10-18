@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The event loop runs while the parser waits for a parser-blocking script</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML "an end tag whose tag name is script": while the pending
+// parsing-blocking script is not ready, the parser spins the event loop -
+// tasks and timers run, and the parser reads no further input.
+const waited = async_test("a timer fires while the parser waits for a parser-blocking script");
+const seenDuringWait = [];
+let timerFired = false;
+setTimeout(() => {
+  timerFired = true;
+  seenDuringWait.push(document.readyState, !!document.getElementById("before"), !!document.getElementById("after"));
+}, 50);
+</script>
+<p id="before">before</p>
+<script src="/loading/resources/dummy.js?pipe=trickle(d1)"></script>
+<p id="after">after</p>
+<script>
+waited.step(() => {
+  assert_true(timerFired, "the timer ran during the wait");
+  assert_array_equals(seenDuringWait, ["loading", true, false],
+    "the timer saw the document as parsed up to the blocking script");
+});
+waited.done();
+</script>

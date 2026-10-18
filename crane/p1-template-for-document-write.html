@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>&lt;template for&gt; written by document.write patches the live document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-content-patching">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="placeholder"><?start name="w">old<?end></div>
+<script>
+document.write('<template for="w">new <b>bold</b></template>');
+</script>
+<script>
+test(() => {
+  assert_equals(document.getElementById("placeholder").innerHTML, "new <b>bold</b>");
+  assert_equals(document.querySelector("template"), null);
+}, "a written <template for> replaces the range between its markers");
+</script>

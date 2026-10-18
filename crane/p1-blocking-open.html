@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.open while the parser waits for a parser-blocking script</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  window.frameEvents = [];
+  const iframe = document.createElement("iframe");
+  iframe.srcdoc = `<script>parent.frameEvents.push("first");<\/script>
+    <script src="/loading/resources/dummy.js?pipe=trickle(d1)"><\/script>
+    <script>parent.frameEvents.push("after");<\/script>`;
+  document.body.appendChild(iframe);
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_array_equals(frameEvents, ["first"], "the frame's parser is waiting");
+  const doc = iframe.contentDocument;
+  assert_equals(doc.readyState, "loading");
+  // Not from a parser-inserted script: the open steps abort the waiting
+  // parser and give the document a script-created one.
+  doc.open();
+  doc.write("<p id=written>written</p>");
+  doc.close();
+  assert_equals(doc.getElementById("written").textContent, "written");
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_array_equals(frameEvents, ["first"], "the aborted parser never resumes");
+}, "document.open aborts a parser waiting for a parser-blocking script");
+</script>

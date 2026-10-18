@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The parser appends text to the live DOM's previous sibling</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#insert-a-character">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "insert a character" steps 4-5 look at the adjusted insertion
+// location's previous sibling in the DOM, which script may have changed
+// between two tokens. These are the spec's own examples.
+function parsed(markup) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    iframe.srcdoc = markup;
+    iframe.onload = () => {
+      const nodes = Array.from(iframe.contentDocument.body.childNodes, node =>
+        node.nodeType === Node.TEXT_NODE ? "#text:" + node.data : node.nodeName);
+      const extra = iframe.contentWindow.moved
+        ? [iframe.contentWindow.moved === iframe.contentDocument.body.lastChild] : [];
+      iframe.remove();
+      resolve(nodes.concat(extra));
+    };
+    document.body.appendChild(iframe);
+  });
+}
+
+promise_test(async () => {
+  assert_array_equals(await parsed(
+    "<body>A<script>var s = document.getElementsByTagName('script')[0]; document.body.removeChild(s);<\/script>B"),
+    ["#text:AB"]);
+}, "text after a script that removed itself joins the Text node before it");
+
+promise_test(async () => {
+  assert_array_equals(await parsed(
+    "<body>A<script>var t = document.createTextNode('B'); document.body.appendChild(t);<\/script>C"),
+    ["#text:A", "SCRIPT", "#text:BC"]);
+}, "text after a script appends to the Text node the script inserted");
+
+promise_test(async () => {
+  assert_array_equals(await parsed(
+    "<body>A<script>var t = document.getElementsByTagName('script')[0].firstChild; t.data = 'B'; document.body.appendChild(t); window.moved = t;<\/script>C"),
+    ["#text:A", "SCRIPT", "#text:BC", true]);
+}, "text after a script appends to the script's own text, moved after it");
+
+promise_test(async () => {
+  const doc = new DOMParser().parseFromString("<body></body>", "text/html");
+  doc.write("before");
+  doc.body.textContent = "";
+  doc.write("after");
+  doc.close();
+  assert_equals(doc.body.textContent, "after");
+  assert_equals(doc.body.childNodes.length, 1);
+}, "a later write does not append to the Text node script removed");
+</script>

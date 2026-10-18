@@ -1,0 +1,164 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane style2: style sheet objects, document.styleSheets, cssRules</title>
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#css-style-sheets">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="first" title="t" media="screen, print">
+  @import url("imported.css") print;
+  @namespace svg url(http://www.w3.org/2000/svg);
+  #target { color: rgb(1, 2, 3); }
+  @media all { #target { margin-left: 4px; } }
+  @supports (display: block) { p { color: red; } }
+  @layer base { q { color: red; } }
+  @namespace late url(x);
+</style>
+<style id="plain" type="text/plain">p { color: red }</style>
+<style id="empty"></style>
+<div id="target"></div>
+<script>
+const first = document.getElementById("first");
+const target = document.getElementById("target");
+
+test(() => {
+  const s = first.sheet;
+  assert_true(s instanceof CSSStyleSheet);
+  assert_true(s instanceof StyleSheet);
+  assert_equals(first.sheet, s, "the same object each time");
+  assert_equals(s.ownerNode, first);
+  assert_equals(s.type, "text/css");
+  assert_equals(s.href, null, "an embedded sheet has no location");
+  assert_equals(s.title, "t");
+  assert_equals(s.parentStyleSheet, null);
+  assert_equals(s.ownerRule, null);
+  assert_equals(s.media.mediaText, "screen, print");
+  assert_equals(s.media.length, 2);
+  assert_equals(s.media.item(1), "print");
+  assert_equals(s.media, s.media, "[SameObject] media");
+  assert_false(s.disabled);
+}, "A style element's sheet is a CSSStyleSheet over its style sheet");
+
+test(() => {
+  assert_equals(document.getElementById("plain").sheet, null, "a type the element does not apply has no sheet");
+  const empty = document.getElementById("empty").sheet;
+  assert_true(empty instanceof CSSStyleSheet, "an empty style element has a sheet");
+  assert_equals(empty.cssRules.length, 0);
+}, "Which style elements have a sheet");
+
+test(() => {
+  const list = document.styleSheets;
+  assert_true(list instanceof StyleSheetList);
+  assert_equals(document.styleSheets, list, "[SameObject]");
+  assert_equals(list.length, 2, "the two style elements that have a sheet");
+  assert_equals(list[0], first.sheet, "the same object as the element's sheet");
+  assert_equals(list.item(1), document.getElementById("empty").sheet);
+  assert_equals(list.item(2), null);
+  assert_equals(list[2], undefined);
+}, "document.styleSheets lists the sheets in tree order");
+
+test(() => {
+  const rules = first.sheet.cssRules;
+  assert_true(rules instanceof CSSRuleList);
+  assert_equals(first.sheet.rules, rules, "rules is the same object as cssRules");
+  assert_equals(first.sheet.cssRules, rules, "[SameObject]");
+  assert_equals(rules.length, 6, "an @namespace after a style rule is dropped");
+  assert_equals(rules[2], rules[2], "one object per rule");
+  assert_equals(rules.item(6), null);
+  const style = rules[2];
+  assert_true(style instanceof CSSStyleRule);
+  assert_equals(style.type, CSSRule.STYLE_RULE);
+  assert_equals(style.selectorText, "#target");
+  assert_equals(style.cssText, "#target { color: rgb(1, 2, 3); }");
+  assert_equals(style.parentStyleSheet, first.sheet);
+  assert_equals(style.parentRule, null);
+  assert_equals(style.style.color, "rgb(1, 2, 3)");
+  assert_equals(style.style.parentRule, style);
+}, "cssRules lists the sheet's rules, each as its CSSRule object");
+
+test(() => {
+  const rules = first.sheet.cssRules;
+  const imp = rules[0];
+  assert_true(imp instanceof CSSImportRule);
+  assert_equals(imp.type, CSSRule.IMPORT_RULE);
+  assert_equals(imp.href, "imported.css");
+  assert_equals(imp.media.mediaText, "print");
+  assert_equals(imp.cssText, '@import url("imported.css") print;');
+  const media = rules[3];
+  assert_true(media instanceof CSSMediaRule);
+  assert_true(media instanceof CSSGroupingRule);
+  assert_equals(media.media.mediaText, "all");
+  assert_equals(media.conditionText, "all");
+  assert_equals(media.cssRules.length, 1);
+  assert_equals(media.cssRules[0].parentRule, media);
+  assert_equals(media.cssRules[0].parentStyleSheet, first.sheet);
+  assert_equals(media.cssText, "@media all {\n  #target { margin-left: 4px; }\n}");
+  const supports = rules[4];
+  assert_true(supports instanceof CSSSupportsRule);
+  assert_equals(supports.conditionText, "(display: block)");
+  const layer = rules[5];
+  assert_true(layer instanceof CSSLayerBlockRule);
+  assert_equals(layer.name, "base");
+  const ns = rules[1];
+  assert_true(ns instanceof CSSNamespaceRule);
+  assert_equals(ns.prefix, "svg");
+  assert_equals(ns.namespaceURI, "http://www.w3.org/2000/svg");
+}, "At-rules have their own CSSRule interfaces");
+
+test(() => {
+  const rule = first.sheet.cssRules[2];
+  rule.style.color = "rgb(9, 8, 7)";
+  assert_equals(getComputedStyle(target).color, "rgb(9, 8, 7)", "a rule's style is live and applies");
+  rule.selectorText = "div#target";
+  assert_equals(rule.selectorText, "div#target");
+  rule.selectorText = "!!!";
+  assert_equals(rule.selectorText, "div#target", "an invalid selector changes nothing");
+  assert_equals(getComputedStyle(target).color, "rgb(9, 8, 7)");
+  first.sheet.disabled = true;
+  assert_true(first.disabled, "the element and its sheet share the flag");
+  assert_equals(getComputedStyle(target).color, "rgb(0, 0, 0)", "a disabled sheet does not apply");
+  first.sheet.disabled = false;
+  assert_equals(getComputedStyle(target).color, "rgb(9, 8, 7)");
+  first.sheet.media.mediaText = "print";
+  assert_equals(getComputedStyle(target).color, "rgb(0, 0, 0)", "a sheet whose media does not match does not apply");
+  first.sheet.media.appendMedium("screen");
+  assert_equals(first.sheet.media.mediaText, "print, screen");
+  assert_equals(getComputedStyle(target).color, "rgb(9, 8, 7)");
+  first.sheet.media.deleteMedium("print");
+  assert_throws_dom("NotFoundError", () => first.sheet.media.deleteMedium("print"));
+}, "Edits through the objects reach the cascade");
+
+test(() => {
+  const style = document.createElement("style");
+  style.textContent = "#target { padding-left: 3px }";
+  document.head.appendChild(style);
+  const sheet = style.sheet;
+  const rules = sheet.cssRules;
+  const rule = rules[0];
+  assert_equals(document.styleSheets.length, 3);
+  assert_equals(getComputedStyle(target).paddingLeft, "3px");
+  style.remove();
+  assert_equals(style.sheet, null, "a disconnected style element has no sheet");
+  assert_equals(sheet.ownerNode, null, "remove a CSS style sheet: no owner node");
+  assert_equals(document.styleSheets.length, 2);
+  assert_equals(rules.length, 1, "the removed sheet's rules are still readable");
+  assert_equals(rules[0], rule);
+  assert_equals(rule.parentStyleSheet, sheet);
+  assert_equals(getComputedStyle(target).paddingLeft, "0px", "a removed sheet does not apply");
+}, "A sheet script holds outlives its removal");
+
+test(() => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = host.attachShadow({ mode: "open" });
+  assert_equals(root.styleSheets.length, 0);
+  const style = document.createElement("style");
+  style.textContent = "span { color: red }";
+  root.appendChild(style);
+  assert_equals(root.styleSheets, root.styleSheets, "[SameObject]");
+  assert_equals(root.styleSheets.length, 1);
+  assert_equals(root.styleSheets[0], style.sheet);
+  assert_equals(document.styleSheets.length, 2, "a shadow tree's sheet is not the document's");
+  host.remove();
+  assert_equals(root.styleSheets.length, 0, "a disconnected shadow root has no sheets");
+}, "shadowRoot.styleSheets lists the shadow tree's sheets");
+</script>

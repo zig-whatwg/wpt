@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A &lt;template for&gt; target script detaches is kept by the parser</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A script-created parser keeps a <template for> open between writes. Script
+// detaches the insertion target and keeps only a WeakRef to it: the parser,
+// which still inserts into it, is all that names it across a collection.
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument;
+  doc.open();
+  doc.write('<div id="target"><?marker name="p"?></div><template for="p">A');
+  (() => {
+    const target = doc.getElementById("target");
+    window.ref = new WeakRef(target);
+    target.remove();
+  })();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  for (let i = 0; i < 500; ++i) doc.createElement("span");
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  doc.write('<span id="b">B</span></template><p id="after">after</p>');
+  doc.close();
+  const kept = ref.deref();
+  assert_not_equals(kept, undefined, "the detached target survived collections while the template was open");
+  assert_equals(kept.textContent, "AB", "content written after the detach went into the detached target");
+  assert_equals(kept.querySelector("#b").id, "b");
+  assert_equals(doc.getElementById("target"), null);
+  assert_equals(doc.querySelector("template"), null, "the patching template is not inserted");
+  assert_not_equals(doc.getElementById("after"), null);
+}, "the parser keeps a <template for> insertion target that script detached");
+</script>

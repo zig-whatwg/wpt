@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>sw1-b5: a POST frame navigation through a cross-origin redirect sends Origin: null, with or without a passthrough service worker</title>
+<!--
+  HTML "create navigation params by fetching" step 3: the navigation's request
+  origin is the document state's initiator origin. Through a cross-origin
+  redirect its redirect-taint is not "same-origin", so Fetch serializes the
+  Origin header as "null" (Fetch "serializing a request origin") - and so does
+  a service worker's passthrough fetch(event.request) of that hop, whose
+  request keeps the taint (navigation-headers.https.html's redirect cases).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+'use strict';
+const RES = '/service-workers/service-worker/resources/';
+
+// Post a form from a same-origin frame to a cross-origin redirect.py, which
+// redirects (307: still a POST) back to navigation-headers-server.py with
+// `query`; that page posts the request's Origin and Referer to this window.
+async function postThroughRedirect(t, query) {
+  const target = new URL(RES + 'navigation-headers-server.py', location);
+  target.search = query;
+  const redirect = new URL(RES + 'redirect.py', location);
+  redirect.hostname = new URL(get_host_info().HTTPS_REMOTE_ORIGIN).hostname;
+  redirect.search = `?Status=307&Redirect=${encodeURIComponent(target.href)}`;
+  const poster = new URL(RES + 'form-poster.html', location);
+  poster.search = `?target=${encodeURIComponent(redirect.href)}`;
+  const message = new Promise(resolve => {
+    self.addEventListener('message', e => resolve(e.data), {once: true});
+  });
+  const frame = await with_iframe(poster.href);
+  t.add_cleanup(() => frame.remove());
+  return message;
+}
+
+promise_test(async t => {
+  const result = await postThroughRedirect(t, '?sw1b5-no-sw');
+  assert_equals(result.origin, 'null', 'origin header');
+}, 'POST frame navigation through a cross-origin redirect, no service worker: Origin is null');
+
+promise_test(async t => {
+  const scope = RES + 'navigation-headers-server.py?sw1b5-sw';
+  const registration = await service_worker_unregister_and_register(
+      t, RES + 'fetch-rewrite-worker.js', scope);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+  const result = await postThroughRedirect(t, '?sw1b5-sw');
+  assert_equals(result.origin, 'null', 'origin header');
+}, 'POST frame navigation through a cross-origin redirect, passthrough service worker: Origin is null');
+</script>
+</body>

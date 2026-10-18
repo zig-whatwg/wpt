@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Navigating a frame whose parser waits for a parser-blocking script</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#abort-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  window.frameEvents = [];
+  const iframe = document.createElement("iframe");
+  iframe.srcdoc = `<script>parent.frameEvents.push("first");<\/script>
+    <script src="/loading/resources/dummy.js?pipe=trickle(d1)"><\/script>
+    <script>parent.frameEvents.push("after");<\/script>`;
+  document.body.appendChild(iframe);
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_array_equals(frameEvents, ["first"], "the frame's parser is waiting");
+  const loaded = new Promise(resolve => iframe.addEventListener("load", resolve, { once: true }));
+  iframe.srcdoc = `<script>parent.frameEvents.push("second document");<\/script>`;
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_array_equals(frameEvents, ["first", "second document"],
+    "the replaced document's parser never resumes");
+}, "a navigation away from a document whose parser waits aborts that parser");
+</script>

@@ -1,0 +1,108 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane style2: insertRule, deleteRule, grouping rules, constructed sheets</title>
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#insert-a-css-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="s">
+  @import url("none.css");
+  @namespace x url(http://example.com/x);
+  #t { color: rgb(1, 1, 1); }
+  @media all { #t { margin-left: 1px; } }
+</style>
+<div id="t"></div>
+<script>
+const sheet = document.getElementById("s").sheet;
+const t = document.getElementById("t");
+
+test(() => {
+  assert_equals(sheet.cssRules.length, 4);
+  assert_equals(sheet.insertRule("#t { padding-left: 2px }", 4), 4);
+  assert_equals(sheet.cssRules.length, 5);
+  assert_equals(sheet.cssRules[4].selectorText, "#t");
+  assert_equals(getComputedStyle(t).paddingLeft, "2px", "an inserted rule applies");
+  assert_equals(sheet.insertRule("#t { color: rgb(2, 2, 2) }", 2), 2, "a style rule after the @namespace");
+  assert_equals(getComputedStyle(t).color, "rgb(1, 1, 1)", "order of appearance: the later rule wins");
+  sheet.deleteRule(2);
+  sheet.deleteRule(4);
+  assert_equals(getComputedStyle(t).paddingLeft, "0px", "a deleted rule no longer applies");
+  assert_equals(sheet.cssRules.length, 4);
+}, "insertRule and deleteRule edit the sheet's rules and the cascade");
+
+test(() => {
+  assert_throws_dom("SyntaxError", () => sheet.insertRule("", 0), "nothing");
+  assert_throws_dom("SyntaxError", () => sheet.insertRule("a {} b {}", 0), "two rules");
+  assert_throws_dom("SyntaxError", () => sheet.insertRule("!! { }", 0), "an invalid selector");
+  assert_throws_dom("SyntaxError", () => sheet.insertRule("@bogus;", 0), "an unknown at-rule");
+  assert_throws_dom("IndexSizeError", () => sheet.insertRule("a {}", 99));
+  assert_throws_dom("HierarchyRequestError", () => sheet.insertRule("a {}", 0), "a style rule before an @import");
+  assert_throws_dom("HierarchyRequestError", () => sheet.insertRule("@import url(a.css);", 3), "an @import after a style rule");
+  assert_throws_dom("InvalidStateError", () => sheet.insertRule("@namespace y url(y);", 2), "an @namespace into a sheet with style rules");
+  assert_throws_dom("IndexSizeError", () => sheet.deleteRule(4));
+  assert_throws_dom("InvalidStateError", () => sheet.deleteRule(1), "an @namespace from a sheet with style rules");
+  assert_equals(sheet.insertRule("@import url(b.css);", 0), 0, "an @import before the others");
+  assert_true(sheet.cssRules[0] instanceof CSSImportRule);
+  sheet.deleteRule(0);
+}, "insertRule and deleteRule follow CSS's constraints");
+
+test(() => {
+  const media = sheet.cssRules[3];
+  assert_equals(media.insertRule("#t { padding-top: 5px }", 1), 1);
+  assert_equals(media.cssRules.length, 2);
+  assert_equals(media.cssRules[1].parentRule, media);
+  assert_equals(getComputedStyle(t).paddingTop, "5px");
+  assert_throws_dom("IndexSizeError", () => media.insertRule("a {}", 5));
+  assert_throws_dom("HierarchyRequestError", () => media.insertRule("@import url(a.css);", 0));
+  const inner = media.cssRules[1];
+  media.deleteRule(1);
+  assert_equals(inner.parentRule, null, "a removed rule loses its parent rule");
+  assert_equals(inner.parentStyleSheet, null, "and its sheet");
+  assert_equals(getComputedStyle(t).paddingTop, "0px");
+  media.media.mediaText = "print";
+  assert_equals(getComputedStyle(t).marginLeft, "0px", "the @media rule's media list is live");
+  assert_false(media.matches);
+  media.media.mediaText = "all";
+  assert_true(media.matches);
+  assert_equals(getComputedStyle(t).marginLeft, "1px");
+}, "A grouping rule's insertRule and deleteRule, and its live media");
+
+test(() => {
+  const s = new CSSStyleSheet({ media: "screen", disabled: true });
+  assert_true(s.disabled);
+  assert_equals(s.media.mediaText, "screen");
+  assert_equals(s.ownerNode, null);
+  assert_equals(s.href, document.baseURI, "a constructed sheet's location is its document's base URL");
+  s.replaceSync("@import url(a.css); a { color: red } b { color: blue }");
+  assert_equals(s.cssRules.length, 2, "replaceSync drops @import rules");
+  const a = s.cssRules[0];
+  s.replaceSync("i { color: green }");
+  assert_equals(a.parentStyleSheet, null, "replaced rules lose their sheet");
+  assert_equals(s.cssRules[0].selectorText, "i");
+  assert_throws_dom("SyntaxError", () => s.insertRule("@import url(a.css);", 0), "no @import in a constructed sheet");
+  assert_throws_dom("NotAllowedError", () => sheet.replaceSync("a {}"), "replaceSync needs a constructed sheet");
+  assert_equals(s.addRule("p", "color: red"), -1);
+  assert_equals(s.cssRules[1].cssText, "p { color: red; }");
+  s.removeRule(1);
+  assert_equals(s.cssRules.length, 1);
+}, "Constructed sheets: the constructor, replaceSync, addRule, removeRule");
+
+promise_test(async test => {
+  const s = new CSSStyleSheet();
+  const p = s.replace("a { color: red } @import url(x.css);");
+  assert_throws_dom("NotAllowedError", () => s.replaceSync("b {}"), "the disallow modification flag is set");
+  assert_throws_dom("NotAllowedError", () => s.insertRule("b {}"));
+  await promise_rejects_dom(test, "NotAllowedError", s.replace("c {}"), "a second replace is rejected");
+  assert_equals(await p, s, "the promise resolves with the sheet");
+  assert_equals(s.cssRules.length, 1);
+  assert_equals(s.cssRules[0].selectorText, "a");
+  s.replaceSync("d {}");
+  await promise_rejects_dom(test, "NotAllowedError", sheet.replace("a {}"), "replace needs a constructed sheet");
+}, "replace() replaces the rules in a task");
+
+test(() => {
+  const s = new CSSStyleSheet({ baseURL: "https://example.com/dir/" });
+  s.replaceSync("a { background-image: url(img.png) }");
+  assert_equals(s.cssRules[0].style.backgroundImage, 'url("https://example.com/dir/img.png")');
+  assert_throws_dom("NotAllowedError", () => new CSSStyleSheet({ baseURL: "https://[" }));
+}, "A constructed sheet's base URL");
+</script>

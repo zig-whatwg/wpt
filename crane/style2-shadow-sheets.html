@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane style2: a shadow tree's style sheets, :host, adopted sheets in a shadow root</title>
+<link rel="help" href="https://drafts.csswg.org/css-scoping-1/#shadow-dom">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+  span { color: rgb(1, 1, 1); }
+  #host { margin-left: 1px; }
+  #host2 { color: rgb(7, 7, 7) !important; }
+</style>
+<div id="host"><b id="light">light</b></div>
+<div id="host2"></div>
+<script>
+const host = document.getElementById("host");
+const root = host.attachShadow({ mode: "open" });
+root.innerHTML = `<style>
+    span { color: rgb(2, 2, 2); }
+    :host { margin-left: 9px; padding-left: 3px; }
+    :host(#host) { padding-top: 4px; }
+    :host(.nope) { padding-bottom: 5px; }
+  </style><span id="inner">x</span><slot></slot>`;
+const inner = root.getElementById("inner");
+const cs = e => getComputedStyle(e);
+
+test(() => {
+  assert_equals(cs(inner).color, "rgb(2, 2, 2)", "the shadow tree's sheet applies inside it");
+  const outer = document.createElement("span");
+  document.body.appendChild(outer);
+  assert_equals(cs(outer).color, "rgb(1, 1, 1)", "and not outside it");
+  outer.remove();
+}, "A shadow tree's own sheets apply to its elements only");
+
+test(() => {
+  assert_equals(cs(host).paddingLeft, "3px", ":host applies to the host");
+  assert_equals(cs(host).paddingTop, "4px", ":host(<compound>) when the host matches it");
+  assert_equals(cs(host).paddingBottom, "0px", "and not when it does not");
+  assert_equals(cs(host).marginLeft, "1px", "the outer context wins for normal declarations");
+}, ":host rules style the host, in the inner context");
+
+test(() => {
+  const root2 = document.getElementById("host2").attachShadow({ mode: "closed" });
+  const style = document.createElement("style");
+  style.textContent = ":host { color: rgb(8, 8, 8) !important; }";
+  root2.appendChild(style);
+  assert_equals(cs(document.getElementById("host2")).color, "rgb(8, 8, 8)", "the inner context wins for important declarations");
+}, ":host in a closed shadow root, and !important");
+
+test(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync("span { text-transform: uppercase; }");
+  root.adoptedStyleSheets = [sheet];
+  assert_equals(cs(inner).textTransform, "uppercase", "a shadow root's adopted sheet applies in its tree");
+  root.adoptedStyleSheets = [];
+  assert_equals(cs(inner).textTransform, "none");
+}, "A shadow root's adoptedStyleSheets");
+
+test(() => {
+  const h = document.createElement("div");
+  const r = h.attachShadow({ mode: "open" });
+  r.innerHTML = "<style>i { color: rgb(5, 5, 5) }</style><i id=i>x</i>";
+  const i = r.getElementById("i");
+  document.body.appendChild(h);
+  assert_equals(cs(i).color, "rgb(5, 5, 5)");
+  r.querySelector("style").remove();
+  assert_equals(cs(i).color, "rgb(0, 0, 0)", "a removed sheet stops applying");
+  h.remove();
+}, "A shadow tree's sheets follow its style elements");
+
+test(() => {
+  const light = document.getElementById("light");
+  assert_equals(cs(light).color, "rgb(0, 0, 0)");
+  const other = document.createElement("slot");
+  other.name = "x";
+  root.insertBefore(other, root.querySelector("slot"));
+  light.slot = "x";
+  root.querySelector("style").textContent += " slot[name=x] { color: rgb(6, 6, 6); }";
+  assert_equals(cs(light).color, "rgb(6, 6, 6)", "a slotted element inherits from its slot");
+  light.slot = "";
+  assert_equals(cs(light).color, "rgb(0, 0, 0)", "and from its new slot once assignment changes");
+}, "Slot assignment changes reach a slotted element's style");
+</script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame's parser-blocking script does not stop its container's event loop</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#scriptEndTag">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async () => {
+  let ticks = 0;
+  const interval = setInterval(() => { ticks++; }, 20);
+  const frameDone = new Promise(resolve => {
+    window.addEventListener("message", e => resolve(e.data), { once: true });
+  });
+  const iframe = document.createElement("iframe");
+  iframe.srcdoc = `<script>
+      let frameTimer = false;
+      setTimeout(() => { frameTimer = true; }, 50);
+    <\/script>
+    <script src="/loading/resources/dummy.js?pipe=trickle(d1)"><\/script>
+    <script>parent.postMessage({ frameTimer, parentTicks: parent.readTicks() }, "*");<\/script>`;
+  window.readTicks = () => ticks;
+  document.body.appendChild(iframe);
+  const result = await frameDone;
+  clearInterval(interval);
+  assert_true(result.frameTimer, "the frame's own timer ran while its parser waited");
+  assert_greater_than(result.parentTicks, 10, "the container's timers ran while the frame's parser waited");
+}, "a frame's parser waits for its parser-blocking script with the event loop running");
+</script>
