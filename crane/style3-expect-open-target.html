@@ -1,0 +1,28 @@
+<!doctype html>
+<html id="root">
+<meta charset="utf-8">
+<title>link rel=expect: a target still on the stack of open elements keeps rendering blocked</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#process-internal-resource-link">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<link rel=expect href="#root" blocking="render">
+<script>
+// Step 5's last condition: the indicated element (the html element) is on
+// the parser's stack until "the end" pops it, so rendering stays blocked for
+// the whole parse.
+function delay() {
+  document.write('<script src="/loading/resources/dummy.js?pipe=trickle(d0.3)"></' + 'script>');
+}
+const t = async_test("the first frame comes after the parser pops the html element");
+requestAnimationFrame(t.step_func_done(() => {
+  assert_true(!!document.getElementById("after"), "the whole document was parsed");
+  assert_not_equals(document.readyState, "loading", "parsing has stopped");
+}));
+</script>
+<body>
+<p>before</p>
+<script>delay();</script>
+<script>delay();</script>
+<p id="after">after</p>
+</body>
+</html>

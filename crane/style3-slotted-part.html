@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>::slotted() and ::part() style the elements they select, in their tree's context</title>
+<link rel="help" href="https://drafts.csswg.org/css-scoping-1/#slotted-pseudo">
+<link rel="help" href="https://drafts.csswg.org/css-shadow-parts-1/#part">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+  #outer-wins { color: rgb(0, 0, 255); }
+  .imp { color: rgb(255, 0, 0) !important; }
+  x-parts::part(label) { color: rgb(0, 128, 0); }
+  x-parts::part(label icon) { background-color: rgb(0, 128, 0); }
+  x-parts::part(missing) { border-top-style: solid; }
+</style>
+<body>
+<x-slots id="slots">
+  <span id="slotted">span</span>
+  <p id="plain">p</p>
+  <span id="named" slot="b" class="x">named</span>
+  <span id="outer-wins">outer</span>
+  <span id="important" class="imp">important</span>
+</x-slots>
+<x-parts id="parts"></x-parts>
+<x-outer id="nested-host"><span id="deep">deep</span></x-outer>
+<script>
+const slots = document.getElementById("slots").attachShadow({ mode: "open" });
+slots.innerHTML = `<style>
+  ::slotted(span) { color: rgb(0, 128, 0); }
+  ::slotted(span.x) { color: rgb(128, 0, 128); }
+  slot[name=b]::slotted(.x) { background-color: rgb(0, 128, 0); }
+  ::slotted(.imp) { color: rgb(0, 128, 0) !important; }
+  ::slotted(p) span { color: rgb(255, 0, 0); }
+</style><slot></slot><slot name="b"></slot>`;
+
+const parts = document.getElementById("parts").attachShadow({ mode: "open" });
+parts.innerHTML = `<style>div { color: rgb(255, 0, 0); }</style>
+  <div id="label" part="label icon">label</div><div id="other" part="other">other</div>`;
+
+// x-outer's slot is assigned to x-inner's slot: ::slotted() in x-inner's
+// tree reaches #deep through the flattened assignment.
+const outer = document.getElementById("nested-host").attachShadow({ mode: "open" });
+outer.innerHTML = `<x-inner id="inner-host"><slot id="pass"></slot></x-inner>`;
+outer.getElementById("inner-host").attachShadow({ mode: "open" }).innerHTML =
+  `<style>::slotted(*) { opacity: 0.5; }</style><slot></slot>`;
+
+const style = (id, root = document) => getComputedStyle(root.getElementById(id));
+
+test(() => {
+  assert_equals(style("slotted").color, "rgb(0, 128, 0)");
+  assert_equals(style("plain").color, "rgb(0, 0, 0)", "a p matches no rule");
+}, "::slotted(<compound>) styles the elements assigned to the slot");
+
+test(() => {
+  assert_equals(style("named").color, "rgb(128, 0, 128)", "the argument's class adds specificity");
+  assert_equals(style("named").backgroundColor, "rgb(0, 128, 0)", "the slot's own selectors match the slot");
+  assert_equals(style("slotted").backgroundColor, "rgba(0, 0, 0, 0)", "a span in the other slot");
+}, "::slotted() specificity and the slot's compound");
+
+test(() => {
+  assert_equals(style("outer-wins").color, "rgb(0, 0, 255)", "normal: the outer context wins");
+  assert_equals(style("important").color, "rgb(0, 128, 0)", "important: the inner context wins");
+}, "::slotted() rules cascade in the slot's tree's context");
+
+test(() => {
+  assert_equals(style("label", parts).color, "rgb(0, 128, 0)", "normal: the host's tree wins over the shadow tree's own rule");
+  assert_equals(style("label", parts).backgroundColor, "rgb(0, 128, 0)", "every listed part name");
+  assert_equals(style("other", parts).color, "rgb(255, 0, 0)");
+  assert_equals(style("label", parts).borderTopStyle, "none", "a name the element lacks");
+}, "::part(<ident>+) styles the host's parts from the outer tree");
+
+test(() => {
+  assert_equals(style("deep").opacity, "0.5");
+}, "::slotted() reaches an element assigned through a slot of an outer shadow tree");
+</script>
+</body>

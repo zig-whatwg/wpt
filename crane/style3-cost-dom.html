@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DOM cost: insertions, removals and id changes on a page that never reads style</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="host"></div>
+<script>
+test(() => {
+  const start = performance.now();
+  for (let i = 0; i < 20000; i++) {
+    const div = document.createElement("div");
+    div.id = "x" + i;
+    host.append(div);
+    div.setAttribute("name", "n" + i);
+    div.id = "y" + i;
+    div.remove();
+  }
+  assert_equals(host.childElementCount, 0);
+  const ms = Math.round(performance.now() - start);
+  assert_true(ms >= 0, ms + " ms");
+}, "20,000 insertions, id changes and removals");
+</script>
+</body>

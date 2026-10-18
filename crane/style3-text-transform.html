@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>text-transform: full-width and full-size-kana parse, compute and apply to innerText</title>
+<link rel="help" href="https://drafts.csswg.org/css-text-4/#text-transform-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="host"></div>
+<script>
+function computed(value) {
+  const div = document.createElement("div");
+  div.style.textTransform = value;
+  host.append(div);
+  const result = [div.style.textTransform, getComputedStyle(div).textTransform];
+  div.remove();
+  return result;
+}
+
+test(() => {
+  assert_array_equals(computed("full-width"), ["full-width", "full-width"]);
+  assert_array_equals(computed("full-size-kana full-width capitalize"), ["capitalize full-width full-size-kana", "capitalize full-width full-size-kana"]);
+  assert_array_equals(computed("math-auto"), ["math-auto", "math-auto"]);
+  assert_array_equals(computed("uppercase math-auto"), ["", "none"], "math-auto stands alone");
+}, "the combined value's specified and computed serialization");
+
+function innerTextOf(style, text) {
+  const div = document.createElement("div");
+  div.setAttribute("style", style);
+  div.textContent = text;
+  host.append(div);
+  const result = div.innerText;
+  div.remove();
+  return result;
+}
+
+test(() => {
+  assert_equals(innerTextOf("text-transform: full-width", "ab1!"), "ａｂ１！");
+  assert_equals(innerTextOf("text-transform: uppercase full-width", "ab"), "ＡＢ", "case first, then full-width");
+  assert_equals(innerTextOf("text-transform: full-width", "\uFF76\uFF71"), "\u30AB\u30A2", "half-width katakana to full-width");
+}, "full-width");
+
+test(() => {
+  assert_equals(innerTextOf("text-transform: full-size-kana", "ぁゃッㇰ"), "あやツク");
+  assert_equals(innerTextOf("text-transform: full-size-kana", "あabc"), "あabc", "other text is unchanged");
+}, "full-size-kana");
+
+test(() => {
+  const parent = document.createElement("div");
+  parent.style.textTransform = "full-width";
+  const child = document.createElement("span");
+  child.textContent = "a";
+  parent.append(child);
+  host.append(parent);
+  assert_equals(getComputedStyle(child).textTransform, "full-width", "inherited");
+  assert_equals(parent.innerText, "ａ");
+  parent.remove();
+}, "text-transform is inherited");
+</script>
+</body>

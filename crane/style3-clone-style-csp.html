@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'none'; script-src 'self' 'unsafe-inline'">
+<title>A cloned style attribute skips the CSP check; parsed and set ones are still blocked and reported</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#the-style-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="parsed" style="color: rgb(255, 0, 0)">parsed</div>
+<div id="source">source</div>
+<script>
+// Chrome, Firefox and Safari keep a clone's style attribute declarations
+// under a policy that blocks style attributes (Blink kByCloning, WebKit
+// ByCloning; WPT style-src/inline-style-allowed-while-cloning-objects).
+const violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push(e.violatedDirective + ":" + (e.target.id || e.target.nodeName)));
+
+test(() => {
+  assert_equals(getComputedStyle(parsed).color, "rgb(0, 0, 0)", "the parsed declaration does not apply");
+  assert_equals(parsed.style.color, "", "the parsed block is empty");
+}, "a parsed style attribute is blocked");
+
+test(() => {
+  const set = document.createElement("div");
+  set.id = "set";
+  document.body.append(set);
+  set.setAttribute("style", "color: rgb(255, 0, 0)");
+  assert_equals(set.style.color, "", "the set block is empty");
+  assert_equals(getComputedStyle(set).color, "rgb(0, 0, 0)");
+}, "a style attribute set by setAttribute is blocked");
+
+test(() => {
+  source.style.color = "rgb(0, 128, 0)";
+  assert_equals(source.getAttribute("style"), "color: rgb(0, 128, 0);", "CSSOM wrote the attribute");
+  const clone = source.cloneNode(true);
+  clone.id = "clone";
+  document.body.append(clone);
+  assert_equals(clone.getAttribute("style"), "color: rgb(0, 128, 0);");
+  assert_equals(clone.style.color, "rgb(0, 128, 0)", "the clone's block holds the declaration");
+  assert_equals(getComputedStyle(clone).color, "rgb(0, 128, 0)", "the clone's declaration applies");
+}, "a cloned style attribute is kept");
+
+promise_test(async () => {
+  await new Promise(resolve => step_timeout(resolve, 200));
+  // A report for the clone would target the document (the clone was not
+  // connected when its attributes were copied): exactly two reports.
+  assert_array_equals(violations.slice().sort(), ["style-src-attr:parsed", "style-src-attr:set"]);
+}, "violations are reported for the parsed and set attributes, not for the clone");
+</script>
+</body>
