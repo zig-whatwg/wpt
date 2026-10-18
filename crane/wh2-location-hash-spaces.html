@@ -1,0 +1,18 @@
+<!doctype html>
+<title>Location hash setter uses fragment-state parsing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const loc = frame.contentWindow.location;
+  loc.hash = " ";
+  assert_equals(loc.hash, "#%20", "trailing space must not be stripped");
+  loc.hash = "#a \t\n";
+  assert_equals(loc.hash, "#a%20", "tabs/newlines removed, space encoded");
+  loc.hash = "";
+  assert_equals(loc.hash, "");
+  assert_true(loc.href.endsWith("#"), "empty hash remains an empty fragment");
+}, "hash setter preserves spaces through fragment-state override");
+</script>

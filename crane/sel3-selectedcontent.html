@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selectedcontent clones the selected option on selection updates</title>
+<link rel="help" href="https://html.spec.whatwg.org/#the-selectedcontent-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture() {
+  const select = document.createElement('select');
+  const button = document.createElement('button');
+  const content = document.createElement('selectedcontent');
+  button.append(content);
+  const first = document.createElement('option');
+  first.value = 'first'; first.innerHTML = '<b>one</b>';
+  const second = document.createElement('option');
+  second.value = 'second'; second.innerHTML = '<i>two</i>';
+  select.append(button, first, second);
+  return {select, content, first, second};
+}
+test(() => {
+  const {select, content, second} = fixture();
+  select.value = 'second';
+  assert_equals(content.innerHTML, '<i>two</i>');
+  assert_not_equals(content.firstChild, second.firstChild);
+}, 'A value assignment clones the selected option even in a disconnected select');
+if (!location.search) {
+  test(() => {
+    const {select, content, second} = fixture();
+    select.selectedIndex = 1;
+    second.firstChild.textContent = 'changed';
+    assert_equals(content.innerHTML, '<i>two</i>');
+    select.selectedIndex = 1;
+    assert_equals(content.innerHTML, '<i>changed</i>');
+    select.selectedIndex = -1;
+    assert_equals(content.innerHTML, '');
+  }, 'Selectedcontent updates on reassignment and clears when selection is empty');
+  test(t => {
+    const {select, content, first, second} = fixture();
+    document.body.append(select);
+    t.add_cleanup(() => select.remove());
+    assert_equals(content.innerHTML, '<b>one</b>');
+    second.selected = true;
+    assert_false(first.selected);
+    assert_equals(content.innerHTML, '<i>two</i>');
+  }, 'Connection and option.selected synchronously update selectedcontent');
+}
+</script>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>sw1-b7: an eager img delays its frame's load event; a lazy one does not</title>
+<!--
+  HTML "update the image data" step 26: an eager img's fetch "must delay the
+  load event of element's node document until the task that is queued by the
+  networking task source once the resource has been fetched has been run";
+  step 24 makes a lazy img delay nothing. So by a frame's load event its
+  eager img has fired load and has its resource timing entry (Fetch "fetch
+  response handover" reports it before the img's task) - what
+  service-workers/service-worker/resource-timing-cross-origin.https.html
+  reads at the frame's load. Lane sw1-b6 found Crane firing the frame's load
+  first (tmp/plans/sw1-b6-repros/sw1b6-img-entry.https.html).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+function frameLoaded(t, src) {
+  return new Promise(resolve => {
+    const frame = document.createElement('iframe');
+    frame.src = src;
+    frame.onload = () => resolve(frame);
+    document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+  });
+}
+
+promise_test(async t => {
+  const frame = await frameLoaded(t, 'resources/sw1b7-img-frame.html');
+  const win = frame.contentWindow;
+  assert_array_equals(win.order, ['eager', 'window'], 'the img fired load before its document');
+  assert_true(win.document.getElementById('eager').complete, 'complete at the frame load');
+  const entries = win.performance.getEntriesByType('resource').filter(e => e.name.includes('sw1b7=eager'));
+  assert_equals(entries.length, 1, 'its resource timing entry is there at the frame load');
+}, 'an eager img delays its frame document\'s load event until its load event has fired');
+
+promise_test(async t => {
+  const frame = await frameLoaded(t, 'resources/sw1b7-img-frame-lazy.html');
+  const win = frame.contentWindow;
+  assert_array_equals(win.order, ['window'], 'the document loaded before its lazy img');
+  await new Promise(resolve => {
+    const img = win.document.getElementById('lazy');
+    if (win.order.length > 1) return resolve();
+    img.addEventListener('load', resolve);
+    img.addEventListener('error', resolve);
+  });
+  assert_array_equals(win.order, ['window', 'lazy']);
+}, 'a lazy img does not delay its frame document\'s load event');
+</script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Closed base-select typeahead changes selection without opening</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#the-select-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<body>
+<script>
+promise_test(async t => {
+  const select = document.createElement('select');
+  for (const label of ['start', 'cat', 'carpet']) {
+    const option = document.createElement('option');
+    option.textContent = label;
+    select.append(option);
+  }
+  document.body.append(select);
+  t.add_cleanup(() => select.remove());
+  select.focus();
+  await test_driver.send_keys(select, 'c');
+  assert_equals(select.selectedIndex, 1, 'a closed picker changes selection');
+  assert_equals(document.activeElement, select, 'focus stays on the select');
+  assert_false(select.matches(':open'), 'typeahead does not open the picker');
+  await test_driver.send_keys(select, 'a');
+  assert_equals(select.selectedIndex, 1, 'a longer prefix searches the current selection first');
+}, 'Closed-picker typeahead selects without opening or moving focus');
+</script>

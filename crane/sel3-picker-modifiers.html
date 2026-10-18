@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shortcut modifiers do not pick a focused base-select option</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#concept-select-pick">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<body>
+<script>
+const cases = [['Alt', '\uE00A'], ['Control', '\uE009'], ['Meta', '\uE03D']];
+for (const [name, modifier] of location.search ? cases.slice(0, 1) : cases) {
+  promise_test(async t => {
+    const select = document.createElement('select');
+    const one = document.createElement('option');
+    const two = document.createElement('option');
+    one.textContent = 'one'; two.textContent = 'two';
+    select.append(one, two);
+    document.body.append(select);
+    t.add_cleanup(() => select.remove());
+    await test_driver.click(select);
+    two.focus();
+    assert_equals(document.activeElement, two);
+    for (const key of [' ', '\uE007']) {
+      await new test_driver.Actions().keyDown(modifier).keyDown(key).keyUp(key).keyUp(modifier).send();
+      assert_equals(select.selectedIndex, 0, 'a shortcut does not choose the focused option');
+      assert_true(select.matches(':open'), 'a shortcut does not close the picker');
+    }
+    await test_driver.send_keys(two, ' ');
+    assert_equals(select.selectedIndex, 1, 'plain Space still picks');
+    assert_false(select.matches(':open'));
+  }, name + ' with Space or Enter does not pick an option');
+}
+</script>

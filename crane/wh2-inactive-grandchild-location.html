@@ -1,0 +1,35 @@
+<!doctype html>
+<title>A grandchild Location keeps its active document after its parent navigates</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Isolates the active-but-not-fully-active case from
+// html/webappapis/dynamic-markup-insertion/opening-the-input-stream/url.window.js.
+// Retaining the child document and Window must preserve the child's URL.
+async_test(t => {
+  const blankURL = new URL("/common/blank.html", document.URL).href;
+  const parentURL = new URL(
+    "/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/resources/page-with-frame.html",
+    document.URL).href;
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  frame.onload = t.step_func(() => {
+    assert_equals(frame.contentDocument.URL, parentURL, "parent document before navigation");
+    assert_equals(frame.contentWindow.location.href, parentURL, "parent Location before navigation");
+    const childFrame = frame.contentDocument.querySelector("iframe");
+    const childDoc = childFrame.contentDocument;
+    const childWin = childFrame.contentWindow;
+    assert_equals(childDoc.URL, blankURL, "child document before parent navigation");
+    assert_equals(childWin.location.href, blankURL, "child Location before parent navigation");
+    frame.onload = t.step_func_done(() => {
+      assert_equals(childDoc.open(), childDoc, "open returns the retained child document");
+      assert_equals(childDoc.URL, blankURL, "child document after open");
+      assert_equals(childWin.location.href, blankURL, "child Location after open");
+    });
+    frame.src = blankURL;
+  });
+  frame.src = parentURL;
+  document.body.appendChild(frame);
+}, "Parent navigation preserves the retained grandchild's document and Location URL");
+</script>

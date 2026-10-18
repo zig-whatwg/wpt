@@ -1,0 +1,15 @@
+<!doctype html>
+<title>Detached History.length isolated regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const history = frame.contentWindow.history;
+  const exception = frame.contentWindow.DOMException;
+  frame.remove();
+  assert_throws_dom("SecurityError", exception, () => history.length);
+}, "History.length rejects a destroyed associated Document");
+</script>

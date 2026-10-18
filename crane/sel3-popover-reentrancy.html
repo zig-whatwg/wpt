@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Popover callbacks revalidate state and retain synchronous snapshots</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+let nextPopoverId = 0;
+function popover(t, parent = document.body) {
+  const element = parent.appendChild(document.createElement('div'));
+  const id = `sel3-popover-${++nextPopoverId}`;
+  element.id = id;
+  element.popover = 'auto';
+  t.add_cleanup(() => document.getElementById(id)?.remove());
+  return element;
+}
+test(t => {
+  const element = popover(t);
+  let dispatched = false;
+  element.addEventListener('beforetoggle', () => {
+    dispatched = true;
+    element.remove();
+    if (self.TestUtils) { TestUtils.gc(); TestUtils.gc(); }
+  }, {once: true});
+  assert_throws_dom('InvalidStateError', () => element.showPopover());
+  assert_true(dispatched);
+  assert_false(element.matches(':popover-open'));
+}, 'Opening revalidates connection after beforetoggle');
+test(t => {
+  const outer = popover(t);
+  let inner = popover(t, outer);
+  const replacement = popover(t);
+  outer.showPopover();
+  inner.showPopover();
+  let closed = false;
+  inner.addEventListener('beforetoggle', event => {
+    if (event.newState !== 'closed') return;
+    closed = true;
+    outer.remove();
+    inner = null;
+    if (self.TestUtils) { TestUtils.gc(); TestUtils.gc(); }
+  });
+  replacement.showPopover();
+  assert_true(closed);
+  assert_false(outer.matches(':popover-open'));
+  assert_true(replacement.matches(':popover-open'));
+}, 'Hiding a stack tolerates closing callbacks removing its ancestors');
+test(t => {
+  const element = popover(t);
+  let rejected = false;
+  element.addEventListener('beforetoggle', () => {
+    assert_throws_dom('InvalidStateError', () => element.showPopover());
+    rejected = true;
+  }, {once: true});
+  element.showPopover();
+  assert_true(rejected);
+  assert_true(element.matches(':popover-open'));
+}, 'Reentrant showPopover is rejected during opening');
+</script>

@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Selection changes in a thousand-option ordinary select</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const select = document.createElement('select');
+const form = document.createElement('form');
+document.body.append(form);
+form.append(select);
+for (let i = 0; i < 1000; ++i) {
+  const option = document.createElement('option');
+  option.value = String(i);
+  option.textContent = 'Option ' + i;
+  select.append(option);
+}
+for (let i = 0; i < 100; ++i) select.selectedIndex = i;
+const start = performance.now();
+for (let i = 0; i < 10000; ++i) select.selectedIndex = i % 1000;
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(select.length, 1000);
+  assert_equals(select.selectedIndex, 999);
+  assert_equals(select.value, '999');
+}, `10000 ordinary selection changes: ${elapsed.toFixed(3)} ms`);
+const resetStart = performance.now();
+for (let i = 0; i < 1000; ++i) form.reset();
+const resetElapsed = performance.now() - resetStart;
+test(() => {
+  assert_equals(select.selectedIndex, 0);
+  assert_equals(select.value, '0');
+}, `1000 ordinary form resets: ${resetElapsed.toFixed(3)} ms`);
+const creationStart = performance.now();
+let createdLength = 0;
+for (let round = 0; round < 10; ++round) {
+  const fresh = document.createElement('select');
+  for (let i = 0; i < 1000; ++i) fresh.append(document.createElement('option'));
+  createdLength += fresh.length;
+}
+const creationElapsed = performance.now() - creationStart;
+test(() => {
+  assert_equals(createdLength, 10000);
+}, `10 ordinary selects with 1000 options: ${creationElapsed.toFixed(3)} ms`);
+</script>

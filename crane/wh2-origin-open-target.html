@@ -1,0 +1,28 @@
+<!doctype html>
+<title>document.open origin inheritance diagnostic</title>
+<script src="/resources/testharness.js"></script>
+<body><script>
+promise_test(async t => {
+  const start = document.domain;
+  const relaxed = start.replace(/^[^.]+\./, "");
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => { frame.onload = resolve; });
+  frame.src = "/html/browsers/origin/inheritance/resources/iframe-with-about-blank-iframe.html";
+  document.body.appendChild(frame);
+  await loaded;
+  const operation = (name, f) => {
+    try { return f(); } catch (e) { throw new Error(name + ": " + e.name + ": " + e.message); }
+  };
+  const docs = [0, 1].map(i => operation("read child " + i, () => frame.contentWindow.frames[i].document));
+  for (const [i, doc] of docs.entries()) {
+    assert_equals(doc.domain, start, "initial child " + i);
+    operation("open child " + i, () => doc.open());
+  }
+  operation("relax parent domain", () => { document.domain = relaxed; });
+  for (const [i, doc] of docs.entries()) {
+    operation("read domain after relaxation child " + i, () => assert_equals(doc.domain, start));
+    operation("close child " + i, () => doc.close());
+  }
+}, "document.open keeps child origins independent of caller domain relaxation");
+</script>

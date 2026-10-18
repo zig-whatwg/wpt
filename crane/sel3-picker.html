@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Base-select picker state and focus</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#select-picker">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<select id="select"><button><selectedcontent></selectedcontent></button><option id="one">one</option><option id="two" selected>two</option></select>
+<button id="outside">outside</button>
+<script>
+promise_test(async t => {
+  await test_driver.bless('open picker', () => select.showPicker());
+  assert_true(select.matches(':open'));
+  assert_equals(document.activeElement, two);
+  await test_driver.click(outside);
+  assert_false(select.matches(':open'));
+}, 'showPicker opens a base-select, focuses its selected option, and light dismiss closes it');
+if (!location.search) {
+  test(() => {
+    const previous = select.value;
+    one.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
+    assert_equals(select.value, previous);
+    assert_false(select.matches(':open'));
+  }, 'An untrusted option mouseup does not select or open a picker');
+}
+</script>

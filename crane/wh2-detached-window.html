@@ -1,0 +1,44 @@
+<!doctype html>
+<title>Detached Window and History members use the associated document's activity</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const only = new URLSearchParams(location.search).get("only");
+function detachedFrame(t) {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  return frame;
+}
+if (!only || only === "name") test(t => {
+  const frame = detachedFrame(t);
+  const w = frame.contentWindow;
+  w.name = "before-removal";
+  assert_equals(w.name, "before-removal");
+  frame.remove();
+  assert_equals(w.name, "");
+  w.name = "after-removal";
+  assert_equals(w.name, "");
+}, "A detached Window's name is empty and its setter does nothing");
+const historyMembers = {
+  length: h => h.length,
+  state: h => h.state,
+  scrollRestoration: h => h.scrollRestoration,
+  setScrollRestoration: h => { h.scrollRestoration = "manual"; },
+  go: h => h.go(0),
+  back: h => h.back(),
+  forward: h => h.forward(),
+  pushState: h => h.pushState(null, "", "#new"),
+  replaceState: h => h.replaceState(null, "", "#new")
+};
+for (const [name, invoke] of Object.entries(historyMembers)) {
+  if (only && only !== name) continue;
+  test(t => {
+    const frame = detachedFrame(t);
+    const h = frame.contentWindow.history;
+    const exception = frame.contentWindow.DOMException;
+    frame.remove();
+    assert_throws_dom("SecurityError", exception, () => invoke(h));
+  }, "Detached History rejects " + name);
+}
+</script>

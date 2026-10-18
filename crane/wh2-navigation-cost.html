@@ -1,0 +1,22 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<title>200 iframe navigation cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  const start = performance.now();
+  for (let i = 0; i < 200; ++i) {
+    await new Promise(resolve => {
+      frame.onload = resolve;
+      frame.src = "wh2-cost-frame.html?navigation=" + i;
+    });
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(new URL(frame.contentWindow.location.href).search, "?navigation=199"),
+       `200 iframe navigations: ${elapsed.toFixed(3)} ms`);
+}, "200 iframe navigations complete");
+</script>

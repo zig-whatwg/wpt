@@ -1,0 +1,15 @@
+<!doctype html>
+<title>Empty Location query and fragment getters omit delimiters</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const original = location.href;
+  t.add_cleanup(() => history.replaceState(null, "", original));
+  history.replaceState(null, "", location.pathname + "?#");
+  assert_equals(location.hash, "", "empty fragment");
+  assert_equals(location.search, "", "empty query");
+  assert_true(location.href.endsWith("?#"), "the URL retains both delimiters");
+}, "Empty components read as empty strings while href retains delimiters");
+</script>

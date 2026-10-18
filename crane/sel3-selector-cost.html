@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Ordinary and focus selector cost over 10000 elements</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+const root = document.body.appendChild(document.createElement('section'));
+root.innerHTML = '<div class="item" data-item tabindex="-1"></div>'.repeat(10000);
+root.lastElementChild.focus();
+function measure(label, selector, expected, iterations = 100) {
+  for (let warmup = 0; warmup < 5; ++warmup) root.querySelectorAll(selector);
+  const started = performance.now();
+  let count = 0;
+  for (let iteration = 0; iteration < iterations; ++iteration) count += root.querySelectorAll(selector).length;
+  const elapsed = performance.now() - started;
+  test(() => assert_equals(count, expected * iterations), `${label}: ${iterations} queries over 10000 elements: ${elapsed.toFixed(3)} ms`);
+}
+measure('ordinary type', 'div', 10000);
+measure('ordinary attribute', '[data-item]', 10000);
+measure('ordinary negation', 'div:not(.missing)', 10000);
+measure('focus', ':focus', 1, 10);
+measure('focus within', ':focus-within', 1, 10);
+</script>

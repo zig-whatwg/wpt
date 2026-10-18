@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="windows-1252">
+<title>Location URL parsing uses the entry or relevant document's encoding</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = () => new Promise(resolve => { frame.onload = resolve; });
+  let pending = loaded();
+  frame.src = "wh2-location-encoding-target.html";
+  document.body.appendChild(frame);
+  await pending;
+  assert_equals(document.characterSet, "windows-1252");
+  assert_equals(frame.contentDocument.characterSet, "UTF-8");
+  for (const method of ["assign", "replace", "href"]) {
+    pending = loaded();
+    const url = "wh2-location-encoding-target.html?" + method + "=\u00df";
+    if (method === "href") frame.contentWindow.location.href = url;
+    else frame.contentWindow.location[method](url);
+    await pending;
+    assert_equals(frame.contentWindow.location.search, "?" + method + "=%DF", method);
+  }
+  pending = loaded();
+  frame.contentWindow.location.search = "?relevant=\u00df";
+  await pending;
+  assert_equals(frame.contentWindow.location.search, "?relevant=%C3%9F");
+}, "href, assign and replace use the entry encoding; search uses the target encoding");
+</script>

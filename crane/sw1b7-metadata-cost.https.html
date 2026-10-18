@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Two thousand fetches, half same-origin and half same-site (the Fetch Metadata hot path)</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// Lane sw1-b7's cost probe: HTTP-network-or-cache fetch step 8.13 appends the
+// Fetch metadata headers to every request to a potentially trustworthy URL.
+// Sec-Fetch-Site compares each URL of the request's URL list with its
+// origin: a same-origin URL needs no Public Suffix List lookup, a
+// cross-origin one does (once per request). Timed by the runner (paired
+// rounds against the base runner).
+promise_test(async t => {
+  const same_site = get_host_info().HTTPS_REMOTE_ORIGIN;
+  let done = 0;
+  for (let index = 0; index < 1000; index++) {
+    const own = await fetch("resources/sw1b3-cost-out/data.txt?cost=" + index);
+    await own.text();
+    const other = await fetch(same_site + "/crane/resources/sw1b3-cost-out/data.txt?cost=" + index, { mode: "no-cors" });
+    await other.arrayBuffer();
+    done += 2;
+  }
+  assert_equals(done, 2000);
+}, "two thousand fetches, one after another: same-origin and same-site");
+</script>

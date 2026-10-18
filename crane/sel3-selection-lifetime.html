@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Implicit option selectedness survives tree changes</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+for (const reset of [false, true]) {
+  test(() => {
+    const form = document.createElement('form');
+    const select = form.appendChild(document.createElement('select'));
+    const first = select.appendChild(document.createElement('option'));
+    const second = select.appendChild(document.createElement('option'));
+    if (reset) { select.selectedIndex = 1; form.reset(); }
+    first.remove();
+    assert_true(first.selected, 'removed option retains its stored selection');
+    assert_true(second.selected, 'remaining option is selected by reset');
+  }, `implicit selection survives removal without a prior read${reset ? ' after form reset' : ''}`);
+}
+test(() => {
+  const select = document.createElement('select');
+  const first = select.appendChild(document.createElement('option'));
+  first.disabled = true;
+  const second = select.appendChild(document.createElement('option'));
+  assert_true(first.selected, 'disabling the selected option does not clear selectedness');
+  assert_false(second.selected, 'append does not replace an existing selection');
+}, 'stored default selectedness is independent of later disabled changes');
+</script>

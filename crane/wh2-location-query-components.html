@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Location.search uses query-state parsing and the relevant document encoding</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = () => new Promise(resolve => { frame.onload = resolve; });
+  let pending = loaded();
+  frame.src = "wh2-location-query-target.html#saved";
+  document.body.appendChild(frame);
+  await pending;
+  assert_equals(document.characterSet, "UTF-8");
+  assert_equals(frame.contentDocument.characterSet, "windows-1252");
+  pending = loaded();
+  frame.contentWindow.location.search = " \u00df# ";
+  await pending;
+  assert_equals(frame.contentWindow.location.search, "?%20%DF%23%20");
+  assert_equals(frame.contentWindow.location.hash, "#saved");
+  pending = loaded();
+  frame.contentWindow.location.search = "";
+  await pending;
+  assert_equals(frame.contentWindow.location.search, "");
+  assert_false(frame.contentWindow.location.href.includes("?"));
+  pending = loaded();
+  frame.contentWindow.location.search = "?";
+  await pending;
+  assert_equals(frame.contentWindow.location.search, "");
+  assert_true(frame.contentWindow.location.href.endsWith("?#saved"));
+}, "search uses target encoding, retains hash/spaces, and distinguishes null from empty query");
+</script>

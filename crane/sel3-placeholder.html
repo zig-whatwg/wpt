@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Wrapped placeholder label options</title>
+<link rel="help" href="https://html.spec.whatwg.org/#placeholder-label-option">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function make(grouped, multiple) {
+  const select = document.createElement('select');
+  select.required = true;
+  select.multiple = multiple;
+  const wrapper = document.createElement('div');
+  const option = document.createElement('option');
+  option.value = '';
+  option.selected = true;
+  if (grouped) {
+    const group = document.createElement('optgroup');
+    group.append(option);
+    wrapper.append(group);
+  } else wrapper.append(option);
+  select.append(wrapper);
+  return select;
+}
+test(() => {
+  const select = make(false, false);
+  assert_false(select.checkValidity());
+  assert_true(select.validity.valueMissing);
+}, 'An empty first option under a wrapper is a placeholder');
+if (!location.search) {
+  test(() => assert_true(make(true, false).checkValidity()),
+    'An optgroup under a wrapper prevents placeholder classification');
+  test(() => assert_true(make(false, true).checkValidity()),
+    'A multiple select does not have a placeholder option');
+}
+</script>

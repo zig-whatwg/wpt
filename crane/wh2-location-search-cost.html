@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>10000 complete canceled Location.search assignments</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+promise_test(async t => {
+  async function loadFrame(index) {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    const loaded = new Promise(resolve => { frame.onload = resolve; });
+    frame.src = "wh2-cost-frame.html?target=" + index;
+    document.body.appendChild(frame);
+    await loaded;
+    const target = frame.contentWindow;
+    const item = {target, original: target.location.href, canceled: 0};
+    target.navigation.addEventListener("navigate", event => {
+      event.preventDefault();
+      assert_true(event.defaultPrevented);
+      ++item.canceled;
+    });
+    return item;
+  }
+  const targets = [];
+  for (let i = 0; i < 102; ++i) targets.push(await loadFrame(i));
+  // browsing_context.zig limits each context to 200 navigations / 10 s.
+  // Warm separate contexts, then use 100 assignments per measured target.
+  function assign(item) {
+    for (let i = 0; i < 100; ++i) item.target.location.search = "?wh2-cost=" + (i & 1);
+  }
+  assign(targets[0]);
+  assign(targets[1]);
+  const measured = targets.slice(2);
+  const start = performance.now();
+  for (const item of measured) assign(item);
+  const elapsed = performance.now() - start;
+  for (const item of targets) {
+    assert_equals(item.canceled, 100, "every assignment reaches a canceled navigate event");
+    assert_equals(item.target.location.href, item.original, "cancellation preserves the target URL");
+  }
+  test(() => assert_equals(measured.length * 100, 10000),
+       `10000 canceled Location.search assignments: ${elapsed.toFixed(3)} ms`);
+}, "100 target contexts each complete 100 canceled Location.search assignments");
+</script>

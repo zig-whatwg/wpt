@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTTP 421 retries replayable requests once on a new connection</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#http-network-or-cache-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script>
+// Browser-results majority: request-upload-421 passes in Chrome and Firefox,
+// fails in Safari (wpt.fyi aligned stable revision 23b0b89b1a, 2026-10-18).
+// Red platform-owner regression: Fetch needs a fresh-connection request option
+// implemented by the platform curl kit before the retry can be enabled (row 70 Q4).
+for (const [name, init] of [
+  ["GET without a body", {}],
+  ["POST with text", {method: "POST", body: "replayable"}],
+  ["POST with an empty body", {method: "POST", body: ""}],
+  ["POST with a Blob", {method: "POST", body: new Blob(["replayable"])}],
+]) {
+  promise_test(async t => {
+    const url = new URL("/fetch/connection-pool/resources/network-partition-key.py", location);
+    url.search = new URLSearchParams({
+      status: "421", uuid: token(), partition_id: location.origin,
+      dispatch: "check_partition", addcounter: "true"
+    });
+    t.add_cleanup(async () => {
+      url.searchParams.set("dispatch", "clean_up");
+      await fetch(url);
+    });
+    const response = await fetch(url, init);
+    assert_equals(response.status, 421);
+    assert_equals(await response.text(), "ok. Request was sent 2 times. 2 connections were created.");
+  }, name + " retries a persistent 421 exactly once on a fresh connection");
+}
+</script>

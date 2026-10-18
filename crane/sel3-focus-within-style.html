@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Base select option focus and focus-within style</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+select { appearance: base-select; }
+select:focus-within { background-color: rgb(4, 5, 6); }
+</style>
+<select size="4"><option id="option">one</option></select>
+<script>
+test(() => {
+  option.focus();
+  assert_equals(document.activeElement, option);
+  assert_true(option.parentNode.matches(':focus-within'));
+  assert_equals(getComputedStyle(option.parentNode).backgroundColor, 'rgb(4, 5, 6)');
+}, 'Focused base-select options can resolve an ancestor focus-within rule');
+</script>

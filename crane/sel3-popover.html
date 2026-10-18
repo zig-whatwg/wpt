@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Popover transitions used by the select picker</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/popover.html#show-popover">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="first" popover><span id="nested" popover></span></div>
+<div id="second" popover></div>
+<script>
+test(t => {
+  const events = [];
+  first.addEventListener('beforetoggle', event => {
+    events.push([event.oldState, event.newState, event.cancelable]);
+    event.preventDefault();
+  }, {once: true});
+  first.showPopover();
+  assert_array_equals(events[0], ['closed', 'open', true]);
+  assert_false(first.matches(':popover-open'));
+}, 'The cancelable opening beforetoggle runs before a popover is shown');
+if (!location.search) {
+  test(t => {
+    t.add_cleanup(() => { first.hidePopover(); second.hidePopover(); });
+    first.showPopover();
+    nested.showPopover();
+    assert_true(first.matches(':popover-open'));
+    assert_true(nested.matches(':popover-open'));
+    second.showPopover();
+    assert_false(first.matches(':popover-open'));
+    assert_false(nested.matches(':popover-open'));
+    assert_true(second.matches(':popover-open'));
+  }, 'Opening an unrelated auto popover hides the previous ancestor chain');
+  test(t => {
+    first.showPopover();
+    t.add_cleanup(() => { first.hidePopover(); first.popover = 'auto'; });
+    first.popover = 'manual';
+    assert_false(first.matches(':popover-open'));
+  }, 'Changing the popover attribute state closes a showing popover');
+  test(t => {
+    t.add_cleanup(() => first.hidePopover());
+    first.showPopover();
+    let seen = false;
+    first.addEventListener('beforetoggle', event => {
+      seen = true;
+      assert_false(event.cancelable);
+      assert_equals(event.oldState, 'open');
+      assert_equals(event.newState, 'closed');
+    }, {once: true});
+    first.hidePopover();
+    assert_true(seen);
+    assert_false(first.matches(':popover-open'));
+  }, 'Closing beforetoggle is noncancelable');
+}
+</script>

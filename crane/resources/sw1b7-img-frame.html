@@ -1,0 +1,7 @@
+<!doctype html>
+<meta charset="utf-8">
+<script>
+var order = [];
+addEventListener('load', () => order.push('window'));
+</script>
+<img id="eager" src="/images/green.png?pipe=trickle(d0.3)&sw1b7=eager" onload="order.push('eager')" onerror="order.push('eager-error')">

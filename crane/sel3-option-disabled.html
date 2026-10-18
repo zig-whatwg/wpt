@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Option selectedness uses the nearest optgroup through wrappers</title>
+<link rel="help" href="https://html.spec.whatwg.org/#concept-option-disabled">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function option(value) { const o = document.createElement('option'); o.value = value; return o; }
+test(() => {
+  const select = document.createElement('select');
+  const group = document.createElement('optgroup');
+  group.disabled = true;
+  const wrapper = document.createElement('div');
+  wrapper.append(option('disabled'));
+  group.append(wrapper);
+  select.append(group, option('enabled'));
+  assert_equals(select.value, 'enabled');
+  assert_equals(select.selectedIndex, 1);
+}, 'A wrapper does not hide a disabled optgroup from default selection');
+if (!location.search) {
+  test(() => {
+    const outer = document.createElement('optgroup');
+    outer.disabled = true;
+    const select = document.createElement('select');
+    select.append(option('inside-select'));
+    outer.append(select);
+    assert_equals(select.value, 'inside-select');
+  }, 'A select stops option disabledness inheritance from an outer optgroup');
+  test(() => {
+    const select = document.createElement('select');
+    const group = document.createElement('optgroup');
+    group.disabled = true;
+    const wrapper = document.createElement('span');
+    const first = option('disabled');
+    wrapper.append(first);
+    group.append(wrapper);
+    select.append(group, option('enabled'));
+    first.selected = true;
+    assert_equals(select.value, 'disabled');
+    assert_true(first.selected);
+  }, 'Programmatic selection may select a disabled wrapped option');
+}
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<title>Text and media navigation documents keep the response MIME type</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const [resource, type, child] of [
+  ["blob.txt", "text/plain", "pre"],
+  ["t.png", "image/png", "img"]
+]) {
+  promise_test(async t => {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    const loaded = new Promise(resolve => { frame.onload = resolve; });
+    frame.src = "/dom/nodes/Document-contentType/resources/" + resource;
+    document.body.appendChild(frame);
+    await loaded;
+    const doc = frame.contentDocument;
+    assert_equals(doc.contentType, type);
+    assert_equals(doc.compatMode, "CSS1Compat");
+    assert_not_equals(doc.body.querySelector(child), null);
+    doc.open("text/html");
+    assert_equals(doc.contentType, type, "document.open ignores its type argument");
+    doc.write("<p>replacement</p>");
+    doc.close();
+  }, resource + " keeps contentType through document.open(type)");
+}
+</script>

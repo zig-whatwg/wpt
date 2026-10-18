@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A select's first element child button is inert to focus</title>
+<link rel="help" href="https://html.spec.whatwg.org/#the-button-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<body>
+<script>
+for (const disabled of [true]) {
+  test(t => {
+    const outside = document.body.appendChild(document.createElement('input'));
+    const select = document.body.appendChild(document.createElement('select'));
+    select.disabled = disabled;
+    select.append('text before the button', document.createComment('comment'));
+    const button = select.appendChild(document.createElement('button'));
+    const child = button.appendChild(document.createElement('span'));
+    child.tabIndex = 0;
+    select.appendChild(document.createElement('option')).textContent = 'choice';
+    t.add_cleanup(() => { select.remove(); outside.remove(); });
+    outside.focus();
+    button.focus();
+    assert_equals(document.activeElement, outside, 'the own button is inert');
+    child.focus();
+    assert_equals(document.activeElement, outside, 'its descendant is inert');
+  }, `A ${disabled ? 'disabled' : 'enabled'} select's own button subtree cannot receive focus`);
+}
+if (!location.search) {
+  test(t => {
+    const button = document.body.appendChild(document.createElement('button'));
+    t.add_cleanup(() => button.remove());
+    button.focus();
+    assert_equals(document.activeElement, button);
+  }, 'A button outside a select remains focusable');
+  promise_test(async t => {
+    const select = document.body.appendChild(document.createElement('select'));
+    const outside = document.body.appendChild(document.createElement('input'));
+    select.appendChild(document.createElement('option')).textContent = 'choice';
+    const button = select.appendChild(document.createElement('button'));
+    t.add_cleanup(() => { select.remove(); outside.remove(); });
+    await test_driver.bless('open the picker', () => select.showPicker());
+    outside.focus();
+    button.focus();
+    assert_equals(document.activeElement, button, 'a later button is ordinary content');
+  }, 'A button after another element child is not the inert select button');
+}
+</script>

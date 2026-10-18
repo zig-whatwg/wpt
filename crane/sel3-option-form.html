@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Wrapped options inherit the nearest valid select's form owner</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-option-form">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function makeOption(parent) {
+  return parent.appendChild(document.createElement('option'));
+}
+test(t => {
+  const form = document.body.appendChild(document.createElement('form'));
+  t.add_cleanup(() => form.remove());
+  const select = form.appendChild(document.createElement('select'));
+  const wrapper = select.appendChild(document.createElement('div'));
+  assert_equals(makeOption(wrapper).form, form);
+}, 'An option behind an ordinary wrapper inherits its select form owner');
+if (!location.search) {
+  test(t => {
+    const form = document.body.appendChild(document.createElement('form'));
+    form.id = 'sel3-associated-form';
+    const select = document.body.appendChild(document.createElement('select'));
+    select.setAttribute('form', form.id);
+    t.add_cleanup(() => { select.remove(); form.remove(); });
+    const group = select.appendChild(document.createElement('optgroup'));
+    const wrapper = group.appendChild(document.createElement('span'));
+    assert_equals(makeOption(wrapper).form, form);
+  }, 'A wrapped option inherits a select form attribute association');
+  for (const barrier of ['datalist', 'hr', 'option', 'optgroup']) {
+    test(t => {
+      const form = document.body.appendChild(document.createElement('form'));
+      t.add_cleanup(() => form.remove());
+      const select = form.appendChild(document.createElement('select'));
+      const group = select.appendChild(document.createElement('optgroup'));
+      const blocked = group.appendChild(document.createElement(barrier));
+      assert_equals(makeOption(blocked).form, null);
+    }, `A ${barrier} barrier prevents an option form association`);
+  }
+}
+</script>

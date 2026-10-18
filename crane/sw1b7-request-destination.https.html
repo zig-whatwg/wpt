@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>sw1-b7: new Request(request) has the empty destination; event.request keeps its own</title>
+<!--
+  Fetch's Request constructor step 12 makes a new request whose field list
+  has no destination, so new Request(event.request) - and fetch(event.request),
+  which runs the constructor - has the empty destination, whatever the fetch
+  event's request had; a service worker's passthrough of a navigation sends
+  Sec-Fetch-Dest: empty (navigation-headers.https.html, Chrome and Safari).
+  Request.clone() copies the request, destination included; the fetch event's
+  request keeps the navigation's ("iframe").
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+'use strict';
+const SCOPE = 'resources/sw1b7-destination-scope.html';
+
+promise_test(async t => {
+  const registration = await service_worker_unregister_and_register(t, 'resources/sw1b7-destination-sw.js', SCOPE);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+  const frame = await with_iframe(SCOPE + '?sw1b7-destination');
+  t.add_cleanup(() => frame.remove());
+  const seen = JSON.parse(frame.contentDocument.body.textContent);
+  assert_equals(seen.event, 'iframe', 'event.request.destination');
+  assert_equals(seen.constructed, '', 'new Request(event.request).destination');
+  assert_equals(seen.with_init, '', 'new Request(event.request, init).destination');
+  assert_equals(seen.clone, 'iframe', 'event.request.clone().destination');
+}, 'a fetch event request\'s destination, and a Request made from it');
+</script>

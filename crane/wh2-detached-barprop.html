@@ -1,0 +1,20 @@
+<!doctype html>
+<title>Retained BarProp visibility after frame removal</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  const names = ["locationbar", "menubar", "personalbar", "scrollbars", "statusbar", "toolbar"];
+  const bars = names.map(name => w[name]);
+  for (const bar of bars) assert_true(bar.visible);
+  frame.remove();
+  names.forEach((name, i) => {
+    assert_equals(w[name], bars[i]);
+    assert_false(bars[i].visible, name + " after removal");
+  });
+}, "Retained bars preserve identity and become invisible after removal");
+</script>

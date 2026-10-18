@@ -1,0 +1,21 @@
+<!doctype html>
+<title>Location methods do nothing without a relevant Document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const loc = frame.contentWindow.location;
+  frame.remove();
+  for (const name of ["href", "protocol", "host", "hostname", "port", "pathname", "search", "hash"]) {
+    loc[name] = "http://invalid:port/";
+    assert_equals(loc.href, "about:blank", name);
+  }
+  loc.assign("http://invalid:port/");
+  loc.replace("http://invalid:port/");
+  loc.reload();
+  assert_equals(loc.href, "about:blank");
+}, "Detached Location returns before parsing invalid URLs or checking access");
+</script>

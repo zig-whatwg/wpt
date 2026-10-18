@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document default language survives removal of its meta element</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument();
+  const detached = doc.createElement("div");
+  assert_false(doc.documentElement.matches(":lang(de)"), "no pragma default");
+  const meta = doc.createElement("meta");
+  meta.httpEquiv = "CONTENT-LANGUAGE";
+  meta.content = "de-DE";
+  doc.head.appendChild(meta);
+  assert_true(doc.documentElement.matches(":lang(de)"), "inserted pragma");
+  meta.remove();
+  assert_true(doc.body.matches(":lang(de-DE)"), "removal retains default");
+  assert_true(detached.matches(":lang(de)"), "detached node uses its document default");
+  doc.body.lang = "en";
+  assert_true(doc.body.matches(":lang(en)"), "explicit language wins");
+  doc.body.lang = "";
+  assert_false(doc.body.matches(":lang(de)"), "empty lang suppresses fallback");
+}, "content-language default persists and explicit lang takes precedence");
+</script>

@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Ordinary focus actions and activeElement reads</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const root = document.body.appendChild(document.createElement('section'));
+const inputs = [root.appendChild(document.createElement('input')), root.appendChild(document.createElement('input'))];
+for (let i = 0; i < 100; ++i) { inputs[i % 2].focus(); void document.activeElement; }
+const started = performance.now();
+let matches = 0;
+for (let i = 0; i < 10000; ++i) {
+  const input = inputs[i % 2];
+  input.focus();
+  if (document.activeElement === input) ++matches;
+}
+const elapsed = performance.now() - started;
+test(() => assert_equals(matches, 10000), `10000 ordinary focus and activeElement pairs: ${elapsed.toFixed(3)} ms`);
+</script>

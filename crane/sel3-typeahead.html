@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Base-select typeahead follows keypress cancellation and prefix sessions</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#the-select-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<body>
+<script>
+function setup(t) {
+  const select = document.createElement('select');
+  select.size = 5;
+  for (const label of ['start', 'cat', 'carpet', 'camel']) {
+    const option = document.createElement('option');
+    option.textContent = label;
+    select.append(option);
+  }
+  document.body.append(select);
+  t.add_cleanup(() => select.remove());
+  select.options[0].focus();
+  assert_equals(document.activeElement, select.options[0]);
+  return select;
+}
+
+promise_test(async t => {
+  const select = setup(t);
+  let keypresses = 0;
+  select.addEventListener('keypress', event => {
+    ++keypresses;
+    event.preventDefault();
+  });
+  await test_driver.send_keys(select.options[0], 'c');
+  assert_equals(keypresses, 1, 'printable typeahead dispatches keypress');
+  assert_equals(document.activeElement, select.options[0], 'canceling keypress cancels typeahead');
+}, 'Canceled printable keypress does not move option focus');
+
+if (!location.search) {
+  promise_test(async t => {
+    const select = setup(t);
+    await test_driver.send_keys(select.options[0], 'c');
+    assert_equals(document.activeElement, select.options[1]);
+    await test_driver.send_keys(select.options[1], 'a');
+    assert_equals(document.activeElement, select.options[1], 'the current option is searched first for a longer prefix');
+    assert_equals(select.selectedIndex, -1, 'typeahead only changes focus');
+  }, 'Extending a prefix retains a matching current option');
+
+  promise_test(async t => {
+    const select = setup(t);
+    await test_driver.send_keys(select.options[0], 'c');
+    await test_driver.send_keys(select.options[1], 'c');
+    assert_equals(document.activeElement, select.options[2], 'a repeated character cycles');
+    await test_driver.send_keys(select.options[2], 'a');
+    assert_equals(document.activeElement, select.options[2], 'the full session prefix cca has no match');
+  }, 'Repeated-character cycling retains the full session buffer');
+
+  for (const [name, modifier] of [['Alt', '\uE00A'], ['Control', '\uE009'], ['Meta', '\uE03D']]) {
+    promise_test(async t => {
+      const select = setup(t);
+      await new test_driver.Actions().keyDown(modifier).keyDown('c').keyUp('c').keyUp(modifier).send();
+      assert_equals(document.activeElement, select.options[0]);
+    }, name + ' shortcuts do not start option typeahead');
+  }
+
+}
+</script>

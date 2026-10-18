@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>URL component setter cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [property, values, expected] of [
+  ["search", ["?a=left#value", "?b=right spaced"], "?b=right%20spaced"],
+  ["pathname", ["/left/path", "/right/path"], "/right/path"],
+  ["hash", ["#left", "#right "], "#right%20"],
+  ["host", ["a.example:8080", "b.example:9090"], "b.example:9090"]
+]) {
+  const url = new URL("https://start.example/a?b#c");
+  for (let i = 0; i < 200; ++i) url[property] = values[i & 1];
+  const start = performance.now();
+  for (let i = 0; i < 100000; ++i) url[property] = values[i & 1];
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(url[property], expected),
+       `100000 URL.${property} assignments: ${elapsed.toFixed(3)} ms`);
+}
+
+</script>

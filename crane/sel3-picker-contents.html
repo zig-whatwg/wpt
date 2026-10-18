@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Only the select button toggles its picker</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<select id="syntheticSelect"><button id="syntheticButton">open</button><option>one</option></select>
+<select id="select"><button id="invoker">open</button><option id="option">one</option><button id="inside">inside</button><span id="label">label</span></select>
+<script>
+if (!location.search) test(t => {
+  t.add_cleanup(() => syntheticSelect.remove());
+  syntheticButton.click();
+  assert_false(syntheticSelect.matches(':open'));
+}, 'A synthetic click on the own button does not open a picker');
+promise_test(async t => {
+  await test_driver.click(select);
+  assert_true(select.matches(':open'));
+  let clicked = false;
+  inside.addEventListener('click', () => { clicked = true; }, {once: true});
+  await test_driver.click(inside);
+  assert_true(clicked);
+  assert_true(select.matches(':open'), 'a later button belongs inside the picker');
+  await test_driver.click(label);
+  assert_true(select.matches(':open'), 'ordinary picker contents do not toggle it');
+  await test_driver.click(select);
+  assert_false(select.matches(':open'));
+}, 'Clicking ordinary contents keeps the picker open');
+if (!location.search) {
+promise_test(async t => {
+  const control = document.createElement('select');
+  const own = document.createElement('button');
+  const option = document.createElement('option');
+  const later = document.createElement('button');
+  option.textContent = 'one'; later.textContent = 'inside';
+  control.append(own, option, later);
+  document.body.append(control);
+  t.add_cleanup(() => control.remove());
+  await test_driver.click(control);
+  let clicks = 0;
+  later.addEventListener('click', () => ++clicks);
+  await test_driver.send_keys(later, ' ');
+  assert_equals(clicks, 1, 'the ordinary button keeps keyboard activation');
+  assert_true(control.matches(':open'));
+}, 'Keyboard activation of a later button belongs to that button');
+promise_test(async t => {
+  const control = document.createElement('select');
+  const prefix = document.createElement('span');
+  const button = document.createElement('button');
+  const option = document.createElement('option');
+  button.textContent = 'inside'; option.textContent = 'one';
+  control.append(prefix, button, option);
+  document.body.append(control);
+  t.add_cleanup(() => control.remove());
+  await test_driver.click(control);
+  await test_driver.click(button);
+  assert_true(control.matches(':open'), 'a button after another element is picker content');
+}, 'Only a first-element-child button occupies the select button slot');
+}
+</script>

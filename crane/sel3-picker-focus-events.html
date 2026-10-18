@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Select picker click focus and return focus</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<button id="outside">outside</button>
+<select id="select"><option id="one">one</option><option id="two">two</option></select>
+<script>
+async function clickOption(option) {
+  // Element Click's special option algorithm targets the select container;
+  // explicit pointer actions exercise the option's HTML default (row61 Q33).
+  await new test_driver.Actions().pointerMove(0, 0, {origin: option})
+    .pointerDown().pointerUp().send();
+}
+promise_test(async t => {
+  outside.focus();
+  const targets = [];
+  select.addEventListener('focusin', e => targets.push(e.target));
+  await test_driver.click(select);
+  assert_true(select.matches(':open'));
+  // Chrome/Safari split; row61 Q19 follows HTML's ordinary click focus
+  // followed by the picker focusing steps (Safari's shipping sequence).
+  assert_array_equals(targets, [select, one], 'ordinary select focus precedes picker option focus');
+  await clickOption(two);
+  assert_false(select.matches(':open'));
+  assert_equals(select.value, 'two');
+  assert_equals(document.activeElement, select, 'picking returns focus to the owning select');
+}, 'Picker mouse defaults focus select then option and restore the owner select');
+promise_test(async t => {
+  await test_driver.bless('open picker from another focused element', () => {
+    outside.focus();
+    select.showPicker();
+  });
+  assert_true(select.matches(':open'));
+  await clickOption(one);
+  assert_false(select.matches(':open'));
+  assert_equals(document.activeElement, outside, 'generic popover restoration returns to the original element');
+}, 'showPicker restores the element focused before opening');
+</script>

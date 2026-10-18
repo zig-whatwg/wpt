@@ -1,0 +1,26 @@
+<!doctype html>
+<title>Window length and index access cost with 50 frames</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+const frames = [];
+for (let i = 0; i < 50; ++i) {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  frames.push(frame);
+}
+function sample() {
+  let total = 0;
+  for (let i = 0; i < 100000; ++i) {
+    total += window.length;
+    if (window[i % 50] === frames[i % 50].contentWindow) ++total;
+  }
+  return total;
+}
+sample();
+const start = performance.now();
+const total = sample();
+const elapsed = performance.now() - start;
+test(() => assert_equals(total, 5100000), `50 frames, 100000 length/index reads: ${elapsed.toFixed(3)} ms`);
+frames.forEach(frame => frame.remove());
+</script>

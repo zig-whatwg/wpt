@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Base select option focus and focus-dependent style</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focusable-area">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>select { appearance: base-select; } option:focus { color: rgb(1, 2, 3); }</style>
+<select size="4"><option id="option">one</option></select>
+<script>
+const option = document.getElementById('option');
+test(() => {
+  option.focus();
+  assert_equals(document.activeElement, option);
+  assert_true(option.matches(':focus'));
+  assert_true(option.parentNode.matches(':focus-within'));
+  assert_equals(getComputedStyle(option).color, 'rgb(1, 2, 3)');
+}, 'Focused base-select options can resolve focus-dependent computed style');
+promise_test(async () => {
+  option.focus();
+  const select = option.parentNode;
+  option.remove();
+  assert_false(option.matches(':focus'), 'removal clears the match synchronously');
+  assert_false(select.matches(':focus-within'), 'the old ancestor no longer contains focus');
+  await new Promise(requestAnimationFrame);
+  assert_not_equals(document.activeElement, option);
+  assert_false(option.matches(':focus'));
+  assert_false(select.matches(':focus-within'));
+}, 'Removed options stop matching focus states after focus fixup');
+test(t => {
+  const parent = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => parent.remove());
+  const target = parent.appendChild(document.createElement('button'));
+  target.focus();
+  assert_true(target.matches(':focus'));
+  assert_true(parent.matches(':focus-within'));
+  target.remove();
+  assert_false(target.matches(':focus'));
+  assert_false(parent.matches(':focus-within'));
+}, 'Ordinary element removal clears focus selectors before a rendering update');
+</script>

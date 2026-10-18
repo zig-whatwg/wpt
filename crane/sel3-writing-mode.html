@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Base-select arrow navigation follows the block writing direction</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#the-select-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<body>
+<script>
+const cases = [
+  ['vertical-lr', '\uE014', '\uE012'],
+  ['vertical-rl', '\uE012', '\uE014'],
+  ['sideways-lr', '\uE014', '\uE012'],
+  ['sideways-rl', '\uE012', '\uE014'],
+];
+for (const [mode, next, previous] of location.search ? cases.slice(0, 1) : cases) {
+  promise_test(async t => {
+    const select = document.createElement('select');
+    select.style.writingMode = mode;
+    const one = document.createElement('option');
+    const two = document.createElement('option');
+    one.textContent = 'one'; two.textContent = 'two';
+    select.append(one, two);
+    document.body.append(select);
+    t.add_cleanup(() => select.remove());
+    await test_driver.click(select);
+    assert_true(select.matches(':open'));
+    assert_equals(document.activeElement, one);
+    await test_driver.send_keys(one, next);
+    assert_equals(document.activeElement, two, 'primary next key');
+    await test_driver.send_keys(two, previous);
+    assert_equals(document.activeElement, one, 'primary previous key');
+    await test_driver.send_keys(one, '\uE015');
+    assert_equals(document.activeElement, two, 'Down also moves next');
+    await test_driver.send_keys(two, '\uE013');
+    assert_equals(document.activeElement, one, 'Up also moves previous');
+    assert_equals(select.selectedIndex, 0, 'focus navigation does not select');
+    await test_driver.click(select);
+    assert_false(select.matches(':open'));
+  }, mode + ' maps the horizontal arrows to its block direction');
+}
+</script>

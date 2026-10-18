@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A keepalive iframe posts its setup message after the iframe load event</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// All three browsers pass redirect-keepalive.https.any.html (wpt.fyi aligned
+// stable 23b0b89b1a, 2026-10-18). This red regression waits on nav1's container
+// load ordering: the iframe's load belongs inside its child's load dispatch.
+promise_test(async t => {
+  const hosts = get_host_info();
+  const key = token();
+  const frame = document.createElement("iframe");
+  const order = [];
+  const message = new Promise(resolve => {
+    const listener = t.step_func(event => {
+      if (event.data !== key) return;
+      order.push("message");
+      resolve();
+    });
+    window.addEventListener("message", listener);
+    t.add_cleanup(() => window.removeEventListener("message", listener));
+  });
+  frame.addEventListener("load", t.step_func(() => order.push("load")));
+  frame.src = hosts.HTTPS_NOTSAMESITE_ORIGIN +
+    "/fetch/api/resources/keepalive-redirect-iframe.html?" +
+    new URLSearchParams({token: key, origin1: hosts.HTTPS_NOTSAMESITE_ORIGIN,
+                        origin2: hosts.HTTP_NOTSAMESITE_ORIGIN});
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  await message;
+  assert_array_equals(order, ["load", "message"]);
+}, "The child load handler's posted message runs after the parent's iframe load event");
+</script>

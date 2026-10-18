@@ -1,0 +1,18 @@
+<!doctype html>
+<title>Content-language keeps whitespace, as Blink and WebKit do</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The HTML whitespace steps predate July 2021. Blink HttpEquiv::Process
+// and WebKit Document::processMetaHttpEquiv store the complete raw content.
+for (const value of [" de-DE", "de-DE ", "de-DE en"]) {
+  test(() => {
+    const doc = document.implementation.createHTMLDocument();
+    const meta = doc.createElement("meta");
+    meta.httpEquiv = "content-language";
+    meta.content = value;
+    doc.head.appendChild(meta);
+    assert_false(doc.documentElement.matches(":lang(de-DE)"));
+  }, "raw content-language value: " + JSON.stringify(value));
+}
+</script>
