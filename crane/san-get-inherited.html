@@ -1,0 +1,12 @@
+<!doctype html>
+<title>Sanitizer get flattens inherited dictionary members</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = new Sanitizer({elements: ['div']}).get().elements[0];
+  assert_equals(element.name, 'div');
+  assert_equals(element.namespace, 'http://www.w3.org/1999/xhtml');
+  assert_false(Object.hasOwn(element, 'base'));
+}, 'Canonical elements expose inherited name and namespace directly');
+</script>

@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worklet module fetches from a secure document are blockable mixed content</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+// HTML "fetch a worklet script graph" fetches with the document as the
+// client, so Mixed Content 4.3 holds for its requests: a worklet destination
+// is not upgradeable (Mixed Content 3.1), so an http: module - or an http:
+// URL a data: module imports - is blocked before it reaches the network, and
+// the graph fails: addModule rejects with an AbortError.
+const worklets = {
+  paint: () => CSS.paintWorklet,
+  layout: () => CSS.layoutWorklet,
+  animation: () => CSS.animationWorklet,
+  audio: () => new OfflineAudioContext(2, 44100, 44100).audioWorklet,
+};
+const only = location.search.slice(1);
+
+for (const [type, worklet] of Object.entries(worklets)) {
+  if (only && only !== type) continue;
+
+  for (const origin of ["same-http", "cross-http"]) {
+    promise_test(async t => {
+      const urls = getRequestURLs(`worklet-${type}`, origin, "no-redirect");
+      await xhrRequest(urls.announceUrl);
+      await promise_rejects_dom(t, "AbortError", worklet().addModule(urls.testUrl));
+      assert_equals((await xhrRequest(urls.assertUrl)).status, "blocked", "never reached the server");
+    }, `${type}: an ${origin} module is blocked`);
+
+    promise_test(async t => {
+      const urls = getRequestURLs(`worklet-${type}`, origin, "no-redirect");
+      await xhrRequest(urls.announceUrl);
+      await promise_rejects_dom(t, "AbortError", worklet().addModule(`data:text/javascript,import '${urls.testUrl}';`));
+      assert_equals((await xhrRequest(urls.assertUrl)).status, "blocked", "never reached the server");
+    }, `${type}: a data: module's ${origin} import is blocked`);
+  }
+
+  promise_test(async () => {
+    const urls = getRequestURLs(`worklet-${type}`, "same-https", "no-redirect");
+    await xhrRequest(urls.announceUrl);
+    await worklet().addModule(urls.testUrl);
+    assert_equals((await xhrRequest(urls.assertUrl)).status, "allowed");
+  }, `${type}: a same-https module is allowed`);
+}
+</script>

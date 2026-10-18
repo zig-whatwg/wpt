@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sanitizer options preserve explicit null</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const target = document.createElement('div');
+  target.setHTML('<img alt="kept">', {sanitizer: null});
+  assert_equals(target.innerHTML, '<img alt="kept">');
+  target.setHTML('<img alt="removed">');
+  assert_equals(target.innerHTML, '');
+}, 'Explicit null sanitizer converts to an empty dictionary; omission uses the preset');
+</script>

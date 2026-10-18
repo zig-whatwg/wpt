@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A present null sanitizer is the empty SanitizerConfig for the unsafe entry points too</title>
+<link rel="help" href="https://wicg.github.io/sanitizer-api/#sanitizerconfig-get-a-sanitizer-instance-from-options">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL 3.2.18: only undefined is "not present"; a present null converts by
+// the member's union, (Sanitizer or SanitizerConfig or SanitizerPresets), to
+// its dictionary arm (3.2.25 step 4) - an empty SanitizerConfig, which for the
+// unsafe entry points removes nothing, as their `{}` default does.
+const markup = '<b onclick="1" data-x="2">x</b><!--c--><script>void 0<\/script>';
+test(() => {
+  const reference = document.createElement("div");
+  reference.setHTMLUnsafe(markup);
+  const target = document.createElement("div");
+  target.setHTMLUnsafe(markup, {sanitizer: null});
+  assert_equals(target.innerHTML, reference.innerHTML);
+  const undefinedOption = document.createElement("div");
+  undefinedOption.setHTMLUnsafe(markup, {sanitizer: undefined});
+  assert_equals(undefinedOption.innerHTML, reference.innerHTML);
+}, "setHTMLUnsafe with sanitizer: null keeps what the default keeps");
+test(() => {
+  const reference = Document.parseHTMLUnsafe(markup);
+  const parsed = Document.parseHTMLUnsafe(markup, {sanitizer: null});
+  assert_equals(parsed.body.innerHTML, reference.body.innerHTML);
+}, "parseHTMLUnsafe with sanitizer: null keeps what the default keeps");
+test(() => {
+  const target = document.createElement("div");
+  target.setHTML(markup, {sanitizer: null});
+  const reference = document.createElement("div");
+  reference.setHTML(markup, {sanitizer: {}});
+  assert_equals(target.innerHTML, reference.innerHTML, "null is the empty config");
+  const image = document.createElement("div");
+  image.setHTML('<img alt="kept">', {sanitizer: null});
+  assert_equals(image.innerHTML, '<img alt="kept">', "not the default preset, which removes img");
+}, "setHTML with sanitizer: null is setHTML with {}");
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>:state() reads the states set the setlike members change</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics-other.html#selector-custom">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<b4-state id="target"></b4-state>
+<script>
+customElements.define("b4-state", class extends HTMLElement {
+  constructor() { super(); this.internals = this.attachInternals(); }
+});
+test(() => {
+  const element = document.getElementById("target");
+  const set = element.internals.states;
+  assert_false(element.matches(":state(on)"));
+  set.add("on");
+  assert_true(element.matches(":state(on)"), "after add");
+  assert_equals(document.querySelector(":state(on)"), element);
+  set.add("other");
+  set.delete("on");
+  assert_false(element.matches(":state(on)"), "after delete");
+  assert_true(element.matches(":state(other)"));
+  set.clear();
+  assert_false(element.matches(":state(other)"), "after clear");
+  set.add("on");
+  assert_true(element.matches(":state(on)"), "added again");
+}, ":state() matches exactly the values in the states set");
+</script>

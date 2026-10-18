@@ -1,0 +1,105 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A setlike declaration's members are the binding's (WebIDL 3.7.12)</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-setlike">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+customElements.define("b4-setlike", class extends HTMLElement {
+  constructor() { super(); this.internals = this.attachInternals(); }
+});
+const states = () => document.createElement("b4-setlike").internals.states;
+
+test(() => {
+  const proto = CustomStateSet.prototype;
+  for (const [name, length] of [["entries", 0], ["keys", 0], ["values", 0], ["forEach", 1], ["has", 1], ["add", 1], ["delete", 1], ["clear", 0]]) {
+    const desc = Object.getOwnPropertyDescriptor(proto, name);
+    assert_equals(typeof desc.value, "function", name);
+    assert_true(desc.writable && desc.enumerable && desc.configurable, name + " attributes");
+    assert_equals(desc.value.length, length, name + ".length");
+    assert_equals(desc.value.name, name, name + ".name");
+  }
+  const size = Object.getOwnPropertyDescriptor(proto, "size");
+  assert_equals(typeof size.get, "function");
+  assert_equals(size.set, undefined);
+  assert_equals(size.get.name, "get size");
+  assert_true(size.enumerable && size.configurable);
+}, "the members are on the prototype with their names, lengths and attributes");
+
+test(() => {
+  const proto = CustomStateSet.prototype;
+  const iterator = Object.getOwnPropertyDescriptor(proto, Symbol.iterator);
+  assert_equals(iterator.value, proto.values, "@@iterator is values");
+  assert_false(iterator.enumerable);
+  assert_true(iterator.writable && iterator.configurable);
+}, "@@iterator is the values function object");
+
+test(() => {
+  const set = states();
+  assert_equals(set.add("--a"), set, "add returns the set");
+  set.add("--b");
+  set.add(1);
+  assert_array_equals([...set], ["--a", "--b", "1"], "values in insertion order, the value converted");
+  assert_true(set.has(1), "has converts too");
+  assert_array_equals([...set.entries()].map(e => e.join("|")), ["--a|--a", "--b|--b", "1|1"]);
+  assert_array_equals([...set.keys()], ["--a", "--b", "1"]);
+  assert_equals(set.size, 3);
+  assert_true(set.delete("1"));
+  assert_false(set.delete("1"));
+  assert_equals(set.size, 2);
+  assert_equals(set.clear(), undefined);
+  assert_equals(set.size, 0);
+  assert_equals(set.has(), false);
+  set.add();
+  assert_true(set.has("undefined"), "a missing argument is undefined, converted");
+}, "add, has, delete, clear and the iterators over the set entries");
+
+test(() => {
+  const set = states();
+  set.add("--a");
+  set.add("--b");
+  const seen = [];
+  const receiver = {};
+  set.forEach(function (value, key, object) {
+    seen.push([value, key, object === set, this === receiver]);
+    if (value === "--a") set.add("--c");
+  }, receiver);
+  assert_equals(JSON.stringify(seen), JSON.stringify([["--a", "--a", true, true], ["--b", "--b", true, true], ["--c", "--c", true, true]]));
+  assert_throws_js(TypeError, () => set.forEach(null));
+  assert_throws_js(TypeError, () => set.forEach({}));
+}, "forEach calls back with (value, value, set) and thisArg, live");
+
+test(() => {
+  const set = states();
+  set.add("--x");
+  const iterator = set.values();
+  assert_equals(Object.prototype.toString.call(iterator), "[object CustomStateSet Iterator]");
+  assert_equals(Object.getPrototypeOf(Object.getPrototypeOf(iterator)), Object.getPrototypeOf(Object.getPrototypeOf([].values())), "inherits %IteratorPrototype%");
+  assert_equals(iterator[Symbol.iterator](), iterator);
+  assert_object_equals(iterator.next(), {value: "--x", done: false});
+  assert_object_equals(iterator.next(), {value: undefined, done: true});
+  set.add("--y");
+  assert_true(iterator.next().done, "a finished iterator stays finished");
+  assert_throws_js(TypeError, () => iterator.next.call({}));
+  assert_throws_js(TypeError, () => CustomStateSet.prototype.values.call({}));
+  assert_throws_js(TypeError, () => Object.getOwnPropertyDescriptor(CustomStateSet.prototype, "size").get.call({}));
+}, "set iterators: their prototype, finishing, and the brand checks");
+
+test(() => {
+  const set = states();
+  set.add("--a");
+  set.add("--b");
+  const iterator = set.values();
+  assert_equals(iterator.next().value, "--a");
+  set.clear();
+  set.add("--c");
+  assert_equals(iterator.next().value, "--c", "added after clear()");
+  set.add("--d");
+  set.delete("--c");
+  assert_equals(iterator.next().value, "--d");
+  set.delete("--d");
+  set.add("--d");
+  assert_equals(iterator.next().value, "--d", "a re-added value goes to the end");
+  assert_true(iterator.next().done);
+}, "iteration is live, as a JavaScript Set's");
+</script>

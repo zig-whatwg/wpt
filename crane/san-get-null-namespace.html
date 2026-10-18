@@ -1,0 +1,11 @@
+<!doctype html>
+<title>Sanitizer get preserves an explicit null attribute namespace</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const attribute = new Sanitizer({attributes: ['title']}).get().attributes[0];
+  assert_true(Object.hasOwn(attribute, 'namespace'));
+  assert_equals(attribute.namespace, null);
+}, 'Canonical unnamespaced attributes include namespace: null');
+</script>

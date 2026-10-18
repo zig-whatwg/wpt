@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' data:; worker-src 'none'">
+<title>Worklet module fetches are checked against the document's script-src</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/common/security-features/resources/common.sub.js"></script>
+<script>
+// HTML "fetch a worklet script graph": the fetch client is the worklet's
+// outside settings - the document - so its policy container decides. CSP 3
+// "get the effective directive for request": the worklet destinations
+// (paintworklet, audioworklet, script for layout and animation) are
+// script-src-elem, falling back to script-src; worker-src does not govern
+// them. A blocked request reports one violation, at the document, and the
+// graph fails: addModule rejects with an AbortError (HTML 11.3.2 step 6.4.1).
+// A data: module is allowed here; the URL it imports is checked the same way.
+const worklets = {
+  paint: () => CSS.paintWorklet,
+  layout: () => CSS.layoutWorklet,
+  animation: () => CSS.animationWorklet,
+  audio: () => new OfflineAudioContext(2, 44100, 44100).audioWorklet,
+};
+const only = location.search.slice(1);
+
+async function violationsDuring(promise) {
+  const events = [];
+  const listener = e => events.push(e);
+  document.addEventListener("securitypolicyviolation", listener);
+  let outcome;
+  try {
+    await promise;
+    outcome = "resolved";
+  } catch (e) {
+    outcome = e;
+  }
+  // Violations are reported from a queued task (CSP 5.5).
+  await new Promise(resolve => setTimeout(resolve, 0));
+  document.removeEventListener("securitypolicyviolation", listener);
+  return {outcome, events};
+}
+
+for (const [type, worklet] of Object.entries(worklets)) {
+  if (only && only !== type) continue;
+
+  promise_test(async () => {
+    const urls = getRequestURLs(`worklet-${type}`, "same-https", "no-redirect");
+    await xhrRequest(urls.announceUrl);
+    const {outcome, events} = await violationsDuring(worklet().addModule(urls.testUrl));
+    assert_equals(outcome, "resolved");
+    assert_array_equals(events, [], "no violation");
+    assert_equals((await xhrRequest(urls.assertUrl)).status, "allowed");
+  }, `${type}: a same-origin module is allowed by script-src 'self', whatever worker-src says`);
+
+  promise_test(async () => {
+    const urls = getRequestURLs(`worklet-${type}`, "cross-https", "no-redirect");
+    await xhrRequest(urls.announceUrl);
+    const {outcome, events} = await violationsDuring(worklet().addModule(urls.testUrl));
+    assert_true(outcome instanceof DOMException, "rejected with a DOMException");
+    assert_equals(outcome.name, "AbortError");
+    assert_equals(events.length, 1, "one violation");
+    assert_equals(events[0].effectiveDirective, "script-src-elem");
+    assert_true(events[0].blockedURI.startsWith(get_host_info().HTTPS_REMOTE_ORIGIN), "the blocked URL: " + events[0].blockedURI);
+    assert_equals((await xhrRequest(urls.assertUrl)).status, "blocked", "never reached the server");
+  }, `${type}: a cross-origin module is blocked by script-src 'self', with one violation`);
+
+  promise_test(async () => {
+    const urls = getRequestURLs(`worklet-${type}`, "cross-https", "no-redirect");
+    await xhrRequest(urls.announceUrl);
+    const {outcome, events} = await violationsDuring(worklet().addModule(`data:text/javascript,import '${urls.testUrl}';`));
+    assert_true(outcome instanceof DOMException, "rejected with a DOMException");
+    assert_equals(outcome.name, "AbortError");
+    assert_equals(events.length, 1, "one violation, for the import");
+    assert_equals(events[0].effectiveDirective, "script-src-elem");
+    assert_equals((await xhrRequest(urls.assertUrl)).status, "blocked", "the import never reached the server");
+  }, `${type}: a data: module's cross-origin import is blocked, with one violation`);
+}
+</script>

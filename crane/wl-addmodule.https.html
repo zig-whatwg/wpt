@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worklet.addModule settles as HTML 11.3.2 orders it, for every worklet type</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+// HTML 11.3.2 "addModule(moduleURL, options)": step 3 rejects an unparsable
+// URL with a SyntaxError DOMException; a fetch that fails resolves the graph to
+// null, which rejects with an AbortError DOMException; a parse error is the
+// script's error to rethrow, which rejects the promise - in the Window's realm,
+// as Blink (serialized) and WebKit (recreated) deliver it; a script whose
+// evaluation throws still resolves (11.3.2 step 6.4.4 reports it).
+const worklets = {
+  paint: () => CSS.paintWorklet,
+  layout: () => CSS.layoutWorklet,
+  animation: () => CSS.animationWorklet,
+  audio: () => new OfflineAudioContext(2, 44100, 44100).audioWorklet,
+};
+const resources = "/worklets/resources/";
+const only = location.search.slice(1);
+
+test(() => {
+  assert_true(CSS.paintWorklet instanceof Worklet, "paintWorklet is a Worklet");
+  assert_true(CSS.layoutWorklet instanceof Worklet, "layoutWorklet is a Worklet");
+  assert_true(CSS.animationWorklet instanceof Worklet, "animationWorklet is a Worklet");
+  assert_equals(CSS.paintWorklet, CSS.paintWorklet, "[SameObject]");
+  assert_not_equals(CSS.paintWorklet, CSS.layoutWorklet);
+  assert_not_equals(CSS.paintWorklet, CSS.animationWorklet);
+  const context = new OfflineAudioContext(2, 44100, 44100);
+  assert_true(context.audioWorklet instanceof AudioWorklet, "audioWorklet is an AudioWorklet");
+  assert_true(context.audioWorklet instanceof Worklet, "AudioWorklet inherits from Worklet");
+  assert_equals(context.audioWorklet, context.audioWorklet, "[SameObject]");
+  assert_not_equals(context.audioWorklet, new OfflineAudioContext(2, 44100, 44100).audioWorklet);
+  const descriptor = Object.getOwnPropertyDescriptor(CSS, "paintWorklet");
+  assert_equals(typeof descriptor.get, "function", "a namespace attribute is an accessor");
+  assert_true(descriptor.enumerable, "enumerable");
+  assert_true(descriptor.configurable, "configurable");
+}, "the worklets and their identity");
+
+for (const [type, worklet] of Object.entries(worklets)) {
+  if (only && only !== type) continue;
+
+  promise_test(async () => {
+    const result = await worklet().addModule(resources + "empty-worklet-script.js");
+    assert_equals(result, undefined);
+  }, `${type}: a same-origin module resolves with undefined`);
+
+  promise_test(async () => {
+    const w = worklet();
+    const results = await Promise.all([
+      w.addModule(resources + "empty-worklet-script.js?1"),
+      w.addModule(resources + "empty-worklet-script.js?2"),
+    ]);
+    assert_array_equals(results, [undefined, undefined]);
+  }, `${type}: two modules added at once both resolve`);
+
+  promise_test(async () => {
+    await worklet().addModule(get_host_info().HTTPS_REMOTE_ORIGIN + resources + "empty-worklet-script-with-cors-header.js");
+  }, `${type}: a cross-origin module with CORS resolves`);
+
+  promise_test(t => {
+    return promise_rejects_dom(t, "SyntaxError", worklet().addModule("https://[invalid"));
+  }, `${type}: an unparsable URL rejects with a SyntaxError DOMException`);
+
+  promise_test(t => {
+    return promise_rejects_dom(t, "AbortError", worklet().addModule(resources + "non-existent-worklet-script.js"));
+  }, `${type}: a failed fetch rejects with an AbortError DOMException`);
+
+  promise_test(t => {
+    return promise_rejects_dom(t, "AbortError", worklet().addModule(get_host_info().HTTPS_REMOTE_ORIGIN + resources + "empty-worklet-script.js"));
+  }, `${type}: a cross-origin module without CORS rejects with an AbortError`);
+
+  promise_test(t => {
+    return promise_rejects_js(t, SyntaxError, worklet().addModule(resources + "syntax-error-worklet-script.js"));
+  }, `${type}: a parse error rejects with a SyntaxError of the Window's realm`);
+
+  promise_test(t => {
+    return promise_rejects_js(t, SyntaxError, worklet().addModule(resources + "import-syntax-error-worklet-script.js"));
+  }, `${type}: a parse error in an imported module rejects with a SyntaxError`);
+
+  promise_test(async () => {
+    await worklet().addModule(resources + "throwing-worklet-script.js");
+  }, `${type}: a module whose evaluation throws still resolves`);
+
+  promise_test(async () => {
+    await worklet().addModule("data:text/javascript,export default 1;");
+  }, `${type}: a data: module resolves`);
+
+  promise_test(async () => {
+    await worklet().addModule(resources + "import-cyclic-worklet-script.js");
+  }, `${type}: a cyclic import resolves`);
+}
+</script>
