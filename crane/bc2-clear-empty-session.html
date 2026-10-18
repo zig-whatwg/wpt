@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Clearing an empty session storage map queues no event</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-storage-clear">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  sessionStorage.clear();
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => { frame.remove(); sessionStorage.clear(); });
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.appendChild(frame);
+  await loaded;
+  const keys = [];
+  const marker = new Promise(resolve => {
+    frame.contentWindow.addEventListener('storage', t.step_func(e => {
+      keys.push(e.key);
+      if (e.key === 'bc2-empty-clear-marker') resolve();
+    }));
+  });
+  sessionStorage.clear();
+  sessionStorage.setItem('bc2-empty-clear-marker', 'done');
+  await marker;
+  assert_array_equals(keys, ['bc2-empty-clear-marker']);
+}, 'an empty clear queues no event before the following mutation');
+</script>

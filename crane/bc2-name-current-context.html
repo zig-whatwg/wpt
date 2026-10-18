@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named lookup includes the current navigable</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const previous = window.name;
+  window.name = 'bc2-host-current';
+  let found;
+  t.add_cleanup(() => {
+    if (found && found !== window) found.close();
+    window.name = previous;
+  });
+  found = window.open('', 'bc2-host-current');
+  assert_equals(found, window);
+}, 'the host top-level window can target its own name');
+
+promise_test(async t => {
+  const page = window.open('', 'bc2-popup-current');
+  const result = new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (e.source !== page || e.data.kind !== 'bc2-current-result') return;
+      window.removeEventListener('message', receive);
+      resolve(e.data.same);
+    });
+    window.addEventListener('message', receive);
+    t.add_cleanup(() => window.removeEventListener('message', receive));
+  });
+  t.add_cleanup(() => {
+    if (page.bc2Found && page.bc2Found !== page) page.bc2Found.close();
+    page.close();
+  });
+  page.setTimeout(page.Function(`
+    window.bc2Found = window.open('', 'bc2-popup-current');
+    opener.postMessage({kind: 'bc2-current-result', same: window.bc2Found === window}, '*');
+  `), 0);
+  assert_true(await result);
+}, 'a popup entry global can target its own name');
+</script>

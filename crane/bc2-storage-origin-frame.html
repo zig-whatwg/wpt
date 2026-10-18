@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Storage origin helper</title>
+<body>
+<script>
+const key = 'bc2-origin-key';
+const initial = [localStorage.getItem(key), sessionStorage.getItem(key)];
+localStorage.setItem(key, 'remote-local');
+sessionStorage.setItem(key, 'remote-session');
+const child = document.createElement('iframe');
+window.bc2StorageDescendant = (local, session) => {
+  child.remove();
+  localStorage.removeItem(key);
+  sessionStorage.removeItem(key);
+  parent.postMessage({kind: 'bc2-storage-origin', initial, descendant: [local, session]}, '*');
+};
+child.srcdoc = `<script>
+  parent.bc2StorageDescendant(localStorage.getItem('bc2-origin-key'), sessionStorage.getItem('bc2-origin-key'));
+<\/script>`;
+document.body.appendChild(child);
+</script>

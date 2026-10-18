@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document named properties: one element, an iframe's window, a collection that stays the same object</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-document-nameditem">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+"use strict";
+function container(t) {
+  const root = document.createElement("section");
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+function add(root, tag, attributes) {
+  const element = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+  root.append(element);
+  return element;
+}
+
+test(t => {
+  const root = container(t);
+  const iframe = add(root, "iframe", { name: "dx1Frame" });
+  assert_equals(document.dx1Frame, iframe.contentWindow, "an iframe with a content navigable: its WindowProxy");
+  const second = add(root, "img", { name: "dx1Frame" });
+  const list = document.dx1Frame;
+  assert_true(list instanceof HTMLCollection, "two: a collection");
+  assert_array_equals([...list], [iframe, second], "of the elements, the iframe as an element");
+  second.remove();
+  assert_equals(document.dx1Frame, iframe.contentWindow, "one again: the window");
+}, "An iframe alone answers its window; with company, a collection of elements");
+
+test(t => {
+  const root = container(t);
+  const first = add(root, "form", { name: "dx1Same" });
+  const second = add(root, "embed", { name: "dx1Same" });
+  const list = document.dx1Same;
+  assert_equals(document.dx1Same, list, "the same collection twice");
+  assert_equals(document["dx1Same"], list, "through a computed key");
+  first.name = "dx1Elsewhere";
+  assert_equals(document.dx1Same, second, "one left: the element");
+  first.name = "dx1Same";
+  assert_equals(document.dx1Same, list, "two again: the kept collection");
+  assert_array_equals([...list], [first, second]);
+  root.prepend(second);
+  assert_array_equals([...list], [second, first], "a move reorders it");
+}, "The collection for a name is the same object while script keeps it");
+
+promise_test(async t => {
+  const root = container(t);
+  add(root, "img", { name: "dx1Collected" });
+  add(root, "img", { name: "dx1Collected" });
+  document.dx1Collected.expando = 1;
+  await garbageCollect();
+  await garbageCollect();
+  const list = document.dx1Collected;
+  assert_true(list instanceof HTMLCollection, "a collection");
+  assert_equals(list.length, 2);
+  assert_equals(document.dx1Collected, list, "the same while kept");
+}, "A collection nobody keeps may be collected; the next one is still answered and kept");
+
+promise_test(async () => {
+  let doc = document.implementation.createHTMLDocument("");
+  doc.body.innerHTML = "<form name=dx1Held></form><img name=dx1Held>";
+  const list = doc.dx1Held;
+  assert_equals(list.length, 2);
+  doc = null;
+  await garbageCollect();
+  await garbageCollect();
+  assert_equals(list.length, 2, "the collection keeps its document");
+  assert_equals(list[0].localName, "form");
+  list[0].remove();
+  assert_equals(list.length, 1, "and still follows it");
+}, "Keeping only a named collection keeps its document and its live contents");
+
+test(t => {
+  const root = container(t);
+  add(root, "img", { id: "dx1-id-value", name: "dx1-name-value" });
+  add(root, "object", { id: "dx1-object" });
+  add(root, "div", { id: "dx1-div", name: "dx1-div-name" });
+  const names = Object.getOwnPropertyNames(document).filter(name => name.startsWith("dx1-"));
+  assert_array_equals(names, ["dx1-id-value", "dx1-name-value", "dx1-object"]);
+  assert_true("dx1-object" in document);
+  assert_false("dx1-div" in document, "a div's ID names nothing in a document");
+}, "Supported property names: tree order, an element's ID before its name, only named elements");
+
+test(t => {
+  const root = container(t);
+  add(root, "form", { name: "dx1Shadowed" });
+  const host = add(root, "div", {});
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = "<form name=dx1InShadow></form>";
+  assert_equals(document.dx1InShadow, undefined, "shadow trees are no document tree");
+  assert_equals(document.body.localName, "body", "an unrelated built-in reads through");
+  assert_equals(typeof document.createElement, "function");
+}, "Only the document tree's elements are named; built-ins read through when no element is named so");
+</script>

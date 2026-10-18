@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Textarea hard wrapping applies to form values, preserving the API value</title>
+<link rel="help" href="https://html.spec.whatwg.org/#textarea-wrapping-transformation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const form = document.createElement('form');
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  const textarea = document.createElement('textarea');
+  textarea.name = 'message';
+  textarea.cols = 7;
+  textarea.value = 'hello world\nsecond line';
+  form.append(textarea);
+  for (const wrap of ['hard', 'HaRd']) {
+    textarea.wrap = wrap;
+    const submitted = new FormData(form).get('message').replace(/\r\n/g, '\n');
+    assert_not_equals(submitted, textarea.value, wrap + ' inserts line breaks');
+    assert_equals(submitted.replace(/\n/g, ''), 'hello worldsecond line', 'wrapping preserves characters');
+    assert_equals(textarea.value, 'hello world\nsecond line', 'API value stays unwrapped');
+  }
+  for (const wrap of ['soft', 'SoFt', '', 'hard ', 'ſoft']) {
+    textarea.wrap = wrap;
+    assert_equals(new FormData(form).get('message').replace(/\r\n/g, '\n'), textarea.value, 'soft or invalid: ' + wrap);
+  }
+}, 'Only hard wrapping changes the textarea form-entry value');
+</script>

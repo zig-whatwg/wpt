@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>User Timing resolves legacy navigation attributes</title>
+<link rel="help" href="https://w3c.github.io/user-timing/#convert-a-name-to-a-timestamp">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const timingNames = [
+  'navigationStart', 'unloadEventStart', 'unloadEventEnd', 'redirectStart',
+  'redirectEnd', 'fetchStart', 'domainLookupStart', 'domainLookupEnd',
+  'connectStart', 'connectEnd', 'secureConnectionStart', 'requestStart',
+  'responseStart', 'responseEnd', 'domLoading', 'domInteractive',
+  'domContentLoadedEventStart', 'domContentLoadedEventEnd', 'domComplete',
+  'loadEventStart', 'loadEventEnd'
+];
+const loaded = new Promise(resolve => addEventListener('load', () =>
+  step_timeout(resolve, 0), {once: true}));
+
+for (const name of timingNames) {
+  promise_test(async t => {
+    await loaded;
+    const epoch = performance.timing[name];
+    const origin = performance.timing.navigationStart;
+    const label = 'rt3-' + name;
+    t.add_cleanup(() => performance.clearMeasures(label));
+    if (name !== 'navigationStart' && epoch === 0) {
+      assert_throws_dom('InvalidAccessError', () => performance.measure(label, name));
+      assert_throws_dom('InvalidAccessError', () => performance.measure(label, {end: name}));
+      return;
+    }
+    const expected = name === 'navigationStart' ? 0 : epoch - origin;
+    const start = performance.measure(label, name);
+    assert_equals(start.startTime, expected, 'legacy integer timestamp as start');
+    const end = performance.measure(label, {start: 0, end: name});
+    assert_equals(end.duration, expected, 'legacy integer timestamp as end');
+  }, 'Convert legacy timing name ' + name);
+}
+
+promise_test(async t => {
+  await loaded;
+  assert_throws_dom('SyntaxError', () => performance.measure('rt3-unknown', 'not-a-mark'));
+  assert_throws_dom('SyntaxError', () => performance.measure('rt3-case', 'NavigationStart'));
+}, 'Unknown and differently cased timing names are mark lookups');
+</script>

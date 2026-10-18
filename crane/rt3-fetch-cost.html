@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Resource Timing for 2000 same-origin fetches</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(2200);
+  const xhr = new XMLHttpRequest();
+  for (let i = 0; i < 2000; ++i) {
+    xhr.open('GET', '/common/blank.html?rt3-cost=' + i, false);
+    xhr.send();
+    assert_equals(xhr.status, 200);
+  }
+  const entries = performance.getEntriesByType('resource').filter(entry =>
+    entry.name.includes('rt3-cost='));
+  assert_equals(entries.length, 2000);
+}, '2000 same-origin fetches produce readable resource timing entries');
+</script>

@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Object form ownership follows the common reset algorithm</title>
+<link rel="help" href="https://html.spec.whatwg.org/#reset-the-form-owner">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  const first = document.createElement('form');
+  const second = document.createElement('form');
+  first.id = 'fm3-object-first';
+  second.id = 'fm3-object-second';
+  container.append(first, second);
+  const object = document.createElement('object');
+  first.append(object);
+  assert_equals(object.form, first, 'nearest ancestor form');
+  object.setAttribute('form', second.id);
+  assert_equals(object.form, second, 'explicit non-ancestor');
+  second.id = 'fm3-renamed';
+  assert_equals(object.form, null, 'ID change invalidates owner');
+  object.setAttribute('form', second.id);
+  const blocker = document.createElement('span');
+  blocker.id = second.id;
+  container.prepend(blocker);
+  assert_equals(object.form, null, 'first matching ID is not a form');
+  blocker.remove();
+  assert_equals(object.form, second);
+  object.removeAttribute('form');
+  second.append(object);
+  assert_equals(object.form, second, 'moving without form attribute');
+  object.setAttribute('form', 'missing');
+  assert_equals(object.form, null);
+  second.remove();
+  assert_equals(object.form, second, 'detached control resolves nearest ancestor');
+}, 'Object form getter observes reassociation and detached ancestry');
+</script>

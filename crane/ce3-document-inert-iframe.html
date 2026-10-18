@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document named getter returns an iframe with no content navigable</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = document.implementation.createHTMLDocument();
+  const iframe = doc.createElement('iframe');
+  iframe.setAttribute('name', 'ce3_inert_named');
+  doc.body.appendChild(iframe);
+  assert_equals(iframe.contentWindow, null);
+  assert_equals(doc.ce3_inert_named, iframe);
+}, 'A named iframe without a content navigable is returned as an element');
+</script>

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+
+const host = document.createElement('section');
+document.body.appendChild(host);
+host.innerHTML = '<div></div>'.repeat(10000);
+function measure(name, selector, expected) {
+  for (let i = 0; i < 5; ++i) host.querySelectorAll(selector);
+  let total = 0;
+  const start = performance.now();
+  for (let i = 0; i < 100; ++i) total += host.querySelectorAll(selector).length;
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(total, expected * 100), `${name}: 100 selectors on 10000 elements: ${elapsed.toFixed(3)} ms`);
+}
+measure('no states, ordinary selector', 'div', 10000);
+measure('no states, state selector', ':state(ready)', 0);
+class StateCostElement extends HTMLElement {
+  constructor() { super(); this.states = this.attachInternals().states; }
+}
+customElements.define('ce3-cost-element', StateCostElement);
+host.innerHTML = '';
+for (let i = 0; i < 10000; ++i) {
+  const element = document.createElement('ce3-cost-element');
+  if ((i & 1) === 0) element.states.add('ready');
+  host.appendChild(element);
+}
+measure('states, ordinary selector', 'ce3-cost-element', 10000);
+measure('states, state selector', ':state(ready)', 5000);
+</script>

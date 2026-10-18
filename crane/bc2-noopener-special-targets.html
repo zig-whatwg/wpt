@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>noopener preserves special-target WindowProxy return values</title>
+<link rel="help" href="https://html.spec.whatwg.org/#window-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async_test(t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => { frame.remove(); delete window.bc2ReportTargets; });
+  window.bc2ReportTargets = t.step_func_done(results => {
+    for (const [target, matches] of results) {
+      assert_true(matches, target + ' returns the selected window with noopener');
+    }
+  });
+  frame.srcdoc = `<script>
+    const results = [];
+    for (const target of ['_self', '_parent', '_top', '_SeLf', '_PaReNt', '_ToP']) {
+      const expected = target.toLowerCase() === '_self' ? window : parent;
+      results.push([target, window.open('', target, 'noopener') === expected]);
+    }
+    parent.bc2ReportTargets(results);
+  <\/script>`;
+  document.body.appendChild(frame);
+}, 'noopener does not suppress the result for a special target');
+</script>

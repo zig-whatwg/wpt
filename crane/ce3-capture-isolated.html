@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated capture addition reaction</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const changes = [];
+  class CaptureInput extends HTMLInputElement {
+    static get observedAttributes() { return ['capture']; }
+    attributeChangedCallback(name, oldValue, newValue, namespace) {
+      changes.push([name, oldValue, newValue, namespace]);
+    }
+  }
+  customElements.define('ce3-isolated-capture', CaptureInput, {extends: 'input'});
+  const input = document.createElement('input', {is: 'ce3-isolated-capture'});
+  input.capture = 'user';
+  assert_equals(changes.length, 1);
+  assert_array_equals(changes[0], ['capture', null, 'user', null]);
+}, 'capture adds the content attribute and completes its reaction');
+</script>

@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>iframe name reflects its content attribute</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('name', 'ce3_attribute_name');
+  assert_equals(frame.name, 'ce3_attribute_name');
+}, 'iframe.name reads the name content attribute');
+</script>

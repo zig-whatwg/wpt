@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Storage clear broadcasts only a change</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-storage-clear">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const name of ['sessionStorage', 'localStorage']) {
+  promise_test(async t => {
+    const storage = window[name];
+    storage.clear();
+    const frame = document.createElement('iframe');
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = '/common/blank.html';
+    document.body.appendChild(frame);
+    t.add_cleanup(() => { frame.remove(); storage.clear(); });
+    await loaded;
+    const remoteStorage = frame.contentWindow[name];
+    const events = [];
+    const done = new Promise(resolve => {
+      frame.contentWindow.addEventListener('storage', t.step_func(e => {
+        events.push(e);
+        if (e.newValue === 'after') resolve();
+      }));
+    });
+    storage.setItem('bc2-key', 'before');
+    storage.clear();
+    storage.clear();
+    storage.setItem('bc2-key', 'after');
+    await done;
+    assert_array_equals(events.map(e => e.key), ['bc2-key', null, 'bc2-key']);
+    assert_array_equals(events.map(e => e.newValue), ['before', null, 'after']);
+    for (const event of events) assert_equals(event.storageArea, remoteStorage);
+  }, name + ': clearing an empty map does not enqueue an extra event');
+}
+</script>

@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cross-group named popup helper</title>
+<script>
+window.bc2Identifier = 'isolated-group';
+const channel = new BroadcastChannel('bc2-cross-group-ready');
+channel.onmessage = e => {
+  if (e.data !== 'close') return;
+  channel.close();
+  window.close();
+};
+channel.postMessage('ready');
+</script>

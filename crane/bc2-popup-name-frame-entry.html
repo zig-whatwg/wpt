@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named popup lookup from frame entry globals</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function messageFrom(t, frame, kind) {
+  return new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (e.source !== frame.contentWindow || e.data.kind !== kind) return;
+      window.removeEventListener('message', receive);
+      resolve(e.data);
+    });
+    window.addEventListener('message', receive);
+    t.add_cleanup(() => window.removeEventListener('message', receive));
+  });
+}
+
+promise_test(async t => {
+  const page = window.open('', 'bc2-entry-page-owner');
+  const popup = window.open('', 'bc2-entry-other-target');
+  popup.bc2Identifier = 'other-page';
+  const frame = page.document.createElement('iframe');
+  const result = messageFrom(t, frame, 'bc2-entry-other-page');
+  t.add_cleanup(() => {
+    const found = frame.contentWindow.bc2Found;
+    if (found && found !== popup) found.close();
+    popup.close();
+    frame.remove();
+    page.close();
+  });
+  frame.srcdoc = `<script>
+    setTimeout(() => {
+      window.bc2Found = window.open('', 'bc2-entry-other-target');
+      parent.opener.postMessage({kind: 'bc2-entry-other-page', value: window.bc2Found.bc2Identifier}, '*');
+    }, 0);
+  <\/script>`;
+  page.document.body.appendChild(frame);
+  assert_equals((await result).value, 'other-page');
+}, 'an iframe entry global finds a popup in its page opener chain');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  const created = messageFrom(t, frame, 'bc2-entry-created');
+  let found;
+  t.add_cleanup(() => {
+    const popup = frame.contentWindow.bc2Created;
+    if (found && found !== popup) found.close();
+    if (popup) popup.close();
+    frame.remove();
+  });
+  frame.srcdoc = `<script>
+    setTimeout(() => {
+      window.bc2Created = window.open('', 'bc2-entry-frame-target');
+      window.bc2Created.bc2Identifier = 'frame-popup';
+      parent.postMessage({kind: 'bc2-entry-created'}, '*');
+    }, 0);
+  <\/script>`;
+  document.body.appendChild(frame);
+  await created;
+  found = window.open('', 'bc2-entry-frame-target');
+  assert_equals(found.bc2Identifier, 'frame-popup');
+}, 'a top-level entry global finds a popup created by its descendant frame');
+</script>

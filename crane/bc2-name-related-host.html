@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Related popup targets a named host page</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const method of ['open', 'link']) {
+  promise_test(async t => {
+    const previousName = window.name;
+    const previousHash = location.hash;
+    window.name = 'bc2-related-host-' + method;
+    const page = window.open('', 'bc2-related-caller-' + method);
+    const result = new Promise(resolve => {
+      const receive = t.step_func(e => {
+        if (e.source !== page || e.data.kind !== 'bc2-host-result') return;
+        window.removeEventListener('message', receive);
+        resolve(e.data);
+      });
+      window.addEventListener('message', receive);
+      t.add_cleanup(() => window.removeEventListener('message', receive));
+    });
+    t.add_cleanup(() => {
+      if (page.bc2Found && page.bc2Found !== window) page.bc2Found.close();
+      page.close();
+      window.name = previousName;
+      location.hash = previousHash;
+    });
+    page.setTimeout(page.Function(`
+      const url = opener.location.href.split('#')[0] + '#bc2-related-${method}';
+      if ('${method}' === 'open') {
+        window.bc2Found = window.open(url, opener.name);
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = opener.name;
+        document.body.appendChild(link);
+        link.click();
+      }
+      opener.postMessage({kind: 'bc2-host-result', same: window.bc2Found === opener}, '*');
+    `), 0);
+    const outcome = await result;
+    if (method === 'open') assert_true(outcome.same, 'the named target is the host Window');
+    assert_equals(location.hash, '#bc2-related-' + method, 'the host receives the navigation URL');
+  }, 'a popup entry global targets its named host with ' + method);
+}
+</script>

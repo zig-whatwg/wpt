@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image input dimensions read content attributes without an image</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-input-width">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'image';
+  input.width = 30;
+  input.height = 40;
+  assert_equals(input.width, 30);
+  assert_equals(input.height, 40);
+  for (const [value, expected] of [['10',10], ['010',10], ['+10',10], [' 10 ',10],
+    ['\n10',10], ['10px',10], ['50%',50], ['1.9',1], ['0.5',0], ['-0',0],
+    ['-0.5',0], ['2147483647',2147483647], ['-10',0], ['',0], ['abc',0]]) {
+    input.setAttribute('width', value);
+    input.setAttribute('height', value);
+    assert_equals(input.width, expected, 'width ' + JSON.stringify(value));
+    assert_equals(input.height, expected, 'height ' + JSON.stringify(value));
+  }
+  input.width = 10;
+  input.height = 20;
+  input.type = 'text';
+  assert_equals(input.width, 0, 'dimensions only apply in image state');
+  assert_equals(input.height, 0);
+}, 'Detached image inputs use the non-rendered dimension attribute rules');
+</script>

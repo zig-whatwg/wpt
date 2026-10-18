@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Storage getters use the active document origin</title>
+<link rel="help" href="https://html.spec.whatwg.org/#the-localstorage-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const key = 'bc2-origin-key';
+  localStorage.setItem(key, 'parent-local');
+  sessionStorage.setItem(key, 'parent-session');
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => {
+    frame.remove();
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  });
+  const result = new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (e.source !== frame.contentWindow || e.data.kind !== 'bc2-storage-origin') return;
+      window.removeEventListener('message', receive);
+      resolve(e.data);
+    });
+    window.addEventListener('message', receive);
+    t.add_cleanup(() => window.removeEventListener('message', receive));
+  });
+  frame.src = get_host_info().HTTP_REMOTE_ORIGIN + '/crane/bc2-storage-origin-frame.html';
+  document.body.appendChild(frame);
+  const data = await result;
+  assert_array_equals(data.initial, [null, null], 'remote storage starts separate from its creator');
+  assert_equals(localStorage.getItem(key), 'parent-local');
+  assert_equals(sessionStorage.getItem(key), 'parent-session');
+}, 'cross-origin frame storage uses its active origin and preserves parent storage');
+</script>

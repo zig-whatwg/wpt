@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named popup lookup includes other pages and frame-created popups</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const page = window.open('', 'bc2-other-page-owner');
+  const popup = window.open('', 'bc2-other-page-target');
+  const frame = page.document.body.appendChild(page.document.createElement('iframe'));
+  let found;
+  t.add_cleanup(() => {
+    if (found && found !== popup) found.close();
+    popup.close();
+    frame.remove();
+    page.close();
+  });
+  found = frame.contentWindow.eval("window.open('', 'bc2-other-page-target')");
+  assert_equals(found, popup, 'a frame can find a popup in its page opener chain');
+}, 'an iframe finds named popups belonging to other related pages');
+
+test(t => {
+  const frame = document.body.appendChild(document.createElement('iframe'));
+  const popup = frame.contentWindow.eval("window.open('', 'bc2-frame-owned-target')");
+  let found;
+  t.add_cleanup(() => {
+    if (found && found !== popup) found.close();
+    popup.close();
+    frame.remove();
+  });
+  found = window.open('', 'bc2-frame-owned-target');
+  assert_equals(found, popup, 'the page can find a popup created by its frame');
+}, 'named lookup includes popups created by descendant frames');
+</script>

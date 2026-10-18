@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A detached Window has no navigable target name</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  frame.name = 'bc2-original';
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const win = frame.contentWindow;
+  win.name = 'bc2-active';
+  assert_equals(win.name, 'bc2-active');
+  assert_equals(frame.name, 'bc2-original', 'Window.name does not rewrite the content attribute');
+  frame.remove();
+  assert_equals(win.name, '', 'detached getter returns an empty string');
+  win.name = 'bc2-detached';
+  assert_equals(win.name, '', 'detached setter does not create a target name');
+  assert_equals(frame.name, 'bc2-original');
+}, 'Window.name stops reading and writing a destroyed navigable');
+</script>

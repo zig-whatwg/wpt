@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named access on the Window object answers from the document's maps</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#named-access-on-the-window-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function container(t) {
+  const root = document.createElement("section");
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+function add(root, tag, attributes, namespace) {
+  const element = namespace ? document.createElementNS(namespace, tag) : document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+  root.append(element);
+  return element;
+}
+
+test(t => {
+  const root = container(t);
+  const div = add(root, "div", { id: "dx1WinId" });
+  assert_equals(window.dx1WinId, div, "any element by its ID");
+  const svg = add(root, "g", { id: "dx1WinSvg" }, "http://www.w3.org/2000/svg");
+  assert_equals(window.dx1WinSvg, svg, "a foreign element by its ID");
+  const form = add(root, "form", { name: "dx1WinName" });
+  assert_equals(window.dx1WinName, form, "a form by its name");
+  add(root, "div", { name: "dx1WinDivName" });
+  assert_false("dx1WinDivName" in window, "a div's name names nothing");
+  div.remove();
+  assert_false("dx1WinId" in window, "gone with its element");
+}, "Named objects: any element by ID, embed/form/img/object by name");
+
+test(t => {
+  const root = container(t);
+  const img = add(root, "img", { name: "dx1WinMulti" });
+  const span = add(root, "span", { id: "dx1WinMulti" });
+  const list = window.dx1WinMulti;
+  assert_true(list instanceof HTMLCollection);
+  assert_equals(window.dx1WinMulti, list, "the same collection while kept");
+  assert_array_equals([...list], [img, span]);
+  root.prepend(span);
+  assert_array_equals([...list], [span, img], "in tree order after a move");
+  img.remove();
+  assert_array_equals([...list], [span], "live");
+  assert_equals(window.dx1WinMulti, span, "one left: the element");
+}, "Several named objects are one live collection");
+
+test(t => {
+  const root = container(t);
+  const iframe = add(root, "iframe", { name: "dx1WinFrame", id: "dx1WinFrameId" });
+  const img = add(root, "img", { name: "dx1WinFrame" });
+  assert_equals(window.dx1WinFrame, iframe.contentWindow, "a child navigable's target name wins over elements");
+  assert_equals(window.dx1WinFrameId, iframe, "an iframe's ID gives the element");
+  img.remove();
+}, "A document-tree child navigable named so is answered first");
+
+test(t => {
+  const root = container(t);
+  const host = add(root, "div", {});
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = "<p id=dx1WinShadow></p>";
+  assert_false("dx1WinShadow" in window, "a shadow tree's element is no named object");
+  const other = document.implementation.createHTMLDocument("");
+  other.body.innerHTML = "<p id=dx1WinOther></p>";
+  assert_false("dx1WinOther" in window, "another document's element is no named object");
+}, "Only the Window's associated document's tree");
+</script>

@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named targets use active-document familiarity</title>
+<link rel="help" href="https://html.spec.whatwg.org/#familiar-with">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+let sequence = 0;
+function helperURL(origin, mode, token, target) {
+  const url = new URL('/crane/bc2-name-familiarity-helper.html', origin);
+  url.search = new URLSearchParams({mode, token, target});
+  return url.href;
+}
+
+function relatedPage(t, origin, mode) {
+  const token = 'bc2-familiar-' + (++sequence);
+  const target = token + '-target';
+  const name = mode === 'top' ? target : token + '-page';
+  return new Promise(resolve => {
+    let popup;
+    const receive = t.step_func(e => {
+      if (e.source !== popup || e.data.kind !== 'bc2-familiar-ready' || e.data.token !== token) return;
+      window.removeEventListener('message', receive);
+      resolve({popup, target});
+    });
+    window.addEventListener('message', receive);
+    t.add_cleanup(() => window.removeEventListener('message', receive));
+    popup = window.open(helperURL(origin, mode, token, target), name);
+    assert_not_equals(popup, null);
+    t.add_cleanup(() => popup.close());
+  });
+}
+
+promise_test(async t => {
+  const {popup, target} = await relatedPage(t, get_host_info().HTTP_REMOTE_ORIGIN, 'initial-child');
+  const child = popup.frames[0];
+  const found = window.open('', target);
+  if (found !== child) t.add_cleanup(() => found.close());
+  assert_not_equals(found, child, 'group membership does not make the foreign child familiar');
+  assert_equals(found.top, found, 'an unfamiliar child name opens a new top-level page');
+}, 'a cross-origin page\'s initial about:blank child is not a familiar target');
+
+promise_test(async t => {
+  const {popup, target} = await relatedPage(t, location.origin, 'initial-child');
+  const child = popup.frames[0];
+  const found = window.open('', target);
+  if (found !== child) t.add_cleanup(() => found.close());
+  assert_equals(found, child);
+}, 'same active-document origins make another page\'s child familiar');
+
+promise_test(async t => {
+  const {popup, target} = await relatedPage(t, get_host_info().HTTP_REMOTE_ORIGIN, 'top');
+  const found = window.open('', target);
+  if (found !== popup) t.add_cleanup(() => found.close());
+  assert_equals(found, popup);
+}, 'a cross-origin auxiliary page remains familiar through its opener');
+
+promise_test(async t => {
+  const {popup, target} = await relatedPage(t, location.origin, 'foreign-child');
+  const child = popup.frames[0];
+  const found = window.open('', target);
+  if (found !== child) t.add_cleanup(() => found.close());
+  assert_equals(found, child);
+}, 'a same-origin ancestor makes a foreign child familiar');
+
+promise_test(async t => {
+  const token = 'bc2-familiar-' + (++sequence);
+  const originalName = window.name;
+  window.name = token + '-host';
+  t.add_cleanup(() => { window.name = originalName; });
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (e.source !== frame.contentWindow || e.data.kind !== 'bc2-familiar-top' || e.data.token !== token) return;
+      window.removeEventListener('message', receive);
+      resolve(e.data.same);
+    });
+    window.addEventListener('message', receive);
+    t.add_cleanup(() => window.removeEventListener('message', receive));
+  });
+  frame.src = helperURL(get_host_info().HTTP_REMOTE_ORIGIN, 'find-top', token, window.name);
+  document.body.appendChild(frame);
+  assert_true(await result);
+}, 'a cross-origin child can find its own top-level browsing context');
+</script>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resource JSON includes Server-Timing metrics</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#default-tojson-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const url = new URL('rt2-server-timing.txt?rt3-json', location.href).href;
+  await (await fetch(url)).text();
+  let entry = performance.getEntriesByName(url)[0];
+  assert_not_equals(entry, undefined);
+  const json = entry.toJSON();
+  assert_true(Object.hasOwn(json, 'serverTiming'));
+  assert_true(Array.isArray(json.serverTiming));
+  assert_equals(json.serverTiming.length, 2);
+  assert_equals(json.serverTiming[0].name, entry.serverTiming[0].name);
+  assert_equals(json.serverTiming[0].duration, entry.serverTiming[0].duration);
+  assert_equals(json.serverTiming[0].description, entry.serverTiming[0].description);
+  const serialized = JSON.parse(JSON.stringify(entry));
+  assert_equals(serialized.serverTiming[0].name, 'db');
+  assert_equals(serialized.serverTiming[0].duration, 12.5);
+  assert_equals(serialized.serverTiming[0].description, 'Cache hit');
+  assert_equals(serialized.serverTiming[1].description, 'warm');
+  performance.clearResourceTimings();
+  entry = null;
+  TestUtils.gc();
+  assert_equals(json.serverTiming[0].name, 'db');
+  assert_equals(json.serverTiming[1].toJSON().description, 'warm');
+}, 'Resource JSON retains its server metrics after the resource entry is released');
+
+promise_test(async () => {
+  const url = new URL('/common/blank.html?rt3-empty-json', location.href).href;
+  await (await fetch(url)).text();
+  const entry = performance.getEntriesByName(url)[0];
+  const json = entry.toJSON();
+  assert_true(Array.isArray(json.serverTiming));
+  assert_equals(json.serverTiming.length, 0);
+  assert_array_equals(JSON.parse(JSON.stringify(entry)).serverTiming, []);
+}, 'Resource JSON includes an empty array when the response has no metrics');
+</script>

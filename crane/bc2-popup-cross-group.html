@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named lookup does not cross browsing context groups</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const channel = new BroadcastChannel('bc2-cross-group-ready');
+  const loaded = new Promise(resolve => channel.onmessage = t.step_func(e => {
+    if (e.data === 'ready') resolve();
+  }));
+  let found;
+  t.add_cleanup(() => {
+    channel.postMessage('close');
+    channel.close();
+    if (found) found.close();
+  });
+  assert_equals(window.open('/crane/bc2-popup-cross-group-helper.html',
+                            'bc2-cross-group-target', 'noopener'), null);
+  await loaded;
+  found = window.open('', 'bc2-cross-group-target');
+  assert_not_equals(found.bc2Identifier, 'isolated-group');
+  assert_equals(found.opener, window, 'lookup created a new related popup');
+}, 'named lookup cannot find a noopener popup in a different browsing context group');
+</script>

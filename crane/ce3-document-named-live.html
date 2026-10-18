@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document named properties, live filters and retained collections</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-document-nameditem">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function container(t) {
+  const root = document.createElement('section');
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+function named(root, tag, id, name, namespace = 'http://www.w3.org/1999/xhtml') {
+  const element = document.createElementNS(namespace, tag);
+  if (id !== null) element.setAttribute('id', id);
+  if (name !== null) element.setAttribute('name', name);
+  root.append(element);
+  return element;
+}
+
+test(t => {
+  const root = container(t);
+  for (const tag of ['embed', 'form', 'iframe', 'img', 'object', 'div', 'span']) {
+    const id = 'ce3_' + tag + '_id';
+    const name = 'ce3_' + tag + '_name';
+    const element = named(root, tag, id, name);
+    const eligible = ['embed', 'form', 'iframe', 'img', 'object'].includes(tag);
+    const expected = tag === 'iframe' ? element.contentWindow : element;
+    assert_equals(document[name], eligible ? expected : undefined, tag + ' name');
+    assert_equals(document[id], ['img', 'object'].includes(tag) ? element : undefined, tag + ' id');
+  }
+  named(root, 'form', null, 'ce3_foreign', 'urn:ce3');
+  named(root, 'FORM', null, 'ce3_uppercase');
+  assert_equals(document.ce3_foreign, undefined, 'foreign namespace');
+  assert_equals(document.ce3_uppercase, undefined, 'case-sensitive local name');
+}, 'Only HTML named elements expose their eligible names and ids');
+
+test(t => {
+  const root = container(t);
+  const first = named(root, 'form', null, 'ce3_live');
+  const second = named(root, 'img', null, 'ce3_live');
+  const list = document.ce3_live;
+  assert_true(list instanceof HTMLCollection);
+  assert_array_equals(Array.from(list), [first, second]);
+  root.prepend(second);
+  assert_array_equals(Array.from(list), [second, first], 'move changes order');
+  first.name = 'ce3_other';
+  assert_array_equals(Array.from(list), [second], 'rename removes a match');
+  assert_equals(document.ce3_live, second, 'a fresh getter now returns the sole element');
+  second.remove();
+  assert_equals(list.length, 0, 'removal empties saved collection');
+  assert_equals(document.ce3_live, undefined);
+  root.append(second);
+  assert_array_equals(Array.from(list), [second], 'reinsertion updates saved collection');
+}, 'Saved named-property collections follow moves, renames and removals');
+
+test(t => {
+  const root = container(t);
+  const first = named(root, 'img', 'ce3_image_live', 'a');
+  const second = named(root, 'img', 'ce3_image_live', 'b');
+  const list = document.ce3_image_live;
+  assert_array_equals(Array.from(list), [first, second]);
+  first.removeAttribute('name');
+  assert_array_equals(Array.from(list), [second]);
+  first.name = '';
+  assert_array_equals(Array.from(list), [second], 'empty name does not expose image id');
+  first.name = 'restored';
+  assert_array_equals(Array.from(list), [first, second]);
+}, 'A saved collection rechecks image name presence and nonempty value');
+
+test(t => {
+  const root = container(t);
+  const form = named(root, 'form', null, 'ce3_shadow');
+  const host = document.createElement('div');
+  root.append(host);
+  const shadow = host.attachShadow({mode: 'open'});
+  assert_equals(document.ce3_shadow, form);
+  shadow.append(form);
+  assert_equals(document.ce3_shadow, undefined, 'shadow descendants are excluded');
+  root.append(form);
+  assert_equals(document.ce3_shadow, form);
+  const other = document.implementation.createHTMLDocument();
+  other.adoptNode(form);
+  assert_equals(document.ce3_shadow, undefined);
+  assert_equals(other.ce3_shadow, undefined);
+  other.body.append(form);
+  assert_equals(other.ce3_shadow, form);
+}, 'Named properties follow document-tree membership and adoption');
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument();
+  const iframe = doc.createElement('iframe');
+  iframe.name = 'ce3_inert_frame';
+  doc.body.append(iframe);
+  assert_equals(iframe.contentWindow, null);
+  assert_equals(doc.ce3_inert_frame, iframe);
+}, 'A single iframe with no content navigable is returned as an element');
+
+promise_test(async () => {
+  let doc = document.implementation.createHTMLDocument();
+  doc.body.innerHTML = '<form name="ce3_held"></form><img name="ce3_held">';
+  const list = doc.ce3_held;
+  assert_equals(list.length, 2);
+  doc = null;
+  await TestUtils.gc();
+  await TestUtils.gc();
+  assert_equals(list.length, 2);
+  assert_equals(list[0].localName, 'form');
+  assert_equals(list[1].localName, 'img');
+  list[0].remove();
+  await TestUtils.gc();
+  assert_equals(list.length, 1);
+  assert_equals(list[0].localName, 'img');
+}, 'Keeping only a named collection keeps its document and live descendants');
+</script>

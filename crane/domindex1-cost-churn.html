@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>DOM churn cost: 100,000 insertions and removals of elements with and without IDs</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Identical inputs before and after; the times are in the result names, so
+// the journal's subtest stream keeps them.
+function churn(label, make) {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const elements = [];
+  for (let i = 0; i < 1000; i++) elements.push(make(i));
+  // Warm.
+  for (const element of elements) parent.appendChild(element);
+  for (const element of elements) element.remove();
+  const start = performance.now();
+  for (let round = 0; round < 100; round++) {
+    for (const element of elements) parent.appendChild(element);
+    for (const element of elements) element.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => {
+    assert_equals(parent.childNodes.length, 0);
+  }, label + ": 100000 insertions and removals: " + elapsed.toFixed(3) + " ms");
+  parent.remove();
+}
+churn("No IDs", () => document.createElement("div"));
+churn("Unique IDs", i => { const e = document.createElement("div"); e.id = "c" + i; return e; });
+churn("Named forms", i => { const e = document.createElement("form"); e.name = "f" + (i % 10); return e; });
+// Subtrees: 100 rounds of inserting and removing 100 subtrees of 10 elements.
+{
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const subtrees = [];
+  for (let i = 0; i < 100; i++) {
+    const root = document.createElement("section");
+    for (let j = 0; j < 9; j++) {
+      const child = document.createElement(j % 3 ? "span" : "img");
+      if (j % 2) child.id = "t" + i + "_" + j;
+      root.append(child);
+    }
+    subtrees.push(root);
+  }
+  const start = performance.now();
+  for (let round = 0; round < 100; round++) {
+    for (const root of subtrees) parent.appendChild(root);
+    for (const root of subtrees) root.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => {
+    assert_equals(parent.childNodes.length, 0);
+  }, "Subtrees with IDs: 10000 subtree insertions and removals (100000 elements): " + elapsed.toFixed(3) + " ms");
+  parent.remove();
+}
+</script>

@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named host targets use the existing top-level navigation path</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const previousName = window.name;
+  const previousURL = location.href;
+  window.name = 'bc2-current-navigation';
+  let found;
+  t.add_cleanup(() => {
+    if (found && found !== window) found.close();
+    window.name = previousName;
+    history.replaceState(null, '', previousURL);
+  });
+  found = window.open('#bc2-open-fragment', window.name);
+  assert_equals(found, window, 'the named target is the host Window');
+  assert_equals(location.hash, '#bc2-open-fragment', 'the chosen host receives the URL');
+}, 'window.open navigates the host top-level selected by name');
+
+promise_test(async t => {
+  const previousName = window.name;
+  const previousURL = location.href;
+  window.name = 'bc2-current-link-navigation';
+  const link = document.createElement('a');
+  link.href = '#bc2-link-fragment';
+  link.target = window.name;
+  document.body.appendChild(link);
+  t.add_cleanup(() => {
+    link.remove();
+    window.name = previousName;
+    history.replaceState(null, '', previousURL);
+  });
+  link.click();
+  assert_equals(location.hash, '#bc2-link-fragment', 'the chosen host receives the link URL');
+}, 'a hyperlink navigates the host top-level selected by name');
+</script>

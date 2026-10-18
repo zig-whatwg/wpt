@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Title text reads children and replaces all</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#dom-title-text">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(() => {
+  const title = document.createElement('title');
+  const nested = document.createElement('span');
+  nested.textContent = 'nested';
+  title.append('left', nested, document.createComment('comment'), 'right');
+  assert_equals(title.textContent, 'leftnestedright');
+  assert_equals(title.text, 'leftright');
+  title.text = 'replacement';
+  assert_equals(title.childNodes.length, 1);
+  assert_equals(title.firstChild.nodeType, Node.TEXT_NODE);
+  assert_equals(title.text, 'replacement');
+  title.text = '';
+  assert_equals(title.childNodes.length, 0);
+}, 'title.text concatenates Text children only, and its setter replaces every child');
+test(t => {
+  let disconnected = 0;
+  class TitleChild extends HTMLElement {
+    disconnectedCallback() { ++disconnected; }
+  }
+  customElements.define('ce3-title-child', TitleChild);
+  const title = document.createElement('title');
+  document.body.appendChild(title);
+  t.add_cleanup(() => title.remove());
+  title.appendChild(document.createElement('ce3-title-child'));
+  title.text = 'new text';
+  assert_equals(disconnected, 1, 'reaction runs before the setter returns');
+}, 'title.text completes a removed custom child reaction synchronously');
+</script>

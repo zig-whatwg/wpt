@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A named popup can be retargeted from its load callbacks</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script>
+for (const event of ["load", "pageshow"]) {
+  promise_test(async t => {
+    const name = "bc2-retarget-" + token();
+    const destination = new URL("bc2-name-during-load-helper.html?done=" + name, location.href).href;
+    let popup;
+    let replacement;
+    const arrived = new Promise((resolve, reject) => {
+      const onmessage = e => {
+        if (e.data !== name) return;
+        try {
+          assert_equals(e.source, popup, "The destination loaded in the original popup");
+          assert_equals(popup.location.href, destination, "The original popup navigated");
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      };
+      addEventListener("message", onmessage);
+      t.add_cleanup(() => removeEventListener("message", onmessage));
+      window.bc2RetargetDuringLoad = () => {
+        try {
+          replacement = window.open(destination, name);
+          assert_equals(replacement, popup, "Retargeting returns the original WindowProxy");
+        } catch (error) {
+          reject(error);
+        }
+      };
+    });
+    t.add_cleanup(() => {
+      delete window.bc2RetargetDuringLoad;
+      if (replacement && replacement !== popup) replacement.close();
+      if (popup) popup.close();
+    });
+    popup = window.open("bc2-name-during-load-helper.html?event=" + event, name);
+    assert_not_equals(popup, null);
+    await arrived;
+  }, "Opener retargets its named popup from the popup's " + event + " callback");
+}
+</script>

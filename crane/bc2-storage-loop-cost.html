@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Storage set/get loop with a listening frame</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/common/blank.html';
+  document.body.appendChild(frame);
+  t.add_cleanup(() => { frame.remove(); localStorage.removeItem('bc2-cost'); });
+  await loaded;
+  let received = 0;
+  let finished;
+  const delivered = new Promise(resolve => finished = resolve);
+  frame.contentWindow.addEventListener('storage', t.step_func(e => {
+    if (e.key !== 'bc2-cost') return;
+    ++received;
+    if (e.newValue === '99999') finished();
+  }));
+  const start = performance.now();
+  for (let i = 0; i < 100000; ++i) {
+    const value = String(i);
+    localStorage.setItem('bc2-cost', value);
+    if (localStorage.getItem('bc2-cost') !== value) assert_unreached('stored value differs');
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_greater_than(elapsed, 0),
+       'Storage loop: ' + elapsed.toFixed(3) + ' ms for 100000 set/get pairs');
+  await delivered;
+  assert_equals(received, 100000);
+}, '100000 set/get pairs deliver one event per change to the listening frame');
+</script>

@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named navigable lookup searches the caller subtree first</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const sibling = document.createElement('iframe');
+  sibling.name = 'bc2-shared-name';
+  document.body.appendChild(sibling);
+  t.add_cleanup(() => sibling.remove());
+  const requester = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => requester.remove());
+  const child = requester.contentDocument.createElement('iframe');
+  child.name = sibling.name;
+  requester.contentDocument.body.appendChild(child);
+  assert_equals(requester.contentWindow.eval("window.open('', 'bc2-shared-name')"),
+                child.contentWindow, 'caller subtree precedes the rest of the page');
+  child.name = 'bc2-other-name';
+  assert_equals(requester.contentWindow.eval("window.open('', 'bc2-shared-name')"),
+                sibling.contentWindow, 'rest of the page is the fallback');
+}, 'duplicate target names prefer the current subtree');
+</script>

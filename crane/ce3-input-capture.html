@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>capture reflects raw strings and runs reactions synchronously</title>
+<link rel="help" href="https://www.w3.org/TR/html-media-capture/#the-capture-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const input = document.createElement('input');
+  assert_equals(input.capture, '');
+  for (const value of ['user', 'environment', 'USER', 'unknown', '', ' user ']) {
+    input.capture = value;
+    assert_equals(input.getAttribute('capture'), value);
+    assert_equals(input.capture, value);
+  }
+  input.setAttribute('capture', 'CONTENT');
+  assert_equals(input.capture, 'CONTENT');
+  input.removeAttribute('capture');
+  assert_equals(input.capture, '');
+  input.setAttributeNS('urn:test', 'x:capture', 'foreign');
+  assert_equals(input.capture, '');
+}, 'capture reflects the null-namespace content attribute without canonicalizing values');
+test(() => {
+  const log = [];
+  class CaptureInput extends HTMLInputElement {
+    static get observedAttributes() { return ['capture']; }
+    attributeChangedCallback(name, oldValue, newValue, namespace) {
+      log.push([name, oldValue, newValue, namespace]);
+    }
+  }
+  customElements.define('ce3-capture-input', CaptureInput, {extends: 'input'});
+  const input = document.createElement('input', {is: 'ce3-capture-input'});
+  for (const [oldValue, value] of [[null, 'user'], ['user', 'environment'], ['environment', 'invalid'], ['invalid', '']]) {
+    input.capture = value;
+    assert_equals(log.length, 1, 'reaction completed before the setter returned');
+    assert_array_equals(log.pop(), ['capture', oldValue, value, null]);
+  }
+}, 'capture setters run customized built-in attribute reactions before returning');
+</script>

@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom states affect selector matching without computed style</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics-other.html#selector-custom">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+class CE3StateElement extends HTMLElement {
+  constructor() { super(); this.internals = this.attachInternals(); }
+}
+customElements.define('ce3-state-element', CE3StateElement);
+test(t => {
+  const root = document.createElement('section');
+  const first = new CE3StateElement();
+  const second = new CE3StateElement();
+  root.append(first, second);
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  const states = first.internals.states;
+  assert_equals(root.querySelectorAll(':state(ready)').length, 0);
+  states.add('ready');
+  assert_true(first.matches(':state(ready)'));
+  assert_false(first.matches(':state(READY)'));
+  assert_equals(root.querySelector(':state(ready)'), first);
+  assert_equals(root.querySelector(':state(ready) + ce3-state-element'), second);
+  assert_true(root.matches(':has(:state(ready))'));
+  assert_equals(root.querySelector(':nth-child(1 of :state(ready))'), first);
+  states.delete('ready');
+  assert_equals(root.querySelectorAll(':state(ready)').length, 0);
+  states.add('ready');
+  states.clear();
+  assert_false(first.matches(':state(ready)'));
+}, 'Selector matching follows custom state mutations, case and combinators');
+test(() => {
+  const element = new CE3StateElement();
+  element.internals.states.add('ready');
+  assert_array_equals([...element.internals.states], ['ready']);
+}, 'CustomStateSet supplies the setlike iterator');
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+
+const body = document.body;
+const createElement = document.createElement;
+body.insertAdjacentHTML('beforeend', '<div></div>'.repeat(10000));
+const cases = [
+  ['document.body', () => document.body, body],
+  ['document.createElement', () => document.createElement, createElement],
+  ['document.ce3MissingName', () => document.ce3MissingName, undefined]
+];
+for (const [name, read, expected] of cases) {
+  for (let i = 0; i < 1000; ++i) read();
+  let correct = 0;
+  const start = performance.now();
+  for (let i = 0; i < 100000; ++i) if (read() === expected) ++correct;
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(correct, 100000), `${name}: 100000 reads on 10000 elements: ${elapsed.toFixed(3)} ms`);
+}
+</script>

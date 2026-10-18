@@ -10,9 +10,9 @@ promise_test(async () => {
   const entry = performance.getEntriesByName(url)[0];
   assert_equals(entry.serverTiming.length, 2);
   assert_equals(entry.serverTiming, entry.serverTiming);
-  // Integrator ruling, codex-timing3 Q3: flip this pin when generated
-  // result records can transfer ownership of embedded JSValue members.
-  assert_equals(entry.toJSON().serverTiming, undefined);
-  assert_false(Object.hasOwn(JSON.parse(JSON.stringify(entry)), 'serverTiming'));
+  // Returned dictionaries now transfer owned handles to the binding.
+  // The default toJSON includes the Server-Timing array.
+  assert_equals(entry.toJSON().serverTiming.length, 2);
+  assert_true(Object.hasOwn(JSON.parse(JSON.stringify(entry)), 'serverTiming'));
 }, 'Resource JSON omits serverTiming until the binding can release its handle');
 </script>

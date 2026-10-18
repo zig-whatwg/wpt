@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>User Timing measures may end at zero</title>
+<link rel="help" href="https://w3c.github.io/user-timing/#dom-performance-measure">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(t => {
+  t.add_cleanup(() => performance.clearMeasures());
+  t.add_cleanup(() => performance.clearMarks());
+  performance.mark('rt3-later', {startTime: 10});
+  const legacy = performance.measure('rt3-backward', 'rt3-later', 'navigationStart');
+  assert_equals(legacy.duration, -10);
+  assert_equals(legacy.toJSON().duration, -10);
+  assert_equals(performance.measure('rt3-numeric', {start: 10, end: 0}).duration, -10);
+  assert_equals(performance.measure('rt3-before-origin', {duration: 10, end: 0}).duration, 10);
+}, 'A measure ending at the time origin has its signed duration');
+</script>

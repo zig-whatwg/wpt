@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named lookup searches related pages and their frames</title>
+<link rel="help" href="https://html.spec.whatwg.org/#find-a-navigable-by-target-name">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const page = window.open('', 'bc2-group-page');
+  const frame = page.document.createElement('iframe');
+  frame.name = 'bc2-group-frame-target';
+  page.document.body.appendChild(frame);
+  let found;
+  t.add_cleanup(() => {
+    if (found && found !== frame.contentWindow) found.close();
+    frame.remove();
+    page.close();
+  });
+  found = window.open('', 'bc2-group-frame-target');
+  assert_equals(found, frame.contentWindow);
+}, 'a target name can identify a frame in another related top-level page');
+
+promise_test(async t => {
+  const page = window.open('', 'bc2-disowned-page');
+  const target = window.open('', 'bc2-disowned-target');
+  target.bc2Identifier = 'related-target';
+  page.bc2Harness = window;
+  page.opener = null;
+  const frame = page.document.createElement('iframe');
+  const result = new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (e.source !== frame.contentWindow || e.data.kind !== 'bc2-disowned-result') return;
+      window.removeEventListener('message', receive);
+      resolve(e.data.value);
+    });
+    window.addEventListener('message', receive);
+    t.add_cleanup(() => window.removeEventListener('message', receive));
+  });
+  t.add_cleanup(() => {
+    const found = frame.contentWindow.bc2Found;
+    if (found && found !== target) found.close();
+    target.close();
+    frame.remove();
+    page.close();
+  });
+  frame.srcdoc = `<script>
+    setTimeout(() => {
+      window.bc2Found = window.open('', 'bc2-disowned-target');
+      parent.bc2Harness.postMessage({kind: 'bc2-disowned-result', value: window.bc2Found.bc2Identifier}, '*');
+    }, 0);
+  <\/script>`;
+  page.document.body.appendChild(frame);
+  assert_equals(await result, 'related-target');
+}, 'disowning an opener preserves named lookup within the same browsing context group');
+</script>

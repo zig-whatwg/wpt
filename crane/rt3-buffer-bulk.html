@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Bulk secondary Resource Timing entries retain order</title>
+<link rel="help" href="https://w3c.github.io/resource-timing/#dfn-copy-secondary-buffer">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  t.add_cleanup(() => performance.setResourceTimingBufferSize(250));
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(0);
+  const xhr = new XMLHttpRequest();
+  for (let i = 0; i < 1000; ++i) {
+    xhr.open('GET', '/common/blank.html?rt3-bulk=' + i, false);
+    xhr.send();
+    assert_equals(xhr.status, 200);
+  }
+  assert_equals(performance.getEntriesByType('resource').length, 0);
+  TestUtils.gc();
+  performance.setResourceTimingBufferSize(1000);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const entries = performance.getEntriesByType('resource');
+  assert_equals(entries.length, 1000);
+  for (let i = 0; i < entries.length; ++i) {
+    assert_true(entries[i].name.endsWith('rt3-bulk=' + i), 'entry ' + i + ' keeps its place');
+  }
+}, 'A large secondary buffer survives collection and moves into the primary buffer in order');
+</script>

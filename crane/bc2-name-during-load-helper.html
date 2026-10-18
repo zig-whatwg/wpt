@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Named popup load callback helper</title>
+<script>
+const params = new URLSearchParams(location.search);
+if (params.has("done")) {
+  opener.postMessage(params.get("done"), "*");
+} else {
+  addEventListener(params.get("event"), () => opener.bc2RetargetDuringLoad(), {once: true});
+}
+</script>
+<img src="/common/slow.py">

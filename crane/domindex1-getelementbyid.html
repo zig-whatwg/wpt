@@ -1,0 +1,126 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>getElementById answers from the tree scope's ID map through every mutation</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-nonelementparentnode-getelementbyid">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function container(t) {
+  const root = document.createElement("section");
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+function withId(tag, id) {
+  const element = document.createElement(tag);
+  element.id = id;
+  return element;
+}
+
+test(t => {
+  const root = container(t);
+  const second = withId("span", "dx1-dup");
+  root.append(second);
+  assert_equals(document.getElementById("dx1-dup"), second);
+  const first = withId("div", "dx1-dup");
+  root.prepend(first);
+  assert_equals(document.getElementById("dx1-dup"), first, "an earlier duplicate wins");
+  first.remove();
+  assert_equals(document.getElementById("dx1-dup"), second, "the later one after the first's removal");
+  root.append(first);
+  assert_equals(document.getElementById("dx1-dup"), second, "appended after it");
+  root.moveBefore(first, second);
+  assert_equals(document.getElementById("dx1-dup"), first, "moved before it");
+  first.id = "dx1-other";
+  assert_equals(document.getElementById("dx1-dup"), second, "renamed away");
+  assert_equals(document.getElementById("dx1-other"), first);
+  first.removeAttribute("id");
+  assert_equals(document.getElementById("dx1-other"), null);
+  second.setAttribute("id", "");
+  assert_equals(document.getElementById("dx1-dup"), null, "an empty ID is no ID");
+}, "Duplicates resolve in tree order through insertion, removal, moves and ID changes");
+
+test(t => {
+  const root = container(t);
+  const outer = document.createElement("div");
+  outer.innerHTML = "<p id=dx1-a><b id=dx1-b></b></p><i id=dx1-c></i>";
+  assert_equals(document.getElementById("dx1-b"), null, "a detached subtree is not in the document");
+  root.append(outer);
+  assert_equals(document.getElementById("dx1-b"), outer.querySelector("b"));
+  const copy = outer.cloneNode(true);
+  root.prepend(copy);
+  assert_equals(document.getElementById("dx1-c"), copy.querySelector("i"), "a clone inserted first");
+  copy.remove();
+  assert_equals(document.getElementById("dx1-c"), outer.querySelector("i"));
+  outer.innerHTML = "";
+  assert_equals(document.getElementById("dx1-a"), null, "replace-all removes their IDs");
+  root.replaceChildren(withId("u", "dx1-a"));
+  assert_equals(document.getElementById("dx1-a").localName, "u");
+}, "Subtrees join and leave the map with innerHTML, cloning and replaceChildren");
+
+test(t => {
+  const root = container(t);
+  const host = document.createElement("div");
+  root.append(host);
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = "<p id=dx1-shadow></p>";
+  const inner = shadow.firstChild;
+  assert_equals(document.getElementById("dx1-shadow"), null, "not the document's");
+  assert_equals(shadow.getElementById("dx1-shadow"), inner, "the shadow root's");
+  host.remove();
+  assert_equals(shadow.getElementById("dx1-shadow"), inner, "with its host disconnected");
+  root.append(host);
+  root.moveBefore(inner, null);
+  assert_equals(document.getElementById("dx1-shadow"), inner, "moved into the document tree");
+  assert_equals(shadow.getElementById("dx1-shadow"), null);
+  shadow.moveBefore(inner, null);
+  assert_equals(shadow.getElementById("dx1-shadow"), inner, "and back");
+  assert_equals(document.getElementById("dx1-shadow"), null);
+  const detached = document.createElement("div").attachShadow({ mode: "closed" });
+  detached.append(withId("p", "dx1-detached"));
+  assert_equals(detached.getElementById("dx1-detached").localName, "p", "a disconnected shadow root's own map");
+  const fragment = document.createDocumentFragment();
+  fragment.append(withId("p", "dx1-fragment"));
+  assert_equals(fragment.getElementById("dx1-fragment").localName, "p", "a fragment is walked");
+}, "Each shadow root keeps its own tree's IDs");
+
+test(t => {
+  const root = container(t);
+  const other = document.implementation.createHTMLDocument("");
+  const element = withId("div", "dx1-adopted");
+  root.append(element);
+  other.adoptNode(element);
+  assert_equals(document.getElementById("dx1-adopted"), null, "adoption removes it");
+  assert_equals(other.getElementById("dx1-adopted"), null, "not yet inserted");
+  other.body.append(element);
+  assert_equals(other.getElementById("dx1-adopted"), element);
+  root.append(element);
+  assert_equals(other.getElementById("dx1-adopted"), null);
+  assert_equals(document.getElementById("dx1-adopted"), element);
+}, "Adoption moves an element's ID between documents' maps");
+
+test(t => {
+  const root = container(t);
+  const form = withId("form", "dx1-owner");
+  const holder = document.createElement("div");
+  holder.append(form);
+  root.append(holder);
+  const input = document.createElement("input");
+  input.setAttribute("form", "dx1-owner");
+  root.append(input);
+  assert_equals(input.form, form, "owned through the form attribute");
+  holder.remove();
+  assert_equals(input.form, null, "the form's removal resets its owner: its ID left the tree");
+  root.append(holder);
+  assert_equals(input.form, form, "and its reinsertion");
+  const earlier = withId("form", "dx1-owner");
+  root.prepend(earlier);
+  assert_equals(input.form, earlier, "an earlier form with the ID");
+  earlier.remove();
+  assert_equals(input.form, form, "the later one once the earlier leaves");
+  form.id = "dx1-renamed";
+  assert_equals(input.form, null, "the form's ID changed");
+}, "A form attribute's owner follows the ID map at removal, before the removing steps");
+</script>

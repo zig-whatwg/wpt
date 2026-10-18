@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>A 500-control form retains values after repeated setters</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const form = document.createElement('form');
+document.body.appendChild(form);
+const controls = [];
+const buildStart = performance.now();
+for (let i = 0; i < 500; ++i) {
+  const input = document.createElement('input');
+  input.name = 'field' + i;
+  form.appendChild(input);
+  controls.push(input);
+}
+const buildElapsed = performance.now() - buildStart;
+const values = ['first value', 'second value'];
+for (let round = 0; round < 2; ++round) {
+  for (const control of controls) control.value = values[round & 1];
+}
+const setStart = performance.now();
+for (let round = 0; round < 200; ++round) {
+  for (const control of controls) control.value = values[round & 1];
+}
+const setElapsed = performance.now() - setStart;
+test(() => assert_equals(form.elements.length, 500),
+     `Build 500 controls: ${buildElapsed.toFixed(3)} ms`);
+test(() => {
+  for (const control of controls) assert_equals(control.value, values[1]);
+}, `100000 value setters: ${setElapsed.toFixed(3)} ms`);
+</script>

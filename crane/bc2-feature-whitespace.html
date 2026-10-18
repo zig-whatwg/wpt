@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Window features use Infra ASCII whitespace</title>
+<link rel="help" href="https://html.spec.whatwg.org/#concept-window-open-features-tokenize">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  frame.name = 'bc2-feature-target';
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  for (const features of ['noopener\v', 'noopener=\v1', 'noreferrer\v', 'noreferrer=\v1']) {
+    assert_equals(window.open('', frame.name, features), frame.contentWindow,
+                  JSON.stringify(features) + ' does not enable noopener');
+  }
+  for (const separator of ['\t', '\n', '\f', '\r', ' ']) {
+    assert_equals(window.open('', frame.name, 'noopener' + separator + '=1'), null,
+                  JSON.stringify(separator) + ' is an ASCII whitespace separator');
+  }
+}, 'vertical tab is neither a feature separator nor integer-leading whitespace');
+</script>

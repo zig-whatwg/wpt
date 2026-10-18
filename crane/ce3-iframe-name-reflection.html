@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>iframe name reflection and creation-time target name</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(() => {
+  const frame = document.createElement('iframe');
+  assert_equals(frame.name, '');
+  for (const value of ['', 'first', ' spaced ', 'UPPER', 'a\u0000b']) {
+    frame.name = value;
+    assert_equals(frame.getAttributeNS(null, 'name'), value);
+    assert_equals(frame.name, value);
+    frame.setAttribute('name', value + ' attribute');
+    assert_equals(frame.name, value + ' attribute');
+  }
+  frame.removeAttribute('name');
+  assert_equals(frame.name, '');
+  frame.setAttributeNS('urn:ce3', 'x:name', 'namespaced');
+  assert_equals(frame.name, '');
+}, 'iframe.name reflects raw strings in the null namespace and removal');
+
+test(t => {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('name', 'ce3_initial');
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  assert_equals(frame.contentWindow.name, 'ce3_initial');
+}, 'A newly created iframe navigable gets its name from the content attribute');
+
+test(t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  frame.contentWindow.name = 'ce3_window_name';
+  frame.name = 'ce3_element_name';
+  assert_equals(frame.contentWindow.name, 'ce3_window_name');
+  frame.setAttribute('name', 'ce3_attribute_name');
+  assert_equals(frame.contentWindow.name, 'ce3_window_name');
+  frame.removeAttribute('name');
+  assert_equals(frame.contentWindow.name, 'ce3_window_name');
+}, 'Changing iframe name after creation preserves the navigable target name');
+
+test(t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  frame.name = 'ce3_after_reinsert';
+  frame.remove();
+  document.body.appendChild(frame);
+  assert_equals(frame.contentWindow.name, 'ce3_after_reinsert');
+}, 'Reinserting an iframe initializes the new navigable from its current name');
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Non-null opener assignment replaces the accessor</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-opener">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.body.appendChild(document.createElement('iframe'));
+  t.add_cleanup(() => frame.remove());
+  const win = frame.contentWindow;
+  const original = Object.getOwnPropertyDescriptor(win, 'opener');
+  win.opener = 'replacement';
+  assert_equals(win.opener, 'replacement', 'non-null value replaces the accessor');
+  const descriptor = Object.getOwnPropertyDescriptor(win, 'opener');
+  assert_equals(descriptor.value, 'replacement');
+  assert_true(descriptor.writable);
+  assert_true(descriptor.enumerable);
+  assert_true(descriptor.configurable);
+  assert_equals(original.get.call(win), null, 'native opener relationship is unchanged');
+  original.set.call(win, {marker: 58});
+  if (typeof TestUtils !== 'undefined') TestUtils.gc();
+  assert_equals(win.opener.marker, 58, 'the data property keeps its value alive');
+  Object.defineProperty(win, 'opener', {configurable: false});
+  assert_throws_js(frame.contentWindow.TypeError, () => original.set.call(win, 17));
+}, 'opener replacement preserves native relationship and property semantics');
+</script>

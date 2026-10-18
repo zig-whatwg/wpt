@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.open preserves completed navigation timestamps</title>
+<link rel="help" href="https://w3c.github.io/navigation-timing/#sec-PerformanceNavigationTiming">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  let loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = '/navigation-timing/resources/blank_page_yellow.html';
+  document.body.append(frame);
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 20));
+  const p = frame.contentWindow.performance;
+  const entry = p.getEntriesByType('navigation')[0];
+  assert_true(!!entry, 'navigation entry exists');
+  const names = ['domInteractive', 'domContentLoadedEventStart',
+    'domContentLoadedEventEnd', 'domComplete', 'loadEventStart', 'loadEventEnd'];
+  const original = names.map(name => entry[name]);
+  const legacy = names.map(name => p.timing[name]);
+  const duration = entry.duration;
+  assert_greater_than(entry.loadEventEnd, 0, 'initial navigation completed');
+  for (let round = 0; round < 2; round++) {
+    loaded = new Promise(resolve => frame.onload = resolve);
+    const doc = frame.contentDocument;
+    doc.open();
+    doc.write('<!doctype html><title>replacement</title><p>new content</p>');
+    doc.close();
+    await loaded;
+    await new Promise(resolve => t.step_timeout(resolve, 20));
+    assert_equals(p.getEntriesByType('navigation')[0], entry, 'entry identity');
+    assert_array_equals(names.map(name => entry[name]), original, 'navigation times');
+    assert_array_equals(names.map(name => p.timing[name]), legacy, 'legacy times');
+    assert_equals(entry.duration, duration, 'duration');
+  }
+}, 'Reopening a completed document leaves its navigation timestamps unchanged');
+</script>

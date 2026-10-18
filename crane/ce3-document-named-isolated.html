@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document named getter exposes an image with a name and id</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-document-nameditem">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const img = document.createElement('img');
+  img.id = 'ce3ImageId';
+  img.name = 'ce3ImageName';
+  document.body.append(img);
+  t.add_cleanup(() => img.remove());
+  assert_equals(document.ce3ImageId, img);
+  assert_equals(document.ce3ImageName, img);
+}, 'Document named getter exposes an image by id and name');
+</script>

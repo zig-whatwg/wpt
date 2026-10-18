@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Autocomplete IDL serialization uses the whole autofill token algorithm</title>
+<link rel="help" href="https://html.spec.whatwg.org/#autofill-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const cases = [
+    [' \tON\r\n', 'on'], ['\foFF ', 'off'], ['WEBAUTHN', 'webauthn'],
+    [' HOME\ntel', 'home tel'], ['shipping   country', 'shipping country'],
+    ['billing  work EMAIL', 'billing work email'], ['section- bday', 'section- bday'],
+    ['  section-LOGIN shipping work tel webauthn ', 'section-login shipping work tel webauthn'],
+    ['username webauthn', 'username webauthn'], ['home country', ''],
+    ['webauthn username', ''], ['on webauthn', ''], ['section-foo webauthn', ''],
+    ['foo section-bar billing work tel webauthn', ''], ['call-sign', ''],
+    ['name\u00a0', ''], ['', ''], [' \t\r\n\f', ''],
+  ];
+  // Select's caller is covered by the separately integrated autocomplete patch.
+  for (const tag of ['input', 'textarea']) {
+    const control = document.createElement(tag);
+    for (const [value, expected] of cases) {
+      control.setAttribute('autocomplete', value);
+      assert_equals(control.autocomplete, expected, tag + ': ' + JSON.stringify(value));
+      assert_equals(control.getAttribute('autocomplete'), value, 'content attribute is unchanged');
+    }
+    const long = 'SECTION-' + 'A'.repeat(600) + ' NAME';
+    control.autocomplete = long;
+    assert_equals(control.autocomplete, long.toLowerCase(), 'section token has no arbitrary length limit');
+  }
+  const input = document.createElement('input');
+  for (const value of ['on', 'off', ' \tON ']) {
+    input.type = 'text';
+    input.autocomplete = value;
+    assert_equals(input.autocomplete, value.trim().toLowerCase());
+    input.type = 'hidden';
+    assert_equals(input.autocomplete, '', 'anchor mantle rejects on/off');
+  }
+  input.autocomplete = 'section-ID username webauthn';
+  assert_equals(input.autocomplete, 'section-id username webauthn');
+}, 'Autocomplete normalizes valid expansions and rejects invalid grammar');
+</script>

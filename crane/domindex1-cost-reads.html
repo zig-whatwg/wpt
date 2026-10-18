@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Read cost: getElementById and named property reads on a 10,000-element document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+"use strict";
+// 10,000 elements: every div has an ID, every tenth element is a named form.
+const markup = [];
+for (let i = 0; i < 10000; i++) {
+  markup.push(i % 10 === 0 ? '<form name="form' + i + '"></form>' : '<div id="e' + i + '"></div>');
+}
+document.body.insertAdjacentHTML("beforeend", markup.join(""));
+const body = document.body;
+const createElement = document.createElement;
+const target = document.getElementById("e9999");
+const form = document.querySelector('form[name="form5000"]');
+const cases = [
+  ["document.body", () => document.body, body],
+  ["document.createElement", () => document.createElement, createElement],
+  ["document.<named form>", () => document.form5000, form],
+  ["document.<missing name>", () => document.dx1MissingName, undefined],
+  ["getElementById hit", () => document.getElementById("e9999"), target],
+  ["getElementById miss", () => document.getElementById("missing"), null],
+  ["window.<id>", () => window.e9999, target],
+];
+// 100,000 reads each - or as many as fit in 8 s, for a reader that walks
+// the document on every read: the per-read time is the comparison.
+for (const [name, read, expected] of cases) {
+  for (let i = 0; i < 100; ++i) read();
+  let correct = 0;
+  let reads = 0;
+  const start = performance.now();
+  let elapsed = 0;
+  while (reads < 100000) {
+    for (let i = 0; i < 1000; ++i) if (read() === expected) ++correct;
+    reads += 1000;
+    elapsed = performance.now() - start;
+    if (elapsed > 8000) break;
+  }
+  test(() => assert_equals(correct, reads), name + ": " + reads + " reads on 10000 elements: " + elapsed.toFixed(3) + " ms, " + (elapsed * 1000 / reads).toFixed(3) + " us/read");
+}
+</script>

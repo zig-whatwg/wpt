@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Familiarity target page</title>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+const params = new URLSearchParams(location.search);
+const mode = params.get('mode');
+const token = params.get('token');
+const target = params.get('target');
+function ready() {
+  opener.postMessage({kind: 'bc2-familiar-ready', token}, '*');
+}
+if (mode === 'find-top') {
+  setTimeout(() => {
+    const found = window.open('', target);
+    parent.postMessage({kind: 'bc2-familiar-top', token, same: found === top}, '*');
+    if (found && found !== top) found.close();
+  }, 0);
+} else if (mode === 'child-ready') {
+  parent.postMessage({kind: 'bc2-familiar-child', token}, '*');
+} else if (mode === 'top') {
+  ready();
+} else {
+  const frame = document.createElement('iframe');
+  frame.name = target;
+  if (mode === 'foreign-child') {
+    const url = new URL('/crane/bc2-name-familiarity-helper.html', get_host_info().HTTP_REMOTE_ORIGIN);
+    url.search = new URLSearchParams({mode: 'child-ready', token, target});
+    window.addEventListener('message', function receive(e) {
+      if (e.source !== frame.contentWindow || e.data.kind !== 'bc2-familiar-child' || e.data.token !== token) return;
+      window.removeEventListener('message', receive);
+      ready();
+    });
+    frame.src = url.href;
+  }
+  document.body.appendChild(frame);
+  if (mode === 'initial-child') ready();
+}
+</script>
