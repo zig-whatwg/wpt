@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>adoptedStyleSheets cost: 500 shadow roots adopting a sheet, style read after each sheet change (lane style4)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The engine keeps the shadow roots that set adoptedStyleSheets in its
+// lazily made rare state, and walks them whenever it rebuilds the active
+// sheets. Times in the result names.
+const sheet = new CSSStyleSheet();
+sheet.replaceSync(".x { color: rgb(1, 2, 3); }");
+const targets = [];
+let start = performance.now();
+for (let i = 0; i < 500; i++) {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = host.attachShadow({ mode: "open" });
+  root.adoptedStyleSheets = [sheet];
+  const target = document.createElement("span");
+  target.className = "x";
+  root.appendChild(target);
+  targets.push(target);
+}
+const adopted = performance.now() - start;
+start = performance.now();
+let n = 0;
+for (let round = 0; round < 20; round++) {
+  sheet.replaceSync(".x { color: rgb(" + round + ", 2, 3); }");
+  for (const t of targets) n += getComputedStyle(t).color.length;
+}
+const read = performance.now() - start;
+test(() => assert_true(n > 0), "500 adopting shadow roots: " + adopted.toFixed(3) + " ms; 20 sheet changes, each read in every root: " + read.toFixed(3) + " ms");
+</script>
+</body>

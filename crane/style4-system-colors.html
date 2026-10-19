@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>System colors follow the element color scheme (lane style4)</title>
+<link rel=help href="https://drafts.csswg.org/css-color-4/#css-system-colors">
+<link rel=help href="https://drafts.csswg.org/css-color-adjust-1/#color-scheme-effect">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<div id=host></div>
+<a id=link href="#x">link</a>
+<mark id=marked>mark</mark>
+<script>
+// The dark values: per keyword, the value two of Chrome 151, Firefox 144
+// and Safari 27.0.1 share, else Chrome's (lane style4 probe; see
+// src/css/values/color.zig). The light ones are Crane's existing palette.
+// Crane's preferred color scheme is light.
+const palette = {
+  CanvasText: ["rgb(0, 0, 0)", "rgb(255, 255, 255)"],
+  Canvas: ["rgb(255, 255, 255)", "rgb(18, 18, 18)"],
+  LinkText: ["rgb(0, 0, 238)", "rgb(158, 158, 255)"],
+  VisitedText: ["rgb(85, 26, 139)", "rgb(208, 173, 240)"],
+  ActiveText: ["rgb(255, 0, 0)", "rgb(255, 0, 0)"],
+  ButtonBorder: ["rgb(118, 118, 118)", "rgb(255, 255, 255)"],
+  ButtonFace: ["rgb(239, 239, 239)", "rgb(107, 107, 107)"],
+  ButtonText: ["rgb(0, 0, 0)", "rgb(255, 255, 255)"],
+  Field: ["rgb(255, 255, 255)", "rgb(59, 59, 59)"],
+  FieldText: ["rgb(0, 0, 0)", "rgb(255, 255, 255)"],
+  GrayText: ["rgb(128, 128, 128)", "rgb(128, 128, 128)"],
+  Highlight: ["rgb(25, 103, 210)", "rgb(25, 103, 210)"],
+  HighlightText: ["rgb(255, 255, 255)", "rgb(0, 0, 0)"],
+  SelectedItem: ["rgb(25, 103, 210)", "rgb(153, 200, 255)"],
+  SelectedItemText: ["rgb(255, 255, 255)", "rgb(59, 59, 59)"],
+  Mark: ["rgb(255, 255, 0)", "rgb(255, 255, 0)"],
+  MarkText: ["rgb(0, 0, 0)", "rgb(0, 0, 0)"],
+  Menu: ["rgb(255, 255, 255)", "rgb(18, 18, 18)"],
+  WindowText: ["rgb(0, 0, 0)", "rgb(255, 255, 255)"],
+};
+function styled(css, parent = host) {
+  const e = document.createElement("div");
+  e.setAttribute("style", css);
+  parent.appendChild(e);
+  return e;
+}
+for (const [name, [light, dark]] of Object.entries(palette)) {
+  test(() => {
+    const l = styled("color-scheme: only light; color: " + name);
+    const d = styled("color-scheme: only dark; color: " + name);
+    assert_equals(getComputedStyle(l).color, light, "light");
+    assert_equals(getComputedStyle(d).color, dark, "dark");
+    assert_equals(d.style.color, name.toLowerCase(), "the declared value is the keyword, lowercase");
+    l.remove(); d.remove();
+  }, name);
+}
+
+test(() => {
+  const p = styled("color-scheme: only light; color: CanvasText");
+  const c = styled("color-scheme: only dark", p);
+  assert_equals(getComputedStyle(c).color, "rgb(0, 0, 0)");
+  p.remove();
+}, "an inherited system color is the parent's resolved color");
+
+test(() => {
+  const i = styled("color-scheme: only dark; color: initial");
+  assert_equals(getComputedStyle(i).color, "rgb(255, 255, 255)", "color: initial is CanvasText in the element's scheme");
+  const u = styled("color-scheme: only dark");
+  assert_equals(getComputedStyle(u).color, "rgb(0, 0, 0)", "no color declaration inherits");
+  const b = styled("color-scheme: only dark; color: CanvasText; border-top: 1px solid; background-color: Canvas");
+  assert_equals(getComputedStyle(b).borderTopColor, "rgb(255, 255, 255)", "currentcolor");
+  assert_equals(getComputedStyle(b).backgroundColor, "rgb(18, 18, 18)", "background-color");
+  i.remove(); u.remove(); b.remove();
+}, "color's initial value, inheritance and currentcolor under a dark scheme");
+
+test(() => {
+  const cases = [["foo", "rgb(0, 0, 0)"], ["foo dark", "rgb(255, 255, 255)"], ["light dark", "rgb(0, 0, 0)"],
+                 ["dark light", "rgb(0, 0, 0)"], ["dark", "rgb(255, 255, 255)"], ["only dark light", "rgb(0, 0, 0)"], ["normal", "rgb(0, 0, 0)"]];
+  for (const [scheme, expected] of cases) {
+    const e = styled("color-scheme: " + scheme + "; color: CanvasText");
+    assert_equals(getComputedStyle(e).color, expected, scheme);
+    e.remove();
+  }
+}, "the used color scheme of a color-scheme list, with a light preference");
+
+test(() => {
+  host.style.colorScheme = "dark";
+  try {
+    const l = document.createElement("a");
+    l.href = "#y";
+    host.appendChild(l);
+    assert_equals(getComputedStyle(l).color, "rgb(158, 158, 255)", "the UA sheet's LinkText");
+    const m = document.createElement("mark");
+    host.appendChild(m);
+    assert_equals(getComputedStyle(m).backgroundColor, "rgb(255, 255, 0)", "the UA sheet's Mark");
+    assert_equals(getComputedStyle(link).color, "rgb(0, 0, 238)", "a link outside it stays light");
+  } finally {
+    host.style.colorScheme = "";
+    host.textContent = "";
+  }
+}, "the UA style sheet's system colors follow the element's scheme");
+</script>

@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>color-scheme: CSSOM access, computed value, inheritance (lane style4)</title>
+<link rel=help href="https://drafts.csswg.org/css-color-adjust-1/#color-scheme-prop">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<div id=outer><div id=inner></div></div>
+<script>
+// Expectations measured in Chrome 151, Firefox 144 and Safari 27.0.1
+// (lane style4 probe): all three serialize `only` last and keep a custom
+// ident's case.
+test(() => {
+  assert_equals(getComputedStyle(document.documentElement).colorScheme, "normal");
+  assert_equals(getComputedStyle(outer).getPropertyValue("color-scheme"), "normal");
+}, "the initial value is normal");
+
+test(() => {
+  outer.style.colorScheme = "only dark light";
+  assert_equals(outer.style.colorScheme, "dark light only");
+  assert_equals(outer.style.getPropertyValue("color-scheme"), "dark light only");
+  assert_equals(getComputedStyle(outer).colorScheme, "dark light only");
+  outer.style.colorScheme = "light only dark";
+  assert_equals(outer.style.colorScheme, "dark light only", "an invalid value is ignored");
+  outer.style.removeProperty("color-scheme");
+  assert_equals(outer.style.colorScheme, "");
+}, "style.colorScheme and getComputedStyle().colorScheme");
+
+test(() => {
+  outer.style.setProperty("color-scheme", "Purple LIGHT");
+  assert_equals(outer.style.colorScheme, "Purple light");
+  assert_equals(getComputedStyle(inner).colorScheme, "Purple light", "inherited");
+  inner.style.colorScheme = "initial";
+  assert_equals(getComputedStyle(inner).colorScheme, "normal");
+  inner.style.colorScheme = "";
+  outer.style.colorScheme = "";
+}, "a custom ident keeps its case; the property is inherited");
+
+test(() => {
+  assert_true(CSS.supports("color-scheme", "light dark"));
+  assert_true(CSS.supports("color-scheme: only dark"));
+  assert_false(CSS.supports("color-scheme", "light, dark"));
+}, "CSS.supports knows color-scheme");
+</script>

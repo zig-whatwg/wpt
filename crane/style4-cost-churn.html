@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>DOM churn cost: 10,000 non-meta elements inserted and removed (lane style4)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Every inserted or removed node pays each registered post-connection and
+// removing step's brand check; none of these is a meta element. Identical
+// inputs before and after; the times are in the result names.
+const kinds = ["div", "span", "p", "a", "section"];
+function make(i) { const e = document.createElement(kinds[i % kinds.length]); if (i % 3 == 0) e.className = "c" + (i % 7); return e; }
+{
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const elements = [];
+  for (let i = 0; i < 10000; i++) elements.push(make(i));
+  for (const e of elements) parent.appendChild(e);
+  for (const e of elements) e.remove();
+  const start = performance.now();
+  for (let round = 0; round < 10; round++) {
+    for (const e of elements) parent.appendChild(e);
+    for (const e of elements) e.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(parent.childNodes.length, 0), "10,000 elements, 10 rounds of single inserts and removals: " + elapsed.toFixed(3) + " ms");
+  parent.remove();
+}
+{
+  // One subtree of 10,000 elements (100 x 100): each insertion runs the
+  // post-connection steps over every descendant, each removal the removing
+  // steps.
+  const root = document.createElement("div");
+  for (let i = 0; i < 100; i++) {
+    const branch = make(i);
+    for (let j = 0; j < 99; j++) branch.appendChild(make(j));
+    root.appendChild(branch);
+  }
+  document.body.append(root);
+  root.remove();
+  const start = performance.now();
+  for (let round = 0; round < 20; round++) {
+    document.body.append(root);
+    root.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_false(root.isConnected), "a 10,000-element subtree, 20 rounds of insert and remove: " + elapsed.toFixed(3) + " ms");
+}
+</script>
+</body>

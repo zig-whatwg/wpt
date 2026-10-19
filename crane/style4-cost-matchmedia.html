@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>matchMedia cost: lists made, listened to and reported on each rendering update (lane style4)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The engine keeps a document's MediaQueryList objects (CSSOM View 4.2) in
+// its lazily made rare state; every rendering update reports changes to
+// them. Times in the result names.
+const queries = ["(min-width: 100px)", "(max-width: 2000px)", "(prefers-color-scheme: dark)", "(orientation: landscape)"];
+const lists = [];
+let start = performance.now();
+for (let i = 0; i < 2000; i++) {
+  const list = matchMedia(queries[i % queries.length]);
+  list.addEventListener("change", () => {});
+  lists.push(list);
+}
+const made = performance.now() - start;
+start = performance.now();
+let n = 0;
+for (let i = 0; i < 10000; i++) n += matchMedia(queries[i % queries.length]).matches ? 1 : 0;
+const queried = performance.now() - start;
+promise_test(async () => {
+  const frames = 60;
+  const t0 = performance.now();
+  for (let i = 0; i < frames; i++) await new Promise(resolve => requestAnimationFrame(resolve));
+  const framed = performance.now() - t0;
+  assert_equals(lists.length, 2000);
+  assert_true(n >= 0);
+  // The frame pacing dominates this one; the two loops above are the cost.
+  test(() => {}, "2,000 listened lists made: " + made.toFixed(3) + " ms; 10,000 matchMedia().matches: " + queried.toFixed(3) + " ms; 60 frames: " + framed.toFixed(3) + " ms");
+}, "matchMedia lists");
+</script>
+</body>

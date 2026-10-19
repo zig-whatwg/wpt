@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The default-style pragma enables a style sheet set in its post-connection steps (lane style4)</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-default-style">
+<link rel=help href="https://drafts.csswg.org/cssom/#change-the-preferred-css-style-sheet-set-name">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<link id=alt rel="alternate stylesheet" title="alternative" href="data:text/css,%23div{display:none}">
+<link id=other rel="alternate stylesheet" title="other" href="data:text/css,%23div{display:inline}">
+<div id="div">hello</div>
+<script>
+// dom/nodes/insertion-removing-steps/Node-appendChild-script-and-default-style-meta-from-fragment.html
+// after the alternate sheets have loaded: that file reads them at its
+// inline script, when only Chrome (which loads data: URLs synchronously)
+// has them. Once loaded, Chrome 151 and Safari 27.0.1 show the earlier
+// script the old style and the later one the new (Firefox 144 shows the new
+// one to both): the pragma runs in the post-connection steps (lane style4
+// probe).
+promise_test(async () => {
+  await new Promise(resolve => window.addEventListener("load", resolve));
+  assert_not_equals(alt.sheet, null, "the alternate sheet loaded");
+  assert_equals(getComputedStyle(div).display, "block", "an alternate sheet is not applied");
+  window.pre = window.post = null;
+  const preScript = document.createElement("script");
+  preScript.textContent = "window.pre = getComputedStyle(div).display;";
+  const meta = document.createElement("meta");
+  meta.httpEquiv = "default-style";
+  meta.content = "alternative";
+  const postScript = document.createElement("script");
+  postScript.textContent = "window.post = getComputedStyle(div).display;";
+  const fragment = document.createDocumentFragment();
+  fragment.append(preScript, meta, postScript);
+  document.head.appendChild(fragment);
+  assert_equals(window.pre, "block", "a script inserted before the meta");
+  assert_equals(window.post, "none", "a script inserted after it");
+  assert_equals(getComputedStyle(div).display, "none", "after the insertion");
+  assert_false(alt.sheet.disabled, "the sheet's disabled flag is not the set's (Chrome and Safari)");
+
+  // Blink's HTMLMetaElement::ParseAttribute and WebKit's attributeChanged
+  // process a connected pragma's content change again.
+  meta.content = "other";
+  assert_equals(getComputedStyle(div).display, "inline", "the content changed");
+  // The pragma's name stays when its meta goes (it ran at insertion).
+  meta.remove();
+  assert_equals(getComputedStyle(div).display, "inline", "after the meta's removal");
+}, "default-style changes the preferred CSS style sheet set name");
+</script>

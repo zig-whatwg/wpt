@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The page's supported color schemes: candidates, content and phase (lane style4)</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/semantics.html#meta-color-scheme">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+// Expectations measured in Chrome 151, Firefox 144 and Safari 27.0.1 (lane
+// style4 probe); where they split, the majority. Crane's preferred scheme
+// is light, so a page that supports dark only is dark.
+const LIGHT = "rgb(0, 0, 0)", DARK = "rgb(255, 255, 255)";
+const root = () => getComputedStyle(document.documentElement).color;
+function meta(content, name = "color-scheme") {
+  const m = document.createElement("meta");
+  m.setAttribute("name", name);
+  if (content !== null) m.setAttribute("content", content);
+  return m;
+}
+function withMetas(metas, f) {
+  document.head.append(...metas);
+  try { f(); } finally { for (const m of metas) m.remove(); }
+}
+
+test(() => assert_equals(root(), LIGHT), "no meta: the UA default, light");
+
+test(() => {
+  withMetas([meta("  dark  ", "COLOR-SCHEME")], () => assert_equals(root(), DARK));
+  withMetas([meta("dark !important")], () => assert_equals(root(), LIGHT));
+  withMetas([meta("normal"), meta("dark")], () => assert_equals(root(), LIGHT, "normal is valid, and first"));
+  withMetas([meta("light,dark"), meta("dark")], () => assert_equals(root(), DARK, "an invalid one is skipped"));
+}, "the name matches case-insensitively; the content is a whole color-scheme value");
+
+test(() => {
+  withMetas([meta("inherit"), meta("dark")], () => assert_equals(root(), DARK));
+}, "a CSS-wide keyword is no color-scheme value (Firefox and Safari)");
+
+test(() => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "meta");
+  svg.setAttribute("name", "color-scheme");
+  svg.setAttribute("content", "dark");
+  withMetas([svg], () => assert_equals(root(), LIGHT));
+}, "an SVG meta element is not a candidate");
+
+test(() => {
+  window.before = window.after = null;
+  const s1 = document.createElement("script");
+  s1.textContent = "window.before = getComputedStyle(document.documentElement).color;";
+  const m = meta("dark");
+  const s2 = document.createElement("script");
+  s2.textContent = "window.after = getComputedStyle(document.documentElement).color;";
+  const fragment = document.createDocumentFragment();
+  fragment.append(s1, m, s2);
+  document.head.appendChild(fragment);
+  try {
+    assert_equals(window.before, LIGHT, "a script inserted before the meta");
+    assert_equals(window.after, DARK, "a script inserted after it");
+    assert_equals(root(), DARK);
+  } finally {
+    s1.remove(); m.remove(); s2.remove();
+  }
+}, "a meta element applies in its post-connection steps (Chrome and Safari)");
+
+test(() => {
+  const m = meta("dark", "other");
+  withMetas([m], () => {
+    assert_equals(root(), LIGHT);
+    m.name = "color-scheme";
+    assert_equals(root(), DARK, "the name became color-scheme");
+    m.content = "light";
+    assert_equals(root(), LIGHT, "the content changed");
+    m.content = "dark";
+    m.name = "theme-color";
+    assert_equals(root(), LIGHT, "the name stopped being color-scheme");
+  });
+}, "name and content changes re-run it");
+
+test(() => {
+  const div = document.createElement("div");
+  div.appendChild(meta("dark"));
+  document.body.appendChild(div);
+  assert_equals(root(), DARK, "inserted inside a subtree");
+  div.remove();
+  assert_equals(root(), LIGHT, "removed with its ancestor");
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  host.attachShadow({ mode: "open" }).appendChild(meta("dark"));
+  assert_equals(root(), LIGHT, "a shadow tree's meta is not in a document tree");
+  host.remove();
+}, "subtrees, removal with an ancestor, shadow trees");
+
+test(() => {
+  const m = meta("dark");
+  const lone = document.createElement("div");
+  lone.appendChild(m);
+  m.content = "dark";
+  assert_equals(root(), LIGHT, "a disconnected meta changes nothing");
+}, "a meta not in the document is no candidate");
+</script>
+</body>

@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>getComputedStyle cost: color and background-color over 10,000 elements (lane style4)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+.a { color: CanvasText; background-color: Canvas; }
+.b { color: LinkText; }
+.c { color: rgb(10, 20, 30); background-color: ButtonFace; }
+.dark { color-scheme: dark; }
+</style>
+<body>
+<div id="host"></div>
+<script>
+"use strict";
+// The used color scheme and the system colors are resolved once per
+// computed style: a cold pass resolves every element, a warm pass hits the
+// cache, a pass after one mutation resolves again. Times in result names.
+const kinds = ["div", "span", "p", "a", "mark"];
+const elements = [];
+for (let i = 0; i < 100; i++) {
+  const group = document.createElement("div");
+  if (i % 4 == 0) group.className = "dark";
+  for (let j = 0; j < 100; j++) {
+    const e = document.createElement(kinds[j % kinds.length]);
+    e.className = ["a", "b", "c", ""][j % 4];
+    group.appendChild(e);
+    elements.push(e);
+  }
+  host.appendChild(group);
+}
+function pass() {
+  let n = 0;
+  for (const e of elements) {
+    const cs = getComputedStyle(e);
+    n += cs.color.length + cs.backgroundColor.length;
+  }
+  return n;
+}
+const times = [];
+let total = 0;
+for (const label of ["cold", "warm", "after a mutation"]) {
+  if (label == "after a mutation") host.firstChild.className = "";
+  const start = performance.now();
+  total += pass();
+  times.push(label + " " + (performance.now() - start).toFixed(3) + " ms");
+}
+test(() => assert_true(total > 0), "10,000 elements, color and background-color: " + times.join(", "));
+</script>
+</body>
