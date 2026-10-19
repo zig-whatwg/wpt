@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow focus delegation follows the focus delegate algorithms</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focus-delegate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function makeHost(t, mode, delegatesFocus = true) {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  return [host, host.attachShadow({mode, delegatesFocus})];
+}
+for (const mode of ['open', 'closed']) {
+  test(t => {
+    const [host, root] = makeHost(t, mode);
+    host.tabIndex = 0;
+    const disabled = root.appendChild(document.createElement('input'));
+    disabled.disabled = true;
+    const input = root.appendChild(document.createElement('input'));
+    host.focus();
+    assert_equals(root.activeElement, input);
+    assert_equals(document.activeElement, host);
+    host.blur();
+    assert_equals(root.activeElement, null);
+  }, `${mode}: a tabbable host delegates focus and blur to the first enabled area`);
+
+  test(t => {
+    const [host, root] = makeHost(t, mode);
+    const first = root.appendChild(document.createElement('input'));
+    const preferred = root.appendChild(document.createElement('input'));
+    preferred.autofocus = true;
+    host.focus();
+    assert_equals(root.activeElement, preferred, 'autofocus takes precedence');
+    first.focus();
+    host.focus();
+    assert_equals(root.activeElement, first, 'an already focused descendant is retained');
+  }, `${mode}: autofocus preference and existing descendant focus`);
+
+  test(t => {
+    const [host, root] = makeHost(t, mode);
+    const barrier = root.appendChild(document.createElement('div'));
+    barrier.attachShadow({mode, delegatesFocus: false}).appendChild(document.createElement('input'));
+    const innerHost = root.appendChild(document.createElement('div'));
+    const innerRoot = innerHost.attachShadow({mode, delegatesFocus: true});
+    const input = innerRoot.appendChild(document.createElement('input'));
+    host.focus();
+    assert_equals(innerRoot.activeElement, input);
+    assert_equals(root.activeElement, innerHost);
+    host.blur();
+    assert_equals(innerRoot.activeElement, null);
+  }, `${mode}: delegate search crosses only delegating shadow boundaries`);
+
+  test(t => {
+    const [host, root] = makeHost(t, mode, false);
+    root.appendChild(document.createElement('input'));
+    const outside = document.body.appendChild(document.createElement('input'));
+    t.add_cleanup(() => outside.remove());
+    outside.focus();
+    host.focus();
+    assert_equals(document.activeElement, outside);
+    assert_equals(root.activeElement, null);
+  }, `${mode}: a non-delegating host does not focus a shadow descendant`);
+}
+
+test(t => {
+  const [host, root] = makeHost(t, 'closed');
+  root.appendChild(document.createElement('slot'));
+  const lightInput = host.appendChild(document.createElement('input'));
+  const outside = document.body.appendChild(document.createElement('input'));
+  t.add_cleanup(() => outside.remove());
+  outside.focus();
+  host.focus();
+  assert_equals(document.activeElement, outside);
+  assert_equals(root.activeElement, null);
+  assert_not_equals(document.activeElement, lightInput);
+}, 'Delegate search uses shadow descendants rather than the flattened slot tree');
+</script>

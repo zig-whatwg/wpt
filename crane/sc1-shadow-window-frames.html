@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Window frame views use document-tree child navigables</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#document-tree-child-navigables">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ['open', 'closed']) {
+  test(t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    t.add_cleanup(() => host.remove());
+    const root = host.attachShadow({mode});
+    const secret = document.createElement('iframe');
+    secret.name = `sc1-secret-${mode}`;
+    root.appendChild(secret);
+    assert_equals(window.length, 0, 'shadow frame is not in the document-tree list');
+    assert_equals(window[0], undefined, 'read before contentWindow cannot expose the frame');
+    assert_false(secret.name in window);
+    assert_equals(window[secret.name], undefined);
+    assert_not_equals(secret.contentWindow, null, 'shadow frame still has its own Window');
+  }, `${mode} shadow frame stays outside Window indexed and named access`);
+}
+
+test(t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  const root = host.attachShadow({mode: 'closed'});
+  const secret = root.appendChild(document.createElement('iframe'));
+  secret.name = 'sc1-duplicate-frame';
+  const first = document.body.appendChild(document.createElement('iframe'));
+  first.name = 'sc1-first-frame';
+  const second = document.body.appendChild(document.createElement('iframe'));
+  second.name = 'sc1-duplicate-frame';
+  t.add_cleanup(() => { host.remove(); first.remove(); second.remove(); });
+  assert_equals(window.length, 2);
+  assert_equals(window[0], first.contentWindow);
+  assert_equals(window[1], second.contentWindow);
+  assert_equals(window['sc1-duplicate-frame'], second.contentWindow);
+  assert_equals(window[2], undefined);
+  document.body.insertBefore(second, first);
+  assert_equals(window[0], first.contentWindow, 'index follows navigable insertion order');
+  assert_equals(window[1], second.contentWindow);
+}, 'Shadow frames do not take indexes or mask same-named document frames');
+
+test(t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.attachShadow({mode: 'closed'}).appendChild(document.createElement('iframe'));
+  const first = document.body.appendChild(document.createElement('iframe'));
+  const second = document.body.appendChild(document.createElement('iframe'));
+  const third = document.createElement('iframe');
+  t.add_cleanup(() => { host.remove(); first.remove(); second.remove(); third.remove(); });
+  // Realize the child Windows to test the owning Window's list separately
+  // from the adapter's lazy creation path, which the preceding cases cover.
+  void first.contentWindow;
+  void second.contentWindow;
+  assert_equals(window.length, 2, 'shadow frame is still excluded');
+  assert_array_equals([window[0], window[1]], [first.contentWindow, second.contentWindow]);
+  document.body.insertBefore(second, first);
+  void second.contentWindow;
+  assert_array_equals([window[0], window[1]], [first.contentWindow, second.contentWindow],
+    'moving a container earlier does not move its navigable earlier');
+  document.body.insertBefore(third, first);
+  void third.contentWindow;
+  assert_equals(window.length, 3);
+  assert_array_equals([window[0], window[1], window[2]],
+    [first.contentWindow, second.contentWindow, third.contentWindow],
+    'a newly inserted navigable is last, regardless of its DOM position');
+}, 'Existing child Windows are indexed in navigable insertion order');
+</script>

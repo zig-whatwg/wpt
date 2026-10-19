@@ -1,0 +1,1 @@
+globalThis.sc1RecordCurrentScript();

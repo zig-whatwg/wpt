@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>MouseEvent construction and dispatch cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const sc1Target = new EventTarget();
+let sc1Count = 0;
+sc1Target.addEventListener('mousemove', event => { sc1Count += event.clientX; });
+const sc1Init = {bubbles: true, cancelable: true, composed: true, clientX: 1, buttons: 1};
+for (let i = 0; i < 1000; ++i) sc1Target.dispatchEvent(new MouseEvent('mousemove', sc1Init));
+sc1Count = 0;
+const sc1Start = performance.now();
+for (let i = 0; i < 100000; ++i) sc1Target.dispatchEvent(new MouseEvent('mousemove', sc1Init));
+const sc1Elapsed = performance.now() - sc1Start;
+test(() => assert_equals(sc1Count, 100000), `MouseEvent 100000 construction/dispatch ms=${sc1Elapsed.toFixed(3)}`);
+</script>

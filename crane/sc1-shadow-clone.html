@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ShadowRoot cloneNode rejection</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-node-clonenode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const mode of ['open', 'closed']) {
+  for (const deep of [false, true]) {
+    test(() => {
+      const host = document.createElement('div');
+      const root = host.attachShadow({mode, clonable: true});
+      root.appendChild(document.createElement('span'));
+      assert_throws_dom('NotSupportedError', () => root.cloneNode(deep));
+      assert_throws_dom('NotSupportedError', () => Node.prototype.cloneNode.call(root, deep));
+      assert_equals(root.firstChild.localName, 'span');
+    }, `cloneNode(${deep}) rejects a ${mode} shadow root even when clonable`);
+  }
+}
+test(() => {
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(document.createElement('span'));
+  const shallow = fragment.cloneNode(false);
+  const deep = fragment.cloneNode(true);
+  assert_equals(shallow.childNodes.length, 0);
+  assert_equals(deep.firstChild.localName, 'span');
+  assert_not_equals(deep.firstChild, fragment.firstChild);
+}, 'An ordinary DocumentFragment remains cloneable');
+</script>

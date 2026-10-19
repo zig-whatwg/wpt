@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DragEvent initializes inherited event dictionaries</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#inner-event-creation-steps">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dnd.html#the-dragevent-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const Constructor of [MouseEvent, DragEvent]) {
+  test(() => {
+    const related = document.createElement('span');
+    const init = {
+      bubbles: true, cancelable: true, composed: true, view: window, detail: 3,
+      screenX: 17, screenY: -19, clientX: 23, clientY: -31,
+      ctrlKey: true, altKey: true, shiftKey: true, metaKey: true,
+      button: 2, buttons: 5, movementX: 3, movementY: -4, relatedTarget: related
+    };
+    const event = new Constructor('dragenter', init);
+    assert_equals(event.type, 'dragenter');
+    for (const key of Object.keys(init)) assert_equals(event[key], init[key], key);
+    assert_false(event.isTrusted);
+    assert_greater_than_equal(event.timeStamp, 0);
+    assert_true(event instanceof MouseEvent);
+    assert_true(event instanceof UIEvent);
+    assert_true(event instanceof Event);
+    if (Constructor === DragEvent) assert_equals(event.dataTransfer, null);
+    const target = new EventTarget();
+    let called = false;
+    target.addEventListener('dragenter', e => { called = true; e.preventDefault(); });
+    assert_false(target.dispatchEvent(event));
+    assert_true(called, 'initialized event is dispatchable');
+  }, `${Constructor.name} initializes all inherited dictionary attributes and is dispatchable`);
+}
+
+test(() => {
+  const event = new DragEvent('dragleave');
+  assert_equals(event.type, 'dragleave');
+  assert_false(event.bubbles);
+  assert_false(event.cancelable);
+  assert_false(event.composed);
+  assert_equals(event.relatedTarget, null);
+  assert_equals(event.dataTransfer, null);
+  assert_equals(event.buttons, 0);
+  assert_equals(event.clientX, 0);
+}, 'DragEvent supplies dictionary defaults when omitted');
+
+for (const name of ['MouseEvent', 'DragEvent']) {
+  test(() => {
+    const event = document.createEvent(name);
+    const target = new EventTarget();
+    assert_throws_dom('InvalidStateError', () => target.dispatchEvent(event));
+    event.initMouseEvent('legacy', true, true, window, 4, 1, 2, 3, 4,
+      false, false, false, false, 1, null);
+    assert_equals(event.type, 'legacy');
+    assert_equals(event.clientX, 3);
+    assert_equals(event.button, 1);
+    assert_equals(event.buttons, 0);
+    assert_equals(event.movementX, 0);
+    assert_false(event.composed);
+    assert_true(target.dispatchEvent(event));
+  }, `document.createEvent(${name}) stays uninitialized until its legacy initializer`);
+}
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DragEvent keeps its inherited related target</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#event-relatedtarget">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/od-node-document.js"></script>
+<script>
+for (const kind of Object.keys(odDocumentMakers)) {
+  promise_test(async t => {
+    const event = (() => {
+      const doc = odMakeDocument(kind);
+      const related = doc.createElement('span');
+      related.textContent = 'sc1-kept';
+      return new DragEvent('dragenter', {relatedTarget: related});
+    })();
+    // Only the event names the node or its document across collection.
+    await odCollect(t);
+    assert_not_equals(event.relatedTarget, null);
+    assert_equals(event.relatedTarget.textContent, 'sc1-kept');
+    odAssertDocumentKept(event.relatedTarget, kind);
+  }, `${kind}: DragEvent retains its related target after script drops it`);
+}
+</script>

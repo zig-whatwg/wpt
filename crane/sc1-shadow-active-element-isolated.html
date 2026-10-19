@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ShadowRoot activeElement uses the document focus designation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#dom-documentorshadowroot-activeelement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  const root = host.attachShadow({mode: 'open'});
+  const input = root.appendChild(document.createElement('input'));
+  input.focus();
+  assert_equals(root.activeElement, input);
+}, 'An open shadow root reports its focused input');
+</script>

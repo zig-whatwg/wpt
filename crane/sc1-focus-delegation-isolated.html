@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow focus delegation, isolated</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#get-the-focusable-area">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  const root = host.attachShadow({mode: 'open', delegatesFocus: true});
+  const input = root.appendChild(document.createElement('input'));
+  let focused = false;
+  input.onfocus = () => focused = true;
+  host.focus();
+  assert_true(focused);
+}, 'Focusing a delegating host focuses its shadow input');
+</script>

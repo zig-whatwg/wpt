@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>currentScript is selected at execution entry</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ['open', 'closed']) {
+  promise_test(async t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    const root = host.attachShadow({mode});
+    const script = document.createElement('script');
+    const nested = document.createElement('script');
+    const observed = [];
+    t.add_cleanup(() => {
+      script.remove(); nested.remove(); host.remove();
+      delete globalThis.sc1RecordCurrentScript;
+      delete globalThis.sc1RecordNestedScript;
+    });
+    globalThis.sc1RecordNestedScript = () => observed.push(document.currentScript);
+    nested.textContent = 'globalThis.sc1RecordNestedScript()';
+    globalThis.sc1RecordCurrentScript = () => {
+      observed.push(document.currentScript);
+      document.body.appendChild(nested);
+      observed.push(document.currentScript);
+      document.body.appendChild(script);
+      observed.push(document.currentScript);
+    };
+    script.src = 'sc1-current-script-resource.js';
+    const loaded = new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('external script failed to load'));
+    });
+    root.appendChild(script);
+    await loaded;
+    assert_array_equals(observed, [null, nested, null, null]);
+    assert_equals(document.currentScript, null, 'restored after execution');
+  }, `External script starting in ${mode} shadow stays hidden after moving to light DOM`);
+}
+
+promise_test(async t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  const root = host.attachShadow({mode: 'closed'});
+  const script = document.createElement('script');
+  const observed = [];
+  t.add_cleanup(() => { host.remove(); delete globalThis.sc1RecordCurrentScript; });
+  globalThis.sc1RecordCurrentScript = () => {
+    observed.push(document.currentScript);
+    root.appendChild(script);
+    observed.push(document.currentScript);
+  };
+  script.textContent = 'globalThis.sc1RecordCurrentScript()';
+  document.body.appendChild(script);
+  assert_array_equals(observed, [script, script]);
+}, 'A running light-tree script stays current after moving into a shadow tree');
+</script>

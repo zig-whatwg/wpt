@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ShadowRoot cloneNode validation, isolated</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-node-clonenode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.createElement('div').attachShadow({mode: 'open'});
+  assert_throws_dom('NotSupportedError', () => root.cloneNode());
+}, 'cloneNode rejects a shadow root');
+</script>

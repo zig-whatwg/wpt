@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow frames and Window length, isolated</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-length">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  host.attachShadow({mode: 'closed'}).appendChild(document.createElement('iframe'));
+  assert_equals(window.length, 0);
+}, 'Window length excludes a shadow-tree iframe');
+</script>

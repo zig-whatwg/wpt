@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synthetic DragEvent relatedTarget retargeting</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const type of ['dragenter', 'dragleave']) {
+  for (const mode of ['open', 'closed']) {
+    test(t => {
+      const host = document.body.appendChild(document.createElement('div'));
+      const target = document.body.appendChild(document.createElement('div'));
+      t.add_cleanup(() => { host.remove(); target.remove(); });
+      const root = host.attachShadow({mode});
+      const related = root.appendChild(document.createElement('span'));
+      let calls = 0;
+      target.addEventListener(type, t.step_func(event => {
+        ++calls;
+        assert_equals(event.relatedTarget, host);
+      }));
+      target.dispatchEvent(new DragEvent(type, {bubbles: true, composed: true, relatedTarget: related}));
+      assert_equals(calls, 1);
+    }, `${type} retargets a relatedTarget inside a ${mode} root to its host`);
+
+    test(t => {
+      const host = document.body.appendChild(document.createElement('div'));
+      t.add_cleanup(() => host.remove());
+      const root = host.attachShadow({mode});
+      const target = root.appendChild(document.createElement('span'));
+      const related = root.appendChild(document.createElement('span'));
+      let inside = 0;
+      let outside = 0;
+      target.addEventListener(type, t.step_func(event => {
+        ++inside;
+        assert_equals(event.relatedTarget, related);
+      }));
+      host.addEventListener(type, () => ++outside);
+      target.dispatchEvent(new DragEvent(type, {bubbles: true, composed: true, relatedTarget: related}));
+      assert_equals(inside, 1);
+      assert_equals(outside, 0, 'equal retargeted target and relatedTarget prune the outer path');
+    }, `${type} within one ${mode} root stays inside its tree`);
+  }
+}
+</script>

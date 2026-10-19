@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Shadow and ARIA operation cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+let callbacks = 0;
+customElements.define('sc1-cost-element', class extends HTMLElement {
+  static observedAttributes = ['aria-label', 'aria-description'];
+  attributeChangedCallback() { ++callbacks; }
+});
+const target = document.createElement('sc1-cost-element');
+const ariaStart = performance.now();
+for (let i = 0; i < 10000; ++i)
+  target.setAttribute(i % 2 ? 'aria-label' : 'aria-description', String(i));
+const ariaMs = performance.now() - ariaStart;
+test(() => assert_equals(callbacks, 10000), 'ARIA 10000 callbacks, ms=' + ariaMs);
+
+const hosts = [];
+let matches = 0;
+const shadowStart = performance.now();
+for (let i = 0; i < 10000; ++i) {
+  const host = document.createElement('div');
+  hosts.push(host);
+  const root = host.attachShadow({mode: 'open'});
+  root.appendChild(document.createElement('span'));
+  if (root.querySelector('span') === root.firstChild) ++matches;
+}
+const shadowMs = performance.now() - shadowStart;
+test(() => assert_equals(matches, 10000), 'Shadow attach and query 10000, ms=' + shadowMs);
+
+const first = document.body.appendChild(document.createElement('input'));
+const second = document.body.appendChild(document.createElement('input'));
+let focused = 0;
+const focusStart = performance.now();
+for (let i = 0; i < 10000; ++i) {
+  const input = i % 2 ? first : second;
+  input.focus();
+  if (document.activeElement === input) ++focused;
+}
+const focusMs = performance.now() - focusStart;
+test(() => assert_equals(focused, 10000), 'Ordinary focus 10000, ms=' + focusMs);
+first.remove(); second.remove();
+</script>

@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ShadowRoot activeElement retargeting and focus changes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#dom-documentorshadowroot-activeelement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ['open', 'closed']) {
+  test(t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    const outside = document.body.appendChild(document.createElement('input'));
+    t.add_cleanup(() => { host.remove(); outside.remove(); });
+    const root = host.attachShadow({mode});
+    const input = root.appendChild(document.createElement('input'));
+    assert_equals(root.activeElement, null, 'no focus in this tree');
+    input.focus();
+    assert_equals(root.activeElement, input, 'focused descendant');
+    assert_equals(document.activeElement, host, 'document sees the host');
+    outside.focus();
+    assert_equals(root.activeElement, null, 'focus is outside this tree');
+    input.focus();
+    host.remove();
+    assert_equals(root.activeElement, null, 'removed host loses focus');
+  }, `${mode} shadow root follows focus, retargeting, and removal`);
+
+  test(t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    t.add_cleanup(() => host.remove());
+    const root = host.attachShadow({mode});
+    const innerHost = root.appendChild(document.createElement('div'));
+    const innerRoot = innerHost.attachShadow({mode});
+    const input = innerRoot.appendChild(document.createElement('input'));
+    input.focus();
+    assert_equals(innerRoot.activeElement, input);
+    assert_equals(root.activeElement, innerHost);
+    assert_equals(document.activeElement, host);
+    input.blur();
+    assert_equals(root.activeElement, null);
+    assert_equals(innerRoot.activeElement, null);
+  }, `${mode} nested roots report the focus anchor in their own tree`);
+}
+
+test(t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  const root = host.attachShadow({mode: 'open'});
+  root.appendChild(document.createElement('slot'));
+  const input = host.appendChild(document.createElement('input'));
+  input.focus();
+  assert_equals(document.activeElement, input);
+  assert_equals(root.activeElement, null, 'slotted node belongs to the light tree');
+}, 'A slotted focused input is not an activeElement in the shadow tree');
+</script>

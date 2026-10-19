@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG currentScript follows document-tree visibility at execution entry</title>
+<link rel="help" href="https://www.w3.org/TR/SVG2/interact.html#ScriptElement">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of [null, 'open', 'closed']) {
+  promise_test(async t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    const root = host.attachShadow({mode: mode || 'closed'});
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    (mode ? root : document.body).appendChild(svg);
+    const script = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+    const observed = [];
+    t.add_cleanup(() => {
+      script.remove(); svg.remove(); host.remove();
+      delete globalThis.sc1RecordCurrentScript;
+    });
+    globalThis.sc1RecordCurrentScript = () => {
+      observed.push(document.currentScript);
+      (mode ? document.body : root).appendChild(script);
+      observed.push(document.currentScript);
+    };
+    script.setAttribute('href', 'sc1-current-script-resource.js');
+    const loaded = new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('SVG external script failed to load'));
+    });
+    svg.appendChild(script);
+    await loaded;
+    const expected = mode ? null : script;
+    assert_array_equals(observed, [expected, expected]);
+    assert_equals(document.currentScript, null);
+  }, `SVG script starting in ${mode || 'document'} tree preserves its entry-time currentScript`);
+}
+</script>
