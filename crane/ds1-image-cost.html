@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One thousand image requests with distinct source URLs</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  const start = performance.now();
+  for (let i = 0; i < 1000; ++i) {
+    const img = document.createElement('img');
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('Image ' + i + ' failed to load'));
+    });
+    container.append(img);
+    img.src = '/images/green.png?ds1-image-cost=' + i;
+    await loaded;
+  }
+  console.log('DS1_IMAGE_MS=' + (performance.now() - start));
+  assert_equals(container.children.length, 1000);
+}, '1000 distinct image requests load successfully');
+</script>

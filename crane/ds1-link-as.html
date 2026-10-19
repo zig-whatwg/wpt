@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Link as reflection follows shipping browser keywords</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#dom-link-as">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Row 86 Q5: Chrome/Safari majority. Revisit when module-preload values ship.
+for (const value of ['fetch', 'font', 'image', 'script', 'style', 'track']) {
+  test(() => {
+    const link = document.createElement('link');
+    for (const rel of ['', 'preload', 'modulepreload']) {
+      link.rel = rel;
+      link.as = value.toUpperCase();
+      assert_equals(link.as, value);
+      assert_equals(link.getAttribute('as'), value.toUpperCase());
+    }
+  }, 'as recognizes and canonicalizes ' + value);
+}
+for (const value of ['audio', 'audioworklet', 'document', 'embed', 'frame', 'iframe',
+    'json', 'manifest', 'object', 'paintworklet', 'report', 'serviceworker',
+    'sharedworker', 'text', 'video', 'webidentity', 'worker', 'xslt', ' image', 'image ']) {
+  test(() => {
+    const link = document.createElement('link');
+    for (const rel of ['', 'preload', 'modulepreload']) {
+      link.rel = rel;
+      link.as = value;
+      assert_equals(link.as, '');
+      assert_equals(link.getAttribute('as'), value);
+    }
+  }, 'as reflects the unsupported value ' + JSON.stringify(value) + ' as empty');
+}
+test(() => {
+  const link = document.createElement('link');
+  assert_equals(link.as, '');
+  link.as = 'image';
+  link.removeAttribute('as');
+  assert_equals(link.as, '');
+}, 'Missing as reflects as empty');
+</script>

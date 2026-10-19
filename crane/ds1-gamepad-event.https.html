@@ -1,0 +1,38 @@
+<!doctype html>
+<title>GamepadEvent initializes its Event superclass</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const before = performance.now();
+  const event = new GamepadEvent('gamepadconnected', {
+    bubbles: true, cancelable: true, composed: true
+  });
+  const after = performance.now();
+  assert_greater_than_equal(event.timeStamp, before);
+  assert_less_than_equal(event.timeStamp, after);
+  assert_equals(event.type, 'gamepadconnected');
+  assert_true(event.bubbles);
+  assert_true(event.cancelable);
+  assert_true(event.composed);
+  assert_false(event.isTrusted);
+  let received;
+  const target = new EventTarget();
+  target.addEventListener(event.type, e => {
+    received = e;
+    e.preventDefault();
+  });
+  assert_false(target.dispatchEvent(event));
+  assert_equals(received, event);
+  assert_true(event.defaultPrevented);
+}, 'Constructed GamepadEvent has a timestamp, type, flags and dispatch state');
+
+test(() => {
+  const event = new GamepadEvent('disconnected');
+  assert_equals(event.type, 'disconnected');
+  assert_false(event.bubbles);
+  assert_false(event.cancelable);
+  assert_false(event.composed);
+  assert_false(event.isTrusted);
+}, 'Omitted GamepadEventInit uses EventInit defaults');
+</script>

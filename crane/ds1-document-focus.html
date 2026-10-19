@@ -1,0 +1,34 @@
+<!doctype html>
+<title>Document.hasFocus follows focus across child documents</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.append(frame);
+  await loaded;
+  const child = frame.contentDocument;
+  assert_false(child.hasFocus(), 'unfocused child');
+  assert_true(document.hasFocus(), 'top document');
+  const button = child.createElement('button');
+  child.body.append(button);
+  button.focus();
+  assert_true(child.hasFocus(), 'focused child');
+  assert_true(document.hasFocus(), 'ancestor of focused child');
+  const outside = document.createElement('button');
+  t.add_cleanup(() => outside.remove());
+  document.body.append(outside);
+  outside.focus();
+  assert_false(child.hasFocus(), 'focus moved outside child');
+}, 'hasFocus follows the focused document chain');
+
+test(() => {
+  for (const doc of [new Document(), document.implementation.createHTMLDocument(''),
+      new DOMParser().parseFromString('<root/>', 'text/xml')]) {
+    assert_false(doc.hasFocus(), 'document without a browsing context');
+  }
+}, 'Documents without browsing contexts do not have focus');
+</script>
