@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Asynchronous XHR request cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function request() {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/xhr/resources/folder.txt");
+    xhr.onload = () => xhr.status === 200 ? resolve() : reject(new Error("status " + xhr.status));
+    xhr.onerror = () => reject(new Error("XHR network error"));
+    xhr.send();
+  });
+}
+promise_test(async () => {
+  const start = performance.now();
+  for (let n = 0; n < 1000; ++n) await request();
+  console.log("PM2_COST xhr " + (performance.now() - start));
+}, "1000 asynchronous small-file XMLHttpRequests");
+</script>

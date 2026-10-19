@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Permission query cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const start = performance.now();
+  let status;
+  for (let n = 0; n < 10000; ++n) status = await navigator.permissions.query({name: "geolocation"});
+  const elapsed = performance.now() - start;
+  assert_equals(status.name, "geolocation");
+  console.log("PM2_COST permissions " + elapsed);
+}, "10000 permission queries");
+</script>

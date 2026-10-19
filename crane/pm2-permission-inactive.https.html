@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permission updates skip inactive documents</title>
+<link rel="help" href="https://w3c.github.io/permissions/#onchange-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body></body>
+<script>
+promise_test(async t => {
+  const descriptor = {name: 'geolocation'};
+  await test_driver.set_permission(descriptor, 'prompt');
+  const frame = document.createElement('iframe');
+  frame.src = '/permissions/resources/empty.html';
+  t.add_cleanup(() => frame.remove());
+  t.add_cleanup(() => test_driver.set_permission(descriptor, 'prompt'));
+  const loaded = new Promise(resolve => frame.addEventListener('load', resolve, {once: true}));
+  document.body.append(frame);
+  await loaded;
+  const status = await frame.contentWindow.navigator.permissions.query(descriptor);
+  let changes = 0;
+  status.addEventListener('change', () => ++changes);
+  await test_driver.set_permission(descriptor, 'granted');
+  assert_equals(status.state, 'granted');
+  assert_equals(changes, 1);
+  frame.remove();
+  await test_driver.set_permission(descriptor, 'prompt');
+  assert_equals(status.state, 'granted', 'Inactive status keeps its old state');
+  assert_equals(changes, 1, 'Inactive status receives no permission update event');
+  assert_equals((await navigator.permissions.query(descriptor)).state, 'prompt');
+}, 'Automation changes neither state nor events for an inactive PermissionStatus');
+</script>

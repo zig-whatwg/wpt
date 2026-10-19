@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A worker observes its Browser's permission changes</title>
+<link rel="help" href="https://w3c.github.io/permissions/#onchange-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+promise_test(async t => {
+  const descriptor = {name: "geolocation"};
+  await test_driver.set_permission(descriptor, "prompt");
+  t.add_cleanup(() => test_driver.set_permission(descriptor, "prompt"));
+  const url = URL.createObjectURL(new Blob([`
+    navigator.permissions.query({name: "geolocation"}).then(status => {
+      status.addEventListener("change", () => postMessage(status.state));
+      postMessage(status.state);
+    });
+  `], {type: "text/javascript"}));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const worker = new Worker(url);
+  t.add_cleanup(() => worker.terminate());
+  const message = () => new Promise(resolve => worker.addEventListener(
+    "message", event => resolve(event.data), {once: true}));
+  assert_equals(await message(), "prompt");
+  for (const state of ["granted", "denied"]) {
+    const changed = message();
+    await test_driver.set_permission(descriptor, state);
+    assert_equals(await changed, state);
+  }
+}, "A worker receives both permission transitions from the window's automation command");
+</script>

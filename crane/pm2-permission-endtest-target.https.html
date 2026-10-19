@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Secure worker target for permission command teardown</title>
+<script>
+const source = new Blob([`
+  navigator.permissions.query({name: 'geolocation'}).then(status => {
+    self.heldStatus = status;
+    self.onmessage = () => {
+      postMessage('blocked');
+      const end = performance.now() + 1500;
+      while (performance.now() < end) {}
+    };
+    postMessage('ready');
+  }, () => postMessage('failed'));
+`], {type: 'text/javascript'});
+const workerURL = URL.createObjectURL(source);
+const worker = new Worker(workerURL);
+worker.onmessage = event => parent.postMessage(event.data, '*');
+worker.onerror = () => parent.postMessage('failed', '*');
+window.onmessage = () => worker.postMessage('block');
+</script>

@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="variant" content="?wpt_flags=https">
+<title>Ending a test abandons a permission command with a worker delivery queued</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+async_test(t => {
+  const frame = document.createElement('iframe');
+  let settled = false;
+  let started = false;
+  window.addEventListener('message', t.step_func(event => {
+    if (event.source !== frame.contentWindow) return;
+    if (event.data === 'ready') {
+      frame.contentWindow.postMessage('block', '*');
+    } else if (event.data === 'blocked') {
+      assert_false(started);
+      started = true;
+      // The secure child owns a worker with a live status. Its current task
+      // is still running, so the permission delivery must remain queued.
+      test_driver.set_permission({name: 'geolocation'}, 'granted', frame.contentWindow)
+        .then(() => settled = true, () => settled = true);
+      t.step_timeout(() => {
+        assert_false(settled, 'Set Permission is waiting for the worker task');
+        // No worker termination in cleanup: the runner's endTest releases
+        // the command first, and Browser teardown drops the queued task.
+        t.done();
+      }, 100);
+    } else if (event.data === 'failed') {
+      assert_unreached('The worker could not create its permission status');
+    }
+  }));
+  frame.src = get_host_info().HTTPS_ORIGIN + '/crane/pm2-permission-endtest-target.https.html';
+  document.body.appendChild(frame);
+}, 'endTest can abandon Set Permission while a worker owns its queued delivery');
+</script>

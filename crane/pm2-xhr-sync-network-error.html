@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synchronous XHR network error dispatches terminal events before throwing</title>
+<link rel="help" href="https://xhr.spec.whatwg.org/#request-error-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+test(() => {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", get_host_info().REMOTE_ORIGIN +
+      "/xhr/resources/auth8/corsenabled-no-authorize.py", false);
+  xhr.setRequestHeader("Authorization", "Basic dXNlcjpwYXNz");
+  const events = [];
+  const uploadEvents = [];
+  for (const type of ["readystatechange", "loadstart", "progress", "error", "load", "loadend"]) {
+    xhr.addEventListener(type, event => {
+      events.push(type);
+      assert_equals(xhr.readyState, 4);
+      assert_equals(xhr.status, 0);
+      if (event instanceof ProgressEvent) {
+        assert_false(event.lengthComputable);
+        assert_equals(event.loaded, 0);
+        assert_equals(event.total, 0);
+      }
+    });
+    if (type !== "readystatechange") xhr.upload.addEventListener(type, () => uploadEvents.push(type));
+  }
+  // Firefox/WebKit dispatch these events despite XHR request-error step 4;
+  // both still throw NetworkError after the terminal events.
+  assert_throws_dom("NetworkError", () => xhr.send());
+  assert_array_equals(events, ["readystatechange", "error", "loadend"]);
+  assert_array_equals(uploadEvents, []);
+}, "A synchronous CORS rejection fires download error events before send throws");
+</script>

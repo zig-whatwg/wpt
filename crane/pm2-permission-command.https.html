@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permission automation updates query results and validates commands</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+promise_test(async t => {
+  const descriptor = {name: 'geolocation'};
+  t.add_cleanup(() => test_driver.set_permission(descriptor, 'prompt'));
+  for (const state of ['prompt', 'granted', 'denied', 'prompt']) {
+    await test_driver.set_permission(descriptor, state);
+    const status = await navigator.permissions.query(descriptor);
+    assert_equals(status.name, 'geolocation');
+    assert_equals(status.state, state);
+  }
+}, 'Set Permission is visible to subsequent queries, including explicit prompt');
+
+promise_test(async t => {
+  for (const [descriptor, state] of [
+    [{name: 'not-a-permission'}, 'granted'],
+    [{name: 'geolocation'}, 'invalid-state'],
+    [{}, 'granted'],
+    [null, 'granted']
+  ]) {
+    let rejected = false;
+    try {
+      await test_driver.set_permission(descriptor, state);
+    } catch (error) {
+      rejected = true;
+      assert_true(String(error).includes('invalid argument'), 'Command reports invalid argument');
+    }
+    assert_true(rejected, 'Malformed permission command must reject');
+  }
+}, 'Malformed Set Permission inputs reject as invalid argument');
+
+promise_test(async t => {
+  const weak = {name: 'midi', sysex: false};
+  const strong = {name: 'midi', sysex: true};
+  t.add_cleanup(async () => {
+    await test_driver.set_permission(strong, 'prompt');
+    await test_driver.set_permission(weak, 'prompt');
+  });
+  await test_driver.set_permission(strong, 'granted');
+  assert_equals((await navigator.permissions.query(weak)).state, 'granted');
+  assert_equals((await navigator.permissions.query(strong)).state, 'granted');
+  await test_driver.set_permission(weak, 'denied');
+  assert_equals((await navigator.permissions.query(weak)).state, 'denied');
+  assert_equals((await navigator.permissions.query(strong)).state, 'denied');
+}, 'MIDI descriptor strength constrains both overridden states');
+</script>

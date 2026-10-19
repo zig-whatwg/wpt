@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Session storage cloning covers every origin and excludes noopener</title>
+<link rel="help" href="https://storage.spec.whatwg.org/#legacy-clone-a-traversable-storage-shed">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body></body>
+<script>
+// Chrome, Firefox, and Safari clone the whole shed into an opener-created
+// same-site popup. Observe its remote-origin shelf without changing the top-
+// level site, which would select a different partition once keys include it.
+function nextMessage(source, key) {
+  return new Promise(resolve => {
+    const receive = event => {
+      if (event.source !== source || event.data.key !== key) return;
+      removeEventListener("message", receive);
+      resolve(event.data);
+    };
+    addEventListener("message", receive);
+  });
+}
+
+promise_test(async t => {
+  const key = "pm2-other-origin";
+  const remote = get_host_info().REMOTE_ORIGIN;
+  const frame = document.createElement("iframe");
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const seeded = nextMessage(frame.contentWindow, key);
+  frame.src = remote + "/crane/pm2-session-storage-page.html?mode=seed&key=" + key;
+  assert_true((await seeded).ready);
+  // Preserve the top-level site while observing the copied remote shelf.
+  const popup = window.open("about:blank", "_blank");
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  const copiedFrame = popup.document.createElement("iframe");
+  const copied = new Promise(resolve => {
+    const receive = event => {
+      if (!event.data || event.data.key !== key) return;
+      popup.removeEventListener("message", receive);
+      resolve(event.data);
+    };
+    popup.addEventListener("message", receive);
+  });
+  copiedFrame.src = remote + "/crane/pm2-session-storage-cloned-frame.html?key=" + key;
+  popup.document.body.append(copiedFrame);
+  assert_equals((await copied).value, "remote-frame-value");
+  const original = nextMessage(frame.contentWindow, key);
+  frame.contentWindow.postMessage(key, remote);
+  assert_equals((await original).value, "remote-frame-value");
+}, "A same-site popup copies a remote-origin iframe's shelf independently");
+
+promise_test(async t => {
+  const key = "pm2-noopener";
+  sessionStorage.setItem(key, "must-not-copy");
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const channel = new BroadcastChannel(key);
+  t.add_cleanup(() => channel.close());
+  const message = new Promise(resolve => channel.onmessage = event => resolve(event.data));
+  assert_equals(window.open("/crane/pm2-session-storage-page.html?mode=noopener&key=" + key,
+      "_blank", "noopener"), null);
+  const result = await message;
+  assert_true(result.noOpener);
+  assert_equals(result.value, null);
+}, "A noopener popup starts with empty session storage");
+</script>

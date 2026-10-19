@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permission automation updates every live status</title>
+<link rel="help" href="https://w3c.github.io/permissions/#onchange-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+promise_test(async t => {
+  const descriptor = {name: "geolocation"};
+  await test_driver.set_permission(descriptor, "prompt");
+  t.add_cleanup(() => test_driver.set_permission(descriptor, "prompt"));
+  const first = await navigator.permissions.query(descriptor);
+  const second = await navigator.permissions.query(descriptor);
+  assert_not_equals(first, second);
+  assert_equals(first.state, "prompt");
+  for (const state of ["granted", "denied", "prompt"]) {
+    const changes = [first, second].map(status => new Promise(resolve => {
+      status.addEventListener("change", t.step_func(event => {
+        assert_equals(event.target, status);
+        assert_equals(event.currentTarget, status);
+        assert_equals(event.type, "change");
+        assert_true(event.isTrusted);
+        assert_false(event.bubbles);
+        assert_false(event.cancelable);
+        assert_equals(status.state, state);
+        resolve();
+      }), {once: true});
+    }));
+    await test_driver.set_permission(descriptor, state);
+    await Promise.all(changes);
+    assert_equals((await navigator.permissions.query(descriptor)).state, state);
+  }
+}, "Automation changes update existing and newly queried PermissionStatus objects");
+</script>

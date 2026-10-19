@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Session storage clone helper</title>
+<script>
+const params = new URLSearchParams(location.search);
+const key = params.get("key");
+const mode = params.get("mode");
+if (mode === "seed") {
+  sessionStorage.setItem(key, "remote-frame-value");
+  addEventListener("message", event => {
+    if (event.source !== parent || event.data !== key) return;
+    parent.postMessage({key, value: sessionStorage.getItem(key)}, "*");
+    sessionStorage.removeItem(key);
+  });
+  parent.postMessage({key, ready: true}, "*");
+} else if (mode === "inspect") {
+  const value = sessionStorage.getItem(key);
+  sessionStorage.setItem(key, "popup-value");
+  opener.postMessage({key, value}, "*");
+} else if (mode === "noopener") {
+  const channel = new BroadcastChannel(key);
+  channel.postMessage({value: sessionStorage.getItem(key), noOpener: opener === null});
+  channel.close();
+  close();
+}
+</script>

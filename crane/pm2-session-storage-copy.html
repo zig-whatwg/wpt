@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Popup session storage copies the opener's traversable</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable">
+<link rel="help" href="https://storage.spec.whatwg.org/#legacy-clone-a-traversable-storage-shed">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body></body>
+<script>
+test(t => {
+  const key = "pm2-copy";
+  sessionStorage.setItem(key, "before-open");
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const popup = window.open("about:blank", "_blank");
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  assert_equals(popup.sessionStorage.getItem(key), "before-open");
+  sessionStorage.setItem(key, "opener-change");
+  assert_equals(popup.sessionStorage.getItem(key), "before-open");
+  popup.sessionStorage.setItem(key, "popup-change");
+  assert_equals(sessionStorage.getItem(key), "opener-change");
+}, "A new popup receives an independent snapshot before window.open returns");
+
+test(t => {
+  const key = "pm2-reuse";
+  sessionStorage.setItem(key, "original");
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const popup = window.open("about:blank", "pm2-existing-popup");
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  popup.sessionStorage.setItem(key, "popup-value");
+  sessionStorage.setItem(key, "later-opener-value");
+  assert_equals(window.open("", "pm2-existing-popup"), popup);
+  assert_equals(popup.sessionStorage.getItem(key), "popup-value");
+}, "Reusing a named popup does not clone the opener's storage again");
+
+promise_test(async t => {
+  const key = "pm2-frame-opener";
+  sessionStorage.setItem(key, "top-level-value");
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const frame = document.createElement("iframe");
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const popup = frame.contentWindow.open("about:blank", "_blank");
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  assert_equals(popup.sessionStorage.getItem(key), "top-level-value");
+  popup.sessionStorage.removeItem(key);
+  assert_equals(frame.contentWindow.sessionStorage.getItem(key), "top-level-value");
+}, "A popup opened by an iframe copies the top-level traversable's storage");
+</script>

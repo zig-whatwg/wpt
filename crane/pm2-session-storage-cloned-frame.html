@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Read a cloned remote-origin session shelf</title>
+<script>
+const key = new URLSearchParams(location.search).get("key");
+const value = sessionStorage.getItem(key);
+sessionStorage.setItem(key, "popup-value");
+parent.postMessage({key, value}, "*");
+</script>

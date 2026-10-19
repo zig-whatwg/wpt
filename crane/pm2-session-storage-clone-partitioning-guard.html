@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Session storage cloning survives storage-key partitioning</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable">
+<link rel="help" href="https://storage.spec.whatwg.org/#legacy-clone-a-traversable-storage-shed">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body></body>
+<script>
+// HTML's new top-level traversable step 10 copies the whole shed. Re-keying
+// partitions must preserve this same-site copy and its independent values.
+test(t => {
+  const key = "pm2-partition-clone-copy";
+  sessionStorage.setItem(key, "opener-before-open");
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const popup = window.open("about:blank", "_blank", "noopener=false");
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  assert_equals(popup.sessionStorage.getItem(key), "opener-before-open");
+  sessionStorage.setItem(key, "opener-after-open");
+  assert_equals(popup.sessionStorage.getItem(key), "opener-before-open");
+  popup.sessionStorage.setItem(key, "popup-after-open");
+  assert_equals(sessionStorage.getItem(key), "opener-after-open");
+}, "A same-site popup without noopener receives an independent opener snapshot");
+
+promise_test(async t => {
+  const key = "pm2-partition-clone-noopener";
+  sessionStorage.setItem(key, "must-stay-with-opener");
+  t.add_cleanup(() => sessionStorage.removeItem(key));
+  const channel = new BroadcastChannel(key);
+  t.add_cleanup(() => channel.close());
+  const message = new Promise(resolve => channel.onmessage = event => resolve(event.data));
+  const popup = window.open("/crane/pm2-session-storage-page.html?mode=noopener&key=" + key,
+      "_blank", "noopener");
+  assert_equals(popup, null);
+  const result = await message;
+  assert_true(result.noOpener);
+  assert_equals(result.value, null);
+  assert_equals(sessionStorage.getItem(key), "must-stay-with-opener");
+}, "A same-site noopener popup starts empty and leaves the opener's value intact");
+</script>

@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A change listener keeps PermissionStatus alive</title>
+<link rel="help" href="https://w3c.github.io/permissions/#garbage-collection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+async function listenWithoutKeepingStatus(resolve) {
+  const status = await navigator.permissions.query({name: "geolocation"});
+  status.addEventListener("change", event => resolve(event.target.state), {once: true});
+}
+
+promise_test(async t => {
+  const descriptor = {name: "geolocation"};
+  await test_driver.set_permission(descriptor, "prompt");
+  t.add_cleanup(() => test_driver.set_permission(descriptor, "prompt"));
+  let changed;
+  const change = new Promise(resolve => changed = resolve);
+  await listenWithoutKeepingStatus(changed);
+  TestUtils.gc();
+  await test_driver.set_permission(descriptor, "granted");
+  assert_equals(await change, "granted");
+}, "A status with a change listener survives GC after all script references are dropped");
+</script>
