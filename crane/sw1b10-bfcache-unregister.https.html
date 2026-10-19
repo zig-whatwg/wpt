@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Unregistering a service worker and a page the back/forward cache keeps</title>
+<!--
+  Lane sw1-b10 (src/service_worker/registry.zig setEnvironmentCached): Chrome's
+  model. A client the back/forward cache keeps is not using its registration
+  (Chromium ServiceWorkerVersion::MoveControlleeToBackForwardCacheMap), so it
+  does not keep an unregistered registration alive; Clear Registration then
+  evicts it (ServiceWorkerVersion::Doom -> ServiceWorkerClient::
+  NotifyControllerLost, kServiceWorkerUnregistration). While another, live
+  client still uses the registration, nothing is cleared and the kept page
+  comes back controlled. back-forward-cache/service-worker-unregister.https.html
+  (the second case's setup, asserting eviction) fails in Chrome and Safari and
+  passes in Firefox, which evicts at unregister itself (wpt.fyi 23b0b89b1a).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/dispatcher/dispatcher.js"></script>
+<script src="/html/browsers/browsing-the-web/back-forward-cache/resources/helper.sub.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<script>
+const bfcacheResources = "/html/browsers/browsing-the-web/back-forward-cache/resources/";
+
+// Opens a controlled executor page A, navigates it cross-site to B, runs
+// `whileKept` while A is in the cache, then goes back to A.
+async function keepPageThen(whileKept) {
+  const pageA = new RemoteContext(token());
+  const pageB = new RemoteContext(token());
+  window.open(location.origin + executorPath + pageA.context_id, "_blank", "noopener");
+  await pageA.execute_script(waitForPageShow);
+  assert_true(await pageA.execute_script(() => navigator.serviceWorker.controller !== null),
+              "page A is controlled before it is left");
+  await pageA.execute_script(url => prepareNavigation(() => { location.href = url; }),
+                             [originCrossSite + executorPath + pageB.context_id]);
+  await pageB.execute_script(waitForPageShow);
+  await whileKept();
+  await pageB.execute_script(() => { prepareNavigation(() => { history.back(); }); });
+  await pageA.execute_script(waitForPageShow);
+  return pageA;
+}
+
+promise_test(async t => {
+  // The registration's scope covers the executor pages, not this page: no
+  // live client uses it once page A is kept.
+  const registration = await service_worker_unregister_and_register(
+      t, bfcacheResources + "service-worker.js", bfcacheResources);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, "activated");
+  assert_equals(navigator.serviceWorker.controller, null, "this page is not controlled");
+
+  const pageA = await keepPageThen(() => registration.unregister());
+  await assert_not_bfcached(pageA);
+  assert_true(await pageA.execute_script(() => navigator.serviceWorker.controller === null),
+              "page A, loaded again, is not controlled");
+}, "with no other client using it, unregistering clears the registration and evicts the kept page");
+
+promise_test(async t => {
+  // A scope covering this page too, which claims it: a live client uses the
+  // registration throughout.
+  const registration = await service_worker_unregister_and_register(
+      t, bfcacheResources + "service-worker.js?pipe=header(Service-Worker-Allowed,/)", "/");
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, "activated");
+  const controllerChanged = new Promise(resolve => navigator.serviceWorker.oncontrollerchange = resolve);
+  await claim(t, registration.active);
+  await controllerChanged;
+
+  const pageA = await keepPageThen(() => registration.unregister());
+  await assert_bfcached(pageA);
+  assert_true(await pageA.execute_script(() => navigator.serviceWorker.controller !== null),
+              "page A comes back still controlled");
+}, "while a live client still uses it, the kept page stays cached and comes back controlled");
+</script>

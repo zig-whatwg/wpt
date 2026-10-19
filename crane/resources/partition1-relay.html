@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>partition1: a frame that embeds the frame named by its src parameter</title>
+<body>
+<script>
+// Lane partition1. Used to put a frame under a cross-site ancestor: the top
+// page embeds this page on another site, and this page embeds the probe.
+const frame = document.createElement('iframe');
+frame.src = new URL(location.href).searchParams.get('src');
+document.body.appendChild(frame);
+</script>

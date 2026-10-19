@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>partition1: report this frame's storage and the storage events it hears</title>
+<script>
+// Lane partition1. Reports to the top-level window, by message:
+// - on load: {kind: 'partition1-probe', id, local, session}, the values of
+//   localStorage and sessionStorage under the key named by `key`;
+// - for a message {kind: 'partition1-events', id}: the storage events this
+//   window has heard since it loaded, as {kind: 'partition1-events', id, events}.
+const params = new URL(location.href).searchParams;
+const id = params.get('id');
+const key = params.get('key');
+const events = [];
+addEventListener('storage', e => events.push(e.key + '=' + e.newValue));
+addEventListener('message', e => {
+  if (e.data && e.data.kind === 'partition1-events' && e.data.id === id)
+    top.postMessage({kind: 'partition1-events', id, events}, '*');
+});
+let local, session;
+try { local = localStorage.getItem(key); } catch (e) { local = 'threw ' + e.name; }
+try { session = sessionStorage.getItem(key); } catch (e) { session = 'threw ' + e.name; }
+top.postMessage({kind: 'partition1-probe', id, local, session}, '*');
+</script>

@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Storage events reach only windows whose storage key is the area's</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webstorage.html#concept-storage-broadcast">
+<link rel="help" href="https://privacycg.github.io/storage-partitioning/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// Lane partition1. Two frames of this page's origin: one directly in this
+// page (this page's partition), one under a frame of another site (another
+// partition: the same origin, a cross-site ancestor). A localStorage change
+// here reaches the first only - Chromium's StorageArea dispatches to the
+// frames whose storage key is the area's.
+const key = 'partition1-event';
+
+function frameLoaded(t, id, src) {
+  return new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (!e.data || e.data.kind !== 'partition1-probe' || e.data.id !== id) return;
+      removeEventListener('message', receive);
+      resolve(e.source);
+    });
+    addEventListener('message', receive);
+    const frame = document.createElement('iframe');
+    frame.src = src;
+    document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+  });
+}
+
+function eventsOf(t, id, source) {
+  return new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (!e.data || e.data.kind !== 'partition1-events' || e.data.id !== id) return;
+      removeEventListener('message', receive);
+      resolve(e.data.events);
+    });
+    addEventListener('message', receive);
+    source.postMessage({kind: 'partition1-events', id}, '*');
+  });
+}
+
+promise_test(async t => {
+  const probe = id => get_host_info().HTTP_ORIGIN + '/crane/resources/partition1-probe.html?id=' + id + '&key=' + key;
+  const first = await frameLoaded(t, 'same', probe('same'));
+  const third = await frameLoaded(t, 'nested',
+      get_host_info().HTTP_NOTSAMESITE_ORIGIN + '/crane/resources/partition1-relay.html?src=' + encodeURIComponent(probe('nested')));
+  t.add_cleanup(() => localStorage.removeItem(key));
+  localStorage.setItem(key, 'changed');
+  // The same-partition frame hears it ...
+  let heard = [];
+  for (let i = 0; i < 50 && heard.length === 0; i++) {
+    heard = await eventsOf(t, 'same', first);
+    if (heard.length === 0) await new Promise(r => t.step_timeout(r, 20));
+  }
+  assert_array_equals(heard, [key + '=changed'], 'the same-partition frame hears the change');
+  // ... and, given as long again, the other partition's frame does not.
+  await new Promise(r => t.step_timeout(r, 100));
+  assert_array_equals(await eventsOf(t, 'nested', third), [], 'another partition hears nothing');
+}, 'A storage event does not cross storage partitions');
+</script>

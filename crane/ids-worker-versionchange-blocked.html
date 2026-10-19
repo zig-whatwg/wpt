@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB: a page and its dedicated worker share one database - versionchange, blocked and close across threads</title>
+<link rel="help" href="https://w3c.github.io/IndexedDB/#opening">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// IndexedDB storage is the user agent's, keyed by storage key: a page and
+// its dedicated worker - on another thread - open ONE database. The worker's
+// open at a higher version fires versionchange at the page's connection
+// (5.1 step 10.2), waits for it (10.3), then fires blocked (10.4) because the
+// page did not close; the page's close lets the upgrade run (10.5).
+function workerFrom(source) {
+  return new Worker(URL.createObjectURL(new Blob([source], {type: 'text/javascript'})));
+}
+function settled(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+function deleteDatabase(name) {
+  return settled(indexedDB.deleteDatabase(name));
+}
+
+promise_test(async t => {
+  const name = 'ids-worker-versionchange-blocked-' + Math.random();
+  await deleteDatabase(name);
+  t.add_cleanup(() => deleteDatabase(name));
+  const request = indexedDB.open(name, 1);
+  request.onupgradeneeded = () => request.result.createObjectStore('records').put('from-page', 'k');
+  const db = await settled(request);
+
+  const events = [];
+  const worker = workerFrom(`
+    onmessage = ({data}) => {
+      const request = indexedDB.open(data, 2);
+      request.onblocked = e => postMessage({event: 'blocked', oldVersion: e.oldVersion, newVersion: e.newVersion});
+      request.onupgradeneeded = e => {
+        request.transaction.objectStore('records').get('k').onsuccess = g =>
+          postMessage({event: 'upgradeneeded', oldVersion: e.oldVersion, value: g.target.result});
+      };
+      request.onsuccess = () => {
+        const version = request.result.version;
+        request.result.close();
+        postMessage({event: 'success', version});
+      };
+      request.onerror = () => postMessage({event: 'error', name: request.error.name});
+    };`);
+  t.add_cleanup(() => worker.terminate());
+  const versionchange = new Promise(resolve => {
+    db.onversionchange = e => { events.push('versionchange'); resolve(e); };
+  });
+  const messages = [];
+  let blocked, done;
+  const blockedEvent = new Promise(resolve => { blocked = resolve; });
+  const result = new Promise(resolve => { done = resolve; });
+  worker.onmessage = ({data}) => {
+    events.push(data.event);
+    messages.push(data);
+    if (data.event === 'blocked') blocked(data);
+    if (data.event === 'success' || data.event === 'error') done(data);
+  };
+  worker.postMessage(name);
+
+  const change = await versionchange;
+  assert_equals(change.oldVersion, 1, 'versionchange oldVersion');
+  assert_equals(change.newVersion, 2, 'versionchange newVersion');
+  // The page keeps its connection open: the worker's request is blocked.
+  const blockedData = await blockedEvent;
+  assert_equals(blockedData.oldVersion, 1, 'blocked oldVersion');
+  assert_equals(blockedData.newVersion, 2, 'blocked newVersion');
+  db.close();
+  const final = await result;
+  assert_equals(final.event, 'success', 'the worker opens once the page closed');
+  assert_equals(final.version, 2);
+  const upgrade = messages.find(m => m.event === 'upgradeneeded');
+  assert_equals(upgrade.oldVersion, 1, 'the worker upgrades the page\'s database');
+  assert_equals(upgrade.value, 'from-page', 'the worker reads what the page wrote');
+  assert_array_equals(events, ['versionchange', 'blocked', 'upgradeneeded', 'success']);
+}, "a dedicated worker's open fires versionchange at the page's connection, then blocked, and the page's close lets its upgrade run");
+
+promise_test(async t => {
+  const name = 'ids-worker-versionchange-close-' + Math.random();
+  await deleteDatabase(name);
+  t.add_cleanup(() => deleteDatabase(name));
+  const db = await settled(indexedDB.open(name, 1));
+  // Closing in the versionchange listener: no blocked event at all.
+  db.onversionchange = () => db.close();
+  const worker = workerFrom(`
+    onmessage = ({data}) => {
+      const events = [];
+      const request = indexedDB.open(data, 2);
+      request.onblocked = () => events.push('blocked');
+      request.onupgradeneeded = () => events.push('upgradeneeded');
+      request.onsuccess = () => { request.result.close(); events.push('success'); postMessage(events); };
+      request.onerror = () => { events.push('error'); postMessage(events); };
+    };`);
+  t.add_cleanup(() => worker.terminate());
+  const events = new Promise(resolve => { worker.onmessage = ({data}) => resolve(data); });
+  worker.postMessage(name);
+  assert_array_equals(await events, ['upgradeneeded', 'success']);
+}, "a page's connection closed by its versionchange listener does not block a worker's upgrade");
+</script>

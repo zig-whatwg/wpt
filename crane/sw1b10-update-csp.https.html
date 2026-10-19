@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>update() fetches its script without the client's Content Security Policy</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#update-algorithm">
+<link rel=help href="https://w3c.github.io/webappsec-csp/#should-block-request">
+<!--
+  Lane sw1-b10, a stated deviation (src/service_worker/realm.zig register(),
+  run.zig): the browsers check a service worker script URL against the
+  client's CSP once, at register(), and the job's own script fetch enforces
+  nothing - WebKit ServiceWorkerJob::fetchScriptWithContext loads with
+  ContentSecurityPolicyEnforcement::DoNotEnforce, Chromium's
+  ServiceWorkerRegistration::update and its browser-side script loader check
+  no CSP, Gecko's ServiceWorkerScriptCache channel carries no CSP. So an
+  update() made after a policy that blocks the script was added still fetches
+  and installs the new script, and no violation is reported. The spec's
+  Update step 7 would block the fetch (main fetch step 7) and reject with a
+  TypeError (step 8).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const scope = "resources/sw1-scope/update-csp/";
+  const registration = await sw1Register(t, "resources/sw1-changing.py", { scope });
+  await sw1WaitForState(registration.installing, "activated");
+
+  const violations = [];
+  const first = new Promise(resolve => document.addEventListener("securitypolicyviolation", e => {
+    violations.push(e.violatedDirective);
+    resolve();
+  }));
+  const meta = document.createElement("meta");
+  meta.httpEquiv = "Content-Security-Policy";
+  meta.content = "worker-src 'none'";
+  document.head.appendChild(meta);
+
+  // The policy now blocks a new registration of the same script ...
+  await promise_rejects_dom(t, "SecurityError",
+    navigator.serviceWorker.register("resources/sw1-changing.py", { scope }));
+  await first;
+  assert_array_equals(violations, ["worker-src"], "register() reports the violation");
+
+  // ... but update() fetches it anyway: the changed bytes install a new worker.
+  await registration.update();
+  assert_not_equals(registration.installing, null, "the update installs a new worker");
+  await sw1WaitForState(registration.installing, "installed");
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_array_equals(violations, ["worker-src"], "update() reports nothing");
+}, "update() under a policy added after registration still fetches and installs the changed script");
+</script>

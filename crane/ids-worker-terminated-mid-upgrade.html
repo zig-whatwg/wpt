@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB: a worker terminated mid-upgrade leaves the shared database's version unchanged</title>
+<link rel="help" href="https://w3c.github.io/IndexedDB/#abort-an-upgrade-transaction">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A dedicated worker creates a database and is terminated while its upgrade
+// transaction still runs. Its agent's end aborts the upgrade (5.8: the
+// version and schema revert) before the page's queued open of the same
+// database - one database, shared with the page - may go on: the page sees
+// version 0 and no store.
+function settled(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+promise_test(async t => {
+  const name = 'ids-worker-terminated-mid-upgrade-' + Math.random();
+  await settled(indexedDB.deleteDatabase(name));
+  t.add_cleanup(() => settled(indexedDB.deleteDatabase(name)));
+  const source = `
+    onmessage = ({data}) => {
+      const request = indexedDB.open(data, 1);
+      request.onupgradeneeded = () => {
+        const store = request.result.createObjectStore('should-not-be-created');
+        // Keep the upgrade transaction running until the page terminates us.
+        const step = () => { store.get(0).onsuccess = step; };
+        step();
+        postMessage('upgrading');
+      };
+    };`;
+  const worker = new Worker(URL.createObjectURL(new Blob([source], {type: 'text/javascript'})));
+  await new Promise(resolve => {
+    worker.onmessage = ({data}) => { if (data === 'upgrading') resolve(); };
+    worker.postMessage(name);
+  });
+  worker.terminate();
+
+  const request = indexedDB.open(name, 1);
+  let oldVersion = -1;
+  let namesSeen = null;
+  request.onupgradeneeded = e => {
+    oldVersion = e.oldVersion;
+    namesSeen = Array.from(request.result.objectStoreNames);
+    request.result.createObjectStore('should-be-created');
+  };
+  const db = await settled(request);
+  t.add_cleanup(() => db.close());
+  assert_equals(oldVersion, 0, 'the worker\'s upgrade was rolled back');
+  assert_array_equals(namesSeen, [], 'no store survives the aborted upgrade');
+  assert_array_equals(Array.from(db.objectStoreNames), ['should-be-created']);
+}, "a worker terminated mid-upgrade leaves the version unchanged as seen from the page");
+</script>

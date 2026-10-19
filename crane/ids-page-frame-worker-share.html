@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB: a page, its same-origin frame and its dedicated worker share databases and schedule across threads</title>
+<link rel="help" href="https://w3c.github.io/IndexedDB/#transaction-scheduling">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// IndexedDB storage is keyed by storage key, not by global: a same-origin
+// frame and a dedicated worker see the page's database, and transactions
+// from two threads are scheduled together (2.7.2): a page's readonly
+// transaction created after a worker's readwrite one over the same store
+// starts only once the worker's has finished.
+function settled(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function createWith(t, name, value) {
+  await settled(indexedDB.deleteDatabase(name));
+  const request = indexedDB.open(name, 3);
+  request.onupgradeneeded = () => request.result.createObjectStore('records').put(value, 'k');
+  const db = await settled(request);
+  // Close before deleting: an open connection blocks the deletion.
+  t.add_cleanup(() => { db.close(); return settled(indexedDB.deleteDatabase(name)); });
+  return db;
+}
+function workerFrom(source) {
+  return new Worker(URL.createObjectURL(new Blob([source], {type: 'text/javascript'})));
+}
+
+promise_test(async t => {
+  const name = 'ids-frame-shares-' + Math.random();
+  const db = await createWith(t, name, 'from-page');
+  const frame = document.createElement('iframe');
+  frame.srcdoc = '<!doctype html><title>frame</title>';
+  const loaded = new Promise(resolve => { frame.onload = resolve; });
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const factory = frame.contentWindow.indexedDB;
+  const names = (await factory.databases()).filter(info => info.name === name);
+  assert_equals(names.length, 1, 'the frame lists the page\'s database');
+  assert_equals(names[0].version, 3);
+  const frameRequest = factory.open(name);
+  const frameDb = await new Promise((resolve, reject) => {
+    frameRequest.onsuccess = () => resolve(frameRequest.result);
+    frameRequest.onerror = () => reject(frameRequest.error);
+  });
+  assert_equals(frameDb.version, 3);
+  const value = await new Promise((resolve, reject) => {
+    const get = frameDb.transaction('records').objectStore('records').get('k');
+    get.onsuccess = () => resolve(get.result);
+    get.onerror = () => reject(get.error);
+  });
+  frameDb.close();
+  assert_equals(value, 'from-page');
+}, "a same-origin frame opens the page's database and reads its records");
+
+promise_test(async t => {
+  const name = 'ids-worker-scheduling-' + Math.random();
+  const db = await createWith(t, name, -1);
+  const worker = workerFrom(`
+    onmessage = ({data}) => {
+      const request = indexedDB.open(data);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('records', 'readwrite');
+        const store = tx.objectStore('records');
+        let n = 0;
+        const step = () => { store.put(n, 'k').onsuccess = () => { if (++n < 40) step(); }; };
+        step();
+        tx.oncomplete = () => { db.close(); postMessage('committed'); };
+        postMessage('writing');
+      };
+      request.onerror = () => postMessage('error ' + request.error.name);
+    };`);
+  t.add_cleanup(() => worker.terminate());
+  const order = [];
+  const committed = new Promise(resolve => {
+    worker.onmessage = ({data}) => {
+      order.push(data);
+      if (data === 'writing') {
+        // Created after the worker's readwrite transaction: it waits for it.
+        const get = db.transaction('records').objectStore('records').get('k');
+        get.onsuccess = () => { order.push('read ' + get.result); readDone(); };
+      }
+      if (data === 'committed') resolve();
+    };
+  });
+  let readDone;
+  const read = new Promise(resolve => { readDone = resolve; });
+  worker.postMessage(name);
+  await Promise.all([committed, read]);
+  assert_true(order.includes('read 39'), 'the page reads the worker\'s last committed write: ' + order.join(', '));
+}, "a page's readonly transaction waits for its worker's earlier readwrite transaction over the same store");
+</script>

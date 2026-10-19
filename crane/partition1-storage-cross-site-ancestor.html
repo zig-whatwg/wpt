@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Web Storage is partitioned by the has-cross-site-ancestor bit</title>
+<link rel="help" href="https://privacycg.github.io/storage-partitioning/">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-has-cross-site-ancestor">
+<link rel="help" href="https://github.com/whatwg/storage/pull/182">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// Lane partition1. A frame of this page's own origin, nested under a frame of
+// another site (A-in-B-in-A), has this page's top-level site but a cross-site
+// ancestor: Chromium's storage key ancestor chain bit and Gecko's
+// partitionKey "f" give it a partition of its own, and whatwg/storage PR 182
+// adds the bit to the storage key. A frame of this origin directly in this
+// page shares this page's storage.
+const key = 'partition1-aba';
+
+function probe(t, id, src) {
+  return new Promise(resolve => {
+    const receive = t.step_func(e => {
+      if (!e.data || e.data.kind !== 'partition1-probe' || e.data.id !== id) return;
+      removeEventListener('message', receive);
+      resolve(e.data);
+    });
+    addEventListener('message', receive);
+    const frame = document.createElement('iframe');
+    frame.src = src;
+    document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+  });
+}
+
+function probeUrl(id) {
+  return get_host_info().HTTP_ORIGIN + '/crane/resources/partition1-probe.html?id=' + id + '&key=' + key;
+}
+
+promise_test(async t => {
+  localStorage.setItem(key, 'top-local');
+  sessionStorage.setItem(key, 'top-session');
+  t.add_cleanup(() => { localStorage.removeItem(key); sessionStorage.removeItem(key); });
+  const direct = await probe(t, 'direct', probeUrl('direct'));
+  assert_equals(direct.local, 'top-local', 'a same-origin frame shares localStorage');
+  assert_equals(direct.session, 'top-session', 'a same-origin frame shares sessionStorage');
+}, 'A same-origin frame without a cross-site ancestor shares the top page\'s storage');
+
+promise_test(async t => {
+  localStorage.setItem(key, 'top-local');
+  sessionStorage.setItem(key, 'top-session');
+  t.add_cleanup(() => { localStorage.removeItem(key); sessionStorage.removeItem(key); });
+  const relay = get_host_info().HTTP_NOTSAMESITE_ORIGIN + '/crane/resources/partition1-relay.html?src=' +
+      encodeURIComponent(probeUrl('aba'));
+  const nested = await probe(t, 'aba', relay);
+  assert_equals(nested.local, null, 'localStorage is another partition');
+  assert_equals(nested.session, null, 'sessionStorage is another partition');
+}, 'A same-origin frame under a cross-site frame has storage of its own');
+</script>

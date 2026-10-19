@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>IndexedDB: a removed frame's connection is closed, and its transaction does not hold the database</title>
+<link rel="help" href="https://w3c.github.io/IndexedDB/#connection">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// IndexedDB 2.? connection: "If the execution context where the connection
+// was created is destroyed (for example due to the user navigating away
+// from that page), the connection is closed." A same-origin frame shares
+// the page's database; once the frame is removed (HTML "destroy a
+// document": its tasks never run again), its open connection and its
+// unfinished transaction must not block the page's deletion or upgrade.
+function settled(request, log) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    if (log) request.onblocked = () => log.push('blocked');
+  });
+}
+async function frameWith(t) {
+  const frame = document.createElement('iframe');
+  frame.srcdoc = '<!doctype html><title>frame</title>';
+  const loaded = new Promise(resolve => { frame.onload = resolve; });
+  document.body.appendChild(frame);
+  await loaded;
+  return frame;
+}
+async function pageDatabase(t, name) {
+  await settled(indexedDB.deleteDatabase(name));
+  const request = indexedDB.open(name, 1);
+  request.onupgradeneeded = () => request.result.createObjectStore('records').put('v', 'k');
+  const db = await settled(request);
+  db.close();
+}
+
+promise_test(async t => {
+  const name = 'ids-frame-removed-open-' + Math.random();
+  await pageDatabase(t, name);
+  const frame = await frameWith(t);
+  const frameDb = await settled(frame.contentWindow.indexedDB.open(name));
+  // The frame neither closes nor handles versionchange: it goes away.
+  frame.remove();
+  const log = [];
+  await settled(indexedDB.deleteDatabase(name), log);
+  assert_array_equals(log, [], 'no blocked: the removed frame\'s connection is closed');
+}, "a removed frame's open connection does not block the page's deleteDatabase");
+
+promise_test(async t => {
+  const name = 'ids-frame-removed-transaction-' + Math.random();
+  await pageDatabase(t, name);
+  const frame = await frameWith(t);
+  const frameDb = await settled(frame.contentWindow.indexedDB.open(name));
+  await new Promise((resolve, reject) => {
+    const get = frameDb.transaction('records').objectStore('records').get('k');
+    get.onsuccess = resolve;
+    get.onerror = () => reject(get.error);
+  });
+  // Its transaction has not committed yet: the frame's next task would do
+  // that, and a destroyed document runs no task.
+  frameDb.close();
+  const log = [];
+  const upgraded = indexedDB.open(name, 2);
+  upgraded.onupgradeneeded = () => log.push('upgradeneeded');
+  frame.remove();
+  const db = await settled(upgraded, log);
+  t.add_cleanup(() => { db.close(); return settled(indexedDB.deleteDatabase(name)); });
+  assert_equals(db.version, 2);
+  assert_true(log.includes('upgradeneeded'));
+}, "a removed frame's unfinished transaction does not hold the page's upgrade");
+</script>

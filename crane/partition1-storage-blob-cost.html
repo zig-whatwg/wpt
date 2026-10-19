@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Cost: localStorage set/get and createObjectURL/revokeObjectURL, 10,000 each</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane partition1's cost page: identical inputs before and after keying Web
+// Storage and the blob URL store by storage key. The times are in the result
+// names, so the journal's subtest stream keeps them.
+const COUNT = 10000;
+
+function timed(label, body) {
+  promise_test(async () => {
+    body(1000); // warm
+    const start = performance.now();
+    body(COUNT);
+    const elapsed = performance.now() - start;
+    test(() => {}, label + ": " + COUNT + ": " + elapsed.toFixed(3) + " ms");
+  }, label + ": ran");
+}
+
+timed("localStorage set/get", count => {
+  for (let i = 0; i < count; ++i) {
+    const value = String(i);
+    localStorage.setItem("partition1-cost", value);
+    if (localStorage.getItem("partition1-cost") !== value) throw new Error("stored value differs");
+  }
+  localStorage.removeItem("partition1-cost");
+});
+
+const blob = new Blob(["partition1 cost"], {type: "text/plain"});
+timed("createObjectURL/revokeObjectURL", count => {
+  for (let i = 0; i < count; ++i) {
+    const url = URL.createObjectURL(blob);
+    URL.revokeObjectURL(url);
+  }
+});
+</script>
