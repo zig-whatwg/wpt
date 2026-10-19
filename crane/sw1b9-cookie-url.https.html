@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The cookie URL: the document's at creation, a creator's for about:blank and srcdoc</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane sw1-b9. document.cookie and the Cookie Store API read and write
+// cookies for the document's cookie URL: its URL when it was made (a
+// same-document change - pushState, replaceState, a fragment navigation -
+// leaves it), an about:blank or srcdoc document's creator's, and after
+// document.open() the entry document's. Blink (DocumentInit::GetCookieUrl,
+// Document::open) and WebKit (Document::initSecurityContext,
+// Document::open); all three browsers pass
+// cookiestore/cookieStore_get_set_across_frames.https.html and
+// cookieStore_get_set_creation_url.https.any.js.
+
+function frame(t, attributes) {
+  const f = document.createElement('iframe');
+  Object.assign(f, attributes);
+  const loaded = new Promise(resolve => f.onload = resolve);
+  document.body.appendChild(f);
+  t.add_cleanup(() => f.remove());
+  return attributes.src || attributes.srcdoc ? loaded.then(() => f) : Promise.resolve(f);
+}
+
+function unique(prefix) { return prefix + '-' + Math.random().toString(36).slice(2); }
+
+promise_test(async t => {
+  const f = await frame(t, { src: '/common/blank.html' });
+  const w = f.contentWindow;
+  const name = unique('sw1b9-push');
+  await w.cookieStore.set({ name, value: '1', path: '/common/' });
+  t.add_cleanup(() => cookieStore.delete({ name, path: '/common/' }));
+  w.history.pushState({}, '', '/sw1b9/pushed');
+  w.history.replaceState({}, '', '/sw1b9/replaced');
+  w.location.hash = 'fragment';
+  assert_equals(w.location.pathname, '/sw1b9/replaced');
+  const item = await w.cookieStore.get(name);
+  assert_not_equals(item, null, 'cookieStore.get after pushState, replaceState and a fragment navigation');
+  assert_equals(item.value, '1');
+  assert_true(w.document.cookie.includes(name + '=1'), 'document.cookie after them');
+}, 'pushState, replaceState and fragment navigation leave the cookie URL');
+
+promise_test(async t => {
+  const f = await frame(t, {});
+  const w = f.contentWindow;
+  assert_equals(w.document.URL, 'about:blank');
+  const name = unique('sw1b9-blank');
+  w.document.cookie = name + '=2';
+  t.add_cleanup(() => cookieStore.delete(name));
+  assert_true(document.cookie.includes(name + '=2'), "the frame's cookie is the parent's");
+  assert_true(w.document.cookie.includes(name + '=2'), 'and the frame reads it back');
+  const item = await w.cookieStore.get(name);
+  assert_not_equals(item, null, "the frame's cookieStore reads the parent's cookie");
+  assert_equals(item.value, '2');
+}, "an about:blank frame's cookie URL is its parent's");
+
+promise_test(async t => {
+  const f = await frame(t, { srcdoc: '<p>srcdoc' });
+  const w = f.contentWindow;
+  const name = unique('sw1b9-srcdoc');
+  await cookieStore.set(name, '3');
+  t.add_cleanup(() => cookieStore.delete(name));
+  const item = await w.cookieStore.get(name);
+  assert_not_equals(item, null, "the srcdoc frame's cookieStore reads the parent's cookie");
+  assert_equals(item.value, '3');
+  assert_true(w.document.cookie.includes(name + '=3'));
+}, "a srcdoc frame's cookie URL is its parent's");
+
+promise_test(async t => {
+  const f = await frame(t, { src: '/common/blank.html' });
+  const w = f.contentWindow;
+  const name = unique('sw1b9-open');
+  // A cookie for this page's directory, which /common/blank.html does not
+  // path-match.
+  const directory = location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1);
+  await cookieStore.set({ name, value: '4', path: directory });
+  t.add_cleanup(() => cookieStore.delete({ name, path: directory }));
+  assert_false(w.document.cookie.includes(name + '=4'), 'not before document.open()');
+  const opened = f.contentDocument.open();
+  opened.close();
+  assert_true(f.contentDocument.cookie.includes(name + '=4'), "after the parent's document.open(), the frame's cookie URL is the parent's");
+}, "document.open() from the parent moves the frame's cookie URL to the parent's");
+</script>

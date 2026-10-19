@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>document.cookie set/get loop with the service worker manager hearing the jar</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane sw1-b9's cost page: the Browser's jar tells its service worker
+// manager of every change (Cookie Store "process cookie changes" step 2).
+// With no registration subscribed, that costs one atomic load per change.
+// The manager is reached first (getRegistrations), so its hook is in place.
+promise_test(async t => {
+  await navigator.serviceWorker.getRegistrations();
+  t.add_cleanup(() => { document.cookie = 'sw1b9-cost=; max-age=0; path=/'; });
+  const start = performance.now();
+  for (let i = 0; i < 10000; ++i) {
+    const value = String(i);
+    document.cookie = 'sw1b9-cost=' + value + '; path=/';
+    if (!document.cookie.includes('sw1b9-cost=' + value)) assert_unreached('stored value differs');
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_greater_than(elapsed, 0),
+       'Cookie loop: ' + elapsed.toFixed(3) + ' ms for 10000 set/get pairs');
+}, '10000 document.cookie set/get pairs');
+</script>
