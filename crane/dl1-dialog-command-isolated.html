@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dialog show-modal command isolated regression</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<button id="invoker" commandfor="target" command="show-modal"></button>
+<dialog id="target"></dialog>
+<script>
+test(() => {
+  invoker.click();
+  assert_true(target.open);
+  assert_true(target.matches(':modal'));
+  target.close();
+  assert_false(target.open);
+  assert_false(target.matches(':modal'));
+}, 'show-modal opens a dialog as modal and close clears its modal state');
+</script>

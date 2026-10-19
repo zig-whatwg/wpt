@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dialog keyboard focus follows Firefox and Safari</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#sequential-focus-navigation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+// Golden rule 2, row85 Q12: Firefox and Safari include a plain dialog in
+// sequential focus. Chrome alone skips it. HTML PR8199 did not prescribe
+// the default tabindex; the ordinary tabindex rules remain in effect.
+promise_test(async t => {
+  const root = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => root.remove());
+  root.innerHTML = '<button id=before>before</button><dialog open><button id=inside>inside</button></dialog><button id=after>after</button>';
+  const before = root.querySelector('#before');
+  const dialog = root.querySelector('dialog');
+  const inside = root.querySelector('#inside');
+  before.focus();
+  await test_driver.send_keys(document.body, '\ue004');
+  assert_equals(document.activeElement, dialog, 'plain dialog is sequential');
+  await test_driver.send_keys(document.body, '\ue004');
+  assert_equals(document.activeElement, inside);
+  dialog.tabIndex = -1;
+  before.focus();
+  await test_driver.send_keys(document.body, '\ue004');
+  assert_equals(document.activeElement, inside, 'explicit -1 excludes dialog');
+  dialog.tabIndex = 0;
+  before.focus();
+  await test_driver.send_keys(document.body, '\ue004');
+  assert_equals(document.activeElement, dialog, 'explicit 0 includes dialog');
+}, 'Plain dialogs follow the Firefox/Safari sequential-focus default');
+</script>

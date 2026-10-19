@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Modal dialog lifecycle throughput</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<dialog id="dialog"></dialog>
+<script>
+test(() => {
+  for (let i = 0; i < 10; i++) { dialog.showModal(); dialog.close(); }
+  const start = performance.now();
+  for (let i = 0; i < 1000; i++) { dialog.showModal(); dialog.close(); }
+  const elapsed = performance.now() - start;
+  assert_false(dialog.open);
+  assert_false(dialog.matches(':modal'));
+  assert_equals(dialog.returnValue, '');
+  test(() => {}, `1000 modal open/close pairs: ${elapsed.toFixed(3)} ms`);
+}, '1000 modal dialog open and close cycles');
+</script>

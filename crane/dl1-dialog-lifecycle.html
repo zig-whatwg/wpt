@@ -1,0 +1,174 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dialog synchronous lifecycle, reentrancy and modal state</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function make(t, connected = true) {
+  const dialog = document.createElement('dialog');
+  if (connected) document.body.append(dialog);
+  t.add_cleanup(() => dialog.remove());
+  return dialog;
+}
+test(t => {
+  const d = make(t, false);
+  assert_equals(d.returnValue, '');
+  d.returnValue = 'saved\u0000\ud800';
+  d.close('ignored');
+  assert_equals(d.returnValue, 'saved\u0000\ud800');
+  d.show(); d.show();
+  assert_true(d.open);
+  assert_false(d.matches(':modal'));
+  d.close();
+  assert_equals(d.returnValue, 'saved\u0000\ud800');
+  d.show(); d.close('');
+  assert_equals(d.returnValue, '');
+}, 'Detached show works and close preserves absent versus empty returnValue');
+test(t => {
+  const d = make(t);
+  assert_equals(d.closedBy, 'none');
+  for (const [value, expected] of [['AnY','any'], ['CLOSEREQUEST','closerequest'], ['NONE','none'], ['invalid','none'], ['','none']]) {
+    d.closedBy = value;
+    assert_equals(d.closedBy, expected);
+    assert_equals(d.getAttribute('closedby'), value);
+  }
+  d.removeAttribute('closedby');
+  d.showModal();
+  assert_equals(d.closedBy, 'closerequest');
+  d.closedBy = 'invalid';
+  assert_equals(d.closedBy, 'closerequest');
+  d.close();
+  assert_equals(d.closedBy, 'none');
+}, 'closedBy computes invalid and missing defaults from modal state');
+test(t => {
+  const d = make(t);
+  d.show();
+  assert_throws_dom('InvalidStateError', () => d.showModal());
+  d.close(); d.showModal(); d.showModal();
+  assert_throws_dom('InvalidStateError', () => d.show());
+  d.close();
+  assert_false(d.matches(':open, :modal'));
+}, 'Repeated same-mode show is a no-op and changing an open mode throws');
+test(t => {
+  const d = make(t, false);
+  assert_throws_dom('InvalidStateError', () => d.showModal());
+  assert_false(d.open);
+}, 'showModal rejects a disconnected dialog');
+test(t => {
+  const doc = document.implementation.createHTMLDocument('inactive');
+  const d = doc.body.appendChild(doc.createElement('dialog'));
+  assert_throws_dom('InvalidStateError', () => d.showModal());
+  assert_false(d.open);
+}, 'showModal rejects a dialog in an inactive document');
+for (const method of ['show', 'showModal']) {
+  test(t => {
+    const d = make(t);
+    let count = 0;
+    d.addEventListener('beforetoggle', t.step_func(event => {
+      count++;
+      assert_equals(event.oldState, 'closed');
+      assert_equals(event.newState, 'open');
+      assert_equals(event.source, null);
+      assert_true(event.cancelable);
+      assert_false(event.bubbles);
+      assert_true(event.isTrusted);
+      event.preventDefault();
+    }), {once:true});
+    d[method]();
+    assert_equals(count, 1);
+    assert_false(d.open);
+    assert_false(d.matches(':modal'));
+  }, method + ' honors canceled beforetoggle');
+}
+test(t => {
+  const d = make(t);
+  d.addEventListener('beforetoggle', () => d.remove(), {once:true});
+  d.showModal();
+  assert_false(d.open);
+  assert_false(d.matches(':modal'));
+}, 'showModal revalidates connection after beforetoggle');
+test(t => {
+  const d = make(t);
+  d.addEventListener('beforetoggle', () => d.open = true, {once:true});
+  d.showModal();
+  assert_true(d.open);
+  assert_false(d.matches(':modal'));
+  d.close();
+}, 'showModal does not become modal if beforetoggle already opened it');
+test(t => {
+  const d = make(t);
+  d.popover = 'manual';
+  d.showPopover();
+  assert_throws_dom('InvalidStateError', () => d.showModal());
+  d.hidePopover();
+  d.showModal();
+  assert_throws_dom('InvalidStateError', () => d.showPopover());
+  d.close();
+}, 'Dialog modal and popover showing states exclude each other');
+test(t => {
+  const d = make(t);
+  d.showModal();
+  let count = 0;
+  d.addEventListener('beforetoggle', t.step_func(event => {
+    count++;
+    assert_equals(event.oldState, 'open');
+    assert_equals(event.newState, 'closed');
+    assert_false(event.cancelable);
+    event.preventDefault();
+  }), {once:true});
+  d.close('accepted');
+  assert_equals(count, 1);
+  assert_false(d.open);
+  assert_equals(d.returnValue, 'accepted');
+}, 'The closing beforetoggle cannot cancel close');
+test(t => {
+  const d = make(t);
+  d.returnValue = 'saved';
+  d.showModal();
+  d.addEventListener('beforetoggle', () => d.removeAttribute('open'), {once:true});
+  d.close('ignored');
+  assert_false(d.open);
+  assert_true(d.matches(':modal'));
+  assert_equals(d.returnValue, 'saved');
+}, 'close rechecks open after beforetoggle before changing returnValue or modal state');
+test(t => {
+  const d = make(t);
+  d.showModal(); d.removeAttribute('open');
+  assert_true(d.matches(':modal'));
+  assert_false(d.matches(':open'));
+  d.close();
+  assert_true(d.matches(':modal'));
+  d.remove();
+  assert_false(d.matches(':modal'));
+}, 'Removing open leaves the modal top-layer entry until the element is removed');
+test(t => {
+  const container = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => container.remove());
+  const d = container.appendChild(document.createElement('dialog'));
+  d.showModal(); container.remove();
+  assert_true(d.open);
+  assert_false(d.matches(':modal'));
+  document.body.append(container);
+  assert_true(d.open);
+  assert_false(d.matches(':modal'));
+  d.close();
+}, 'Removing a modal subtree clears modal state while preserving open');
+test(t => {
+  const button = document.body.appendChild(document.createElement('button'));
+  t.add_cleanup(() => button.remove());
+  const d = make(t);
+  button.commandForElement = d;
+  button.command = 'show-modal';
+  let source = null;
+  d.addEventListener('beforetoggle', e => source = e.source, {once:true});
+  button.click();
+  assert_equals(source, button);
+  button.command = 'close'; button.value = 'result';
+  d.addEventListener('beforetoggle', e => source = e.source, {once:true});
+  button.click();
+  assert_equals(source, button);
+  assert_equals(d.returnValue, 'result');
+}, 'Dialog commands propagate their invoker to synchronous beforetoggle');
+</script>

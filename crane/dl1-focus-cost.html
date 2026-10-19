@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Ordinary focus cost without modal dialogs</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><input id="first"><input id="second">
+<script>
+for (let i = 0; i < 100; i++) (i % 2 ? first : second).focus();
+let count = 0;
+const start = performance.now();
+for (let i = 0; i < 10000; i++) {
+  const target = i % 2 ? first : second;
+  target.focus();
+  if (document.activeElement === target) count++;
+}
+const elapsed = performance.now() - start;
+test(() => assert_equals(count, 10000), `10000 ordinary focus changes: ${elapsed.toFixed(3)} ms`);
+</script>

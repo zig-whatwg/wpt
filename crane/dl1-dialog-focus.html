@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Modal focus exclusion and previous-focus lifetime</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#modal-dialogs-and-inert-subtrees">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const root = document.body.appendChild(document.createElement('section'));
+  root.innerHTML = '<button id="outside">outside</button><div id="ancestor" inert><dialog tabindex="0"><button id="inside">inside</button><span inert><button id="inert-child">inert</button></span></dialog></div>';
+  t.add_cleanup(() => root.remove());
+  return {root, dialog:root.querySelector('dialog'), outside:root.querySelector('#outside'), inside:root.querySelector('#inside'), inert:root.querySelector('#inert-child')};
+}
+test(t => {
+  const {dialog, outside, inside, inert} = fixture(t);
+  outside.focus(); dialog.showModal(); inside.focus();
+  assert_equals(document.activeElement, inside, 'modal escapes its inert ancestor');
+  outside.focus();
+  assert_equals(document.activeElement, inside, 'outside is blocked');
+  inert.focus();
+  assert_equals(document.activeElement, inside, 'inert descendant stays inert');
+  dialog.close();
+  assert_equals(document.activeElement, outside, 'previous focus is restored');
+}, 'Modal dialogs escape ancestor inertness, preserve inner inertness and restore focus');
+test(t => {
+  const {root, dialog, outside, inside} = fixture(t);
+  const second = root.appendChild(document.createElement('dialog'));
+  second.tabIndex = 0;
+  const secondButton = second.appendChild(document.createElement('button'));
+  outside.focus(); dialog.showModal(); inside.focus(); second.showModal(); secondButton.focus();
+  inside.focus();
+  assert_equals(document.activeElement, secondButton);
+  assert_true(dialog.matches(':modal'));
+  assert_true(second.matches(':modal'));
+  second.close(); inside.focus();
+  assert_equals(document.activeElement, inside);
+  outside.focus();
+  assert_equals(document.activeElement, inside);
+  dialog.close(); outside.focus();
+  assert_equals(document.activeElement, outside);
+}, 'Only the topmost modal dialog permits focus while both match modal');
+test(t => {
+  const {dialog, outside, inside} = fixture(t);
+  dialog.showModal(); inside.focus(); dialog.removeAttribute('open');
+  outside.focus();
+  assert_not_equals(document.activeElement, outside, 'direct open removal does not unblock');
+  dialog.remove(); outside.focus();
+  assert_equals(document.activeElement, outside, 'removing the dialog unblocks');
+}, 'Direct open removal preserves document blocking until dialog removal');
+promise_test(async t => {
+  const {root, dialog} = fixture(t);
+  root.querySelector('#ancestor').inert = false;
+  let previous = root.querySelector('#outside');
+  previous.focus(); dialog.show();
+  const weak = new WeakRef(previous);
+  previous.remove(); previous = null;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  const restored = weak.deref();
+  assert_not_equals(restored, undefined, 'the saved focus is held through collection');
+  root.appendChild(restored);
+  dialog.close();
+  assert_equals(document.activeElement, restored);
+}, 'The saved previous-focus element survives after script drops every strong reference');
+</script>

@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dialog focusing steps delegate and fallback</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interactive-elements.html#dialog-focusing-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function makeDialog(t, markup = '') {
+  const dialog = document.body.appendChild(document.createElement('dialog'));
+  dialog.innerHTML = markup;
+  t.add_cleanup(() => dialog.remove());
+  return dialog;
+}
+for (const method of ['show', 'showModal']) {
+  test(t => {
+    const dialog = makeDialog(t, '<button tabindex="-1">programmatic only</button><button id="first">sequential</button><button>later</button>');
+    dialog[method]();
+    assert_equals(document.activeElement, dialog.querySelector('#first'));
+  }, method + ' chooses the first sequentially focusable descendant');
+  test(t => {
+    const dialog = makeDialog(t, '<button>first</button><button autofocus tabindex="-1">autofocus</button>');
+    dialog[method]();
+    assert_equals(document.activeElement, dialog.querySelector('[autofocus]'));
+  }, method + ' gives autofocus precedence over tree order');
+  test(t => {
+    const dialog = makeDialog(t, '<button autofocus>child</button>');
+    dialog.tabIndex = -1;
+    dialog.autofocus = true;
+    dialog[method]();
+    assert_equals(document.activeElement, dialog);
+  }, method + ' honors autofocus on the dialog itself');
+  test(t => {
+    const dialog = makeDialog(t);
+    dialog[method]();
+    assert_equals(document.activeElement, dialog);
+  }, method + ' focuses an empty dialog without a tabindex');
+}
+</script>
