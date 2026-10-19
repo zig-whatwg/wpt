@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'nonce-cs4'">
+<title>A duplicate parser attribute makes a script non-nonceable</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script nonce="cs4">
+window.cs4DuplicateRan = false;
+window.cs4UniqueRan = false;
+</script>
+<script data-cs4="first" data-cs4="second" nonce="cs4">
+window.cs4DuplicateRan = true;
+</script>
+<script data-cs4="unique" nonce="cs4">
+window.cs4UniqueRan = true;
+</script>
+<script nonce="cs4">
+test(() => {
+  assert_false(window.cs4DuplicateRan);
+}, "A duplicate non-nonce attribute prevents nonce authorization");
+test(() => {
+  assert_true(window.cs4UniqueRan);
+}, "A script without duplicate attributes is authorized by its nonce");
+</script>

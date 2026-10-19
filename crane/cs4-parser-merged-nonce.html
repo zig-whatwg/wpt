@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parser-merged nonces remain hidden on existing html and body elements</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<body nonce="body-secret">
+<script>
+test(() => {
+  assert_equals(document.body.nonce, "body-secret", "the private nonce is retained");
+  assert_equals(document.body.getAttribute("nonce"), "", "the merged content attribute is hidden");
+  assert_false(document.body.matches('[nonce*="body-secret"]'), "selectors cannot read the nonce");
+}, "A repeated body start tag hides its newly merged nonce");
+</script>
+<html nonce="html-secret">
+<script>
+test(() => {
+  assert_equals(document.documentElement.nonce, "html-secret", "the private nonce is retained");
+  assert_equals(document.documentElement.getAttribute("nonce"), "", "the merged content attribute is hidden");
+  assert_false(document.documentElement.matches('[nonce*="html-secret"]'), "selectors cannot read the nonce");
+}, "A repeated html start tag hides its newly merged nonce");
+
+test(() => {
+  const element = document.createElement("span");
+  document.body.append(element);
+  element.setAttribute("nonce", "script-secret");
+  assert_equals(element.nonce, "script-secret");
+  assert_equals(element.getAttribute("nonce"), "script-secret");
+  element.remove();
+}, "An ordinary nonce attribute change on a connected element remains observable");
+</script>

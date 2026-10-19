@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Content handlers do not use script-visible IDL property writes</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(() => {
+  const element = document.createElement('button');
+  let setterCalls = 0;
+  Object.defineProperty(element, 'onclick', {set() { setterCalls++; }, configurable: true});
+  element.setAttribute('onclick', 'this.eh2Invoked = true');
+  element.dispatchEvent(new Event('click'));
+  assert_equals(setterCalls, 0, 'lazy compilation updates the internal map');
+  assert_true(element.eh2Invoked);
+}, 'An own property setter cannot intercept content-handler compilation');
+</script>

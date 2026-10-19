@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>JSON module leading BOM</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const result = await import('data:application/json,%EF%BB%BF%7B%22value%22%3A%22ok%22%7D', {with: {type: 'json'}});
+  assert_equals(result.default.value, 'ok');
+}, 'A leading UTF-8 BOM is stripped before JSON parsing');
+</script>

@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<body><script>
+const eh2Start = performance.now();
+const host = document.createElement('div');
+document.body.append(host);
+host.innerHTML = '<button onclick="this.__calls = (this.__calls || 0) + 1"></button>'.repeat(10000);
+for (const button of host.children) button.dispatchEvent(new Event('click'));
+const eh2Elapsed = performance.now() - eh2Start;
+test(() => {
+  assert_equals(host.children.length, 10000);
+  for (const button of host.children) assert_equals(button.__calls, 1);
+}, 'EH2 handlers: ' + eh2Elapsed.toFixed(3) + ' ms for 10000 parsed handlers and dispatches');
+</script>

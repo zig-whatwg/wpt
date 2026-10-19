@@ -1,0 +1,37 @@
+<!doctype html><meta charset="utf-8"><meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(() => {
+  window.eh2Runs = 0;
+  const s = document.createElement('script');
+  s.type = 'inert';
+  s.textContent = 'eh2Runs++';
+  const child = s.appendChild(document.createElement('i'));
+  document.body.append(s);
+  s.type = '';
+  child.remove();
+  assert_equals(eh2Runs, 0, 'removal does not prepare');
+  s.appendChild(document.createTextNode(';'));
+  assert_equals(eh2Runs, 1, 'insertion still prepares');
+}, 'Pure child removal does not prepare a script; insertion does');
+test(() => {
+  const s = document.createElement('script');
+  const text = s.appendChild(document.createTextNode(''));
+  document.body.append(s);
+  text.data = 'eh2Runs++';
+  assert_equals(eh2Runs, 2);
+}, 'CharacterData changes still prepare a connected script');
+test(() => {
+  window.eh2SvgRuns = 0;
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+  s.setAttribute('type', 'inert');
+  s.textContent = 'eh2SvgRuns++';
+  const child = s.appendChild(document.createElement('i'));
+  document.body.append(s);
+  s.setAttribute('type', '');
+  child.remove();
+  assert_equals(eh2SvgRuns, 0, 'SVG removal does not prepare');
+  s.appendChild(document.createTextNode(';'));
+  assert_equals(eh2SvgRuns, 1, 'SVG insertion still prepares');
+}, 'SVG script also ignores pure child removal');
+</script>

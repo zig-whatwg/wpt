@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MessageEvent preserves the sender origin record</title>
+<link rel="help" href="https://html.spec.whatwg.org/#dom-origin-from">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row 80 Q1: red transport prerequisite. Chrome and Safari pass the upstream
+// origin-from-messageevent and -opaque files; Firefox does not ship Origin.
+test(() => {
+  const event = new MessageEvent('message', {origin: location.origin});
+  assert_throws_js(TypeError, () => Origin.from(event));
+}, 'A script-supplied origin string does not become a real origin');
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  frame.sandbox = 'allow-scripts';
+  t.add_cleanup(() => frame.remove());
+  const messages = new Promise(resolve => {
+    const received = [];
+    const listener = t.step_func(event => {
+      if (event.source !== frame.contentWindow) return;
+      received.push(event);
+      if (received.length === 2) resolve(received);
+    });
+    window.addEventListener('message', listener);
+    t.add_cleanup(() => window.removeEventListener('message', listener));
+  });
+  frame.srcdoc = '<script>parent.postMessage("one", "*");parent.postMessage("two", "*");<\/script>';
+  document.body.append(frame);
+  const events = await messages;
+  const first = Origin.from(events[0]);
+  const second = Origin.from(events[1]);
+  assert_true(first.opaque);
+  assert_true(first.isSameOrigin(second));
+  frame.remove();
+  TestUtils.gc();
+  assert_true(first.isSameOrigin(Origin.from(events[0])));
+  assert_true(first.isSameOrigin(second));
+}, 'Queued events and extracted Origins keep one opaque sender identity after frame removal and GC');
+</script>

@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reusing a named frame sets its opener</title>
+<link rel="help" href="https://html.spec.whatwg.org/#window-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+let nextName = 0;
+function frame(t) {
+  const element = document.createElement('iframe');
+  element.name = 'or2-opener-' + (++nextName);
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+test(t => {
+  const target = frame(t);
+  assert_equals(window.open('', target.name), target.contentWindow);
+  assert_equals(target.contentWindow.opener, window);
+}, 'Opening an existing named iframe with an empty URL sets its opener');
+test(t => {
+  const target = frame(t);
+  window.open('', target.name);
+  target.contentWindow.opener = null;
+  assert_equals(target.contentWindow.opener, null);
+  window.open('', target.name);
+  assert_equals(target.contentWindow.opener, window);
+}, 'Reopening a named frame after disowning restores the opener');
+test(t => {
+  const caller = frame(t);
+  const target = frame(t);
+  caller.contentWindow.open('', target.name);
+  assert_equals(target.contentWindow.opener, caller.contentWindow);
+  assert_equals(window.open('', target.name, 'noopener'), null);
+  assert_equals(target.contentWindow.opener, caller.contentWindow);
+}, 'The receiver supplies the opener; noopener leaves an existing opener unchanged');
+</script>

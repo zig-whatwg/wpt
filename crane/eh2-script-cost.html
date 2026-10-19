@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<body><script>
+window.eh2Calls = 0;
+const eh2Start = performance.now();
+for (let i = 0; i < 1000; i++) {
+  const script = document.createElement('script');
+  script.textContent = 'eh2Calls++';
+  document.body.append(script);
+  script.remove();
+}
+const eh2Elapsed = performance.now() - eh2Start;
+test(() => assert_equals(eh2Calls, 1000), 'EH2 scripts: ' + eh2Elapsed.toFixed(3) + ' ms for 1000 inline scripts');
+</script>

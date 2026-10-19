@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><title>Raw handler source survives rejected attribute replacement</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<body><script>
+setup({allow_uncaught_exception: true});
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  const doc = frame.contentDocument;
+  const policy = doc.createElement('meta');
+  policy.httpEquiv = 'Content-Security-Policy';
+  policy.content = "script-src 'unsafe-hashes' 'sha256-erT0pqh9IZuI1y0zw3xjP8DWPp5FYjlDCfFO3lTUPF4='";
+  doc.head.append(policy);
+  const button = doc.createElement('button');
+  button.setAttribute('onclick', 'window.eh2CspResult = 19');
+  button.setAttribute('onclick', 'window.eh2CspResult = 20');
+  assert_equals(button.getAttribute('onclick'), 'window.eh2CspResult = 20');
+  button.dispatchEvent(new Event('click'));
+  assert_equals(frame.contentWindow.eh2CspResult, 19);
+}, 'CSP rejects a replacement without replacing the stored raw handler');
+test(t => {
+  const button = document.createElement('button');
+  const onError = e => { e.preventDefault(); button.onclick = () => 23; };
+  window.addEventListener('error', onError);
+  t.add_cleanup(() => window.removeEventListener('error', onError));
+  button.setAttribute('onclick', ')');
+  assert_equals(button.onclick(), 23);
+}, 'A compile-error report may replace the handler reentrantly');
+</script>

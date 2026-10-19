@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Raw event handlers compile only when read or invoked and keep listener order</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+setup({allow_uncaught_exception: true});
+test(t => {
+  const target = document.createElement('button');
+  const events = [];
+  const report = event => { events.push('error'); event.preventDefault(); };
+  window.addEventListener('error', report);
+  t.add_cleanup(() => window.removeEventListener('error', report));
+  target.addEventListener('click', () => events.push('first'));
+  target.setAttribute('onclick', ')');
+  target.addEventListener('click', () => events.push('last'));
+  assert_array_equals(events, [], 'setting the attribute does not compile');
+  target.dispatchEvent(new Event('click'));
+  assert_array_equals(events, ['first', 'error', 'last']);
+  assert_equals(target.onclick, null);
+  target.onclick = () => events.push('middle');
+  target.dispatchEvent(new Event('click'));
+  assert_array_equals(events, ['first', 'error', 'last', 'first', 'middle', 'last']);
+}, 'A compile failure preserves the original listener slot');
+
+test(t => {
+  const iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  t.add_cleanup(() => iframe.remove());
+  const doc = iframe.contentDocument;
+  const first = doc.body;
+  first.setAttribute('onresize', 'this.eh2WindowResult = 17');
+  const replacement = doc.createElement('body');
+  first.replaceWith(replacement);
+  iframe.contentWindow.dispatchEvent(new Event('resize'));
+  assert_equals(iframe.contentWindow.eh2WindowResult, 17);
+}, 'A Window raw handler keeps its source after the originating body is replaced');
+
+test(t => {
+  const iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  t.add_cleanup(() => iframe.remove());
+  const element = document.createElement('button');
+  element.setAttribute('onclick', 'return document');
+  iframe.contentDocument.body.appendChild(element);
+  assert_equals(element.onclick.constructor, iframe.contentWindow.Function);
+  assert_equals(element.onclick(), iframe.contentDocument);
+}, 'An uncompiled handler uses its current node document and realm');
+</script>

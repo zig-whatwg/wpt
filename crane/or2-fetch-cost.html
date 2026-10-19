@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One thousand same-origin small fetches</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const start = performance.now();
+  for (let i = 0; i < 1000; ++i) {
+    const response = await fetch('/common/blank.html?or2-cost=' + i, {cache: 'no-store'});
+    assert_equals(response.status, 200);
+    await response.text();
+  }
+  console.log('OR2_FETCH_MS=' + (performance.now() - start));
+}, '1000 same-origin fetch calls complete and consume their bodies');
+</script>

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'self'; script-src 'self' 'unsafe-inline'">
+<title>A CSP-allowed HTTP error leaves an empty CSSOM stylesheet</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const link = document.createElement("link");
+  t.add_cleanup(() => link.remove());
+  link.rel = "stylesheet";
+  const result = new Promise(resolve => {
+    link.onload = () => resolve("load");
+    link.onerror = () => resolve("error");
+  });
+  link.href = "cs4-style-allowed.css?pipe=status(404)";
+  document.head.append(link);
+  assert_equals(await result, "error", "the failed HTTP request still fires error");
+  assert_not_equals(link.sheet, null, "an empty stylesheet remains associated with the link");
+  assert_equals(link.sheet.cssRules.length, 0, "the error response's CSS was not parsed");
+  assert_true(Array.from(document.styleSheets).includes(link.sheet));
+}, "An allowed stylesheet with HTTP 404 has an empty sheet and an error event");
+</script>

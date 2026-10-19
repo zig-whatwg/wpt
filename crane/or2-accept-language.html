@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fetch supplies a default Accept-Language before sending the request</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Isolated from fetch/api/basic/accept-header.any.js; all three browsers pass.
+promise_test(async () => {
+  const response = await fetch('/fetch/api/resources/inspect-headers.py?headers=Accept-Language');
+  assert_equals(response.status, 200);
+  assert_true(response.headers.has('x-request-accept-language'));
+  assert_not_equals(response.headers.get('x-request-accept-language'), '');
+}, 'A fetch without Accept-Language sends the platform preferred language');
+</script>

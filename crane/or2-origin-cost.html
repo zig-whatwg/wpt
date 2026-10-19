@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One hundred thousand mixed Origin extractions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const anchor = document.createElement('a');
+  anchor.href = location.href;
+  const values = [location.href, new URL(location.href), anchor, self, new Origin()];
+  const start = performance.now();
+  let opaque = 0;
+  for (let i = 0; i < 100000; ++i) opaque += Origin.from(values[i % values.length]).opaque;
+  console.log('OR2_ORIGIN_MS=' + (performance.now() - start));
+  assert_equals(opaque, 20000);
+}, '100000 mixed Origin extractions preserve tuple and opaque classification');
+</script>

@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'; style-src 'self'">
+<title>Stylesheet response processing cost under CSP</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const status of [200, 404]) {
+  promise_test(async () => {
+    const start = performance.now();
+    for (let batch = 0; batch < 50; ++batch) {
+      const events = await Promise.all(Array.from({length: 20}, (_, index) =>
+        new Promise(resolve => {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'cs4-style-allowed.css?pipe=status(' + status +
+            ')|header(Cache-Control,no-store)&load=' + (batch * 20 + index);
+          link.onload = link.onerror = event => {
+            link.remove();
+            resolve(event.type);
+          };
+          document.head.appendChild(link);
+        })));
+      for (const event of events)
+        assert_equals(event, status === 200 ? 'load' : 'error');
+    }
+    console.log('CS4_STYLE_' + status + '_MS=' +
+      (performance.now() - start).toFixed(3));
+  }, '1,000 allowed stylesheet responses with HTTP status ' + status);
+}
+</script>

@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'self'; script-src 'self' 'unsafe-inline'">
+<title>A CSP-allowed stylesheet is available to a following parser script</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<link id="allowed-sheet" rel="stylesheet" href="cs4-style-allowed.css">
+<script>
+test(() => {
+  const link = document.getElementById("allowed-sheet");
+  assert_not_equals(link.sheet, null, "the real text/css resource has loaded");
+  assert_true(Array.from(document.styleSheets).includes(link.sheet), "the document exposes this sheet");
+  assert_equals(link.sheet.cssRules.length, 1);
+}, "A valid external stylesheet allowed by CSP precedes parser script execution");
+</script>

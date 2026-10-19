@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Classic script decoding captures the preparation-time encoding</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const script = document.createElement('script');
+  t.add_cleanup(() => { script.remove(); delete window.eh2Decoded; });
+  script.charset = 'windows-1250';
+  script.src = 'data:text/javascript,window.eh2Decoded=%22%9C%E6%B9%BF%9F%22';
+  const loaded = new Promise((resolve, reject) => {
+    script.onload = resolve;
+    script.onerror = reject;
+  });
+  document.body.appendChild(script);
+  script.charset = 'utf-8';
+  await loaded;
+  assert_equals(window.eh2Decoded, '\u015b\u0107\u0105\u017c\u017a');
+}, 'charset is captured at preparation, before a later mutation');
+</script>

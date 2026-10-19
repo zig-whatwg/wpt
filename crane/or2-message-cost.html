@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>10,000 window message round trips</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  frame.contentWindow.eval('addEventListener("message", e => parent.postMessage(e.data, "*"));');
+  let received = 0;
+  let sum = 0;
+  const finished = new Promise(resolve => {
+    const listener = t.step_func(e => {
+      if (e.source !== frame.contentWindow) return;
+      received++;
+      sum += e.data;
+      if (received === 10000) resolve();
+    });
+    addEventListener('message', listener);
+    t.add_cleanup(() => removeEventListener('message', listener));
+  });
+  const start = performance.now();
+  for (let i = 0; i < 10000; ++i) frame.contentWindow.postMessage(i, '*');
+  await finished;
+  console.log('OR2_MESSAGE_MS=' + (performance.now() - start));
+  assert_equals(received, 10000);
+  assert_equals(sum, 49995000);
+}, '10,000 messages to a child window and back retain every payload');
+</script>

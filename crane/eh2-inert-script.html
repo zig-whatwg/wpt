@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scripts prepared in a document without a browsing context stay inert</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const kind of ['html', 'xml']) {
+  test(t => {
+    window.eh2Executed = 0;
+    t.add_cleanup(() => { delete window.eh2Executed; });
+    const inert = kind === 'html'
+      ? document.implementation.createHTMLDocument('inert')
+      : document.implementation.createDocument('http://www.w3.org/1999/xhtml', 'html');
+    const script = inert.createElementNS('http://www.w3.org/1999/xhtml', 'script');
+    script.textContent = 'window.eh2Executed++';
+    inert.documentElement.appendChild(script);
+    assert_equals(window.eh2Executed, 0, 'preparation in the inert document cannot run script');
+    document.body.appendChild(script);
+    t.add_cleanup(() => script.remove());
+    assert_equals(window.eh2Executed, 0, 'already-started is set before the scripting-disabled return');
+  }, `${kind} document: an attempted preparation stays inert after adoption`);
+}
+</script>
