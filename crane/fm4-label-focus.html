@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Labels forward focus when the label is not focusable</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#the-label-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The upstream forward-focus-to-associated-element.html cases all pass in
+// Chrome, Firefox and Safari (wpt.fyi aligned stable revision 23b0b89b1a).
+test(t => {
+  const container = document.createElement('div');
+  container.innerHTML = '<input id="fm4-control"><label for="fm4-control">caption</label>';
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  const [control, label] = container.children;
+  label.focus();
+  assert_equals(document.activeElement, control, 'ordinary label forwards');
+  label.tabIndex = -1;
+  label.focus();
+  assert_equals(document.activeElement, label, 'negative tabindex focuses label');
+  label.setAttribute('tabindex', '');
+  control.blur();
+  label.focus();
+  assert_equals(document.activeElement, control, 'empty tabindex forwards');
+  label.tabIndex = 0;
+  label.style.display = 'none';
+  control.blur();
+  label.focus();
+  assert_equals(document.activeElement, control, 'hidden label forwards');
+}, 'label focus uses the associated control only when the label cannot take focus');
+</script>

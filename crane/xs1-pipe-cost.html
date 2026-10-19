@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>ReadableStream pipeTo cost for 10000 chunks</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({explicit_done: true});
+(async () => {
+  async function pipe(count) {
+    let next = 0;
+    let total = 0;
+    const source = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(next++);
+        if (next === count) controller.close();
+      }
+    });
+    await source.pipeTo(new WritableStream({write(value) { total += value; }}));
+    assert_equals(total, count * (count - 1) / 2);
+  }
+  await pipe(1000);
+  const start = performance.now();
+  await pipe(10000);
+  const elapsed = performance.now() - start;
+  test(() => assert_greater_than(elapsed, 0), 'xs1 pipe cost: ' + elapsed.toFixed(3) + ' ms');
+})().catch(error => test(() => { throw error; }, 'pipe cost completes')).finally(done);
+</script>

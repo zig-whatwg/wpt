@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- Expected failure until codex-workerfetch-root-referrer.patch lands (Q9). -->
+<meta charset="utf-8">
+<meta name="referrer" content="origin">
+<title>Worker root requests carry the outside referrer source</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const shared of [false, true]) {
+  promise_test(async t => {
+    const url = '/workers/modules/resources/postmessage-referrer-checker.py';
+    const options = {type: 'module', name: `wf1-root-referrer-${shared}`};
+    const worker = shared ? new SharedWorker(url, options) : new Worker(url, options);
+    const port = shared ? worker.port : worker;
+    t.add_cleanup(() => shared ? port.close() : worker.terminate());
+    const answer = new Promise((resolve, reject) => {
+      port.onmessage = e => resolve(e.data);
+      worker.onerror = reject;
+    });
+    if (shared) port.start();
+    assert_equals(await answer, location.origin + '/');
+  }, `${shared ? 'Shared' : 'Dedicated'} module root uses the creator's referrer and policy`);
+}
+</script>

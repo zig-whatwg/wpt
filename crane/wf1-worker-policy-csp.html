@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Static and dynamic imports enforce the worker's corresponding CSP directive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const shared of [false, true]) {
+  for (const kind of ['static', 'dynamic']) {
+    for (const blockedKind of ['static', 'dynamic']) {
+      promise_test(async t => {
+        const policy = blockedKind === 'static' ? "worker-src 'self'; script-src * 'unsafe-inline'" : "worker-src *; script-src 'self' 'unsafe-inline'";
+        const url = `/workers/modules/resources/${kind}-import-remote-origin-script-worker.sub.js?pipe=sub|header(Content-Security-Policy,${encodeURIComponent(policy)})`;
+        const options = {type: 'module', name: `wf1-own-csp-${shared}-${kind}-${blockedKind}`};
+        const worker = shared ? new SharedWorker(url, options) : new Worker(url, options);
+        const port = shared ? worker.port : worker;
+        t.add_cleanup(() => shared ? port.close() : worker.terminate());
+        const answer = new Promise(resolve => {
+          port.onmessage = e => resolve(e.data);
+          worker.onerror = e => { e.preventDefault(); resolve(['ERROR']); };
+        });
+        if (shared) port.start();
+        else port.postMessage('run');
+        assert_array_equals(await answer, kind === blockedKind ? ['ERROR'] : ['export-on-load-script.js']);
+      }, `${shared ? 'Shared' : 'Dedicated'} ${kind} import uses the worker's ${blockedKind === 'static' ? 'worker-src' : 'script-src'} restriction`);
+    }
+  }
+}
+</script>

@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Static and dynamic module worker import destinations</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const shared of [false, true]) {
+  promise_test(async t => {
+    const options = {type: 'module', name: `wf1-destination-${shared}`};
+    const worker = shared ? new SharedWorker('wf1-module-destination.js', options) : new Worker('wf1-module-destination.js', options);
+    const port = shared ? worker.port : worker;
+    t.add_cleanup(() => shared ? port.close() : worker.terminate());
+    const answer = new Promise((resolve, reject) => {
+      port.onmessage = e => resolve(e.data);
+      worker.onerror = reject;
+    });
+    if (shared) port.start();
+    assert_array_equals(await answer, [shared ? 'sharedworker' : 'worker', 'script']);
+  }, `${shared ? 'Shared' : 'Dedicated'} worker keeps its static destination and uses script for import()`);
+}
+</script>

@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sequential radio navigation preserves intervening focus stops</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<script>
+// Chrome and Firefox pass the upstream radio-focus-navigation-group-* cases
+// (wpt.fyi aligned stable revision 23b0b89b1a); Safari differs.
+promise_test(async t => {
+  const container = document.createElement('div');
+  container.innerHTML = '<input id="fm4-start"><form><input type="radio" name="r" id="fm4-a"><button id="fm4-middle">middle</button><input type="radio" name="r" id="fm4-b"><input type="radio" name="r" id="fm4-c"></form><input id="fm4-end">';
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  const byId = name => document.getElementById('fm4-' + name);
+  const tab = async (name, backward = false) => {
+    const actions = new test_driver.Actions();
+    if (backward) actions.keyDown('\uE008');
+    actions.keyDown('\uE004').keyUp('\uE004');
+    if (backward) actions.keyUp('\uE008');
+    await actions.send();
+    assert_equals(document.activeElement, byId(name));
+  };
+  byId('start').focus();
+  await tab('a');
+  await tab('middle');
+  await tab('end');
+  await tab('middle', true);
+  await tab('a', true);
+  byId('b').checked = true;
+  byId('start').focus();
+  await tab('middle');
+  await tab('b');
+  await tab('end');
+}, 'a group contributes one stop without hiding an intervening button');
+</script>

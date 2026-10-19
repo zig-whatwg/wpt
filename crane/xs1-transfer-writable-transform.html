@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Writable and transform stream transfer acceptance</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#transferable-streams">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function transfer(t, stream) {
+  const channel = new MessageChannel();
+  t.add_cleanup(() => { channel.port1.close(); channel.port2.close(); });
+  const received = new Promise(resolve => { channel.port2.onmessage = resolve; });
+  channel.port1.postMessage(stream, [stream]);
+  const event = await received;
+  assert_array_equals(event.ports, [], 'internal transport ports stay hidden');
+  return event.data;
+}
+
+promise_test(async t => {
+  const chunks = [];
+  let finished;
+  const closed = new Promise(resolve => { finished = resolve; });
+  const original = new WritableStream({
+    write(value) { chunks.push(value); },
+    close() { finished(); }
+  });
+  const received = await transfer(t, original);
+  assert_true(original.locked);
+  assert_true(received instanceof WritableStream);
+  const writer = received.getWriter();
+  await writer.write('chunk');
+  await writer.close();
+  await closed;
+  assert_array_equals(chunks, ['chunk']);
+  writer.releaseLock();
+}, 'a transferred WritableStream sends its write and close to the original sink');
+
+promise_test(async t => {
+  const original = new TransformStream();
+  const received = await transfer(t, original);
+  assert_true(original.readable.locked);
+  assert_true(original.writable.locked);
+  assert_true(received instanceof TransformStream);
+  const writer = received.writable.getWriter();
+  const reader = received.readable.getReader();
+  const write = writer.write('through');
+  const chunk = await reader.read();
+  assert_false(chunk.done);
+  assert_equals(chunk.value, 'through');
+  await write;
+  const close = writer.close();
+  assert_true((await reader.read()).done);
+  await close;
+  reader.releaseLock();
+  writer.releaseLock();
+}, 'a transferred TransformStream connects both transferred sides');
+</script>

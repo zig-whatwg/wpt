@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ReadableStream transfer to a dedicated worker</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#rs-transfer">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const code = `
+    onmessage = async event => {
+      try {
+        const reader = event.data.getReader();
+        const values = [];
+        for (;;) {
+          const result = await reader.read();
+          if (result.done) break;
+          values.push(result.value);
+        }
+        reader.releaseLock();
+        postMessage({values, ports: event.ports.length,
+          readable: event.data instanceof ReadableStream});
+      } catch (error) {
+        postMessage({error: error.name});
+      }
+    };
+  `;
+  const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+  const worker = new Worker(url);
+  t.add_cleanup(() => { worker.terminate(); URL.revokeObjectURL(url); });
+  const reply = new Promise((resolve, reject) => {
+    worker.onmessage = event => resolve(event.data);
+    worker.onerror = event => reject(new Error(event.message));
+  });
+  let next = 0;
+  const source = new ReadableStream({
+    pull(controller) {
+      if (next === 10) controller.close();
+      else controller.enqueue(next++);
+    }
+  }, {highWaterMark: 0});
+  worker.postMessage(source, [source]);
+  assert_true(source.locked, 'the original stream is locked by its transfer pipe');
+  const result = await reply;
+  assert_false('error' in result, 'the receiving worker can consume the stream');
+  assert_true(result.readable, 'the receiving stream uses the worker realm');
+  assert_equals(result.ports, 0, 'hidden transport ports are not exposed');
+  assert_array_equals(result.values, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+}, 'a transferred readable stream supplies demand from a dedicated worker');
+</script>

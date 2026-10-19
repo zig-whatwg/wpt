@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>QueuingStrategy size callback conversion</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#dictdef-queuingstrategy">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_throws_js(TypeError, () => new WritableStream({}, {size: 'not callable'}));
+}, 'a present non-callable size is rejected');
+test(() => {
+  assert_throws_js(TypeError, () => new WritableStream(undefined, {
+    size: 'not callable', highWaterMark: NaN
+  }));
+}, 'size callback conversion fails before highWaterMark validation');
+</script>

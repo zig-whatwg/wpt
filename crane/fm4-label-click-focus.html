@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Label activation focuses its associated control before forwarding click</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/forms.html#the-label-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const container = document.createElement('div');
+  container.innerHTML = '<input id="fm4-control"><label for="fm4-control">Control</label>';
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  const control = container.querySelector('input');
+  const label = container.querySelector('label');
+  const events = [];
+  control.addEventListener('click', () => events.push('click'));
+  control.addEventListener('focus', () => events.push('focus'));
+  label.click();
+  assert_equals(document.activeElement, control);
+  // Blink and current Firefox focus before the forwarded click; WebKit
+  // clicks first. HTML's platform behavior follows that majority (row72 Q13).
+  assert_array_equals(events, ['focus', 'click']);
+}, 'label focuses its control, then forwards click');
+
+test(t => {
+  const container = document.body.appendChild(document.createElement('div'));
+  container.innerHTML = '<input id="fm4-removed-control"><label for="fm4-removed-control">Control</label>';
+  t.add_cleanup(() => container.remove());
+  const events = [];
+  document.getElementById('fm4-removed-control').addEventListener('click', () => events.push('click'));
+  document.getElementById('fm4-removed-control').addEventListener('focus', event => {
+    events.push('focus');
+    event.currentTarget.remove();
+    container.querySelector('label').remove();
+    TestUtils.gc();
+  });
+  container.querySelector('label').click();
+  assert_equals(document.activeElement, document.body);
+  assert_array_equals(events, ['focus', 'click']);
+}, 'label clicks its still-live control after a focus listener removes it and runs GC');
+</script>

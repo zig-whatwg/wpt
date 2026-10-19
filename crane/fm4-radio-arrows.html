@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Radio arrows use focusability and complete group membership</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#radio-button-group">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const root = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => root.remove());
+  root.innerHTML = '<form id="fm4-form"><input type="radio" name="r" id="fm4-a"><input type="radio" name="r" style="display:none"><div inert><input type="radio" name="r"></div></form><input type="radio" name="r" form="fm4-form" tabindex="-1" id="fm4-b">';
+  const a = document.getElementById('fm4-a');
+  const b = document.getElementById('fm4-b');
+  const press = async (key, modifier) => {
+    const actions = new test_driver.Actions();
+    if (modifier) actions.keyDown(modifier);
+    actions.keyDown(key).keyUp(key);
+    if (modifier) actions.keyUp(modifier);
+    await actions.send();
+  };
+  a.focus();
+  await press('\uE015');
+  assert_equals(document.activeElement, b, 'skip hidden and inert members; include external form member');
+  assert_true(b.checked);
+  for (const modifier of ['\uE009', '\uE00A', '\uE03D']) {
+    await press('\uE015', modifier);
+    assert_equals(document.activeElement, b, 'modified arrow leaves focus alone');
+    assert_true(b.checked);
+  }
+  await press('\uE013');
+  assert_equals(document.activeElement, a);
+  root.innerHTML = '<form id="fm4-many"></form>';
+  const form = document.getElementById('fm4-many');
+  const radios = [];
+  for (let i = 0; i < 300; ++i) {
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'many';
+    form.append(radio);
+    radios.push(radio);
+  }
+  radios[298].focus();
+  await press('\uE015');
+  assert_equals(document.activeElement, radios[299], 'group extends beyond 256 members');
+  await press('\uE015');
+  assert_equals(document.activeElement, radios[0], 'forward wrap');
+  await press('\uE013');
+  assert_equals(document.activeElement, radios[299], 'backward wrap');
+}, 'radio arrows skip unfocusable members, ignore shortcuts, and have no group-size cap');
+</script>

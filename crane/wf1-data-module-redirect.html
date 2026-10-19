@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Data module workers keep their opaque origin for static descendants</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const url = new URL('/workers/modules/resources/static-import-redirect-worker.js', location.href);
+  const worker = new Worker(`data:text/javascript,import ${JSON.stringify(url.href)};`, {type: 'module'});
+  t.add_cleanup(() => worker.terminate());
+  const answer = new Promise(resolve => {
+    worker.onmessage = e => resolve('loaded');
+    worker.onerror = e => { e.preventDefault(); resolve('blocked'); };
+  });
+  worker.postMessage('run');
+  // Firefox and Safari use the inside opaque origin: whatwg/html#9571.
+  assert_equals(await answer, 'blocked');
+}, 'A data worker static graph requires CORS headers, including on redirects');
+</script>

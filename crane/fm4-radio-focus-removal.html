@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Radio arrow navigation survives removal and GC during focus</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<script>
+// Row72 Q12: the in-progress focus dispatch keeps the removed radio live.
+// Blink also clicks its detached, still-live candidate. The generation
+// guard's null branch is a teardown net that this scenario does not reach.
+promise_test(async t => {
+  const container = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => container.remove());
+  container.innerHTML = '<input type="radio" name="fm4-r" id="fm4-a"><input type="radio" name="fm4-r" id="fm4-b">';
+  let clicks = 0;
+  document.getElementById('fm4-b').addEventListener('click', () => ++clicks);
+  document.getElementById('fm4-b').addEventListener('focus', event => {
+    event.currentTarget.remove();
+    TestUtils.gc();
+  });
+  document.getElementById('fm4-a').focus();
+  await new test_driver.Actions().keyDown('\uE015').keyUp('\uE015').send();
+  assert_equals(document.activeElement, document.body);
+  assert_equals(clicks, 1);
+}, 'a still-live radio removed during focus receives its synthetic click');
+</script>

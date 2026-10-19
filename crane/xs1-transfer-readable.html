@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A transferred readable stream carries chunks through an internal port</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#rs-transfer">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const channel = new MessageChannel();
+  t.add_cleanup(() => { channel.port1.close(); channel.port2.close(); });
+  const message = new Promise(resolve => { channel.port2.onmessage = resolve; });
+  const source = new ReadableStream({
+    start(controller) { controller.enqueue('chunk'); controller.close(); }
+  });
+  channel.port1.postMessage(source, [source]);
+  assert_true(source.locked, 'transfer locks the original stream');
+  const event = await message;
+  assert_array_equals(event.ports, [], 'the stream transport port is not exposed in ports');
+  assert_true(event.data instanceof ReadableStream, 'the receiver gets a readable stream');
+  const reader = event.data.getReader();
+  const chunk = await reader.read();
+  assert_false(chunk.done);
+  assert_equals(chunk.value, 'chunk');
+  assert_true((await reader.read()).done);
+  reader.releaseLock();
+}, 'a MessagePort transfers a ReadableStream and delivers its chunk and close');
+</script>

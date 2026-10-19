@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="worker-src 'self'; script-src * 'unsafe-inline'">
+<title>Worker descendants use worker CSP under the browser-majority rule</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const shared of [false, true]) {
+  for (const kind of ['static', 'dynamic']) {
+    promise_test(async t => {
+      const url = `/workers/modules/resources/${kind}-import-remote-origin-script-worker.sub.js`;
+      const options = {type: 'module', name: `wf1-csp-${shared}-${kind}`};
+      const worker = shared ? new SharedWorker(url, options) : new Worker(url, options);
+      const port = shared ? worker.port : worker;
+      t.add_cleanup(() => shared ? port.close() : worker.terminate());
+      const answer = new Promise(resolve => {
+        port.onmessage = e => resolve(e.data);
+        worker.onerror = e => { e.preventDefault(); resolve(['ERROR']); };
+      });
+      if (shared) port.start();
+      else port.postMessage('run');
+      // Firefox and Safari deliberately use the worker's own policy for
+      // static imports. See whatwg/html#9571 (the outside text is older).
+      assert_array_equals(await answer, ['export-on-load-script.js']);
+    }, `${shared ? 'Shared' : 'Dedicated'} worker ${kind} import selects the correct CSP client and destination`);
+  }
+}
+</script>

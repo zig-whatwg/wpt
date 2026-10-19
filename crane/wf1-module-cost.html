@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Module worker start cost with three static imports</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const start = performance.now();
+  for (let i = 0; i < 200; ++i) {
+    const worker = new Worker('wf1-cost-module.js', {type: 'module'});
+    await new Promise((resolve, reject) => {
+      worker.onmessage = e => { worker.terminate(); e.data === 6 ? resolve() : reject(new Error('wrong graph')); };
+      worker.onerror = e => { worker.terminate(); reject(e); };
+    });
+  }
+  t.name = '200 module workers with three imports: ' + (performance.now() - start).toFixed(3) + ' ms';
+}, '200 module workers with three imports');
+</script>

@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Fetch body pipeThrough cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({explicit_done: true});
+(async () => {
+  const size = 2 * 1024 * 1024;
+  const url = URL.createObjectURL(new Blob(['x'.repeat(size)]));
+  try {
+    async function consume() {
+      const response = await fetch(url);
+      let bytes = 0;
+      await response.body.pipeThrough(new TransformStream()).pipeTo(
+        new WritableStream({write(chunk) { bytes += chunk.byteLength; }})
+      );
+      assert_equals(bytes, size);
+    }
+    await consume();
+    const start = performance.now();
+    for (let i = 0; i < 8; ++i) await consume();
+    const elapsed = performance.now() - start;
+    test(() => assert_greater_than(elapsed, 0), 'xs1 fetch pipe cost: ' + elapsed.toFixed(3) + ' ms');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+})().catch(error => test(() => { throw error; }, 'fetch pipe cost completes')).finally(done);
+</script>

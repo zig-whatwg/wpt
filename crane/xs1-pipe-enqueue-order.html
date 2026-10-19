@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pipe writes run after enqueue and before close</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#readable-stream-pipe-to">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  let controller;
+  const events = [];
+  const source = new ReadableStream({start(c) { controller = c; }}, {highWaterMark: 0});
+  const destination = new WritableStream({
+    write(chunk) { events.push(chunk); },
+    close() { events.push('closed'); }
+  });
+  const pipe = source.pipeTo(destination);
+  await Promise.resolve();
+  controller.enqueue('chunk');
+  controller.close();
+  assert_array_equals(events, [], 'enqueue and close must not synchronously run the sink');
+  await pipe;
+  assert_array_equals(events, ['chunk', 'closed'], 'shutdown must finish the already-read chunk');
+  assert_false(source.locked, 'the reader lock is released');
+  assert_false(destination.locked, 'the writer lock is released');
+}, 'pipeTo defers an enqueued chunk and writes it before forwarding close');
+</script>

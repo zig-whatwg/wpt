@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pipe abort waits for a pending write</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#readable-stream-pipe-to">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The pending-write abort case in streams/piping/abort.any.js, with explicit
+// observations before and after the write settles. Abort runs outside write().
+promise_test(async t => {
+  const aborter = new AbortController();
+  const reason = {name: 'abort reason'};
+  const events = [];
+  let finishWrite;
+  const pendingWrite = new Promise(resolve => { finishWrite = resolve; });
+  const source = new ReadableStream({
+    start(c) { c.enqueue('first'); c.enqueue('second'); },
+    cancel(value) { assert_equals(value, reason); events.push('cancel'); }
+  });
+  const destination = new WritableStream({
+    write(value) { events.push(value); return pendingWrite; },
+    abort(value) { assert_equals(value, reason); events.push('abort'); }
+  });
+  let settled = false;
+  const pipe = source.pipeTo(destination, {signal: aborter.signal});
+  pipe.then(() => { settled = true; }, () => { settled = true; });
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(events, ['first'], 'the first write is pending');
+  aborter.abort(reason);
+  await Promise.resolve();
+  assert_array_equals(events, ['first'], 'shutdown waits for the pending write');
+  assert_false(settled, 'pipe is pending while the write is pending');
+  finishWrite();
+  await promise_rejects_exactly(t, reason, pipe);
+  assert_array_equals(events, ['first', 'abort', 'cancel']);
+  assert_false(source.locked);
+  assert_false(destination.locked);
+}, 'an external abort waits for the pending write and prevents the next read');
+</script>

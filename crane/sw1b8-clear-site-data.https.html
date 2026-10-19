@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Clear-Site-Data and service worker registrations: what clears them and what does not (lane sw1-b8)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+'use strict';
+// Clear Site Data 3.2 (only a credentialed request's network response), 4.1
+// (the header as Chrome, Firefox and Safari parse it: each comma-separated
+// element on its own, unknown and malformed ones ignored, several header
+// lines combined), 4.2.5 step 4 ("storage" unregisters) and 5.2 (a response
+// a service worker makes never clears). The upstream files
+// (service-workers/service-worker/unregister-immediately*.https.html) cover
+// what a clear does to a registration; these cover when one happens.
+
+const blank = '/service-workers/service-worker/resources/blank.html';
+const script = 'resources/sw1b8-csd-sw.js';
+
+async function activated(t, scope) {
+  const registration = await sw1Register(t, script, {scope});
+  await sw1WaitForState(registration.installing || registration.waiting || registration.active, 'activated');
+  return registration;
+}
+
+async function stillRegistered(scope) {
+  const found = await navigator.serviceWorker.getRegistration(scope);
+  return !!found && found.scope === new URL(scope, location.href).href;
+}
+
+promise_test(async t => {
+  const scope = 'resources/sw1b8-csd-omit/';
+  await activated(t, scope);
+  await fetch(blank + '?pipe=header(Clear-Site-Data,"storage")', {credentials: 'omit'});
+  assert_true(await stillRegistered(scope), 'the registration survives');
+}, 'A response to a request without credentials clears nothing (3.2 step 15)');
+
+promise_test(async t => {
+  const scope = 'resources/sw1b8-csd-cache/';
+  await activated(t, scope);
+  await fetch(blank + '?pipe=header(Clear-Site-Data,"cache")');
+  assert_true(await stillRegistered(scope), 'the registration survives');
+}, '"cache" alone does not unregister');
+
+promise_test(async t => {
+  const scope = 'resources/sw1b8-csd-from-sw/';
+  await activated(t, scope);
+  const frame = document.createElement('iframe');
+  frame.src = scope + 'frame.html';
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  assert_not_equals(frame.contentWindow.navigator.serviceWorker.controller, null, 'the frame is controlled');
+  const response = await frame.contentWindow.fetch('csd-from-sw');
+  assert_equals(response.headers.get('Clear-Site-Data'), '"storage"', 'the worker\'s response carries the header');
+  assert_equals(await response.text(), 'made by the service worker');
+  assert_true(await stillRegistered(scope), 'the registration survives');
+}, 'A response a service worker makes never clears (5.2)');
+
+promise_test(async t => {
+  const scope = 'resources/sw1b8-csd-lenient/';
+  const registration = await activated(t, scope);
+  const worker = registration.active;
+  const redundant = new Promise(resolve => worker.addEventListener('statechange', () => {
+    if (worker.state === 'redundant') resolve();
+  }));
+  await fetch(blank + '?pipe=header(Clear-Site-Data,"unknown")|header(Clear-Site-Data,storage,True)|header(Clear-Site-Data,"storage",True)');
+  assert_false(await stillRegistered(scope), 'unregistered');
+  await redundant;
+}, 'Unknown and unquoted entries are ignored, and header lines combine: "storage" still clears');
+
+promise_test(async t => {
+  const scope = 'resources/sw1b8-csd-wildcard/';
+  await activated(t, scope);
+  await fetch(blank + '?pipe=header(Clear-Site-Data,"*")');
+  assert_false(await stillRegistered(scope), 'unregistered');
+}, '"*" clears registrations');
+</script>
+</body>

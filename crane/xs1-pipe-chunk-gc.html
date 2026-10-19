@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A pending pipe write keeps its chunk alive</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#readable-stream-pipe-to">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  let controller;
+  const observed = [];
+  const source = new ReadableStream({start(c) { controller = c; }}, {highWaterMark: 0});
+  const destination = new WritableStream({
+    write(chunk) { observed.push(chunk.localName, chunk.textContent); }
+  });
+  const pipe = source.pipeTo(destination);
+  await Promise.resolve();
+  (() => {
+    const chunk = document.createElement('span');
+    chunk.textContent = 'retained chunk';
+    controller.enqueue(chunk);
+  })();
+  controller.close();
+  assert_array_equals(observed, [], 'the queued write has not run');
+  TestUtils.gc();
+  TestUtils.gc();
+  await pipe;
+  assert_array_equals(observed, ['span', 'retained chunk'], 'the pipe retains its otherwise unreferenced chunk');
+}, 'a queued pipe write retains a platform-object chunk across collection');
+</script>

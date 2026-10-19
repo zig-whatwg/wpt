@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<meta name="variant" content="?part=0">
+<meta name="variant" content="?part=1">
+<meta name="variant" content="?part=2">
+<meta name="variant" content="?part=3">
+<meta name="variant" content="?part=4">
+<meta name="variant" content="?part=5">
+<meta name="variant" content="?part=6">
+<meta name="variant" content="?part=7">
+<meta name="variant" content="?part=8">
+<meta name="variant" content="?part=9">
+<meta name="variant" content="?part=10">
+<meta name="variant" content="?part=11">
+<meta name="variant" content="?part=12">
+<meta name="variant" content="?part=13">
+<meta name="variant" content="?part=14">
+<meta name="variant" content="?part=15">
+<meta name="variant" content="?part=16">
+<meta name="variant" content="?part=17">
+<meta name="variant" content="?part=18">
+<meta name="variant" content="?part=19">
+<title>Ten thousand arrow presses across two hundred radio groups</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<script>
+promise_test(async () => {
+  const part = Number(new URLSearchParams(location.search).get('part') ?? '0');
+  assert_true(Number.isInteger(part) && part >= 0 && part < 20);
+  const form = document.body.appendChild(document.createElement('form'));
+  const groups = [];
+  for (let group = 0; group < 200; ++group) {
+    const radios = [];
+    for (let member = 0; member < 10; ++member) {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'group-' + group;
+      form.append(radio);
+      radios.push(radio);
+    }
+    groups.push(radios);
+  }
+  const started = performance.now();
+  // Row72 Q11: each URL drives 10 of the 200 groups. The 20 variants
+  // together execute the exact 10,000-key workload within per-URL limits.
+  for (const radios of groups.slice(part * 10, (part + 1) * 10)) {
+    radios[0].focus();
+    const actions = new test_driver.Actions();
+    for (let press = 0; press < 50; ++press)
+      actions.keyDown('\uE015').keyUp('\uE015');
+    await actions.send();
+    assert_equals(document.activeElement, radios[0]);
+    assert_true(radios[0].checked);
+    for (const radio of radios.slice(1)) assert_false(radio.checked);
+  }
+  const elapsed = performance.now() - started;
+  test(() => assert_equals(form.elements.length, 2000),
+       `500 radio arrows, part ${part}, 200 groups of 10: ${elapsed.toFixed(3)} ms`);
+  // Exercise sequential eligibility as well as the arrow walk. BASE and TIP
+  // visit different radios, so compare the same number of trusted Tab keys.
+  if (part === 0) {
+    groups[0][0].focus();
+    const tabs = new test_driver.Actions();
+    for (let press = 0; press < 20; ++press)
+      tabs.keyDown('\uE004').keyUp('\uE004');
+    const tabStarted = performance.now();
+    await tabs.send();
+    const tabElapsed = performance.now() - tabStarted;
+    test(() => assert_equals(document.activeElement.type, 'radio'),
+         `20 radio Tab presses, 200 groups of 10: ${tabElapsed.toFixed(3)} ms`);
+  }
+}, 'arrow navigation visits ten groups and wraps after fifty presses in each');
+</script>
