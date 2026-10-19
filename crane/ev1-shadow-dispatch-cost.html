@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Repeated composed event dispatch through ten nested shadow roots</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The cost page for dispatch across shadow roots (lane events1): every event
+// crosses ten shadow boundaries, so each dispatch retargets ten times. Compare
+// with crane/dm2-event-dispatch-page.html, which crosses none.
+let parent = document.body;
+let leaf = null;
+const hosts = [];
+for (let depth = 0; depth < 10; ++depth) {
+  const host = parent.appendChild(document.createElement('div'));
+  hosts.push(host);
+  const shadow = host.attachShadow({ mode: depth % 2 ? 'closed' : 'open' });
+  parent = shadow.appendChild(document.createElement('div'));
+}
+leaf = parent.appendChild(document.createElement('span'));
+let count = 0;
+let lastTarget = null;
+document.body.addEventListener('ev1-event', e => { ++count; lastTarget = e.target; });
+const started = performance.now();
+for (let i = 0; i < 100000; ++i) {
+  leaf.dispatchEvent(new Event('ev1-event', { bubbles: true, composed: true }));
+}
+const elapsed = performance.now() - started;
+test(() => {
+  assert_equals(count, 100000);
+  assert_equals(lastTarget, hosts[0], 'retargeted to the outermost host');
+}, 'Dispatch 100000 composed events through 10 nested shadow roots: ' + elapsed.toFixed(3) + ' ms');
+</script>

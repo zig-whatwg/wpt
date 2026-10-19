@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A container load listener that navigates the frame: the old document still gets pageshow</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The container's load fires inside the child's window load dispatch, before
+// the child's pageshow (Blink, WebKit, Gecko). A navigation the listener
+// starts has not committed when the listener returns: the document is still
+// the navigable's active one, so its pageshow fires; the next document then
+// loads in the same order.
+window.nav1Log = [];
+promise_test(async t => {
+  await new Promise(resolve => addEventListener("load", resolve));
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  let loads = 0;
+  const second = new Promise(resolve => frame.onload = () => {
+    nav1Log.push("iframe-load");
+    if (++loads === 1) frame.src = "nav1-frame-child.html?e";
+    else resolve();
+  });
+  frame.src = "nav1-frame-child.html?d";
+  document.body.append(frame);
+  await second;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(nav1Log, ["d-load", "iframe-load", "d-pageshow", "e-load", "iframe-load", "e-pageshow"]);
+}, "navigating the frame from its load listener");
+
+promise_test(async t => {
+  nav1Log.length = 0;
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  let loads = 0;
+  const second = new Promise(resolve => frame.onload = () => {
+    nav1Log.push("iframe-load");
+    if (++loads === 1) frame.contentWindow.location.href = "nav1-frame-child.html?g";
+    else resolve();
+  });
+  frame.src = "nav1-frame-child.html?f";
+  document.body.append(frame);
+  await second;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(nav1Log, ["f-load", "iframe-load", "f-pageshow", "g-load", "iframe-load", "g-pageshow"]);
+}, "navigating the frame through its Location from its load listener");
+</script>

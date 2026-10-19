@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nav1 helper: opens a database by name, here and in a srcdoc child, and reports its version</title>
+<body>
+<script>
+const name = location.search.slice(1);
+const versionOf = () => new Promise(resolve => {
+  const open = indexedDB.open(name);
+  open.onsuccess = () => { const v = open.result.version; open.result.close(); indexedDB.deleteDatabase(name); resolve(v); };
+  open.onerror = () => resolve("error");
+});
+(async () => {
+  const own = await versionOf();
+  const child = document.createElement("iframe");
+  window.nav1Child = childVersion => {
+    parent.postMessage({kind: "nav1-origin-idb", own, child: childVersion, origin: self.origin, childOrigin: child.contentWindow.origin}, "*");
+  };
+  child.srcdoc = `<script>
+    const open = indexedDB.open(${JSON.stringify(name)});
+    open.onsuccess = () => { const v = open.result.version; open.result.close(); parent.nav1Child(v); };
+    open.onerror = () => parent.nav1Child("error");
+  <\/script>`;
+  document.body.append(child);
+})();
+</script>

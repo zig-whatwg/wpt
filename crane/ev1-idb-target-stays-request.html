@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: an IndexedDB request's event keeps the request as its target on the transaction and the connection</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Golden rule 2. DOM 6.9.6 appends a parent "if parent is a Window object, or
+// parent is a node and ..."; a transaction and a connection are neither, so
+// read literally 6.9.8 makes each its own AT_TARGET target. The browsers do
+// not: WebKit's EventPath(span<EventTarget*>) gives every context the first
+// target, and Blink's IndexedDB dispatch sets only the current target. The
+// event keeps the request as its target and bubbles through them.
+async_test(t => {
+  const r = indexedDB.open('crane-ev1-target-stays-request-' + location.pathname);
+  r.onerror = t.unreached_func('open failed');
+  r.onupgradeneeded = t.step_func(() => {
+    const db = r.result;
+    const txn = r.transaction;
+    const store = db.createObjectStore('records');
+    const request = store.add('value', 1);
+    const seen = [];
+    const record = name => e => seen.push([name, e.target, e.currentTarget, e.eventPhase]);
+    request.addEventListener('ev1-bubble', record('request'));
+    txn.addEventListener('ev1-bubble', record('txn'));
+    db.addEventListener('ev1-bubble', record('db'));
+    request.dispatchEvent(new Event('ev1-bubble', { bubbles: true }));
+    assert_array_equals(seen.map(s => s[0]), ['request', 'txn', 'db']);
+    assert_array_equals(seen.map(s => s[1]), [request, request, request], 'target');
+    assert_array_equals(seen.map(s => s[2]), [request, txn, db], 'currentTarget');
+    assert_array_equals(seen.map(s => s[3]), [Event.AT_TARGET, Event.BUBBLING_PHASE, Event.BUBBLING_PHASE], 'eventPhase');
+  });
+  r.onsuccess = t.step_func_done(() => {
+    r.result.close();
+    indexedDB.deleteDatabase(r.result.name);
+  });
+}, 'request, transaction and connection: one target, bubbling phases');
+</script>

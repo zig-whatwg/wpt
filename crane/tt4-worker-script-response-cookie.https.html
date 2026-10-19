@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Worker script responses store cookies in their creator's cookie jar</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-worker-script">
+<link rel="help" href="https://fetch.spec.whatwg.org/#http-network-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const shared of [false, true]) {
+  promise_test(async t => {
+    const name = shared ? 'tt4_shared_response' : 'tt4_dedicated_response';
+    const clear = () => { document.cookie = `${name}=; Max-Age=0; Path=/crane/`; };
+    clear();
+    t.add_cleanup(clear);
+    const url = 'tt4-worker-script-response-cookie.js?pipe=' +
+      encodeURIComponent(`header(Set-Cookie,${name}=accepted; Path=/crane/)|header(Cache-Control,no-store)`);
+    const worker = shared ? new SharedWorker(url, name) : new Worker(url);
+    const receiver = shared ? worker.port : worker;
+    t.add_cleanup(() => shared ? worker.port.close() : worker.terminate());
+    await new Promise((resolve, reject) => {
+      receiver.onmessage = t.step_func(e => {
+        assert_equals(e.data, 'ready');
+        resolve();
+      });
+      worker.onerror = t.step_func(e => reject(new Error(e.message || 'worker failed')));
+    });
+    assert_true(document.cookie.split(';').some(pair => pair.trim() === `${name}=accepted`),
+      'the worker script response cookie is visible to its creator');
+  }, `${shared ? 'Shared' : 'Dedicated'} worker script response stores Set-Cookie`);
+}
+</script>

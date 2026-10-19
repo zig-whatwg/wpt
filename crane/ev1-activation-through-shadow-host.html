@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: a click in a shadow tree reaches the activation behaviour of the host's ancestors</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<details id="composedDetails"><summary><div id="composedHost"></div></summary>content</details>
+<details id="scopedDetails"><summary><div id="scopedHost"></div></summary>content</details>
+<script>
+// DOM dispatch 6.9.6.1: a bubbling click's activation target is the first
+// node on its path with activation behaviour - past the shadow root when the
+// event is composed (6.9.8 makes the host the target, and the walk goes on to
+// the summary). A summary's activation behaviour toggles its details.
+function innerOf(host) {
+  const shadow = host.attachShadow({ mode: 'closed' });
+  return shadow.appendChild(document.createElement('span'));
+}
+
+test(() => {
+  const inner = innerOf(composedHost);
+  assert_false(composedDetails.open);
+  inner.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+  assert_true(composedDetails.open, 'the summary ran its activation behaviour');
+}, 'a composed click inside a shadow tree activates the summary around the host');
+
+test(() => {
+  const inner = innerOf(scopedHost);
+  assert_false(scopedDetails.open);
+  inner.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: false }));
+  assert_false(scopedDetails.open, 'the path ends at the shadow root');
+}, 'a scoped click stays in the shadow tree');
+</script>

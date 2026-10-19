@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Trusted Types sink checks without CSP</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('script');
+  const start = performance.now();
+  for (let i = 0; i < 100000; ++i) element.setAttribute('src', 'tt4-unused.js');
+  const elapsed = performance.now() - start;
+  assert_equals(element.getAttribute('src'), 'tt4-unused.js');
+  console.log('TT4_SET_ATTRIBUTE_MS=' + elapsed);
+}, '100000 setAttribute sink assignments without CSP');
+test(() => {
+  const start = performance.now();
+  for (let i = 0; i < 10000; ++i) clearTimeout(setTimeout(';', 60000));
+  const elapsed = performance.now() - start;
+  console.log('TT4_STRING_TIMER_MS=' + elapsed);
+}, '10000 string timers without CSP');
+</script>

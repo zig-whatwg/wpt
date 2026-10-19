@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: window.event is not set for listeners on shadow-tree nodes</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="host"></div>
+<script>
+// DOM inner invoke step 10.2: "If invocationTargetInShadowTree is false, then
+// set listenerGlobal's current event to event" - a listener on a node whose
+// root is a shadow root sees window.event as it was outside the listener.
+const shadow = host.attachShadow({ mode: 'open' });
+const inner = shadow.appendChild(document.createElement('span'));
+
+test(() => {
+  const seen = [];
+  inner.addEventListener('ev1-global', () => seen.push(['inner', window.event]));
+  shadow.addEventListener('ev1-global', () => seen.push(['shadow', window.event]));
+  host.addEventListener('ev1-global', () => seen.push(['host', window.event]));
+  document.body.addEventListener('ev1-global', () => seen.push(['body', window.event]));
+  const event = new Event('ev1-global', { bubbles: true, composed: true });
+  inner.dispatchEvent(event);
+  assert_array_equals(seen.map(s => s[0]), ['inner', 'shadow', 'host', 'body']);
+  assert_equals(seen[0][1], undefined, 'a node in the shadow tree');
+  assert_equals(seen[1][1], undefined, 'the shadow root itself');
+  assert_equals(seen[2][1], event, 'the host');
+  assert_equals(seen[3][1], event, 'an ancestor of the host');
+  assert_equals(window.event, undefined, 'restored after dispatch');
+}, 'window.event is undefined in shadow-tree listeners and the event outside');
+
+test(() => {
+  const outer = new Event('ev1-outer');
+  const inside = [];
+  document.body.addEventListener('ev1-outer', () => {
+    inner.addEventListener('ev1-nested', () => inside.push(window.event), { once: true });
+    inner.dispatchEvent(new Event('ev1-nested'));
+    inside.push(window.event);
+  }, { once: true });
+  document.body.dispatchEvent(outer);
+  assert_equals(inside[0], outer, 'a shadow-tree listener of a nested dispatch sees the outer current event');
+  assert_equals(inside[1], outer, 'and the outer listener still sees its own');
+}, 'a shadow-tree listener leaves the current event of an enclosing dispatch in place');
+</script>

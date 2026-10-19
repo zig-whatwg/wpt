@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: an event keeps the relatedTarget dispatch leaves it with</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="light"></div>
+<script>
+// DOM 2.9: invoke step 4 sets event's relatedTarget to each path item's
+// retargeted relatedTarget, and the value the last invoke left stays on the
+// event after dispatch (step 11 clears it only when clearTargets). So the
+// event can end a dispatch holding a different object than the one it was
+// constructed with - a shadow host instead of a node in its shadow tree - and
+// must keep THAT one alive. Here a listener drops the last script reference
+// to the original relatedTarget and collects during dispatch.
+
+function collectNow() {
+  for (let i = 0; i < 3; i++) TestUtils.gc();
+}
+
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    TestUtils.gc();
+    await new Promise(r => t.step_timeout(r, 0));
+  }
+  const churn = [];
+  for (let i = 0; i < 2000; i++) churn.push(document.createTextNode('churn'), document.createElement('b'));
+  TestUtils.gc();
+  await new Promise(r => t.step_timeout(r, 0));
+  return churn.length;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  const holder = {};
+  (() => {
+    const host = document.createElement('div');
+    host.ev1 = 'host';
+    const shadow = host.attachShadow({ mode: 'closed' });
+    const inner = shadow.appendChild(document.createElement('span'));
+    holder.related = inner;
+    holder.event = new MouseEvent('ev1-retarget', { bubbles: true, composed: true, relatedTarget: inner });
+  })();
+  const seen = [];
+  light.addEventListener('ev1-retarget', function listener(e) {
+    light.removeEventListener('ev1-retarget', listener);
+    seen.push(e.relatedTarget && e.relatedTarget.ev1);
+    holder.related = null;
+    collectNow();
+    seen.push(e.relatedTarget && e.relatedTarget.ev1);
+  });
+  light.dispatchEvent(holder.event);
+  assert_array_equals(seen, ['host', 'host'], 'listeners see the shadow host, before and after a collection');
+  assert_equals(holder.event.relatedTarget && holder.event.relatedTarget.ev1, 'host', 'dispatch leaves the retargeted host');
+  await collect(t);
+  assert_not_equals(holder.event.relatedTarget, null, 'still there after collection');
+  assert_equals(holder.event.relatedTarget.ev1, 'host', 'with its expando');
+  assert_equals(holder.event.relatedTarget.localName, 'div');
+}, 'a relatedTarget in a shadow tree: the event keeps the host dispatch retargets it to');
+
+promise_test(async t => {
+  const holder = {};
+  (() => {
+    const related = document.createElement('p');
+    related.ev1 = 'light';
+    holder.related = related;
+    holder.event = new FocusEvent('ev1-light', { relatedTarget: related });
+  })();
+  light.addEventListener('ev1-light', function listener(e) {
+    light.removeEventListener('ev1-light', listener);
+    holder.related = null;
+    collectNow();
+  });
+  light.dispatchEvent(holder.event);
+  await collect(t);
+  assert_not_equals(holder.event.relatedTarget, null, 'still there after collection');
+  assert_equals(holder.event.relatedTarget.ev1, 'light', 'with its expando');
+}, 'a relatedTarget dispatch does not retarget is kept after a collection during dispatch');
+
+promise_test(async t => {
+  const holder = {};
+  (() => {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const target = shadow.appendChild(document.createElement('span'));
+    const related = shadow.appendChild(document.createElement('b'));
+    holder.target = target;
+    holder.event = new MouseEvent('ev1-cleared', { bubbles: true, composed: true, relatedTarget: related });
+  })();
+  let during = null;
+  holder.target.addEventListener('ev1-cleared', e => {
+    during = e.relatedTarget && e.relatedTarget.localName;
+    collectNow();
+  });
+  holder.target.dispatchEvent(holder.event);
+  assert_equals(during, 'b', 'the listener in the shadow tree sees the related target itself');
+  assert_equals(holder.event.target, null, 'clearTargets: target');
+  assert_equals(holder.event.relatedTarget, null, 'clearTargets: relatedTarget');
+  await collect(t);
+  assert_equals(holder.event.relatedTarget, null);
+  // Dispatching the same event again starts from the cleared relatedTarget.
+  holder.target.dispatchEvent(holder.event);
+  assert_equals(holder.event.relatedTarget, null);
+}, 'a relatedTarget in the target\'s shadow tree is cleared after dispatch, and stays cleared');
+</script>

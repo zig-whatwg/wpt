@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Hyperlink target selection cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const elapsed = {explicit: 0, absent: 0, empty: 0};
+  const modes = [['explicit', '_self'], ['absent', null], ['empty', '']];
+  const destination = new URL('tt4-base-target-destination.html', location.href).href;
+  let currentFrame = null;
+  t.add_cleanup(() => { if (currentFrame) currentFrame.remove(); });
+  for (let batch = 0; batch < 200; ++batch) {
+    const frame = document.createElement('iframe');
+    currentFrame = frame;
+    frame.src = destination;
+    const loaded = new Promise((resolve, reject) => {
+      frame.onload = () => {
+        if (frame.contentDocument && frame.contentDocument.URL !== 'about:blank') resolve();
+      };
+      frame.onerror = () => reject(new Error('benchmark frame load failed'));
+    });
+    document.body.append(frame);
+    await loaded;
+    frame.onload = null;
+    frame.onerror = null;
+    try {
+      const doc = frame.contentDocument;
+      assert_equals(doc.URL, destination, 'fresh same-origin benchmark document');
+      const base = doc.createElement('base');
+      base.target = '_self';
+      doc.head.append(base);
+      const anchor = doc.createElement('a');
+      anchor.href = '#tt4-target-cost';
+      doc.body.append(anchor);
+      let canceled = 0;
+      const cancel = event => { ++canceled; event.preventDefault(); };
+      const nav = frame.contentWindow.navigation;
+      nav.addEventListener('navigate', cancel);
+      for (const [name, target] of modes) {
+        if (target === null) anchor.removeAttribute('target');
+        else anchor.target = target;
+        for (let i = 0; i < 5; ++i) anchor.click();
+        canceled = 0;
+        const start = performance.now();
+        for (let i = 0; i < 50; ++i) anchor.click();
+        elapsed[name] += performance.now() - start;
+        assert_equals(canceled, 50, `${name}, batch ${batch}: every measured navigation canceled`);
+      }
+      nav.removeEventListener('navigate', cancel);
+    } finally {
+      frame.remove();
+      currentFrame = null;
+    }
+  }
+  for (const [name] of modes) console.log(`TT4_HYPERLINK_${name.toUpperCase()}_MS=${elapsed[name]}`);
+}, '10000 canceled hyperlink navigations per target mode across fresh browsing contexts');
+</script>

@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A navigated frame's IndexedDB and origin are its document's, not its container's</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#determining-the-origin">
+<link rel="help" href="https://storage.spec.whatwg.org/#obtain-a-storage-key">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// A frame whose initial about:blank Window was made with its container's
+// origin and that then navigated to another origin: the Window's origin,
+// its storage key and its srcdoc child's origin are the new document's
+// (HTML "determining the origin": about:srcdoc takes its container
+// document's origin).
+promise_test(async t => {
+  const name = "nav1-origin-" + Math.random().toString(36).slice(2);
+  await new Promise((resolve, reject) => {
+    const open = indexedDB.open(name, 7);
+    open.onsuccess = () => { open.result.close(); resolve(); };
+    open.onerror = () => reject(open.error);
+  });
+  t.add_cleanup(() => { indexedDB.deleteDatabase(name); });
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => {
+    addEventListener("message", function receive(e) {
+      if (e.source !== frame.contentWindow || e.data.kind !== "nav1-origin-idb") return;
+      removeEventListener("message", receive);
+      resolve(e.data);
+    });
+  });
+  frame.src = get_host_info().HTTP_REMOTE_ORIGIN + "/crane/nav1-origin-idb-frame.html?" + name;
+  document.body.append(frame);
+  const data = await result;
+  const remote = get_host_info().HTTP_REMOTE_ORIGIN;
+  assert_array_equals(
+    [data.origin, data.childOrigin, data.own, data.child],
+    [remote, remote, 1, 1],
+    "[frame origin, srcdoc child origin, the version the frame opens, the version its srcdoc child opens] - 7 is the container's database");
+}, "a cross-origin frame and its srcdoc child have their own origin and storage key");
+</script>

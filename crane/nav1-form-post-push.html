@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame's form posted to its own URL is a push, with the submitter as sourceElement</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#plan-to-navigate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Stated deviation (golden rule 2): "navigate" step 13.1 makes auto a
+// replace for the active document's own URL; Chrome, Firefox and Safari keep
+// a POST a push (navigation-api/navigate-event/navigate-form-userInitiated.html,
+// the top-level case). "Plan to navigate" step 4.2 sets sourceElement to the
+// submitter.
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => addEventListener("message", function receive(e) {
+    if (e.source !== frame.contentWindow || e.data.kind !== "nav1-form-post") return;
+    removeEventListener("message", receive);
+    resolve(e.data);
+  }));
+  frame.src = "nav1-form-post-push-frame.html";
+  document.body.append(frame);
+  const data = await result;
+  assert_array_equals([data.type, data.source, data.formData], ["push", "submit", "Submit"]);
+}, "a POST form submission to the frame's own URL");
+</script>

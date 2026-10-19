@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame's container load fires inside its window load, before its pageshow</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Stated deviation (golden rule 2): HTML "the end" step 9 fires pageshow and
+// then queues the iframe load event steps ("completely finish loading" step
+// 4). Blink (LocalDOMWindow::DispatchLoadEvent), WebKit
+// (LocalDOMWindow::dispatchLoadEvent) and Gecko
+// (nsGlobalWindowInner::FireFrameLoadEvent) fire the container's load inside
+// the child's window load dispatch, before pageshow; the parent's own load
+// comes after the child's pageshow.
+window.nav1Log = [];
+const done = new Promise(resolve => addEventListener("load", () => { nav1Log.push("parent-load"); resolve(); }));
+</script>
+<iframe id="frame" src="nav1-frame-child.html?a" onload="nav1Log.push('iframe-load')"></iframe>
+<script>
+promise_test(async t => {
+  await done;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(nav1Log, ["a-load", "iframe-load", "a-pageshow", "parent-load"]);
+}, "child load, container load, child pageshow, then the parent's load");
+
+promise_test(async t => {
+  await done;
+  nav1Log.length = 0;
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = () => { nav1Log.push("iframe-load"); resolve(); });
+  frame.src = "nav1-frame-child.html?b";
+  document.body.append(frame);
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(nav1Log, ["b-load", "iframe-load", "b-pageshow"]);
+}, "a frame inserted after the parent loaded: the same order");
+</script>

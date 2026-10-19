@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nav1 helper: a form that posts to this document's own URL</title>
+<form id="form" method="post" action=""><input id="submit" name="submitter" type="submit" value="Submit"></form>
+<script>
+navigation.onnavigate = e => {
+  e.preventDefault();
+  parent.postMessage({kind: "nav1-form-post", type: e.navigationType, source: e.sourceElement && e.sourceElement.id, formData: e.formData && e.formData.get("submitter")}, "*");
+};
+onload = () => setTimeout(() => form.requestSubmit(submit), 0);
+</script>

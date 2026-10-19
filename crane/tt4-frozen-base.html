@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document base URL updates on base element mutations</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const container = document.createElement('div');
+  const first = document.createElement('base');
+  const second = document.createElement('base');
+  first.href = '/crane/tt4-first/';
+  second.href = '/crane/tt4-second/';
+  container.append(first);
+  document.body.append(container, second);
+  t.add_cleanup(() => { container.remove(); second.remove(); });
+  assert_equals(document.baseURI, first.href);
+  second.href = '/crane/tt4-second-changed/';
+  assert_equals(document.baseURI, first.href);
+  container.remove();
+  assert_equals(document.baseURI, second.href);
+  second.removeAttribute('href');
+  assert_equals(document.baseURI, location.href);
+}, 'non-first changes, ancestor removal, and removing the final href select the right base');
+
+for (const href of ['data:text/plain,blocked', 'javascript:1']) {
+  test(t => {
+    const first = document.createElement('base');
+    const second = document.createElement('base');
+    first.setAttribute('href', href);
+    second.href = '/crane/tt4-second/';
+    document.head.append(first, second);
+    t.add_cleanup(() => { first.remove(); second.remove(); });
+    const link = document.createElement('a');
+    link.href = 'child';
+    assert_equals(link.href, new URL('child', document.URL).href);
+    first.remove();
+    assert_equals(link.href, new URL('child', second.href).href);
+  }, 'forbidden first base uses fallback until removed: ' + href);
+}
+</script>

@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>nav1 frame child: reports its window load and pageshow to its parent</title>
+<script>
+const name = location.search.slice(1) || "child";
+addEventListener("load", () => parent.nav1Log.push(name + "-load"));
+addEventListener("pageshow", e => parent.nav1Log.push(name + "-pageshow" + (e.persisted ? "-persisted" : "")));
+</script>

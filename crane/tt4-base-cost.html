@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Base mutation and URL read costs</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+{
+  const start = performance.now();
+  for (let i = 0; i < 1000; ++i) {
+    const base = document.createElement('base');
+    base.href = '/crane/tt4-base-start/';
+    document.head.append(base);
+    base.href = '/crane/tt4-base-end/';
+    base.remove();
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(document.querySelector('base'), null), '1000 base insert/change/remove ms=' + elapsed);
+
+  const base = document.createElement('base');
+  base.href = '/crane/tt4-read/';
+  document.head.append(base);
+  const anchor = document.createElement('a');
+  anchor.href = 'child';
+  document.body.append(anchor);
+  for (const name of ['baseURI', 'href']) {
+    const start = performance.now();
+    let result;
+    for (let i = 0; i < 10000; ++i) result = name === 'baseURI' ? document.baseURI : anchor.href;
+    const elapsed = performance.now() - start;
+    test(() => assert_true(result.includes('/crane/tt4-read/')), '10000 ' + name + ' reads ms=' + elapsed);
+  }
+  anchor.remove();
+  base.remove();
+}
+</script>

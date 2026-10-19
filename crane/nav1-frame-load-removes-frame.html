@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A container load listener that removes the frame: no pageshow for the removed document</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#fully-active">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The container's load fires inside the child's window load dispatch, before
+// the child's pageshow (Blink, WebKit, Gecko). A listener that removes the
+// frame destroys its document, which is then not fully active: pageshow is
+// not fired at it, and nothing crashes.
+window.nav1Log = [];
+promise_test(async t => {
+  await new Promise(resolve => addEventListener("load", resolve));
+  const frame = document.createElement("iframe");
+  const loaded = new Promise(resolve => frame.onload = () => {
+    nav1Log.push("iframe-load");
+    frame.remove();
+    resolve();
+  });
+  frame.src = "nav1-frame-child.html?c";
+  document.body.append(frame);
+  await loaded;
+  for (let i = 0; i < 3; i++) await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(nav1Log, ["c-load", "iframe-load"]);
+  assert_equals(frame.contentWindow, null, "the frame is gone");
+}, "removing the frame from its load listener");
+
+promise_test(async t => {
+  nav1Log.length = 0;
+  const frame = document.createElement("iframe");
+  const loaded = new Promise(resolve => frame.addEventListener("load", () => {
+    nav1Log.push("iframe-load");
+    frame.remove();
+    resolve();
+  }));
+  frame.srcdoc = "<script>addEventListener('load', () => parent.nav1Log.push('srcdoc-load')); addEventListener('pageshow', () => parent.nav1Log.push('srcdoc-pageshow'));<\/script>";
+  document.body.append(frame);
+  await loaded;
+  for (let i = 0; i < 3; i++) await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(nav1Log, ["srcdoc-load", "iframe-load"]);
+}, "removing a srcdoc frame from its load listener");
+</script>

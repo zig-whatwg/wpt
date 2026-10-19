@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame's fragment navigation scrolls to the fragment: :target matches its element</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-fragid">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "navigate to a fragment" step 16: "Scroll to the fragment given
+// navigable's active document", which sets the document's target element.
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  await new Promise(resolve => { frame.onload = resolve; frame.src = "/common/blank.html"; document.body.append(frame); });
+  const w = frame.contentWindow, d = frame.contentDocument;
+  const target = d.createElement("div");
+  target.id = "d";
+  d.body.append(target);
+  const other = d.createElement("div");
+  other.id = "e";
+  d.body.append(other);
+  await w.navigation.navigate("#d").committed;
+  assert_equals(d.querySelector(":target"), target, "after navigation.navigate('#d')");
+  w.location.hash = "e";
+  assert_equals(d.querySelector(":target"), other, "after location.hash = 'e'");
+  w.location.hash = "";
+  assert_equals(d.querySelector(":target"), null, "after an empty fragment");
+}, "a frame's fragment navigations set its target element");
+</script>
