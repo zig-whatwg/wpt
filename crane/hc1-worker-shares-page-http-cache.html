@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>HTTP cache: a page and its dedicated worker share one partition</title>
+<link rel=help href="https://fetch.spec.whatwg.org/#http-cache-partitions">
+<link rel=help href="https://w3c.github.io/resource-timing/#dom-performanceresourcetiming-transfersize">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+// A dedicated worker's environment has its owner's top-level origin (HTML
+// "set up a worker environment settings object"), so its requests are in the
+// page's network partition (Fetch 2.7) and its HTTP cache (2.8): what the
+// page stored answers the worker, a "local" cache state - transferSize 0.
+promise_test(async t => {
+  const url = new URL("/resource-timing/resources/cacheable-and-validated.py?content=shared&hc1=" + token(), location.href).href;
+  const first = await fetch(url);
+  assert_equals(await first.text(), "shared");
+  const worker = new Worker("resources/hc1-cache-worker.js");
+  t.add_cleanup(() => worker.terminate());
+  const answer = new Promise(resolve => { worker.onmessage = e => resolve(e.data); });
+  worker.postMessage(url);
+  const result = await answer;
+  assert_equals(result.text, "shared");
+  assert_equals(result.transferSize, 0, "the worker's entry: no bytes transferred");
+  assert_equals(result.deliveryType, "cache");
+}, "a dedicated worker's fetch is answered from what its page stored");
+</script>

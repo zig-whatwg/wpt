@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>HTTP cache cost: 1,000 fetches of one cacheable URL</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script>
+// One URL, fresh for a minute: the first fetch goes to the network and is
+// stored, the other 999 are answered from the HTTP cache (lane httpcache1).
+// The file's duration is the measurement.
+promise_test(async () => {
+  const url = `/resource-timing/resources/cacheable-and-validated.py?content=hit&run=${token()}`;
+  let received = 0;
+  for (let i = 0; i < 1000; ++i) {
+    if (await (await fetch(url)).text() === "hit") ++received;
+  }
+  assert_equals(received, 1000);
+}, "1000 fetches of one cacheable URL");
+</script>
