@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Windowless documents report the current local modification time</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-document-lastmodified">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function localString(milliseconds) {
+  const d = new Date(milliseconds);
+  const pad = n => String(n).padStart(2, "0");
+  return pad(d.getMonth() + 1) + "/" + pad(d.getDate()) + "/" + String(d.getFullYear()).padStart(4, "0") + " " +
+    pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+}
+for (const [name, create] of [
+  ["new Document", () => new Document()],
+  ["createHTMLDocument", () => document.implementation.createHTMLDocument()],
+  ["DOMParser", () => new DOMParser().parseFromString("<root/>", "text/xml")],
+]) {
+  test(() => {
+    const doc = create();
+    const before = Date.now();
+    const modified = doc.lastModified;
+    const after = Date.now();
+    assert_true(modified === localString(before) || modified === localString(after), modified + " is current local time");
+  }, name + " uses current local time when there is no source modification timestamp");
+}
+</script>

@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Character movement cost at text and parent boundaries</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Supplement the requested in-Text character loop with the node transitions
+// this patch changes. Identical inputs and iteration counts on BASE and TIP.
+const paragraph = document.createElement('p');
+const nodes = [];
+for (let i = 0; i < 1000; i++) {
+  const text = document.createTextNode('selection text');
+  nodes.push(text);
+  paragraph.append(text);
+}
+document.body.append(paragraph);
+const selection = getSelection();
+for (const parentBoundary of [false, true]) {
+  function move(i) {
+    const index = i % 999;
+    selection.collapse(parentBoundary ? paragraph : nodes[index],
+                       parentBoundary ? index : nodes[index].length);
+    selection.modify('move', 'forward', 'character');
+  }
+  for (let i = 0; i < 1000; i++) move(i);
+  const start = performance.now();
+  for (let i = 0; i < 100000; i++) move(i);
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(selection.rangeCount, 1),
+       (parentBoundary ? 'Parent boundary' : 'Text boundary') +
+       ': 100000 collapse and character moves: ' + elapsed.toFixed(3) + ' ms');
+}
+selection.removeAllRanges();
+// Q14: leave the paragraph attached for normal document teardown.
+</script>

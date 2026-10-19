@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XHR XML response documents are complete</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const type of ["text/xml", "application/xhtml+xml", "image/svg+xml"]) {
+  async_test(t => {
+    const url = URL.createObjectURL(new Blob(["<root/>"], { type }));
+    t.add_cleanup(() => URL.revokeObjectURL(url));
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", url);
+    xhr.onload = t.step_func_done(() => {
+      assert_not_equals(xhr.responseXML, null);
+      assert_equals(xhr.responseXML.readyState, "complete");
+      assert_equals(xhr.responseXML.defaultView, null);
+    });
+    xhr.onerror = t.unreached_func("request failed");
+    xhr.send();
+  }, "XHR responseXML readiness for " + type);
+}
+</script>

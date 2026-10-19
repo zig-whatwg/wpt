@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>setBaseAndExtent constructs a disconnected pair in the specified setter order</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-setbaseandextent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement('div');
+  const video = document.createElement('video');
+  const inner = document.createElement('video');
+  video.append(inner);
+  document.body.append(host, video);
+  const root = host.attachShadow({mode:'open'});
+  t.add_cleanup(() => { getSelection().removeAllRanges(); host.remove(); video.remove(); });
+  getSelection().setBaseAndExtent(inner, 0, root, 0);
+  assert_equals(getSelection().anchorNode, inner);
+  assert_equals(getSelection().focusNode, inner);
+  assert_equals(getSelection().anchorOffset, 0);
+  assert_equals(getSelection().focusOffset, 0);
+}, 'Different-tree-scope endpoints collapse to the anchor in the nested-video case');
+</script>

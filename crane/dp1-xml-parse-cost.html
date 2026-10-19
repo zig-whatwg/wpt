@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>DOMParser XML parsing cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const entry = '<entry a="value">' + "x".repeat(1000) + '</entry>';
+const entries = entry.repeat(1000);
+const input = '<root>' + entries + " ".repeat(1048576 - entries.length - 13) + '</root>';
+const parser = new DOMParser();
+let result;
+const start = performance.now();
+for (let i = 0; i < 20; ++i) result = parser.parseFromString(input, "text/xml");
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(input.length, 1048576);
+  assert_equals(result.getElementsByTagName("entry").length, 1000);
+  assert_equals(result.getElementsByTagName("parsererror").length, 0);
+}, "dp1 XML 1 MiB x20 elapsed_ms=" + elapsed.toFixed(3));
+</script>

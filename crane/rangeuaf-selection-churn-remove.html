@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: removing a node after a selection replaced its range 300,000 times</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-remove">
+<link rel=help href="https://w3c.github.io/selection-api/#dom-selection-collapse">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane rangeuaf: the shape of Codex row 73's sl2-cost-selection.html, which
+// crashed main. Each collapse() makes the selection a new live Range; the
+// ranges it replaced are collected, and their teardowns ran inside the
+// removal's live-range walk, under the list it was reading.
+test(() => {
+  const paragraph = document.body.appendChild(document.createElement("p"));
+  const texts = [];
+  for (let i = 0; i < 1000; i++) texts.push(paragraph.appendChild(document.createTextNode("selection text")));
+  const selection = getSelection();
+  for (let i = 0; i < 300000; i++) selection.collapse(texts[i % 1000], i % 2);
+  const caret = selection.getRangeAt(0);
+  const index = Array.prototype.indexOf.call(document.body.childNodes, paragraph);
+  paragraph.remove();
+  // The selection's range is a live range of the document like any other:
+  // steps 4 and 5 move it to (body, index).
+  assert_equals(caret.startContainer, document.body, "start container");
+  assert_equals(caret.startOffset, index, "start offset");
+  assert_true(caret.collapsed, "collapsed");
+}, "removing a node after 300,000 collapse() calls moves the selection's range and crashes nothing");
+</script>

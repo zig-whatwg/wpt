@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>User edits notify changes to a text control selection</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+for (const tag of ['input', 'textarea']) {
+  promise_test(async t => {
+    const control = document.createElement(tag);
+    document.body.append(control);
+    t.add_cleanup(() => control.remove());
+    control.value = 'hello';
+    control.focus();
+    control.setSelectionRange(5, 5);
+    await new Promise(resolve => t.step_timeout(resolve, 100));
+    const events = [];
+    control.addEventListener('selectionchange', e => events.push(e));
+    await test_driver.send_keys(control, '\uE003');
+    await new Promise(resolve => t.step_timeout(resolve, 100));
+    assert_equals(control.value, 'hell', 'Backspace edits the value');
+    assert_equals(control.selectionStart, 4);
+    assert_equals(control.selectionEnd, 4);
+    assert_equals(events.length, 1, 'The caret change queues one notification');
+    assert_equals(events[0].target, control);
+    assert_true(events[0].bubbles);
+    assert_false(events[0].cancelable);
+    assert_false(events[0].composed);
+  }, tag + ': Backspace updates the value and fires selectionchange');
+}
+</script>

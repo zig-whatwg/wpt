@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection stringification uses rendered text within its live range</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-stringifier">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t, html, css = '') {
+  const host = document.createElement('div');
+  host.innerHTML = html;
+  host.style.cssText = css;
+  document.body.append(host);
+  t.add_cleanup(() => { getSelection().removeAllRanges(); host.remove(); });
+  return host;
+}
+function stringify(start, startOffset, end, endOffset) {
+  const selection = getSelection();
+  selection.removeAllRanges();
+  const range = document.createRange();
+  range.setStart(start, startOffset);
+  range.setEnd(end, endOffset);
+  selection.addRange(range);
+  return selection.toString();
+}
+test(t => {
+  const host = fixture(t, '  alpha <span style="display:none">hidden</span>  beta  ');
+  assert_equals(stringify(host, 0, host, host.childNodes.length), 'alpha beta');
+  assert_equals(getSelection().getRangeAt(0).toString(), '  alpha hidden  beta  ', 'Range remains raw text');
+}, 'Selection excludes display:none and collapses visible whitespace');
+
+test(t => {
+  const host = fixture(t, 'a<span style="visibility:hidden">x<span style="visibility:visible">b</span>y</span>c');
+  assert_equals(stringify(host, 0, host, host.childNodes.length), 'abc');
+}, 'Visible descendants of visibility:hidden elements still contribute');
+
+test(t => {
+  const host = fixture(t, '<p>alpha<br>beta</p><p>gamma</p>');
+  assert_equals(stringify(host, 0, host, 2), 'alpha\nbeta\n\ngamma');
+}, 'Rendered block and br boundaries appear in selected text');
+
+test(t => {
+  const host = fixture(t, 'one  two');
+  assert_equals(stringify(host.firstChild, 3, host.firstChild, 4), ' ');
+}, 'A partially selected space keeps the surrounding rendering context');
+
+test(t => {
+  const host = fixture(t, 'straßE', 'text-transform: uppercase');
+  assert_equals(stringify(host.firstChild, 4, host.firstChild, 5), 'SS');
+}, 'DOM offsets map through expanding text-transform mappings');
+
+test(t => {
+  const host = fixture(t, 'a<span>bc</span> def', 'text-transform: capitalize');
+  const text = host.querySelector('span').firstChild;
+  assert_equals(stringify(text, 0, text, 2), 'bc');
+}, 'Partial text uses the original inline word when capitalizing');
+
+test(t => {
+  const host = fixture(t, '<script>not visible</' + 'script><style style="display:block"> a { color: red } </style>');
+  assert_equals(stringify(host, 0, host, 2), 'a { color: red }');
+}, 'Script and style text follows computed display');
+
+test(t => {
+  const host = fixture(t, 'not visible', 'display:none');
+  assert_equals(stringify(host.firstChild, 0, host.firstChild, 11), '');
+}, 'A range in a display:none subtree has no rendered string');
+</script>

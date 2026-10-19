@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Character movement treats noneditable descendants as an editing boundary</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-modify">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement('div');
+  host.contentEditable = 'true';
+  host.innerHTML = 'a<span contenteditable="false">blocked</span>b';
+  document.body.append(host);
+  t.add_cleanup(() => { getSelection().removeAllRanges(); host.remove(); });
+  const selection = getSelection();
+  selection.collapse(host.firstChild, 1);
+  selection.modify('move', 'forward', 'character');
+  assert_true(
+    (selection.focusNode === host.lastChild && selection.focusOffset === 0) ||
+    (selection.focusNode === host && selection.focusOffset === 2),
+    'The caret crosses the noneditable subtree without entering its text');
+}, 'Forward character movement skips a noneditable descendant');
+</script>

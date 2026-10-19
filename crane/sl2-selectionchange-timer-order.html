@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A selectionchange queued from a selectionchange listener precedes a later timer</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#selectionchange-event">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><div id="target"><br><br></div>
+<script>
+promise_test(async t => {
+  const selection = getSelection();
+  const first = new Promise(resolve => document.addEventListener('selectionchange', resolve, {once: true}));
+  selection.collapse(target, 0);
+  await first;
+  const order = [];
+  const onChange = () => order.push('selectionchange');
+  document.addEventListener('selectionchange', onChange);
+  t.add_cleanup(() => document.removeEventListener('selectionchange', onChange));
+  selection.collapse(target, 1);
+  selection.collapse(target, 2);
+  assert_array_equals(order, [], 'selectionchange is asynchronous');
+  await new Promise(resolve => t.step_timeout(() => { order.push('timer'); resolve(); }, 0));
+  assert_array_equals(order, ['selectionchange', 'timer']);
+}, 'Queued selectionchange precedes a later timer across an event-listener promise continuation');
+</script>

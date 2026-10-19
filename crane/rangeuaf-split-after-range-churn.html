@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: splitText walks a live-range list that collected ranges leave during the walk</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-text-split">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane rangeuaf: "split a Text node" steps 7.2-7.5 walk the document's live
+// ranges and move a boundary into the new node (redrawing its edge), the
+// same walk as the removal's.
+test(() => {
+  const texts = [];
+  for (let i = 0; i < 1000; i++) texts.push(document.body.appendChild(document.createTextNode("selection text")));
+  const kept = [];
+  for (let i = 0; i < 300000; i++) {
+    const range = document.createRange();
+    range.setStart(texts[i % 1000], 10);
+    if (i % 997 === 0) kept.push([range, texts[i % 1000]]);
+  }
+  for (const text of texts) text.splitText(5);
+  for (const [range, text] of kept) {
+    assert_equals(range.startContainer, text.nextSibling, "start container");
+    assert_equals(range.startOffset, 5, "start offset");
+  }
+}, "splitting text nodes after 300,000 ranges were made in them moves every live range they hold");
+</script>

@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>createHTMLDocument cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+let result;
+const start = performance.now();
+for (let i = 0; i < 10000; ++i) result = document.implementation.createHTMLDocument();
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(result.documentElement.localName, "html");
+  assert_equals(result.head.localName, "head");
+  assert_equals(result.body.localName, "body");
+}, "dp1 createHTMLDocument x10000 elapsed_ms=" + elapsed.toFixed(3));
+</script>

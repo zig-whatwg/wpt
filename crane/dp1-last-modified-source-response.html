@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XHR documents retain the source Last-Modified timestamp</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-document-lastmodified">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function localDateString(time) {
+  const d = new Date(time);
+  const pad = n => String(n).padStart(2, "0");
+  return pad(d.getMonth() + 1) + "/" + pad(d.getDate()) + "/" +
+    String(d.getFullYear()).padStart(4, "0") + " " + pad(d.getHours()) +
+    ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+}
+for (const type of ["xml", "html"]) {
+  async_test(t => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "dp1-last-modified-source." + type);
+    xhr.responseType = "document";
+    xhr.onload = t.step_func_done(() => {
+      assert_not_equals(xhr.responseXML, null);
+      assert_equals(xhr.responseXML.readyState, "complete");
+      assert_equals(xhr.responseXML.lastModified, localDateString(-1000));
+    });
+    xhr.onerror = t.unreached_func("source fetch failed");
+    xhr.send();
+  }, type + " response document formats its pre-epoch source timestamp in local time");
+}
+</script>

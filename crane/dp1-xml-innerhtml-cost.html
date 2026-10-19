@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>XML innerHTML temporary document cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const doc = new DOMParser().parseFromString('<root xmlns="urn:dp1"/>', "text/xml");
+const root = doc.documentElement;
+const markup = '<entry a="value">A &amp; B<child/></entry>';
+const start = performance.now();
+for (let i = 0; i < 10000; ++i) root.innerHTML = markup;
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(root.firstChild.namespaceURI, "urn:dp1");
+  assert_equals(root.getElementsByTagName("entry").length, 1);
+  assert_equals(root.textContent, "A & B");
+}, "dp1 XML innerHTML x10000 elapsed_ms=" + elapsed.toFixed(3));
+</script>

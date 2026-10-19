@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Selection operation cost on a 1000-node paragraph</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const paragraph = document.createElement('p');
+const nodes = [];
+for (let i = 0; i < 1000; i++) {
+  const text = document.createTextNode('selection text');
+  nodes.push(text);
+  paragraph.append(text);
+}
+document.body.append(paragraph);
+const selection = getSelection();
+for (const operation of ['collapse', 'extend', 'modify']) {
+  selection.collapse(nodes[0], 1);
+  for (let i = 0; i < 1000; i++) {
+    if (operation === 'collapse') selection.collapse(nodes[i % 1000], i % 2);
+    else if (operation === 'extend') selection.extend(nodes[i % 1000], i % 2);
+    else selection.modify('move', i % 2 ? 'backward' : 'forward', 'character');
+  }
+  const start = performance.now();
+  for (let i = 0; i < 100000; i++) {
+    if (operation === 'collapse') selection.collapse(nodes[i % 1000], i % 2);
+    else if (operation === 'extend') selection.extend(nodes[i % 1000], i % 2);
+    else selection.modify('move', i % 2 ? 'backward' : 'forward', 'character');
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(selection.rangeCount, 1),
+       operation + ': 100000 calls: ' + elapsed.toFixed(3) + ' ms');
+}
+selection.removeAllRanges();
+// Q14: leave the paragraph attached for normal document teardown.
+</script>

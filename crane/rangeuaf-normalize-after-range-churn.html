@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: normalize() walks a live-range list that collected ranges leave during the walk</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-node-normalize">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane rangeuaf: normalize() steps 6.1-6.4 walk the document's live ranges
+// and set a boundary in the merged node, the same walk as the removal's.
+test(() => {
+  const paragraph = document.body.appendChild(document.createElement("p"));
+  const texts = [];
+  for (let i = 0; i < 1000; i++) texts.push(paragraph.appendChild(document.createTextNode("ab")));
+  const kept = [];
+  for (let i = 0; i < 300000; i++) {
+    const range = document.createRange();
+    range.setStart(texts[i % 1000], 1);
+    if (i % 997 === 0) kept.push([range, i % 1000]);
+  }
+  paragraph.normalize();
+  const merged = paragraph.firstChild;
+  assert_equals(paragraph.childNodes.length, 1, "one text node left");
+  for (const [range, n] of kept) {
+    assert_equals(range.startContainer, merged, "start container");
+    assert_equals(range.startOffset, 2 * n + 1, "start offset");
+  }
+}, "normalizing after 300,000 ranges were made in the merged nodes moves every live range they hold");
+</script>

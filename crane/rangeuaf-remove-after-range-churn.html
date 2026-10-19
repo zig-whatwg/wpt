@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: removing a node walks a live-range list that collected ranges leave during the walk</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-remove">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane rangeuaf. Every live range of a document is on its live-range list,
+// which "remove" steps 4-7 walk. Setting a boundary there redraws the edge
+// that keeps the range's node (an engine call that can allocate); a
+// collection that allocation starts first runs the previous collection's
+// pending teardowns - here, of the ranges script dropped - and each one
+// leaves the list the walk is reading. The walk read a slot the removal had
+// vacated: SIGSEGV at 0xaaaaaaaaaaaaaaaa (Codex row 73's sl2-cost pages).
+//
+// Script keeps every 997th range: each must still be moved by steps 4 and 5,
+// whichever ranges left the list before it.
+test(() => {
+  const paragraph = document.body.appendChild(document.createElement("p"));
+  const texts = [];
+  for (let i = 0; i < 1000; i++) texts.push(paragraph.appendChild(document.createTextNode("live range")));
+  const kept = [];
+  for (let i = 0; i < 300000; i++) {
+    const range = document.createRange();
+    range.setStart(texts[i % 1000], i % 2);
+    if (i % 997 === 0) kept.push(range);
+  }
+  const index = Array.prototype.indexOf.call(document.body.childNodes, paragraph);
+  paragraph.remove();
+  for (const range of kept) {
+    assert_equals(range.startContainer, document.body, "start container");
+    assert_equals(range.startOffset, index, "start offset");
+    assert_equals(range.endContainer, document.body, "end container");
+    assert_equals(range.endOffset, index, "end offset");
+  }
+}, "removing a node after 300,000 ranges were made in it moves every live range it holds");
+</script>

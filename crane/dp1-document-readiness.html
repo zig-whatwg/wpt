@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Documents created outside navigation are complete</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#current-document-readiness">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const factories = [
+  ["Document constructor", () => new Document()],
+  ["parseHTMLUnsafe", () => Document.parseHTMLUnsafe("<p>complete")],
+  ["cloned Document", () => document.cloneNode(false)],
+  ["cloned XMLDocument", () => document.implementation.createDocument(null, "root").cloneNode(true)],
+  ["createHTMLDocument", () => document.implementation.createHTMLDocument()],
+  ["empty createDocument", () => document.implementation.createDocument(null, "")],
+  ["XHTML createDocument", () => document.implementation.createDocument("http://www.w3.org/1999/xhtml", "html")],
+  ["SVG createDocument", () => document.implementation.createDocument("http://www.w3.org/2000/svg", "svg")],
+];
+for (const type of ["text/html", "text/xml", "application/xml", "application/xhtml+xml", "image/svg+xml"]) {
+  factories.push(["DOMParser " + type, () => new DOMParser().parseFromString("<root/>", type)]);
+}
+for (const [name, create] of factories) {
+  test(() => {
+    const doc = create();
+    assert_equals(doc.readyState, "complete");
+    assert_equals(doc.defaultView, null);
+  }, name + " has complete readiness and no browsing context");
+}
+test(() => {
+  const doc = new DOMParser().parseFromString("<root>", "text/xml");
+  assert_equals(doc.readyState, "complete");
+}, "An XML error document is complete");
+</script>

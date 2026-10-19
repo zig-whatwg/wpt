@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Word movement reaches the end of the current word before leaving its node</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-modify">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement('div');
+  host.innerHTML = '<p>middle line</p><p>last line</p>';
+  document.body.append(host);
+  t.add_cleanup(() => { getSelection().removeAllRanges(); host.remove(); });
+  const text = host.firstChild.firstChild;
+  getSelection().collapse(text, 9);
+  getSelection().modify('extend', 'forward', 'word');
+  assert_equals(getSelection().focusNode, text);
+  assert_equals(getSelection().focusOffset, text.length);
+}, 'Extending within the last word stops at its text node end');
+</script>
