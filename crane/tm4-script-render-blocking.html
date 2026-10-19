@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicit script render-blocking fetch metadata after body creation</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const [label, type, blocking, removeBlocking] of [
+  ['classic explicit', '', true, false],
+  ['module explicit', 'module', true, false],
+  ['async module explicit', 'module', true, false],
+  ['classic removed after fetch starts', '', true, true],
+  ['classic ordinary', '', false, false],
+  ['module ordinary', 'module', false, false],
+]) {
+  promise_test(async t => {
+    assert_not_equals(document.body, null, 'body exists before insertion');
+    const script = document.createElement('script');
+    t.add_cleanup(() => script.remove());
+    if (type) script.type = type;
+    if (label.startsWith('async')) script.async = true;
+    if (blocking) script.setAttribute('blocking', 'render');
+    script.src = '/resource-timing/resources/empty_script.js?tm4=' +
+      encodeURIComponent(label);
+    const timing = new Promise(resolve => {
+      const observer = new PerformanceObserver(list => {
+        const entry = list.getEntries().find(entry => entry.name === script.src);
+        if (entry) { observer.disconnect(); resolve(entry); }
+      });
+      t.add_cleanup(() => observer.disconnect());
+      observer.observe({type: 'resource', buffered: true});
+    });
+    const loaded = new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('script load failed'));
+    });
+    document.head.appendChild(script);
+    if (removeBlocking) script.removeAttribute('blocking');
+    const [entry] = await Promise.all([timing, loaded]);
+    assert_equals(entry.initiatorType, 'script');
+    assert_equals(entry.renderBlockingStatus, blocking ? 'blocking' : 'non-blocking');
+  }, label + ': fetch metadata keeps the preparation-time blocking classification');
+}
+</script>

@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dynamic stylesheet fetch classification survives attribute changes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#link-type-stylesheet">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const [label, blocking, media, expected] of [
+  ['ordinary', '', '', 'non-blocking'],
+  ['explicit', 'render', '', 'blocking'],
+  ['print', 'render', 'print', 'non-blocking'],
+]) {
+  promise_test(async t => {
+    const style = document.createElement('style');
+    t.add_cleanup(() => style.remove());
+    const url = new URL('/resource-timing/resources/empty_style.css?tm4-dynamic=' + label, location.href).href;
+    style.blocking = blocking;
+    style.media = media;
+    style.textContent = '@import url("' + url + '");';
+    const loaded = new Promise((resolve, reject) => {
+      style.onload = resolve;
+      style.onerror = reject;
+    });
+    document.head.append(style);
+    style.blocking = '';
+    await loaded;
+    const entries = performance.getEntriesByName(url, 'resource');
+    assert_equals(entries.length, 1);
+    assert_equals(entries[0].renderBlockingStatus, expected);
+  }, label + ': dynamic inline import keeps its initial classification');
+}
+promise_test(async t => {
+  const link = document.createElement('link');
+  t.add_cleanup(() => link.remove());
+  link.rel = 'stylesheet';
+  link.blocking = 'render';
+  link.href = '/resource-timing/resources/importer.css?tm4-nested';
+  const loaded = new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = reject;
+  });
+  document.head.append(link);
+  link.blocking = '';
+  await loaded;
+  const childURL = new URL('/resource-timing/resources/empty_style.css?stylesheet-imported', location.href).href;
+  for (const url of [link.href, childURL]) {
+    const entries = performance.getEntriesByName(url, 'resource');
+    assert_equals(entries.length, 1, url);
+    assert_equals(entries[0].renderBlockingStatus, 'blocking', url);
+  }
+}, 'An import arriving after blocking is removed inherits its parent fetch classification');
+</script>

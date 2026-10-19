@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Empty innerHTML respects its fragment context</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#html-fragment-parsing-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const root = document.createElement('html');
+  root.innerHTML = '<head><title>old</title></head><body>old</body>';
+  const oldChildren = Array.from(root.childNodes);
+  root.innerHTML = '';
+  assert_equals(root.innerHTML, '<head></head><body></body>');
+  assert_true(root.firstChild instanceof HTMLHeadElement);
+  assert_true(root.lastChild instanceof HTMLBodyElement);
+  assert_true(oldChildren.every(node => node.parentNode === null));
+}, 'Empty markup still creates head and body in an HTML html-element context');
+
+for (const name of ['div', 'table', 'tbody', 'tr', 'select', 'template']) {
+  test(() => {
+    const element = document.createElement(name);
+    const target = element.content || element;
+    target.appendChild(document.createTextNode('old'));
+    element.innerHTML = '';
+    assert_equals(target.childNodes.length, 0);
+  }, 'Empty markup removes all children of ' + name);
+}
+
+for (const namespace of [null, 'http://www.w3.org/2000/svg']) {
+  test(() => {
+    const element = document.createElementNS(namespace, 'html');
+    element.appendChild(document.createTextNode('old'));
+    element.innerHTML = '';
+    assert_equals(element.childNodes.length, 0);
+  }, 'A foreign html local name has no implicit head/body: ' + namespace);
+}
+
+test(() => {
+  const xml = document.implementation.createDocument('http://www.w3.org/1999/xhtml', 'html');
+  xml.documentElement.appendChild(xml.createTextNode('old'));
+  xml.documentElement.innerHTML = '';
+  assert_equals(xml.documentElement.childNodes.length, 0);
+}, 'An XML document uses XML fragment parsing even for an HTML-namespace html element');
+</script>

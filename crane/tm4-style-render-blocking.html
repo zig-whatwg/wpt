@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<title>Stylesheet and import fetch render-blocking metadata</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#link-type-stylesheet">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<link rel="stylesheet" href="/resource-timing/resources/empty_style.css?tm4=head-link">
+<link rel="stylesheet" media="print" href="/resource-timing/resources/empty_style.css?tm4=head-print">
+<style>@import url('/resource-timing/resources/empty_style.css?tm4=head-import');</style>
+<style media="print">@import url('/resource-timing/resources/empty_style.css?tm4=head-print-import');</style>
+</head><body>
+<link rel="stylesheet" href="/resource-timing/resources/empty_style.css?tm4=body-link">
+<style>@import url('/resource-timing/resources/empty_style.css?tm4=body-import');</style>
+<script>
+const loaded = new Promise(resolve => window.addEventListener('load', resolve, {once: true}));
+for (const [label, status, initiator] of [
+  ['head-link', 'blocking', 'link'],
+  ['head-print', 'non-blocking', 'link'],
+  ['head-import', 'blocking', 'css'],
+  ['head-print-import', 'non-blocking', 'css'],
+  ['body-link', 'non-blocking', 'link'],
+  ['body-import', 'non-blocking', 'css'],
+]) {
+  promise_test(async () => {
+    await loaded;
+    const url = new URL('/resource-timing/resources/empty_style.css?tm4=' + label, location.href).href;
+    const entries = performance.getEntriesByName(url, 'resource');
+    assert_equals(entries.length, 1, 'exactly one completed fetch');
+    assert_equals(entries[0].initiatorType, initiator);
+    assert_equals(entries[0].renderBlockingStatus, status);
+  }, label + ': stylesheet request reports its render-blocking classification');
+}
+</script>
+</body></html>

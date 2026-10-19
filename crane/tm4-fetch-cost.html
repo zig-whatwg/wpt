@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Resource Timing for 1000 consumed fetch responses</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  t.add_cleanup(() => performance.setResourceTimingBufferSize(250));
+  performance.clearResourceTimings();
+  performance.setResourceTimingBufferSize(1100);
+  for (let i = 0; i < 1000; ++i) {
+    const response = await fetch('/resource-timing/resources/empty_script.js?tm4-cost=' + i);
+    assert_equals(response.status, 200);
+    await response.arrayBuffer();
+  }
+  const entries = performance.getEntriesByType('resource').filter(entry =>
+    entry.name.includes('?tm4-cost='));
+  assert_equals(entries.length, 1000);
+  assert_true(entries.every(entry => entry.initiatorType === 'fetch'));
+}, '1000 fetch calls produce resource timing entries after their bodies end');
+</script>

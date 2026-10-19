@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Data URL bodies exclude fragments, while navigation keeps its target</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#data-url-processor">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const base64 of [false, true]) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const received = new Promise(resolve => {
+      const listener = t.step_func(event => {
+        if (event.source === frame.contentWindow) resolve(event.data);
+      });
+      window.addEventListener('message', listener);
+      t.add_cleanup(() => window.removeEventListener('message', listener));
+    });
+    const body = '<p id="foo">body # literal</p>';
+    const markup = '<script>onload = () => parent.postMessage({' +
+      'body: document.body.innerHTML, hash: location.hash,' +
+      'target: document.getElementById("foo").matches(":target")}, "*")' +
+      '<' + '/script>' + body;
+    frame.src = 'data:text/html' + (base64 ? ';base64,' + btoa(markup) : ',' + encodeURIComponent(markup)) + '#foo';
+    document.body.append(frame);
+    const result = await received;
+    assert_equals(result.body, body, 'fragment is excluded from decoded body');
+    assert_equals(result.hash, '#foo', 'navigation keeps the complete URL');
+    assert_true(result.target, 'the fragment still identifies its target');
+  }, (base64 ? 'Base64' : 'Percent-encoded') + ' data navigation excludes fragment bytes');
+}
+
+promise_test(async () => {
+  const response = await fetch('data:text/plain,%23body?query#fragment');
+  assert_equals(await response.text(), '#body?query');
+}, 'Fetch removes a literal fragment before decoding and keeps escaped hashes and queries');
+</script>
