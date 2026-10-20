@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An inline module script reports its errors at its document's lines</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({ allow_uncaught_exception: true });
+var reports = [];
+window.addEventListener("error", e => reports.push({ url: e.filename, lineno: e.lineno, colno: e.colno }));
+const done = new Promise(resolve => window.addEventListener("load", resolve));
+</script>
+<script type="module">undefinedOnTheFirstLine;</script>
+<script type="module">
+  const fine = 1;
+  undefinedOnTheThirdLine;
+</script>
+<script type="module">export let = ;</script>
+<script>
+promise_test(async () => {
+  await done;
+  assert_equals(reports.length, 3);
+  for (const r of reports) assert_equals(r.url, location.href);
+  assert_equals(reports[0].lineno, 12, "first line");
+  assert_equals(reports[0].colno, 23, "first line's column, after the start tag");
+  assert_equals(reports[1].lineno, 15, "third line");
+  assert_equals(reports[1].colno, 3, "a later line's own column");
+  assert_equals(reports[2].lineno, 17, "a parse error");
+}, "inline module scripts' errors are located in the document");
+</script>

@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>WebSocket construction cost with protocol lists</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+// Constructor work is synchronous. Close while CONNECTING so the measurement
+// does not depend on a server accepting 1,000 connections.
+const sockets = [];
+const start = performance.now();
+for (let i = 0; i < 1000; ++i) {
+  sockets.push(new WebSocket("ws://127.0.0.1:9/", ["ws1", "WS1", "echo"]));
+}
+const elapsed = performance.now() - start;
+for (const socket of sockets) socket.close();
+test(() => {
+  assert_equals(sockets.length, 1000);
+  assert_true(sockets.every(socket => socket.protocol === ""));
+  assert_greater_than_equal(elapsed, 0);
+}, "WebSocket construction: " + elapsed.toFixed(3) + " ms for 1000 protocol lists");
+</script>

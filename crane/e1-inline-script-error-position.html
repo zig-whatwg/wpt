@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An inline script reports its errors at its document's lines and columns</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({ allow_uncaught_exception: true });
+var reports = [];
+window.onerror = function (message, url, lineno, colno) {
+  reports.push({ url: url, lineno: lineno, colno: colno });
+  return true;
+};
+</script>
+<script>
+  // The throw below is on line 16.
+  throw new Error("second line of its script");
+</script>
+<script>throw new Error("first line, after <script>");</script>
+    <script>throw new Error("first line, indented");</script>
+<script>This does not parse.</script>
+<script>
+var dynamic = document.createElement("script");
+dynamic.text = "\nthrow new Error('inserted');";
+document.head.appendChild(dynamic);
+</script>
+<script>
+test(() => {
+  assert_equals(reports.length, 5, "five errors reported");
+  for (const r of reports) assert_equals(r.url, location.href, "each names the document");
+}, "every inline script error is reported for the document");
+test(() => {
+  assert_equals(reports[0].lineno, 16);
+  assert_equals(reports[0].colno, 3);
+}, "a throw on a script's second line reports the document line, the line's own column");
+test(() => {
+  assert_equals(reports[1].lineno, 18);
+  assert_equals(reports[1].colno, 9);
+}, "a throw on a script's first line is offset by the start tag");
+test(() => {
+  assert_equals(reports[2].lineno, 19);
+  assert_equals(reports[2].colno, 13);
+}, "an indented start tag offsets the first line's columns further");
+test(() => {
+  assert_equals(reports[3].lineno, 20);
+}, "a parse error reports the document line");
+test(() => {
+  assert_equals(reports[4].lineno, 2);
+}, "a script inserted from script has no document position: its own lines");
+</script>

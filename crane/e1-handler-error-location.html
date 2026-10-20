@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An event handler content attribute's runtime error names the document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+setup({ allow_uncaught_exception: true });
+var reports = [];
+window.onerror = function (message, url, lineno, colno) {
+  reports.push({ url: url, lineno: lineno, colno: colno });
+  return true;
+};
+</script>
+<p id="p" onclick="undefined_variable;"></p>
+<script>
+test(() => {
+  document.getElementById("p").dispatchEvent(new Event("click"));
+  assert_equals(reports.length, 1);
+  assert_equals(reports[0].url, location.href);
+  assert_equals(typeof reports[0].lineno, "number");
+  assert_equals(typeof reports[0].colno, "number");
+}, "a handler from markup reports its runtime error in the document");
+test(() => {
+  const div = document.createElement("div");
+  div.setAttribute("onclick", "\n  undefined_too;");
+  div.dispatchEvent(new Event("click"));
+  assert_equals(reports.length, 2);
+  assert_equals(reports[1].url, location.href);
+}, "a handler set from script reports its runtime error in the document");
+</script>

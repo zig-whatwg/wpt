@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>window[i] indexes the document-tree child navigables, before any contentWindow</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe name="first"></iframe>
+<div id="host"><template shadowrootmode="open"><iframe name="shadowed"></iframe></template></div>
+<iframe name="second"></iframe>
+<script>
+// A shadow-tree iframe between the two, made by the parser in tree order - so
+// its navigable sits between theirs among the browsing context's children -
+// is not one of the document's document-tree child navigables (HTML
+// 7.2.3.1): neither window.length nor window[i] counts it.
+// Read before any contentWindow: the indexed getter makes the child Windows.
+const length = window.length;
+const at0 = window[0];
+const at1 = window[1];
+const at2 = window[2];
+const named = window.second;
+test(() => {
+  assert_equals(length, 2);
+}, "length counts the document-tree child navigables");
+test(() => {
+  const iframes = document.querySelectorAll("iframe");
+  assert_equals(at0, iframes[0].contentWindow, "window[0]");
+  assert_equals(at1, iframes[1].contentWindow, "window[1] is the second document-tree iframe");
+}, "window[i] is the i-th document-tree child navigable's WindowProxy");
+test(() => {
+  assert_equals(at2, undefined);
+  assert_false("2" in window);
+}, "an index past the document-tree child navigables is not there, though a shadow-tree navigable exists");
+test(() => {
+  assert_equals(named, document.querySelectorAll("iframe")[1].contentWindow);
+}, "named access finds the document-tree child navigable");
+</script>

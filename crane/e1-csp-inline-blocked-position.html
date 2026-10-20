@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-abc'; style-src 'nonce-abc'">
+<title>A blocked inline script or style is located where its text starts</title>
+<script nonce="abc" src="/resources/testharness.js"></script>
+<script nonce="abc" src="/resources/testharnessreport.js"></script>
+<script nonce="abc">
+var violations = [];
+document.addEventListener("securitypolicyviolation", e => violations.push({
+  directive: e.effectiveDirective, line: e.lineNumber, column: e.columnNumber,
+  source: e.sourceFile, target: e.target.id
+}));
+</script>
+<script id="first">var blocked = 1;</script>
+  <style id="second">p { color: red; }</style>
+<script nonce="abc">
+var inserted = document.createElement("script");
+inserted.id = "third";
+inserted.text = "var alsoBlocked = 1;";
+document.head.appendChild(inserted);
+</script>
+<script nonce="abc">
+// Each violation is delivered from a task: wait for all three.
+promise_test(async t => {
+  while (violations.length < 3) await new Promise(resolve => t.step_timeout(resolve, 10));
+  assert_equals(violations.length, 3);
+  const [script, style, fromScript] = violations;
+  assert_equals(script.target, "first");
+  assert_equals(script.line, 14, "the parser blocked it on line 14");
+  assert_equals(script.column, 20, "after its start tag");
+  assert_equals(script.source, location.href);
+  assert_equals(style.target, "second");
+  assert_equals(style.line, 15);
+  assert_equals(style.column, 22);
+  assert_equals(style.source, location.href);
+  // Inserted from script: the script inserting it is running, and is where
+  // the violation is (appendChild on line 20, column 15).
+  assert_equals(fromScript.target, "third");
+  assert_equals(fromScript.line, 20);
+  assert_equals(fromScript.column, 15);
+}, "a blocked inline element's violation has its document position, or the running script's");
+</script>
