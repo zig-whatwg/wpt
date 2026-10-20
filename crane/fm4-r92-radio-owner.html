@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Detached form owners normalize radio groups</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#radio-button-group">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const tags = new URLSearchParams(location.search).has('isolated') ? ['form'] : ['form', 'div'];
+for (const tag of tags) {
+  test(() => {
+    const parent = document.createElement(tag);
+    const radios = [document.createElement('input'), document.createElement('input')];
+    for (const radio of radios) {
+      radio.type = 'radio';
+      radio.name = 'group';
+      radio.checked = true;
+      parent.append(radio);
+    }
+    assert_equals(radios[0].checked, tag !== 'form');
+    assert_true(radios[1].checked);
+  }, `Checked radios inserted into a detached ${tag}`);
+}
+</script>

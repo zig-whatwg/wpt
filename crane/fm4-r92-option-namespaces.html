@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Option text excludes only HTML and SVG scripts</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-elements.html#get-html-aware-text-content">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const cases = [[null, 'script', 'content'], ['http://www.w3.org/1999/xhtml', 'script', ''],
+  ['http://www.w3.org/2000/svg', 'script', ''], ['http://www.w3.org/1998/Math/MathML', 'script', 'content'],
+  ['http://www.w3.org/1999/xhtml', 'SCRIPT', 'content']];
+for (const [namespace, name, expected] of new URLSearchParams(location.search).has('isolated') ? cases.slice(0, 1) : cases) {
+  test(() => {
+    const option = document.createElement('option');
+    const child = document.createElementNS(namespace, name);
+    child.textContent = 'content';
+    option.append(child);
+    assert_equals(option.text, expected);
+    assert_equals(option.value, expected);
+  }, `option text for ${namespace} ${name}`);
+}
+</script>

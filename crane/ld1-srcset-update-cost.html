@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Responsive image updates including the selection microtask</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+setup({explicit_done: true});
+const images = [];
+const started = performance.now();
+for (let i = 0; i < 1000; ++i) {
+  const img = new Image();
+  img.src = '/images/green.png';
+  img.srcset = '/images/green.png 1x, /images/blue.png 2x';
+  images.push(img);
+}
+queueMicrotask(() => {
+  const elapsed = performance.now() - started;
+  test(() => assert_equals(images.length, 1000),
+       'Responsive updates: ' + elapsed.toFixed(3) + ' ms for 1000 images');
+  done();
+});
+</script>

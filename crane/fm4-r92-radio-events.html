@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Radio activation reports only changed checkedness</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#radio-button-state-(type=radio)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const isolated = new URLSearchParams(location.search).has('isolated');
+const cases = isolated ? [true] : [true, false];
+for (const checked of cases) {
+  test(t => {
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.checked = checked;
+    document.body.append(input);
+    t.add_cleanup(() => input.remove());
+    const events = [];
+    for (const type of ['click', 'input', 'change']) input.addEventListener(type, () => events.push(type));
+    input.click();
+    assert_array_equals(events, checked ? ['click'] : ['click', 'input', 'change']);
+  }, `Click a radio initially checked=${checked}`);
+}
+if (!isolated) {
+  test(t => {
+    const input = document.createElement('input');
+    input.type = 'radio';
+    document.body.append(input);
+    t.add_cleanup(() => input.remove());
+    let changes = 0;
+    input.onchange = () => ++changes;
+    input.onclick = () => input.checked = false;
+    input.click();
+    assert_false(input.checked);
+    assert_equals(changes, 0);
+  }, 'A click handler restoring the initial state suppresses change');
+}
+</script>

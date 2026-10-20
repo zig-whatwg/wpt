@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opening the parent document during child unload does not unload the child twice</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#unload-a-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const parentFrame = document.createElement("iframe");
+  parentFrame.src = "/common/blank.html?nr1-parent";
+  const parentLoaded = new Promise(resolve => parentFrame.onload = resolve);
+  document.body.append(parentFrame);
+  t.add_cleanup(() => parentFrame.remove());
+  await parentLoaded;
+
+  const parentDocument = parentFrame.contentDocument;
+  const childFrame = parentDocument.createElement("iframe");
+  childFrame.src = "/common/blank.html?nr1-child";
+  const childLoaded = new Promise(resolve => childFrame.onload = resolve);
+  parentDocument.body.append(childFrame);
+  await childLoaded;
+
+  let unloads = 0;
+  const opened = new Promise(resolve => {
+    childFrame.contentWindow.addEventListener("unload", t.step_func(() => {
+      ++unloads;
+      // Count a reentrant dispatch without recursively opening the parent.
+      if (unloads !== 1) return;
+      assert_greater_than(parentDocument.childNodes.length, 0, "parent before open");
+      assert_equals(parentDocument.open(), parentDocument, "open returns parent");
+      assert_equals(parentDocument.childNodes.length, 0, "parent was opened");
+      resolve();
+    }));
+  });
+  childFrame.src = "about:blank";
+  await opened;
+  assert_equals(unloads, 1, "a document already unloading must not dispatch unload again");
+}, "document.open in a child unload handler must not reenter that child's unload");
+</script>

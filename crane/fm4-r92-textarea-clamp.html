@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Textarea child mutations clamp stored selection</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#textFieldSelection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const isolated = new URLSearchParams(location.search).has('isolated');
+test(() => {
+  const textarea = document.createElement('textarea');
+  textarea.defaultValue = 'abcdef';
+  textarea.setSelectionRange(3, 5);
+  textarea.defaultValue = 'another value';
+  assert_equals(textarea.selectionStart, 0);
+  assert_equals(textarea.selectionEnd, 0);
+}, 'Replacing children clamps at removal, with no intervening selection read');
+if (!isolated) {
+  test(() => {
+    const textarea = document.createElement('textarea');
+    textarea.defaultValue = 'abcdef';
+    textarea.setSelectionRange(3, 5, 'backward');
+    textarea.firstChild.data = 'a\r\nb';
+    textarea.firstChild.data = 'abcdef';
+    assert_equals(textarea.selectionStart, 3);
+    assert_equals(textarea.selectionEnd, 3);
+    assert_equals(textarea.selectionDirection, 'backward');
+  }, 'Character data shrinkage uses the normalized API value and persists');
+  test(() => {
+    const textarea = document.createElement('textarea');
+    textarea.value = 'abcdef';
+    textarea.setSelectionRange(3, 5);
+    textarea.defaultValue = 'x';
+    assert_equals(textarea.selectionStart, 3);
+    assert_equals(textarea.selectionEnd, 5);
+  }, 'Dirty textarea selection is independent of children');
+}
+</script>

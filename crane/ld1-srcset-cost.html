@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Responsive image creation cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Both runners fetch the same resources: src is also the 1x candidate.
+// Measure creation and attribute updates; network time is outside this cost.
+const images = [];
+const started = performance.now();
+for (let i = 0; i < 1000; ++i) {
+  const img = new Image();
+  img.src = '/images/green.png';
+  img.srcset = '/images/green.png 1x, /images/blue.png 2x';
+  images.push(img);
+}
+const elapsed = performance.now() - started;
+test(() => assert_equals(images.length, 1000),
+     'Responsive creation: ' + elapsed.toFixed(3) + ' ms for 1000 images');
+</script>

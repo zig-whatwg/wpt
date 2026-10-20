@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Responsive image sources use the ordinary image request lifecycle</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#update-the-image-data">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function outcome(img) {
+  return new Promise(resolve => {
+    img.onload = e => resolve(e);
+    img.onerror = e => resolve(e);
+  });
+}
+promise_test(async t => {
+  const img = new Image();
+  const finished = outcome(img);
+  img.srcset = '/images/blue.png 1x 2x, /images/green.png 1x';
+  img.src = '/images/blue.png';
+  assert_equals((await finished).type, 'load');
+  assert_equals(img.currentSrc, new URL('/images/green.png', location).href);
+  assert_true(img.complete);
+}, 'A valid srcset candidate wins over src after the task');
+
+promise_test(async t => {
+  const img = new Image();
+  const finished = outcome(img);
+  img.srcset = '/images/green.png 2x';
+  assert_equals((await finished).type, 'load');
+  assert_equals(img.naturalWidth, 50);
+  assert_equals(img.naturalHeight, 25);
+  assert_equals(img.width, 50);
+  assert_equals(img.height, 25);
+}, 'Natural and fallback dimensions are corrected for the selected density');
+
+promise_test(async t => {
+  const img = new Image();
+  const finished = outcome(img);
+  img.srcset = '/images/green.png 200w, /images/blue.png 400w';
+  img.sizes = '(min-width: 1px) 100px, 100vw';
+  assert_equals((await finished).type, 'load');
+  assert_equals(img.currentSrc, new URL('/images/green.png', location).href);
+  assert_equals(img.naturalWidth, 50);
+}, 'Width candidates use a matching media condition and source size');
+
+promise_test(async t => {
+  const img = new Image();
+  const finished = outcome(img);
+  img.srcset = 'data:image/png,broken 1x';
+  assert_equals((await finished).type, 'error');
+  assert_true(img.complete);
+  assert_equals(img.currentSrc, 'data:image/png,broken');
+  assert_equals(img.naturalWidth, 0);
+}, 'A selected but undecodable resource fires error and completes');
+
+promise_test(async t => {
+  const img = new Image();
+  const finished = outcome(img);
+  img.srcset = '/images/green.png 1x, /images/blue.png 1x';
+  assert_equals((await finished).type, 'load');
+  assert_equals(img.currentSrc, new URL('/images/green.png', location).href);
+}, 'Duplicate densities keep the first source');
+
+promise_test(async t => {
+  const img = new Image();
+  const finished = outcome(img);
+  img.srcset = 'data:image/png,broken 1x';
+  img.srcset = '/images/green.png 1x';
+  assert_equals((await finished).type, 'load');
+  assert_equals(img.currentSrc, new URL('/images/green.png', location).href);
+}, 'Only the latest update in a task fetches and dispatches');
+
+promise_test(async t => {
+  const finished = new Promise(resolve => {
+    let img = new Image();
+    img.onload = e => resolve(e);
+    img.onerror = e => resolve(e);
+    img.srcset = '/images/green.png?ld1-gc 1x';
+    img = null;
+  });
+  if (typeof TestUtils !== 'undefined') TestUtils.gc();
+  const event = await finished;
+  assert_equals(event.type, 'load');
+  assert_equals(event.target.naturalWidth, 100);
+  assert_true(event.target.complete);
+}, 'The existing pending-activity keep retains a disconnected responsive image');
+</script>

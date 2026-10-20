@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Insertion cost without autofocus</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="container"></div>
+<script>
+const container = document.getElementById('container');
+const start = performance.now();
+for (let i = 0; i < 100000; ++i) container.appendChild(document.createElement('span'));
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(container.childElementCount, 100000);
+}, 'Insert 100000 elements: ' + elapsed.toFixed(3) + ' ms');
+</script>

@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Email multiple changes re-sanitize the current value</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#email-state-(type=email)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const isolated = new URLSearchParams(location.search).has('isolated');
+test(() => {
+  const input = document.createElement('input');
+  input.type = 'email';
+  input.value = 'first@example.com , second@example.com';
+  input.multiple = true;
+  assert_equals(input.value, 'first@example.com,second@example.com');
+  input.multiple = false;
+  assert_equals(input.value, 'first@example.com,second@example.com');
+}, 'Adding and removing multiple re-sanitizes an assigned value');
+if (!isolated) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = 'email';
+    input.value = 'a@example.com, \t, b@example.com';
+    input.setAttribute('multiple', 'false');
+    assert_equals(input.value, 'a@example.com,,b@example.com');
+    assert_false(input.validity.valid, 'empty addresses remain invalid');
+    input.removeAttribute('multiple');
+    assert_equals(input.value, 'a@example.com,,b@example.com');
+  }, 'Sanitization preserves empty comma-separated entries');
+  test(() => {
+    const input = document.createElement('input');
+    input.value = '  keep , spaces  ';
+    input.multiple = true;
+    assert_equals(input.value, '  keep , spaces  ');
+  }, 'Multiple does not sanitize text inputs');
+}
+</script>

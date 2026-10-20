@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Autofocus runs without a requestAnimationFrame callback</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#flush-autofocus-candidates">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const t = async_test('Autofocus gets a rendering opportunity without a queued animation callback');
+let focusCount = 0;
+addEventListener('load', t.step_func(() => {
+  t.step_timeout(t.step_func_done(() => {
+    assert_equals(focusCount, 1, 'the parser-inserted autofocus candidate fires focus once');
+    assert_equals(document.activeElement, document.getElementById('candidate'));
+  }), 1000);
+}));
+</script>
+<input id="candidate" autofocus onfocus="focusCount++">

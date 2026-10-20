@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Range sanitization retains decimal precision</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#range-state-(type=range)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const cases = [
+  ['0', '1', '0.1', '0.6', '0.6'],
+  ['0', '1', '0.1', '0.65', '0.7'],
+  ['-0.95', '0.95', '0.1', '-0.6', '-0.55'],
+  ['-0.95', '0.95', '0.1', '-0.6000000000000001', '-0.65'],
+  ['-0.95', '0.95', '0.1', '-0.5999999999999999', '-0.55'],
+  ['9999999999.95', '10000000001', '0.1', '10000000000.3', '10000000000.35'],
+  ['0.05', '0.95', '0.1', '5', '0.95'],
+  ['0', '1', 'any', '0.333', '0.333'],
+  ['10', '0', '1', '', '10'],
+  ['', '100', '1000', '100', '100', '200'],
+  ['', '100', '1000', '100', '100', '-200'],
+];
+for (const [min, max, step, value, expected, base] of new URLSearchParams(location.search).has('isolated') ? cases.slice(0, 1) : cases) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = min;
+    input.max = max;
+    input.step = step;
+    if (base !== undefined) input.defaultValue = base;
+    input.value = value;
+    assert_equals(input.value, expected);
+  }, `range min=${min} max=${max} step=${step} value=${value}` + (base === undefined ? '' : ` base=${base}`));
+}
+</script>

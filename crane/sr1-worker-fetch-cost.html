@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One thousand worker fetches under connect-src self</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(t => new Promise((resolve, reject) => {
+  const worker = new Worker('sr1-worker-fetch-cost.js');
+  t.add_cleanup(() => worker.terminate());
+  worker.onerror = t.step_func(event => reject(new Error(event.message)));
+  worker.onmessage = t.step_func(({data}) => {
+    assert_equals(data.error, undefined);
+    assert_equals(data.completed, 1000);
+    assert_equals(data.bytes, 0, 'blank.html has an empty body');
+    console.log('SR1_WORKER_FETCH_MS=' + data.elapsed);
+    resolve();
+  });
+}), '1000 worker fetches under connect-src self consume successful responses');
+</script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Numeric stepping distinguishes empty input from zero</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/input.html#dom-input-stepup">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Chrome and Firefox allow an empty value to clamp in either direction.
+// Safari retains the specification's unconditional direction guard.
+const cases = [
+  ['', 'min', '7', 'stepDown', 1, '7'],
+  ['3', 'min', '7', 'stepDown', 1, '3'],
+  ['3.5', 'min', '7', 'stepDown', 1, '3.5'],
+  ['', 'max', '-7', 'stepUp', 1, '-7'],
+  ['-3', 'max', '-7', 'stepUp', 1, '-3'],
+  ['-3.5', 'max', '-7', 'stepUp', 1, '-3.5'],
+  ['', 'min', '7', 'stepUp', -1, '7'],
+];
+for (const [value, bound, limit, method, count, expected] of new URLSearchParams(location.search).has('isolated') ? cases.slice(0, 1) : cases) {
+  test(() => {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input[bound] = limit;
+    input.value = value;
+    input[method](count);
+    assert_equals(input.value, expected);
+  }, `${method}(${count}) from ${JSON.stringify(value)} with ${bound}=${limit}`);
+}
+</script>

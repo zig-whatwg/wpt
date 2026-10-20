@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Autofocus candidate order follows insertion history</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#the-autofocus-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<input id="first" autofocus>
+<input id="second" autofocus>
+<script>
+promise_test(async () => {
+  const first = document.getElementById('first');
+  const second = document.getElementById('second');
+  first.remove();
+  second.before(first);
+  assert_equals(document.querySelector('[autofocus]'), first, 'tree order still starts with first');
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  assert_equals(document.activeElement, second, 'reinsertion moves first to the end of the candidate queue');
+}, 'Autofocus uses candidate insertion order instead of current tree order');
+</script>
