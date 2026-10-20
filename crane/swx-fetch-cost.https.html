@@ -1,0 +1,24 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<title>One thousand controlled fetches preserve response bodies</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const scope = 'swx-cost-frame.html';
+  const registration = await service_worker_unregister_and_register(t, 'swx-cost-worker.js', scope);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+  const frame = await with_iframe(scope);
+  t.add_cleanup(() => frame.remove());
+  assert_not_equals(frame.contentWindow.navigator.serviceWorker.controller, null);
+  const start = performance.now();
+  for (let index = 0; index < 1000; index++) {
+    const response = await frame.contentWindow.fetch('swx-cost-data.txt?fetch=' + index);
+    assert_equals(await response.text(), 'controlled fetch\n');
+  }
+  console.log('SWX_COST_MS=' + (performance.now() - start).toFixed(3));
+}, '1000 controlled fetches finish with their expected bodies');
+</script>

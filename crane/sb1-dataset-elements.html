@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Datasets on HTML, SVG, and MathML elements</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-dataset">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function collect(t) {
+  for (let i = 0; i < 3; ++i) {
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+    await TestUtils.gc();
+  }
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+for (const [kind, namespace, localName] of [
+  ["HTML", "http://www.w3.org/1999/xhtml", "div"],
+  ["SVG", "http://www.w3.org/2000/svg", "svg"],
+  ["MathML", "http://www.w3.org/1998/Math/MathML", "math"]
+]) {
+  test(() => {
+    const element = document.createElementNS(namespace, localName);
+    const data = element.dataset;
+    assert_true(data instanceof DOMStringMap);
+    assert_equals(data, element.dataset);
+    element.setAttribute("data-foo-bar", "attribute");
+    assert_equals(data.fooBar, "attribute");
+    data.fooBar = "dataset";
+    assert_equals(element.getAttribute("data-foo-bar"), "dataset");
+    assert_array_equals(Object.keys(data), ["fooBar"]);
+    delete data.fooBar;
+    assert_false(element.hasAttribute("data-foo-bar"));
+    assert_false("fooBar" in data);
+  }, `${kind} dataset has stable identity and reads, writes, and deletes attributes`);
+
+  test(() => {
+    const element = document.createElementNS(namespace, localName);
+    const data = element.dataset;
+    assert_throws_dom("SyntaxError", () => { data["bad-name"] = "value"; });
+    assert_throws_dom("InvalidCharacterError", () => { data["bad name"] = "value"; });
+    assert_equals(element.attributes.length, 0);
+    data["foo-Bar"] = "value";
+    assert_equals(element.getAttribute("data-foo--bar"), "value");
+  }, `${kind} dataset validates names before changing attributes`);
+
+  promise_test(async t => {
+    const element = document.createElementNS(namespace, localName);
+    element.dataset.marker = "kept";
+    await collect(t);
+    assert_equals(element.dataset.marker, "kept");
+    assert_true(element.dataset instanceof DOMStringMap);
+  }, `${kind} element keeps its cached dataset across GC`);
+
+  promise_test(async t => {
+    const data = (() => {
+      const element = document.createElementNS(namespace, localName);
+      element.dataset.marker = "kept";
+      return element.dataset;
+    })();
+    await collect(t);
+    assert_equals(data.marker, "kept");
+    data.marker = "updated";
+    assert_equals(data.marker, "updated");
+    delete data.marker;
+    assert_equals(data.marker, undefined);
+  }, `${kind} dataset keeps its detached element across GC`);
+}
+</script>

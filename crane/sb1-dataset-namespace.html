@@ -1,0 +1,31 @@
+<!doctype html>
+<title>Dataset setter preserves namespaced attributes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-domstringmap-setitem">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement("div");
+  element.setAttributeNS("urn:first", "data-item", "first");
+  element.setAttributeNS("urn:second", "data-item", "second");
+  const observer = new MutationObserver(() => {});
+  observer.observe(element, {attributes: true, attributeOldValue: true});
+  element.dataset.item = "new";
+  assert_equals(element.attributes.length, 3);
+  assert_equals(element.getAttributeNS("urn:first", "data-item"), "first");
+  assert_equals(element.getAttributeNS("urn:second", "data-item"), "second");
+  assert_equals(element.getAttributeNS(null, "data-item"), "new");
+  element.dataset.item = "updated";
+  assert_equals(element.attributes.length, 3);
+  assert_equals(element.getAttributeNS(null, "data-item"), "updated");
+  const records = observer.takeRecords();
+  observer.disconnect();
+  assert_equals(records.length, 2);
+  for (const record of records) {
+    assert_equals(record.attributeName, "data-item");
+    assert_equals(record.attributeNamespace, null);
+  }
+  assert_equals(records[0].oldValue, null);
+  assert_equals(records[1].oldValue, "new");
+}, "Dataset writes use the null namespace and emit the correct mutation records");
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<title>Static worker imports use the worker's controlling service worker</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<script>
+for (const shared of [false, true]) {
+  promise_test(async t => {
+    const scope = 'swx-module-worker.js';
+    const registration = await service_worker_unregister_and_register(t, 'swx-module-sw.js', scope);
+    t.add_cleanup(() => registration.unregister());
+    await wait_for_state(t, registration.installing, 'activated');
+    const worker = shared
+      ? new SharedWorker(scope, {type: 'module', name: 'swx-static'})
+      : new Worker(scope, {type: 'module'});
+    const endpoint = shared ? worker.port : worker;
+    t.add_cleanup(() => shared ? endpoint.close() : worker.terminate());
+    const data = await new Promise((resolve, reject) => {
+      endpoint.onmessage = e => resolve(e.data);
+      worker.onerror = e => reject(new Error(e.message || 'worker failed'));
+    });
+    assert_equals(data.source, 'service worker');
+    assert_equals(data.destination, shared ? 'sharedworker' : 'worker');
+    assert_not_equals(data.clientId, '', 'the import belongs to the existing worker');
+    assert_equals(data.resultingClientId, '', 'the import creates no new client');
+  }, (shared ? 'Shared' : 'Dedicated') + ' worker static import outside the registration scope is intercepted');
+}
+</script>
