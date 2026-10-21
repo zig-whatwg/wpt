@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Brotli bounded chunks decode ten MiB exactly</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const input = new Uint8Array(10 * 1024 * 1024);
+  for (let i = 0; i < input.length; ++i) input[i] = (i * 31 + (i >>> 8)) & 255;
+  const encoded = await new Response(new Blob([input]).stream().pipeThrough(new CompressionStream('brotli'))).arrayBuffer();
+  const source = new ReadableStream({
+    start(controller) {
+      const bytes = new Uint8Array(encoded);
+      for (let i = 0; i < bytes.length; i += 257) controller.enqueue(bytes.subarray(i, i + 257));
+      controller.close();
+    }
+  });
+  const started = performance.now();
+  const output = new Uint8Array(await new Response(source.pipeThrough(new DecompressionStream('brotli'))).arrayBuffer());
+  const elapsed = performance.now() - started;
+  assert_equals(output.length, input.length);
+  let mismatch = -1;
+  for (let i = 0; i < input.length; ++i) if (output[i] !== input[i]) { mismatch = i; break; }
+  assert_equals(mismatch, -1, 'all decoded bytes match');
+  console.log('PV1_BROTLI_10MIB_MS ' + elapsed);
+}, 'Brotli decodes ten MiB from small chunks without replay or lost bytes');
+</script>

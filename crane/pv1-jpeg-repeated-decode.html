@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Repeated JPEG decode and release</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const response = await fetch('/element-timing/resources/square20.jpg');
+  assert_true(response.ok);
+  const blob = await response.blob();
+  const started = performance.now();
+  for (let i = 0; i < 1000; ++i) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    try {
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('JPEG decode failed at iteration ' + i));
+        img.src = url;
+      });
+      assert_equals(img.naturalWidth, 20);
+      assert_equals(img.naturalHeight, 20);
+    } finally {
+      URL.revokeObjectURL(url);
+      img.src = '';
+    }
+  }
+  console.log('PV1_JPEG_1000_MS ' + (performance.now() - started));
+}, '1000 fresh JPEG URLs decode and release successfully');
+</script>

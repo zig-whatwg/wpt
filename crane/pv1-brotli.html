@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Brotli Compression Streams</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const input = new Uint8Array([0x21, 0x08, 0x00, 0x04, 0x66, 0x6f, 0x6f, 0x03]);
+  const stream = new Blob([input]).stream().pipeThrough(new DecompressionStream('brotli'));
+  assert_equals(await new Response(stream).text(), 'foo');
+}, 'Brotli decodes an RFC 7932 stream');
+</script>

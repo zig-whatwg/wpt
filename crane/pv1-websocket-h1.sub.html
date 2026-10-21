@@ -1,0 +1,14 @@
+<!doctype html><meta charset=utf-8>
+<title>HTTP/1.1 WebSocket echo and clean close</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+async_test(t => {
+  const ws = new WebSocket('ws://{{host}}:{{ports[ws][0]}}/echo', 'echo');
+  let received = false;
+  ws.onopen = t.step_func(() => { assert_equals(ws.protocol, 'echo'); ws.send('platform'); });
+  ws.onmessage = t.step_func(e => { assert_equals(e.data, 'platform'); received = true; ws.close(1000, 'done'); });
+  ws.onerror = t.unreached_func('connection error');
+  ws.onclose = t.step_func_done(e => { assert_true(received); assert_true(e.wasClean); assert_equals(e.code, 1000); assert_equals(e.reason, 'done'); });
+}, 'HTTP/1.1 transport preserves protocol, payload, close code and reason');
+</script>

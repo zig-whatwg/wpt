@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Testing platform JPEG and SVG decoding</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [name, source, width, height] of [
+  ["JPEG", "/html/semantics/embedded-content/the-img-element/3.jpg", 650, 470],
+  ["SVG", "/images/green.svg", 100, 50],
+]) {
+  promise_test(async () => {
+    const img = new Image();
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error(`${name} failed to decode`));
+    });
+    img.src = source;
+    await loaded;
+    assert_equals(img.naturalWidth, width);
+    assert_equals(img.naturalHeight, height);
+  }, `${name} is decoded by the testing platform`);
+}
+</script>
