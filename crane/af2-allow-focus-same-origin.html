@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Allow focus: same-origin</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#allow-focus-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => {
+    window.addEventListener('message', t.step_func(event => {
+      if (event.source === frame.contentWindow) resolve(event.data);
+    }));
+  });
+  frame.src = location.origin + '/crane/af2-allow-focus-child.html';
+  document.body.append(frame);
+  const data = await result;
+  assert_false('error' in data, data.error);
+  assert_equals(data.automatic, true, 'autofocus insertion uses allow focus');
+  assert_equals(data.scripted, true, 'focus() uses allow focus');
+}, 'Autofocus and focus() apply the same-origin permission default and activation');
+</script>

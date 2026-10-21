@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Autofocus processing is complete before a focus handler inserts again</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#flush-autofocus-candidates">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const first = document.createElement('input');
+  const second = document.createElement('input');
+  first.autofocus = second.autofocus = true;
+  let calls = 0;
+  first.addEventListener('focus', () => {
+    ++calls;
+    first.remove();
+    document.body.append(second);
+    TestUtils.gc();
+  });
+  t.add_cleanup(() => { first.remove(); second.remove(); });
+  document.body.append(first);
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  assert_equals(calls, 1, 'the first candidate was focused');
+  assert_not_equals(document.activeElement, second, 'the focus handler cannot restart automatic focus');
+}, 'Autofocus marks the document processed before running focus handlers');
+</script>

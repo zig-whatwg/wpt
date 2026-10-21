@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><body>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+const send = value => parent.postMessage(value, '*');
+test_driver.set_test_context(parent);
+let second;
+const run = () => {
+  const activation = navigator.userActivation.isActive;
+  const first = document.createElement('input');
+  first.id = 'automatic';
+  first.autofocus = true;
+  document.body.append(first);
+  second = document.createElement('input');
+  second.id = 'scripted';
+  document.body.append(second);
+  requestAnimationFrame(() => {
+    const automatic = document.activeElement === first;
+    second.focus();
+    send({automatic, scripted: document.activeElement === second, activation});
+  });
+};
+if (location.search.includes('activation')) {
+  test_driver.bless('allow focus with transient activation', () => {
+    window.addEventListener('message', event => {
+      if (event.source === parent && event.data === 'af2-resume') run();
+    }, {once: true});
+    send({ready: true});
+  }).catch(e => send({error: String(e)}));
+} else run();
+</script>

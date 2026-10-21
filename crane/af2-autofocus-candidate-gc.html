@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Autofocus candidates survive collection while styles block processing</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#flush-autofocus-candidates">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const sheet = document.createElement('link');
+  sheet.rel = 'stylesheet';
+  sheet.href = '/html/interaction/focus/the-autofocus-attribute/resources/erase-first.css?pipe=trickle(d1)';
+  const loaded = new Promise(resolve => sheet.onload = resolve);
+  document.head.append(sheet);
+  let weak;
+  (() => {
+    const input = document.createElement('input');
+    input.id = 'held-candidate';
+    input.autofocus = true;
+    document.body.append(input);
+    input.remove();
+    weak = new WeakRef(input);
+  })();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  let recovered = weak.deref();
+  assert_not_equals(recovered, undefined, 'candidate queue retains a disconnected node');
+  document.body.append(recovered);
+  recovered = null;
+  weak = null;
+  await loaded;
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  assert_equals(document.activeElement.id, 'held-candidate');
+}, 'A pending autofocus candidate remains alive after every script reference is dropped');
+</script>
