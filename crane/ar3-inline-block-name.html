@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inline block content separates accessible name words</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>#target span { display:inline-block; }</style>
+<button id="target"><span>First</span><span>Middle</span><span>Last</span></button>
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), 'First Middle Last');
+}, 'Atomic inline boxes separate content in the accessible name');
+</script>

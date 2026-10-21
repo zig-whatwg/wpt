@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Computed generated content resolves attributes and pseudo defaults</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+ #target::before {content: attr(data-label) "!";}
+ #target::after {content: "visual" / "spoken";}
+</style>
+<div id="target" data-label="First"></div><div id="empty"></div>
+<script>
+test(() => {
+  assert_equals(getComputedStyle(target, '::before').content, '"First" "!"');
+  target.setAttribute('data-label', 'Second');
+  assert_equals(getComputedStyle(target, '::before').content, '"Second" "!"');
+  assert_equals(getComputedStyle(target, '::after').content, '"visual" / "spoken"');
+}, 'Generated content computes attr values, invalidates on mutation and preserves alternatives');
+test(() => {
+  assert_equals(getComputedStyle(empty, '::before').content, 'none');
+  assert_equals(getComputedStyle(empty, '::after').content, 'none');
+  assert_equals(getComputedStyle(empty).content, 'normal');
+}, 'Normal content has no before or after pseudo-element');
+</script>

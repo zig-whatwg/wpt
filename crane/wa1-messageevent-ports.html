@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MessageEvent validates and replaces its port sequence</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/comms.html#the-messageevent-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_throws_js(TypeError, () => new MessageEvent('message', { ports: null }));
+}, 'MessageEventInit ports is a nonnullable sequence');
+test(() => {
+  const event = new MessageEvent('message');
+  assert_throws_js(TypeError, () => event.initMessageEvent('message', false, false, null, '', '', null, null));
+}, 'initMessageEvent rejects a null port sequence');
+test(t => {
+  const channel = new MessageChannel();
+  t.add_cleanup(() => { channel.port1.close(); channel.port2.close(); });
+  const event = new MessageEvent('message');
+  const previous = event.ports;
+  event.initMessageEvent('message', false, false, null, '', '', null, [channel.port1]);
+  assert_not_equals(event.ports, previous);
+  assert_true(Object.isFrozen(event.ports));
+  assert_array_equals(event.ports, [channel.port1]);
+}, 'initMessageEvent replaces ports with a new frozen array');
+</script>

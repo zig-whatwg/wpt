@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Content attributes follow XML name casing</title>
+  <script src="/resources/testharness.js"></script>
+  <script src="/resources/testharnessreport.js"></script>
+  <style>#target::before { content: attr(DATA-LABEL); }</style>
+</head>
+<body>
+  <div id="target" data-label="Lower" DATA-LABEL="Upper"></div>
+  <script>
+  test(() => {
+    assert_equals(getComputedStyle(document.getElementById('target'), '::before').content, '"Upper"');
+  }, 'Raw attr names are case-sensitive on HTML elements in XML documents');
+  </script>
+</body>
+</html>

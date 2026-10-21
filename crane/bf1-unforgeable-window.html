@@ -1,0 +1,33 @@
+<!doctype html>
+<title>Unforgeable Window, Document and Location members</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const name of ['window', 'document', 'location', 'top']) {
+  test(() => {
+    const d = Object.getOwnPropertyDescriptor(window, name);
+    assert_not_equals(d, undefined);
+    assert_true(d.enumerable);
+    assert_false(d.configurable);
+    assert_false(Reflect.deleteProperty(window, name));
+  }, `Window.${name} is unforgeable`);
+}
+test(() => {
+  const d = Object.getOwnPropertyDescriptor(document, 'location');
+  assert_not_equals(d, undefined);
+  assert_false(d.configurable);
+  assert_true(d.enumerable);
+  assert_false(Object.hasOwn(Document.prototype, 'location'));
+}, 'Document.location is an own unforgeable attribute');
+for (const name of ['href', 'origin', 'protocol', 'host', 'hostname', 'port',
+                    'pathname', 'search', 'hash', 'assign', 'replace', 'reload', 'toString']) {
+  test(() => {
+    const d = Object.getOwnPropertyDescriptor(location, name);
+    assert_not_equals(d, undefined);
+    assert_false(d.configurable);
+    assert_true(d.enumerable);
+    if ('value' in d) assert_false(d.writable);
+    assert_false(Object.hasOwn(Location.prototype, name));
+  }, `Location.${name} remains unforgeable`);
+}
+</script>

@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Context creation cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (let i = 0; i < 5; i++) {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  frame.contentWindow.document.body.textContent = 'warm';
+  frame.remove();
+}
+const start = performance.now();
+for (let i = 0; i < 100; i++) {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  frame.contentWindow.document.body.textContent = String(i);
+  frame.remove();
+}
+const elapsed = performance.now() - start;
+test(() => assert_true(Number.isFinite(elapsed)), `bf1-context-cost: ${elapsed.toFixed(3)} ms / 100 iframes`);
+</script>

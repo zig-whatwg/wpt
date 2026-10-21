@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Computed accessibility follows semantic name and role algorithms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<div id="fixture"></div>
+<script>
+function content(t, html) {
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  fixture.append(container);
+  t.add_cleanup(() => container.remove());
+  return container;
+}
+promise_test(async t => {
+  const c = content(t, '<button role="unknown widget checkbox button">Text</button><button role="none">Focusable</button><div role="presentation" aria-label="Named"></div>');
+  assert_equals(await test_driver.get_computed_role(c.children[0]), 'checkbox');
+  assert_equals(await test_driver.get_computed_role(c.children[1]), 'button');
+  assert_equals(await test_driver.get_computed_role(c.children[2]), 'generic');
+}, 'Computed role skips unknown and abstract roles and resolves presentation conflicts');
+promise_test(async t => {
+  const c = content(t, '<button id="ar3-self" aria-labelledby="ar3-self ar3-label" aria-label="Own">Ignored</button><span id="ar3-label" aria-labelledby="ar3-self">Other</span>');
+  assert_equals(await test_driver.get_computed_label(c.firstChild), 'Own Other');
+}, 'Labelledby precedence permits a self label without following cyclic labelledby');
+promise_test(async t => {
+  const c = content(t, '<button aria-labelledby="ar3-hidden">Ignored</button><span id="ar3-hidden" hidden>One <span hidden>Two</span></span><button aria-labelledby="ar3-visible"></button><span id="ar3-visible">Three <span hidden>Four</span></span>');
+  assert_equals(await test_driver.get_computed_label(c.children[0]), 'One Two');
+  assert_equals(await test_driver.get_computed_label(c.children[2]), 'Three');
+}, 'Hidden referenced roots include their hidden subtree, visible roots exclude hidden descendants');
+promise_test(async t => {
+  const c = content(t, '<label for="ar3-native">Account</label><input id="ar3-native" title="Fallback"><fieldset><legend>Options</legend></fieldset><img alt="Picture"><button title="Tooltip"></button>');
+  assert_equals(await test_driver.get_computed_label(c.children[1]), 'Account');
+  assert_equals(await test_driver.get_computed_label(c.children[2]), 'Options');
+  assert_equals(await test_driver.get_computed_label(c.children[3]), 'Picture');
+  assert_equals(await test_driver.get_computed_label(c.children[4]), 'Tooltip');
+}, 'Native labels, legend, alt and title participate in name computation');
+promise_test(async t => {
+  const c = content(t, '<label for="ar3-flash">Flash <input type="text" value="5"> times <input id="ar3-flash" type="checkbox"></label>');
+  assert_equals(await test_driver.get_computed_label(c.querySelector('[type=checkbox]')), 'Flash 5 times');
+}, 'Embedded text controls contribute their value to a surrounding native label');
+promise_test(async t => {
+  const c = content(t, '<div role="button"><span>Assigned</span><i slot="unused">Unassigned</i></div>');
+  const button = c.firstChild;
+  button.attachShadow({mode: 'open'}).innerHTML = 'Before <slot>Fallback</slot> After';
+  assert_equals(await test_driver.get_computed_label(button), 'Before Assigned After');
+}, 'Name from content traverses the flat tree and assigned slot nodes');
+promise_test(async t => {
+  const c = content(t, '<style>.ar3-generated::before {content: "Before ";}.ar3-generated::after {content: attr(data-tail);}</style><button class="ar3-generated" data-tail=" After">Middle</button>');
+  assert_equals(await test_driver.get_computed_label(c.lastChild), 'Before Middle After');
+}, 'Generated text and attr content contribute to accessible names');
+</script>

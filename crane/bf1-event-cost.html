@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Event construction and dispatch cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const target = new EventTarget();
+let delivered = 0;
+target.addEventListener('event-cost', () => ++delivered);
+const start = performance.now();
+for (let i = 0; i < 100000; ++i) target.dispatchEvent(new Event('event-cost'));
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(delivered, 100000);
+}, 'Event construction and dispatch: ' + elapsed.toFixed(3) + ' ms for 100000 events');
+</script>

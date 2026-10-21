@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Legacy event handler objects preserve value and listener position</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#LegacyTreatNonObjectAsNull">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const button = document.createElement('button');
+  const value = {};
+  button.onclick = value;
+  assert_equals(button.onclick, value);
+}, 'A noncallable object remains the event handler value');
+test(() => {
+  const button = document.createElement('button');
+  const order = [];
+  button.onclick = {};
+  button.addEventListener('click', () => order.push('listener'));
+  button.onclick = () => order.push('handler');
+  button.click();
+  assert_array_equals(order, ['handler', 'listener']);
+}, 'A noncallable object activates the event handler listener position');
+test(() => {
+  const button = document.createElement('button');
+  button.onclick = () => {};
+  button.onclick = 42;
+  assert_equals(button.onclick, null);
+}, 'A non-object value deactivates the legacy event handler');
+</script>

@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS content function termination at end of input</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-a-function">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  for (const [input, expected] of [
+    ['attr(data-label', 'attr(data-label)'],
+    ['counter(chapter', 'counter(chapter)'],
+    ['counter(chapter, symbols("a" "b"', 'counter(chapter, symbols("a" "b"))'],
+    ['leader(dotted', 'leader(dotted)'],
+    ['linear-gradient(red, blue', 'linear-gradient(red, blue)'],
+  ]) {
+    element.style.content = '';
+    element.style.content = input;
+    assert_equals(element.style.content, expected, input);
+  }
+}, 'CSS Syntax closes content functions at EOF, including nested functions');
+</script>

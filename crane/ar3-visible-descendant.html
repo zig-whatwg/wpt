@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Visible descendants of hidden parents contribute to names</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<h2 id="target">Visible <span style="visibility:hidden">Hidden <span style="visibility:visible">Again</span></span></h2>
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), 'Visible Again');
+}, 'Visibility can be restored by a descendant without exposing hidden text');
+</script>

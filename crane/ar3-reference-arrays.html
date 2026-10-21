@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ARIA reference arrays preserve contents, identity and conversion ordering</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#attr-associated-elements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const root = document.createElement('div');
+  root.innerHTML = '<input><span id="ar3-a">A</span><span id="ar3-b">B</span>';
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return [root.firstChild, root.children[1], root.children[2], root];
+}
+test(t => {
+  const [owner, a, b] = fixture(t);
+  assert_equals(owner.ariaControlsElements, null);
+  owner.setAttribute('aria-controls', 'ar3-a\tar3-b ar3-a missing');
+  const first = owner.ariaControlsElements;
+  assert_array_equals(first, [a, b, a]);
+  assert_true(Object.isFrozen(first));
+  assert_equals(first, owner.ariaControlsElements);
+  owner.ariaControlsElements = [a, b, a];
+  assert_equals(first, owner.ariaControlsElements);
+  owner.ariaControlsElements = [];
+  assert_array_equals(owner.ariaControlsElements, []);
+  assert_equals(owner.getAttribute('aria-controls'), '');
+  assert_array_equals(first, [a, b, a], 'earlier snapshot retains its contents');
+  owner.ariaControlsElements = null;
+  assert_equals(owner.ariaControlsElements, null);
+  assert_false(owner.hasAttribute('aria-controls'));
+}, 'Null, empty, duplicate targets and frozen snapshot identity are distinct');
+test(t => {
+  const [owner, a, b] = fixture(t);
+  owner.ariaControlsElements = [a];
+  const first = owner.ariaControlsElements;
+  assert_throws_js(TypeError, () => { owner.ariaControlsElements = [b, {}]; });
+  assert_equals(owner.ariaControlsElements, first, 'invalid iterable does not mutate');
+  const sentinel = new Error('iterator');
+  const iterable = { *[Symbol.iterator]() { yield a; throw sentinel; } };
+  assert_throws_exactly(sentinel, () => { owner.ariaControlsElements = iterable; });
+  assert_equals(owner.ariaControlsElements, first);
+  owner.ariaControlsElements = new Set([b, a]);
+  assert_array_equals(owner.ariaControlsElements, [b, a]);
+}, 'Iterable conversion completes before mutating the reflected attribute');
+test(t => {
+  const [owner, a, b, root] = fixture(t);
+  owner.ariaControlsElements = [a, b];
+  const first = owner.ariaControlsElements;
+  const host = document.createElement('div');
+  root.append(host);
+  const shadow = host.attachShadow({mode:'open'});
+  shadow.append(a);
+  assert_array_equals(owner.ariaControlsElements, [b]);
+  root.append(a);
+  assert_array_equals(owner.ariaControlsElements, [a, b]);
+  assert_not_equals(owner.ariaControlsElements, first, 'changed cache is replaced');
+  root.remove();
+  assert_array_equals(owner.ariaControlsElements, [a, b], 'disconnected common tree works');
+}, 'Scope filtering updates without forgetting explicit targets');
+promise_test(async t => {
+  const [owner, a, b] = fixture(t);
+  owner.ariaControlsElements = [a, b];
+  const snapshot = owner.ariaControlsElements;
+  a.marker = 'alive';
+  a.remove();
+  b.remove();
+  owner.ariaControlsElements = null;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  assert_equals(snapshot[0].marker, 'alive');
+  assert_equals(snapshot[0].id, 'ar3-a');
+  assert_equals(snapshot[1].id, 'ar3-b');
+}, 'A script-held frozen snapshot keeps removed elements alive');
+</script>

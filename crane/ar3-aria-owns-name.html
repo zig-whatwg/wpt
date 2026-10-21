@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ARIA ownership changes the accessible-name traversal</title>
+<link rel="help" href="https://w3c.github.io/aria/#aria-owns">
+<link rel="help" href="https://w3c.github.io/aria/#tree_exclusion">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+// Isolates accname/aria-owns.html, plus ownership ordering and author-error
+// guards. ARIA PR1839 merged2025-09-10; all three browsers pass the relocation
+// assertions in the original file (aligned wpt.fyi revision5d23b743bb).
+function fixture(t, markup) {
+  const root = document.body.appendChild(document.createElement('section'));
+  root.innerHTML = markup;
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+promise_test(async t => {
+  const root = fixture(t, '<button aria-owns="ar3-play"><div aria-hidden="true"><span id="ar3-play">Play</span><span>Pause</span></div></button>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'Play');
+}, 'An owned descendant escapes its former aria-hidden ancestor');
+promise_test(async t => {
+  const root = fixture(t, '<a href="#" aria-owns="ar3-warning">Visit </a><div aria-hidden="true"><span id="ar3-warning">new window</span></div>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'Visit new window');
+}, 'An external owned node inherits accessibility visibility from its owner');
+promise_test(async t => {
+  const root = fixture(t, '<div aria-owns="ar3-car"></div><h4>Speeding <mark id="ar3-car">car</mark></h4>');
+  assert_equals(await test_driver.get_computed_label(root.lastChild), 'Speeding');
+}, 'A relocated child no longer contributes to its former parent');
+promise_test(async t => {
+  const root = fixture(t, '<button aria-owns="ar3-second ar3-first ar3-second"><span id="ar3-first">First </span><span id="ar3-second">Second </span></button>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'Second First');
+}, 'Explicit ownership reorders DOM children and ignores duplicate targets');
+promise_test(async t => {
+  const root = fixture(t, '<button aria-owns="ar3-shared">One </button><button aria-owns="ar3-shared">Two </button><span id="ar3-shared">Shared</span>');
+  assert_equals(await test_driver.get_computed_label(root.children[0]), 'One Shared');
+  assert_equals(await test_driver.get_computed_label(root.children[1]), 'Two');
+}, 'The first owner in tree order wins a repeated ownership reference');
+promise_test(async t => {
+  const root = fixture(t, '<div id="ar3-ancestor"><button id="ar3-self" aria-owns="ar3-self ar3-ancestor">Safe</button></div>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild.firstChild), 'Safe');
+}, 'Self and ancestor ownership cannot create a traversal cycle');
+promise_test(async t => {
+  const root = fixture(t, '<div hidden aria-owns="ar3-kept"></div><h4>Keep <span id="ar3-kept">this</span></h4><a href="#" aria-owns="ar3-hidden">Visible</a><div hidden><span id="ar3-hidden">hidden</span></div>');
+  assert_equals(await test_driver.get_computed_label(root.children[1]), 'Keep this');
+  assert_equals(await test_driver.get_computed_label(root.children[2]), 'Visible');
+}, 'Ownership cannot move from a hidden owner or escape display none');
+</script>

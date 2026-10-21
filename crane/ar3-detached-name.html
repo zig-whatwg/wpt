@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Detached controls acquire their referenced name when connected</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+// Match the target semantics of html/dom/aria-element-reflection-labelledby.html.
+// C/F/S pass that test through a :scope transport artifact; Crane's Q14 harness
+// choice computes this actual node, distinct from WebDriver's stale-node rule.
+promise_test(async t => {
+  const input = document.createElement('input');
+  const label = document.createElement('span');
+  label.textContent = 'Connected label';
+  input.ariaLabelledByElements = [label];
+  t.add_cleanup(() => { input.remove(); label.remove(); });
+  assert_equals(await test_driver.get_computed_label(input), '');
+  document.body.append(input, label);
+  assert_equals(await test_driver.get_computed_label(input), 'Connected label');
+}, 'A detached control has no accessible name until insertion');
+</script>

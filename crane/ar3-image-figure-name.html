@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A sole unnamed image uses its figure caption</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<figure id="figure"><img id="target" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="><figcaption>Caption <em>text</em></figcaption></figure>
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), 'Caption text');
+  const other = figure.appendChild(document.createElement('p'));
+  other.textContent = 'Other flow content';
+  assert_equals(await test_driver.get_computed_label(target), '');
+  other.remove();
+  target.alt = '';
+  assert_equals(await test_driver.get_computed_label(target), '');
+  target.alt = 'Alternative';
+  assert_equals(await test_driver.get_computed_label(target), 'Alternative');
+  target.removeAttribute('alt');
+  target.title = 'Tooltip';
+  assert_equals(await test_driver.get_computed_label(target), 'Tooltip');
+  target.title = '';
+  assert_equals(await test_driver.get_computed_label(target), '');
+}, 'Image figure fallback applies only without alt, title, or competing flow content');
+</script>

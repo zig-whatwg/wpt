@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Computed role and name use private defaults and author overrides</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#accessibility-semantics">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+customElements.define('ar3-control', class extends HTMLElement {});
+promise_test(async t => {
+  const element = document.createElement('ar3-control');
+  const internals = element.attachInternals();
+  internals.role = 'button';
+  internals.ariaLabel = 'Default name';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(await test_driver.get_computed_role(element), 'button');
+  assert_equals(await test_driver.get_computed_label(element), 'Default name');
+  element.setAttribute('role', 'checkbox');
+  element.setAttribute('aria-label', 'Author name');
+  assert_equals(await test_driver.get_computed_role(element), 'checkbox');
+  assert_equals(await test_driver.get_computed_label(element), 'Author name');
+  element.removeAttribute('role');
+  element.removeAttribute('aria-label');
+  assert_equals(await test_driver.get_computed_role(element), 'button');
+  assert_equals(await test_driver.get_computed_label(element), 'Default name');
+}, 'Private defaults participate in computed semantics with author precedence');
+</script>

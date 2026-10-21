@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Constructor arity with a non-trailing optional argument</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => assert_equals(GPUPipelineError.length, 2),
+     'Constructor length removes only trailing optional arguments');
+test(() => {
+  let converted = false;
+  const message = { toString() { converted = true; throw new Error('converted too early'); } };
+  assert_throws_js(TypeError, () => new GPUPipelineError(message));
+  assert_false(converted);
+}, 'A required argument after an optional argument is checked before conversion');
+</script>

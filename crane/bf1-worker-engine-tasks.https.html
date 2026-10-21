@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Engine foreground tasks wake a worker without host timers</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const worker = new Worker('bf1-worker-engine-tasks.js');
+  t.add_cleanup(() => worker.terminate());
+  const value = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = reject;
+  });
+  assert_equals(value, 'timed-out');
+}, 'Atomics.waitAsync wakes an otherwise idle worker at its engine deadline');
+</script>

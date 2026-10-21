@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>List items inherit presentational list semantics</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<ul role="none"><li id="target" aria-describedby="description">Item</li></ul>
+<p id="description">Description</p>
+<script>
+promise_test(async () => {
+  assert_in_array(await test_driver.get_computed_role(target), ['none', 'generic']);
+}, 'Global ARIA on a list item does not restore its inherited list semantics');
+</script>

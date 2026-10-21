@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Location internal methods and caller realms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+test(() => {
+  for (const name of ['href', 'origin', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'assign', 'replace', 'reload', 'toString']) {
+    const descriptor = Object.getOwnPropertyDescriptor(location, name);
+    assert_false(descriptor.configurable, name);
+    assert_false(Reflect.deleteProperty(location, name), name);
+    assert_false(Reflect.defineProperty(location, name, {configurable: true}), name);
+  }
+  const getter = Object.getOwnPropertyDescriptor(location, 'href').get;
+  assert_equals(getter.call(location), location.href);
+  assert_equals(typeof location.pathname, 'string');
+  assert_true(Reflect.setPrototypeOf(location, Object.getPrototypeOf(location)));
+  assert_false(Reflect.setPrototypeOf(location, null));
+  assert_false(Reflect.preventExtensions(location));
+  assert_true(Object.isExtensible(location));
+}, 'Same-origin Location keeps its unforgeable descriptors, brand and immutable prototype');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  frame.src = get_host_info().HTTP_REMOTE_ORIGIN + '/common/blank.html';
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.append(frame);
+  await loaded;
+  const foreign = frame.contentWindow.location;
+  assert_equals(foreign, frame.contentWindow.location);
+  assert_equals(Object.getPrototypeOf(foreign), null);
+  assert_true(Reflect.setPrototypeOf(foreign, null));
+  assert_false(Reflect.setPrototypeOf(foreign, {}));
+  assert_false(Reflect.preventExtensions(foreign));
+  const descriptor = Object.getOwnPropertyDescriptor(foreign, 'href');
+  assert_true(descriptor.configurable);
+  assert_equals(descriptor.get, undefined);
+  assert_equals(typeof descriptor.set, 'function');
+  assert_array_equals(Object.keys(foreign), []);
+  const enumerated = [];
+  for (const name in foreign) enumerated.push(name);
+  assert_array_equals(enumerated, []);
+  const keys = Reflect.ownKeys(foreign);
+  assert_true(keys.includes('href'));
+  assert_true(keys.includes('replace'));
+  assert_throws_dom('SecurityError', () => foreign.href);
+  assert_throws_dom('SecurityError', () => Reflect.deleteProperty(foreign, 'href'));
+  assert_throws_dom('SecurityError', () => Reflect.defineProperty(foreign, 'newProperty', {value: 1}));
+}, 'Cross-origin Location implements exotic reflection without changing identity');
+</script>

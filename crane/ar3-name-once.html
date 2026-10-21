@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A node contributes once during a name computation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<h3 id="target"><a href="#" aria-labelledby="picture">Skipped</a> <a id="second" href="#">Second <img id="picture" alt="Picture" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="> Last</a></h3>
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), 'Picture Second Last');
+  assert_equals(await test_driver.get_computed_label(second), 'Second Picture Last');
+}, 'Labelledby and child traversal share a visited set within one computation');
+</script>

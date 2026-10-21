@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image submit buttons have a browser default name</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<input type="image" id="target" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==">
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), 'Submit');
+}, 'The default English image input name matches Chrome and Safari');
+</script>

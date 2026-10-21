@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicit single element reference and attribute reset</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#attr-associated-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const owner = document.createElement('div');
+  const target = document.createElement('span');
+  owner.append(target);
+  document.body.append(owner);
+  t.add_cleanup(() => owner.remove());
+  owner.ariaActiveDescendantElement = target;
+  assert_equals(owner.ariaActiveDescendantElement, target);
+  assert_equals(owner.getAttribute('aria-activedescendant'), '');
+  owner.setAttribute('aria-activedescendant', '');
+  assert_equals(owner.ariaActiveDescendantElement, null);
+  owner.ariaActiveDescendantElement = target;
+  owner.removeAttribute('aria-activedescendant');
+  assert_equals(owner.ariaActiveDescendantElement, null);
+}, 'Explicit target needs no ID and same-value content mutation clears it');
+</script>

@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Raw handler callback context includes return conversion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function frameFor(t, html) {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const ready = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = html;
+  document.body.append(frame);
+  await ready;
+  return frame;
+}
+function messageFor(t, data) {
+  return new Promise(resolve => {
+    const listener = event => {
+      if (event.data !== data) return;
+      removeEventListener('message', listener);
+      resolve(event);
+    };
+    addEventListener('message', listener);
+    t.add_cleanup(() => removeEventListener('message', listener));
+  });
+}
+promise_test(async t => {
+  const frame = await frameFor(t,
+    `<body onbeforeunload="return {toString: parent.postMessage.bind(parent, 'bf1-raw', '*')};">`);
+  const child = frame.contentWindow;
+  assert_equals(typeof child.onbeforeunload, 'function', 'A parent getter compiles the raw handler');
+  const posted = messageFor(t, 'bf1-raw');
+  frame.src = 'about:blank';
+  frame.removeAttribute('srcdoc');
+  assert_equals((await posted).source, child, 'Return conversion uses the document callback context');
+}, 'Raw beforeunload return conversion keeps the node document as incumbent');
+promise_test(async t => {
+  const frame = await frameFor(t, '<body>');
+  frame.contentWindow.onbeforeunload = () => ({toString: postMessage.bind(window, 'bf1-idl', '*')});
+  const posted = messageFor(t, 'bf1-idl');
+  frame.src = 'about:blank';
+  frame.removeAttribute('srcdoc');
+  assert_equals((await posted).source, window);
+}, 'An IDL handler keeps the assigning script callback context');
+</script>

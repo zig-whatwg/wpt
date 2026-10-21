@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fetch remainder regressions requiring another owner</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const media = new MediaSource();
+  const url = URL.createObjectURL(media);
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  await promise_rejects_js(t, TypeError, fetch(url));
+}, 'A MediaSource object URL can be created but cannot be fetched');
+
+test(() => {
+  const controller = new AbortController();
+  controller.abort();
+  const original = new Request('/common/blank.html', {signal: controller.signal});
+  assert_true(new Request(original).signal.aborted, 'omitted inherits');
+  assert_true(new Request(original, {signal: undefined}).signal.aborted, 'undefined inherits');
+  assert_false(new Request(original, {signal: null}).signal.aborted, 'null clears');
+}, 'RequestInit preserves the distinction between an absent and a null signal');
+
+promise_test(async t => {
+  const headers = {'Content-Type': 'multipart/form-data; boundary=boundary'};
+  const valid = await new Response('--boundary--\r\n', {headers}).formData();
+  assert_array_equals(Array.from(valid), [], 'a valid close delimiter makes an empty form');
+  await promise_rejects_js(t, TypeError,
+    new Response('--boundary--boundary--\r\n', {headers}).formData());
+}, 'A multipart close delimiter must end before its epilogue');
+
+for (const value of ['\n', '\r']) {
+  test(() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/common/blank.html');
+    xhr.setRequestHeader('X-Fa3', value);
+  }, 'XHR normalizes a single CR or LF header value: ' + value.charCodeAt(0));
+}
+</script>

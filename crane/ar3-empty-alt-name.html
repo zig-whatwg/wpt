@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An empty image alternative suppresses its tooltip name</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<img id="target" alt="" title="Tooltip" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==">
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), '');
+}, 'An explicitly empty image alternative wins over title');
+</script>

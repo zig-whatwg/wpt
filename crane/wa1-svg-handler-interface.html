@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG group creation supplies inherited event handler accessors</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/struct.html#InterfaceSVGGElement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  assert_true(group instanceof SVGGElement);
+  assert_true(group instanceof SVGElement);
+}, 'An SVG g element has its specified interface');
+test(() => {
+  const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  assert_equals(group.onclick, null);
+}, 'An SVG g element inherits a null onclick accessor');
+</script>

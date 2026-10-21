@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Muted rejection metadata survives the script load</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const seen = [];
+  const rejected = e => { if (e.reason === 'bf1-muted') { seen.push(e.type); e.preventDefault(); } };
+  addEventListener('unhandledrejection', rejected);
+  addEventListener('rejectionhandled', rejected);
+  t.add_cleanup(() => {
+    removeEventListener('unhandledrejection', rejected);
+    removeEventListener('rejectionhandled', rejected);
+  });
+  const script = document.createElement('script');
+  script.src = get_host_info().HTTP_REMOTE_ORIGIN + '/crane/bf1-muted-rejections.js';
+  const loaded = new Promise(resolve => script.onload = resolve);
+  document.body.append(script);
+  await loaded;
+  // The remote function's script is still muted after the loading task ended.
+  bf1RejectLater();
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_array_equals(seen, []);
+}, 'A later call into a non-CORS script suppresses its rejection event');
+</script>

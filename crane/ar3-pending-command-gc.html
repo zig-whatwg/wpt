@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Computed name commands retain their pending argument</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+// Harness compatibility choice: aria-element-reflection-labelledby.html
+// exercises a detached target. C/F/S pass via WPT's :scope transport artifact;
+// Crane instead computes this actual node (Q14), despite WebDriver's stale rule.
+promise_test(async () => {
+  const result = (() => {
+    const element = document.createElement('div');
+    element.setAttribute('aria-label', 'Queued label');
+    return test_driver_internal.get_computed_label(element);
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(await result, 'Queued label');
+}, 'A pending computed-label command keeps its detached element alive until execution');
+promise_test(async () => {
+  const result = (() => test_driver_internal.get_computed_role(document.createElement('button')))();
+  TestUtils.gc();
+  assert_equals(await result, 'button');
+}, 'A pending computed-role command computes its own detached element');
+</script>

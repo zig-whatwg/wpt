@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Content attribute casing in an XML document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.src = 'ar3-content-xml.xhtml';
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const target = frame.contentDocument.getElementById('target');
+  assert_equals(frame.contentWindow.getComputedStyle(target, '::before').content, '"Upper"');
+}, 'Raw attr lookup keeps XML attribute names case-sensitive');
+</script>

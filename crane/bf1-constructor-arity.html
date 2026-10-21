@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebIDL constructor arity precedes conversion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const C of [Event, CustomEvent, URL, WebSocket, File]) {
+  test(() => assert_throws_js(TypeError, () => new C()),
+       `${C.name} rejects missing required arguments`);
+}
+test(() => {
+  const poison = { [Symbol.iterator]() { throw new Error('converted too early'); } };
+  assert_throws_js(TypeError, () => new File(poison));
+}, 'Insufficient arity is rejected before any argument conversion');
+test(() => assert_equals(new Event(undefined).type, 'undefined'),
+     'An explicit undefined is converted as a supplied DOMString');
+test(() => {
+  for (const C of [Event, WebSocket, URL]) assert_equals(C.length, 1, C.name);
+  assert_equals(File.length, 2);
+  assert_equals(Blob.length, 0);
+  assert_equals(DOMMatrix.length, 0);
+  assert_equals(CSSMathSum.length, 0);
+}, 'Constructor lengths follow optional, overloaded, and variadic IDL declarations');
+test(() => {
+  assert_equals(new Blob().size, 0);
+  assert_equals(new DOMMatrix().isIdentity, true);
+}, 'Optional and zero-argument overloads remain callable');
+</script>

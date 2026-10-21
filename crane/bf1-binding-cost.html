@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One million binding calls, including constructor calls</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+let observed = 0;
+const start = performance.now();
+for (let i = 0; i < 200000; ++i) {
+  const event = new Event('binding-cost');
+  if (event.type === 'binding-cost') ++observed;
+  if (event.isTrusted) ++observed;
+  event.cancelBubble = false;
+  event.preventDefault();
+}
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(observed, 200000);
+}, 'Binding calls: ' + elapsed.toFixed(3) + ' ms for 1000000 calls');
+</script>

@@ -1,0 +1,44 @@
+<!doctype html>
+<title>Legacy handler objects preserve identity and listener order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const value of [{}, [], new Number(42)]) {
+  test(() => {
+    const target = document.createElement('div');
+    const calls = [];
+    target.onclick = value;
+    assert_equals(target.onclick, value);
+    target.addEventListener('click', () => calls.push('listener'));
+    target.dispatchEvent(new Event('click'));
+    assert_array_equals(calls, ['listener']);
+    calls.length = 0;
+    target.onclick = () => calls.push('handler');
+    target.dispatchEvent(new Event('click'));
+    assert_array_equals(calls, ['handler', 'listener']);
+  }, `Noncallable ${Object.prototype.toString.call(value)} reserves its handler position`);
+}
+test(() => {
+  const target = document.createElement('div');
+  for (const value of [undefined, null, true, 42, 'text', Symbol(), 1n]) {
+    target.onclick = value;
+    assert_equals(target.onclick, null);
+  }
+  const fn = () => {};
+  target.onclick = fn;
+  assert_equals(target.onclick, fn);
+}, 'Primitives become null and a function keeps its identity');
+test(() => {
+  const target = document.createElement('div');
+  (() => { target.onclick = { retained: 42 }; })();
+  TestUtils.gc();
+  assert_equals(target.onclick.retained, 42);
+  target.dispatchEvent(new Event('click'));
+  target.onclick = null;
+}, 'The handler holds a noncallable object across collection');
+test(() => {
+  for (const value of [1, 'text', {}, []]) {
+    assert_throws_js(TypeError, () => new WritableStream({}, {size: value}));
+  }
+}, 'A nullable ordinary callback remains strict');
+</script>

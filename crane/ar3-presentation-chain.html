@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native required descendants inherit presentation</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<table role="none"><tbody id="group"><tr id="row"><th id="header">Header</th><td id="cell">Cell</td></tr><tr id="explicit" role="row"><td id="ordinary">Cell</td></tr></tbody></table>
+<script>
+promise_test(async () => {
+  for (const id of ['group', 'row', 'header', 'cell']) {
+    assert_in_array(await test_driver.get_computed_role(document.getElementById(id)), ['none', 'generic'], id);
+  }
+  assert_equals(await test_driver.get_computed_role(explicit), 'row');
+  assert_equals(await test_driver.get_computed_role(ordinary), 'cell');
+}, 'Presentation passes through required native children and stops at explicit roles');
+</script>

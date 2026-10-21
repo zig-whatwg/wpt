@@ -1,0 +1,10 @@
+<!doctype html><meta charset=utf-8><title>Location binding cost</title>
+<script src=/resources/testharness.js></script><script src=/resources/testharnessreport.js></script>
+<script>
+let sum = 0;
+for (let i = 0; i < 10000; i++) sum += location.href.length + location.pathname.length;
+const begin = performance.now();
+for (let i = 0; i < 100000; i++) sum += location.href.length + location.pathname.length;
+const elapsed = performance.now() - begin;
+test(() => assert_greater_than(sum, 0), `bf1-location-cost: ${elapsed.toFixed(3)} ms / 100000 href+pathname pairs`);
+</script>

@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Number inputs use placeholder name fallbacks</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<input id="target" type="number" placeholder="Native" aria-placeholder="Aria">
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), 'Native');
+  target.removeAttribute('placeholder');
+  assert_equals(await test_driver.get_computed_label(target), 'Aria');
+}, 'Number input native placeholder precedes aria-placeholder');
+</script>

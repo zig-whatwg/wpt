@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ARIA explicit references are weak and frozen snapshots hold elements</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const source = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => source.remove());
+  const weak = (() => {
+    const target = source.appendChild(document.createElement('span'));
+    source.ariaActiveDescendantElement = target;
+    source.ariaControlsElements = [target];
+    const weak = new WeakRef(target);
+    target.remove();
+    return weak;
+  })();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  assert_equals(weak.deref(), undefined);
+  assert_equals(source.ariaActiveDescendantElement, null);
+  assert_array_equals(source.ariaControlsElements, []);
+}, 'Explicit scalar and unread array references do not keep removed targets alive');
+promise_test(async t => {
+  const [snapshot, weakSource] = (() => {
+    const source = document.body.appendChild(document.createElement('div'));
+    const target = source.appendChild(document.createElement('span'));
+    target.marker = 'held by snapshot';
+    source.ariaControlsElements = [target];
+    const snapshot = source.ariaControlsElements;
+    target.remove();
+    source.remove();
+    return [snapshot, new WeakRef(source)];
+  })();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  assert_equals(weakSource.deref(), undefined);
+  assert_equals(snapshot[0].marker, 'held by snapshot');
+  assert_true(Object.isFrozen(snapshot));
+}, 'A frozen snapshot alone keeps its element alive, without retaining its source');
+</script>

@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shared memory requires cross-origin isolated capability</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_false(crossOriginIsolated);
+  if (typeof SharedArrayBuffer === 'undefined') return;
+  const shared = new SharedArrayBuffer(4);
+  assert_throws_dom('DataCloneError', () => structuredClone(shared));
+  const channel = new MessageChannel();
+  try { assert_throws_dom('DataCloneError', () => channel.port1.postMessage(shared)); }
+  finally { channel.port1.close(); channel.port2.close(); }
+}, 'Non-isolated serialization rejects shared memory');
+</script>

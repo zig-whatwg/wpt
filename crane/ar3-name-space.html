@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nested whitespace separates accessible name words</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<button id="target">First<span><span><span> </span></span></span>Last</button>
+<script>
+promise_test(async () => {
+  assert_equals(await test_driver.get_computed_label(target), 'First Last');
+}, 'Whitespace-only descendant content survives until final name flattening');
+</script>
