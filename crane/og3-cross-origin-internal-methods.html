@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cross-origin Window internal methods preserve access checks</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-windowproxy-exotic-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// Each mechanism gets a fresh fetched Window. ?case= isolates one assertion.
+const selected = new URL(location.href).searchParams.get('case');
+function check(name, body) {
+  if (selected && selected !== name) return;
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = get_host_info().HTTP_REMOTE_ORIGIN +
+      '/html/browsers/origin/cross-origin-objects/frame.html';
+    document.body.append(frame);
+    await loaded;
+    body(frame.contentWindow);
+  }, name);
+}
+check('access-checks', win => {
+  assert_throws_dom('SecurityError', () => win.document);
+  assert_throws_dom('SecurityError', () => Object.defineProperty(win, 'x', {value: 1}));
+  assert_throws_dom('SecurityError', () => Reflect.deleteProperty(win, 'x'));
+});
+check('prototype-and-extensibility', win => {
+  assert_equals(Object.getPrototypeOf(win), null);
+  assert_true(Object.isExtensible(win));
+});
+check('object-set-prototype', win => {
+  assert_throws_js(TypeError, () => Object.setPrototypeOf(win, {}));
+});
+check('reflect-set-prototype', win => {
+  assert_false(Reflect.setPrototypeOf(win, {}));
+  assert_true(Reflect.setPrototypeOf(win, null));
+});
+check('object-prevent-extensions', win => {
+  assert_throws_js(TypeError, () => Object.preventExtensions(win));
+});
+check('reflect-prevent-extensions', win => {
+  assert_false(Reflect.preventExtensions(win));
+});
+check('indexed-enumeration', win => {
+  assert_equals(win.length, 2, 'The fetched child contains two frames');
+  const keys = [];
+  for (const key in win) keys.push(key);
+  assert_array_equals(keys, ['0', '1']);
+});
+</script>

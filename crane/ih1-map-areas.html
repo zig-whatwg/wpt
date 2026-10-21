@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Map areas live collection and retention</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/image-maps.html#dom-map-areas">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const map = document.createElement('map');
+  const areas = map.areas;
+  assert_true(areas instanceof HTMLCollection);
+  assert_equals(areas, map.areas);
+  assert_equals(areas.length, 0);
+  const group = map.appendChild(document.createElement('div'));
+  const first = group.appendChild(document.createElement('area'));
+  first.id = 'first';
+  const second = map.appendChild(document.createElement('area'));
+  second.setAttribute('name', 'second');
+  group.appendChild(document.createElementNS('urn:foreign', 'area'));
+  group.appendChild(document.createElementNS('http://www.w3.org/1999/xhtml', 'AREA'));
+  assert_array_equals(Array.from(areas), [first, second]);
+  assert_equals(areas.namedItem('first'), first);
+  assert_equals(areas.namedItem('second'), second);
+  group.appendChild(second);
+  assert_array_equals(Array.from(areas), [first, second]);
+  first.remove();
+  assert_array_equals(Array.from(areas), [second]);
+  group.remove();
+  assert_equals(areas.length, 0);
+}, 'map.areas follows descendant mutations, tree order, namespace and named items');
+
+test(() => {
+  const map = document.createElement('map');
+  const nested = map.appendChild(document.createElement('map'));
+  const area = nested.appendChild(document.createElement('area'));
+  assert_array_equals(Array.from(map.areas), [area]);
+  const other = document.implementation.createHTMLDocument('other');
+  other.adoptNode(map);
+  const next = nested.appendChild(other.createElement('area'));
+  assert_array_equals(Array.from(map.areas), [area, next]);
+}, 'map.areas includes nested-map descendants and remains live after adoption');
+
+test(() => {
+  let map = document.createElement('map');
+  let area = map.appendChild(document.createElement('area'));
+  area.id = 'retained';
+  const areas = map.areas;
+  map = null; area = null;
+  TestUtils.gc();
+  assert_equals(areas.length, 1);
+  assert_equals(areas[0].id, 'retained');
+  areas[0].parentNode.appendChild(document.createElement('area'));
+  assert_equals(areas.length, 2);
+}, 'a retained map.areas collection keeps its detached root and descendants alive');
+
+test(() => {
+  const map = document.createElement('map');
+  map.areas.marker = 'same';
+  TestUtils.gc();
+  assert_equals(map.areas.marker, 'same');
+}, 'map retains its SameObject areas collection across GC');
+</script>

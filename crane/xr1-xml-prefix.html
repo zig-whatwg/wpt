@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: XML serialization prefix scope</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const xmlns = 'http://www.w3.org/2000/xmlns/';
+function serialize(node) { return new XMLSerializer().serializeToString(node); }
+function parse(source) {
+  return new DOMParser().parseFromString(source, 'application/xml').documentElement;
+}
+
+test(() => {
+  const root = parse('<root xmlns="urn:xr1"><p:child xmlns:p="urn:xr1"><p:leaf/></p:child></root>');
+  assert_equals(serialize(root), '<root xmlns="urn:xr1"><child xmlns:p="urn:xr1"><leaf/></child></root>');
+  assert_equals(root.firstChild.prefix, 'p');
+  assert_equals(root.firstChild.firstChild.prefix, 'p');
+}, 'Inherited default namespace replaces prefixes in start and end tags without changing the DOM');
+
+test(() => {
+  const root = parse('<root xmlns="urn:xr1"><p:child xmlns:p="urn:xr1" p:value="kept"/></root>');
+  assert_equals(serialize(root), '<root xmlns="urn:xr1"><child xmlns:p="urn:xr1" p:value="kept"/></root>');
+}, 'An element prefix is dropped while namespaced attributes retain their prefix');
+
+test(() => {
+  const root = parse('<root xmlns="urn:xr1"><p:child xmlns:p="urn:xr1"><q:leaf xmlns:q="urn:other"/></p:child></root>');
+  assert_equals(serialize(root), '<root xmlns="urn:xr1"><child xmlns:p="urn:xr1"><q:leaf xmlns:q="urn:other"/></child></root>');
+  assert_equals(serialize(root.firstChild), '<p:child xmlns:p="urn:xr1"><q:leaf xmlns:q="urn:other"/></p:child>');
+}, 'Prefixes remain where the namespace differs from the current serialization context');
+
+test(() => {
+  const root = parse('<root xmlns="urn:xr1"><p:child xmlns:p="urn:xr1"><p:leaf/></p:child></root>');
+  assert_equals(root.outerHTML, '<root xmlns="urn:xr1"><child xmlns:p="urn:xr1"><leaf/></child></root>');
+  assert_equals(root.innerHTML, '<p:child xmlns:p="urn:xr1"><p:leaf/></p:child>');
+}, 'XML fragment serialization uses the namespace context of the serialized tree');
+
+test(() => {
+  const root = parse('<root xmlns=""/>');
+  root.setAttributeNS(xmlns, 'xmlns:foo', '');
+  assert_equals(serialize(root), '<root xmlns="" xmlns:foo=""/>');
+  const parent = parse('<root xmlns="urn:xr1"><child xmlns=""/></root>');
+  assert_equals(serialize(parent), '<root xmlns="urn:xr1"><child xmlns=""/></root>');
+}, 'Explicit empty default namespace behavior remains unchanged');
+</script>

@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Legacy External object identity and inert operations</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/obsolete.html#dom-external">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_true(window.external instanceof External);
+  assert_equals(window.external, window.external);
+  assert_equals(window.external.AddSearchProvider(), undefined);
+  assert_equals(window.external.IsSearchProviderInstalled(), undefined);
+}, 'External has stable identity and no-op legacy methods');
+test(() => {
+  window.external.marker = 'retained';
+  TestUtils.gc();
+  assert_equals(window.external.marker, 'retained');
+  assert_equals(window.external.AddSearchProvider('ignored'), undefined);
+}, 'Window retains External across GC');
+test(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(window, 'external');
+  window.external = 17;
+  assert_equals(window.external, 17);
+  Object.defineProperty(window, 'external', descriptor);
+}, 'external remains replaceable');
+</script>

@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: SVG anchor rel reflection and retained token lists</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/linking.html#InterfaceSVGAElement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const svgNamespace = 'http://www.w3.org/2000/svg';
+function anchor() { return document.createElementNS(svgNamespace, 'a'); }
+
+test(() => {
+  const a = anchor();
+  assert_equals(a.rel, '');
+  assert_false(a.hasAttribute('rel'));
+  a.rel = '  noopener\t external noopener ';
+  assert_equals(a.getAttribute('rel'), '  noopener\t external noopener ');
+  const list = a.relList;
+  assert_class_string(list, 'DOMTokenList');
+  assert_equals(a.relList, list, 'SameObject');
+  assert_array_equals(Array.from(list), ['noopener', 'external']);
+  a.setAttribute('rel', 'next');
+  assert_equals(a.rel, 'next');
+  assert_equals(list.value, 'next');
+  list.add('prev');
+  assert_equals(a.rel, 'next prev');
+  a.removeAttribute('rel');
+  assert_equals(a.rel, '');
+  assert_equals(list.length, 0);
+  assert_equals(a.relList, list);
+}, 'SVG anchor rel and its SameObject relList reflect in both directions');
+
+test(() => {
+  const a = anchor();
+  const list = a.relList;
+  a.relList = 'noopener noreferrer';
+  assert_equals(a.relList, list);
+  assert_equals(a.rel, 'noopener noreferrer');
+  assert_equals(a.getAttribute('rel'), 'noopener noreferrer');
+  assert_array_equals(Array.from(list), ['noopener', 'noreferrer']);
+}, 'Assigning SVG anchor relList forwards to value');
+
+test(() => {
+  const a = anchor();
+  const list = a.relList;
+  let receiver, assigned;
+  Object.defineProperty(list, 'value', {set(value) { receiver = this; assigned = value; }});
+  a.relList = 'next';
+  assert_equals(receiver, list);
+  assert_equals(assigned, 'next');
+  assert_false(a.hasAttribute('rel'));
+}, 'SVG anchor relList PutForwards uses the target value setter');
+
+test(() => {
+  const a = anchor();
+  a.setAttributeNS('urn:xr1', 'x:rel', 'unrelated');
+  a.setAttribute('REL', 'also-unrelated');
+  assert_equals(a.rel, '');
+  a.relList.add('next');
+  assert_equals(a.getAttribute('rel'), 'next');
+  assert_equals(a.getAttributeNS('urn:xr1', 'rel'), 'unrelated');
+  assert_equals(a.getAttribute('REL'), 'also-unrelated');
+}, 'SVG anchor reflection uses lowercase rel in the null namespace');
+
+async function collect(t) {
+  assert_true(!!(self.TestUtils && TestUtils.gc), 'TestUtils.gc is available');
+  for (let i = 0; i < 3; ++i) {
+    TestUtils.gc();
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+}
+
+promise_test(async t => {
+  const list = (() => {
+    const a = anchor();
+    a.rel = 'noopener';
+    return a.relList;
+  })();
+  await collect(t);
+  assert_equals(list.value, 'noopener');
+  list.add('noreferrer');
+  assert_equals(list.value, 'noopener noreferrer');
+  assert_array_equals(Array.from(list), ['noopener', 'noreferrer']);
+}, 'A retained SVG relList keeps its otherwise unreferenced anchor alive');
+
+promise_test(async t => {
+  const a = anchor();
+  (() => { a.relList.xr1Marker = 'same-wrapper'; })();
+  await collect(t);
+  assert_equals(a.relList.xr1Marker, 'same-wrapper');
+  a.rel = 'next';
+  assert_equals(a.relList.value, 'next');
+}, 'A retained SVG anchor keeps its cached relList wrapper alive');
+</script>

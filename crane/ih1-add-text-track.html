@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Programmatic text track creation and queued events</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/media.html#dom-media-addtexttrack">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const video = document.createElement('video');
+  const first = video.addTextTrack('subtitles', 'English', 'en');
+  const second = video.addTextTrack('metadata');
+  assert_true(first instanceof TextTrack);
+  assert_equals(first.kind, 'subtitles');
+  assert_equals(first.label, 'English');
+  assert_equals(first.language, 'en');
+  assert_equals(first.id, '');
+  assert_equals(first.mode, 'hidden');
+  assert_equals(first.cues.length, 0);
+  assert_equals(first.activeCues.length, 0);
+  assert_equals(first.cues, first.cues);
+  assert_equals(second.label, '');
+  assert_equals(second.language, '');
+  assert_equals(video.textTracks.length, 2);
+  assert_equals(video.textTracks[0], first);
+  assert_equals(video.textTracks[1], second);
+}, 'addTextTrack initializes hidden tracks and appends them in creation order');
+
+promise_test(async t => {
+  const video = document.createElement('video');
+  const list = video.textTracks;
+  let synchronous = true;
+  const event = new Promise(resolve => list.addEventListener('addtrack', resolve, {once: true}));
+  list.addEventListener('addtrack', t.step_func(() => assert_false(synchronous)));
+  const track = video.addTextTrack('captions');
+  synchronous = false;
+  const e = await event;
+  assert_true(e instanceof TrackEvent);
+  assert_true(e.isTrusted);
+  assert_equals(e.target, list);
+  assert_equals(e.track, track);
+  assert_false(e.bubbles);
+  assert_false(e.cancelable);
+}, 'addtrack is a queued trusted TrackEvent containing the newly created track');
+
+test(() => {
+  const video = document.createElement('video');
+  video.addTextTrack('chapters').marker = 'held';
+  TestUtils.gc();
+  assert_equals(video.textTracks[0].marker, 'held');
+  const cues = video.textTracks[0].cues;
+  video.textTracks[0].mode = 'disabled';
+  assert_equals(video.textTracks[0].cues, null);
+  video.textTracks[0].mode = 'hidden';
+  assert_equals(video.textTracks[0].cues, cues);
+}, 'the media list retains programmatic tracks and cue identity survives mode changes');
+
+test(() => {
+  const video = document.createElement('video');
+  assert_throws_js(TypeError, () => video.addTextTrack('invalid'));
+  assert_throws_js(TypeError, () => video.addTextTrack());
+  assert_equals(video.textTracks.length, 0);
+}, 'invalid kind leaves the text track list unchanged');
+
+promise_test(async t => {
+  let video = document.createElement('video');
+  const event = new Promise(resolve => video.textTracks.addEventListener('addtrack', resolve, {once: true}));
+  video.addTextTrack('descriptions', 'held by event', 'en').marker = 'queued';
+  video = null;
+  TestUtils.gc();
+  const e = await event;
+  assert_equals(e.track.marker, 'queued');
+  assert_equals(e.track.label, 'held by event');
+  assert_equals(e.target[0], e.track);
+}, 'queued addtrack retains its track and list after script references are dropped');
+
+promise_test(async t => {
+  const video = document.createElement('video');
+  const event = new Promise(resolve => video.textTracks.addEventListener('addtrack', resolve, {once: true}));
+  const track = video.addTextTrack('metadata');
+  video.load();
+  assert_equals(video.textTracks[0], track);
+  assert_equals((await event).track, track);
+}, 'programmatic tracks and addtrack survive a media resource load reset');
+</script>

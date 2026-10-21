@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated pinned AES-GCM transferred-input assertion</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Preserve the pinned WPT expectation to reproduce its failure independently.
+promise_test(async () => {
+  const key = await crypto.subtle.importKey('raw', new Uint8Array(16),
+    'AES-GCM', false, ['encrypt']);
+  const data = new Uint8Array([1, 2, 3]);
+  const encrypted = await crypto.subtle.encrypt({
+    get name() { data.buffer.transfer(); return 'AES-GCM'; },
+    iv: new Uint8Array(12)
+  }, key, data);
+  assert_equals(encrypted.byteLength, 16);
+}, 'Pinned unguarded transfer in name getter expects encryption to succeed');
+</script>

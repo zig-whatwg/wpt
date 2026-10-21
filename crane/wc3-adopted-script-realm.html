@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An adopted classic script executes in its node document realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => { frame.remove(); delete window.wc3ExecutedHere; });
+  const script = document.createElement('script');
+  script.textContent = 'globalThis.wc3ExecutedHere = true;';
+  frame.contentDocument.body.appendChild(script);
+  assert_true(frame.contentWindow.wc3ExecutedHere,
+    'The adopted script executes in its new document');
+  assert_false(Object.hasOwn(window, 'wc3ExecutedHere'),
+    'Creating the script in the parent does not select the parent realm');
+}, 'Adopted inline script uses the child document realm');
+</script>

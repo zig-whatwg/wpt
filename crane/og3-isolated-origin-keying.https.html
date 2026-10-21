@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cross-origin isolation makes parent and child origin-keyed</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsers.html#origin-keyed-agent-clusters">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+const selected = new URL(location.href).searchParams.get('case');
+if (!selected || selected === 'parent') {
+  test(() => assert_true(self.originAgentCluster), 'Isolated parent is origin-keyed');
+}
+if (!selected || selected === 'child') {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const reply = new Promise(resolve => {
+      const listener = e => {
+        if (e.source === frame.contentWindow && e.data.kind === 'og3-origin-key') {
+          resolve(e.data.originAgentCluster);
+        }
+      };
+      window.addEventListener('message', listener);
+      t.add_cleanup(() => window.removeEventListener('message', listener));
+    });
+    frame.src = get_host_info().HTTPS_REMOTE_ORIGIN + '/crane/og3-coep-child.html';
+    document.body.append(frame);
+    assert_true(await reply, 'The child shares the isolated group');
+  }, 'COEP child of an isolated parent is origin-keyed');
+}
+</script>

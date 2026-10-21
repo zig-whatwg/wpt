@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Map areas isolated IDL type regression</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/image-maps.html#dom-map-areas">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_true(document.createElement('map').areas instanceof HTMLCollection);
+}, 'map.areas returns an HTMLCollection');
+</script>

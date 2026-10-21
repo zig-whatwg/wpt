@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resource timing hides the status of a navigation returning from another origin</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#fetch-finale">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/resource-timing/resources/resource-loaders.js"></script>
+<script src="/resource-timing/resources/entry-invariants.js"></script>
+<body>
+<script>
+const target = new URL('/resource-timing/resources/multi_redirect.py', location.origin);
+target.searchParams.set('page_origin', location.origin);
+target.searchParams.set('cross_origin', get_host_info().REMOTE_ORIGIN);
+target.searchParams.set('final_resource', '/resource-timing/resources/empty.js?pipe=status(203)');
+attribute_test(load.iframe, target, entry => {
+  assert_equals(entry.responseStatus, 0, 'Cross-origin redirect history hides the final same-origin status');
+});
+</script>

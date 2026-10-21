@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>AES-GCM 1000 encrypt and decrypt round trips</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const key = await crypto.subtle.importKey('raw', new Uint8Array(16),
+    'AES-GCM', false, ['encrypt', 'decrypt']);
+  const plaintext = Uint8Array.from({length: 256}, (_, i) => i);
+  const iv = new Uint8Array(12);
+  const counter = new DataView(iv.buffer);
+  const algorithm = {name: 'AES-GCM', iv, tagLength: 128};
+  let valid = true;
+  let result;
+  const start = performance.now();
+  for (let i = 0; i < 1000; ++i) {
+    counter.setUint32(8, i);
+    const encrypted = await crypto.subtle.encrypt(algorithm, key, plaintext);
+    result = new Uint8Array(await crypto.subtle.decrypt(algorithm, key, encrypted));
+    valid = valid && encrypted.byteLength === 272 && result.byteLength === 256
+      && result[0] === 0 && result[255] === 255;
+  }
+  const elapsed = performance.now() - start;
+  assert_true(valid, 'Each round trip preserves length and boundary bytes');
+  assert_array_equals(result, plaintext, 'The last round trip preserves every byte');
+  console.log('WC3_AES_GCM_MS=' + elapsed);
+}, '1000 AES-GCM round trips preserve plaintext with distinct IVs');
+</script>

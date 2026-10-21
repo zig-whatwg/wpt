@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Navigation response status visibility is independent of Timing-Allow-Origin</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#fetch-finale">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/resource-timing/resources/resource-loaders.js"></script>
+<script src="/resource-timing/resources/entry-invariants.js"></script>
+<body>
+<script>
+for (const loader of [load.iframe, load.image_object, load.frame_object, load.null_object]) {
+  for (const remote of [false, true]) {
+    for (const tao of [false, true]) {
+      for (const status of [203, 404]) {
+        const url = new URL('/resource-timing/resources/empty.js', remote ? get_host_info().REMOTE_ORIGIN : location.origin);
+        url.searchParams.set('pipe', `status(${status})${tao ? '|header(Timing-Allow-Origin,*)' : ''}`);
+        attribute_test(loader, url, entry => {
+          assert_equals(entry.responseStatus, remote ? 0 : status,
+            `${loader.name}, remote=${remote}, TAO=${tao}, HTTP=${status}`);
+        });
+      }
+    }
+  }
+}
+</script>

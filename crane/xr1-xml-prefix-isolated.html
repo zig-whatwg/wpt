@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: XML element prefix in the inherited default namespace</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const doc = new DOMParser().parseFromString(
+    '<root xmlns="u1"><p:child xmlns:p="u1"/></root>', 'application/xml');
+  assert_equals(new XMLSerializer().serializeToString(doc.documentElement),
+    '<root xmlns="u1"><child xmlns:p="u1"/></root>');
+}, 'Element serialization drops an explicit prefix in the inherited default namespace');
+</script>

@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: isolated SVG anchor DOMTokenList coverage regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const a = document.createElementNS('http://www.w3.org/2000/svg', 'a');
+  assert_class_string(a.relList, 'DOMTokenList');
+}, 'SVG anchor relList is a DOMTokenList');
+</script>

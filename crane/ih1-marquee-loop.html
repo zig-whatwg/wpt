@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Marquee loop integer parsing and browser setter behavior</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/obsolete.html#dom-marquee-loop">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => assert_equals(document.createElement('marquee').loop, -1), 'missing loop defaults to -1');
+for (const [input, expected] of [
+  ['', -1], ['invalid', -1], ['0', -1], ['-2', -1], ['-1', -1],
+  [' +12tail', 12], ['\t\n\f\r 9.5', 9], ['+ 3', -1],
+  ['2147483647', 2147483647], ['2147483648', -1], ['999999999999999999999', -1]
+]) {
+  test(() => {
+    const m = document.createElement('marquee');
+    m.setAttribute('loop', input);
+    assert_equals(m.loop, expected);
+  }, 'loop parses ' + JSON.stringify(input));
+}
+test(() => {
+  const m = document.createElement('marquee');
+  m.loop = -1;
+  assert_equals(m.getAttribute('loop'), '-1');
+  m.setAttribute('loop', '+002tail');
+  m.loop = 2;
+  assert_equals(m.getAttribute('loop'), '2');
+  m.loop = 2147483647;
+  assert_equals(m.loop, 2147483647);
+}, 'valid loop assignments serialize even when the numeric value is unchanged');
+for (const value of [0, -2, -2147483648, 2147483648, 4294967296, NaN]) {
+  test(() => {
+    const m = document.createElement('marquee');
+    m.loop = 3;
+    assert_throws_dom('IndexSizeError', () => { m.loop = value; });
+    assert_equals(m.getAttribute('loop'), '3');
+  }, 'invalid loop setter preserves the attribute: ' + value);
+}
+</script>

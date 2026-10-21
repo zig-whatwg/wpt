@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: serialize 10,000 XML elements 100 times</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const xmlDocument = document.implementation.createDocument(null, 'root');
+const root = xmlDocument.documentElement;
+for (let i = 1; i < 10000; ++i) {
+  const child = xmlDocument.createElementNS(i % 2 ? 'urn:xr1' : null, 'node');
+  child.setAttribute('index', String(i));
+  root.appendChild(child);
+}
+const serializer = new XMLSerializer();
+const expected = serializer.serializeToString(root);
+let actual = '';
+const started = performance.now();
+for (let i = 0; i < 100; ++i) actual = serializer.serializeToString(root);
+const elapsed = performance.now() - started;
+test(() => {
+  assert_equals(root.childNodes.length, 9999);
+  assert_equals(actual, expected);
+}, 'XML serialize: ' + elapsed.toFixed(3) + ' ms for 10000 elements x100');
+</script>
