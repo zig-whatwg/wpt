@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<root xmlns:h="http://www.w3.org/1999/xhtml">
+<h:script src="/resources/testharness.js"></h:script>
+<h:script src="/resources/testharnessreport.js"></h:script>
+<h:script><![CDATA[
+test(() => {
+  assert_true(['text/xml', 'application/xml'].includes(document.contentType));
+  assert_equals(document.documentElement.localName, 'root');
+  assert_equals(document.documentElement.namespaceURI, null);
+}, 'Generic XML document runs an XHTML namespace script');
+]]></h:script>
+</root>

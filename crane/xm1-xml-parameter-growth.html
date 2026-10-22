@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Parameter entity expansion may add parameter entities</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  let declarations = '';
+  for (let i = 0; i < 48; i++) declarations += "<!ENTITY &#37; p" + i + " ''>";
+  const source = '<!DOCTYPE r [<!ENTITY % many "' + declarations + '">%many;%p47;]><r/>';
+  const document = new DOMParser().parseFromString(source, 'application/xml');
+  assert_equals(document.documentElement.localName, 'r');
+  assert_equals(document.getElementsByTagName('parsererror').length, 0);
+}, 'Nested parameter declarations preserve an active expansion across table growth');
+</script>

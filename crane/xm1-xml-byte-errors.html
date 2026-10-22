@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>XML navigation and XHR have different byte-error policies</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script><body><script>
+for (const name of ['utf8', 'utf8-truncated', 'utf16le', 'shift-jis']) {
+  promise_test(async t => {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = 'xm1-byte-error-' + name + '.xml';
+    document.body.appendChild(frame);
+    await loaded;
+    assert_greater_than(frame.contentDocument.getElementsByTagName('parsererror').length, 0);
+  }, 'XML navigation reports malformed ' + name + ' bytes');
+  promise_test(t => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'xm1-byte-error-' + name + '.xml');
+    xhr.responseType = 'document';
+    xhr.onload = t.step_func(() => {
+      assert_not_equals(xhr.responseXML, null);
+      assert_equals(xhr.responseXML.documentElement.textContent, '\uFFFD');
+      resolve();
+    });
+    xhr.onerror = reject;
+    xhr.send();
+  }), 'XHR XML decoding preserves replacement behavior for ' + name);
+}
+</script>

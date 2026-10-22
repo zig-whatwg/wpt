@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Standalone XML rejects unread external parameter entities</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Chrome 155 and Safari 27 reject the unread PE with standalone=yes.
+// Non-standalone behavior has a three-way split: retain XML 1.0 §5.1 skipping.
+for (const later of ['', "<!ENTITY e 'ok'>", "<!ATTLIST r a CDATA 'ok'>"]) {
+  test(() => {
+    const source = "<?xml version='1.0' standalone='yes'?><!DOCTYPE r [<!ENTITY % p SYSTEM 'about:blank'>%p;" + later + "]><r/>";
+    assert_not_equals(new DOMParser().parseFromString(source, 'application/xml').querySelector('parsererror'), null);
+  }, 'standalone=yes rejects unread external PE before ' + (later || 'end of subset'));
+}
+for (const declaration of ['', "<?xml version='1.0' standalone='no'?>"]) {
+  test(() => {
+    const source = declaration + "<!DOCTYPE r [<!ENTITY % p SYSTEM 'about:blank'>%p;<!ATTLIST r a CDATA 'ok'>]><r/>";
+    const doc = new DOMParser().parseFromString(source, 'application/xml');
+    assert_equals(doc.querySelector('parsererror'), null);
+    assert_equals(doc.documentElement.getAttribute('a'), null);
+  }, 'unread external PE skips defaults with ' + (declaration || 'no declaration'));
+}
+test(() => {
+  const source = "<?xml version='1.0' standalone='yes'?><!DOCTYPE r [<!ENTITY % p \"<!ATTLIST r a CDATA 'ok'>\">%p;]><r/>";
+  const doc = new DOMParser().parseFromString(source, 'application/xml');
+  assert_equals(doc.querySelector('parsererror'), null);
+  assert_equals(doc.documentElement.getAttribute('a'), 'ok');
+}, 'standalone=yes still processes an internal parameter entity');
+</script>

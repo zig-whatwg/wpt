@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<script xlink:href="/resources/testharness.js"/>
+<script xlink:href="/resources/testharnessreport.js"/>
+<script><![CDATA[
+test(() => {
+  assert_equals(document.contentType, 'image/svg+xml');
+}, 'SVG script xlink:href preserves runner harness reporting');
+]]></script>
+</svg>

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml">
+<h:script src="/resources/testharness.js"></h:script>
+<h:script src="/resources/testharnessreport.js"></h:script>
+<script><![CDATA[
+test(() => {
+  assert_equals(document.contentType, 'image/svg+xml');
+  assert_equals(document.documentElement.namespaceURI, 'http://www.w3.org/2000/svg');
+  assert_true(document.documentElement instanceof SVGSVGElement);
+}, 'SVG XML document runs its SVG script');
+]]></script>
+</svg>

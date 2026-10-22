@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<Frame xmlns:h="http://www.w3.org/1999/xhtml">
+<h:script><![CDATA[window.xmlScriptRan = true;]]></h:script>
+</Frame>

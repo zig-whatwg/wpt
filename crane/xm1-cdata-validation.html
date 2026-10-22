@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>XML CDATA creation</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+const xml = document.implementation.createDocument(null, 'r');
+for (const data of [']]>', 'prefix]]>suffix', 'prefix]]>']) {
+  test(() => assert_throws_dom('InvalidCharacterError', () => xml.createCDATASection(data)), 'XML rejects closing delimiter: ' + data);
+  test(() => assert_throws_dom('NotSupportedError', () => document.createCDATASection(data)), 'HTML exception precedes delimiter check: ' + data);
+}
+for (const data of ['', ']]', 'a]b>c']) {
+  test(() => { const node = xml.createCDATASection(data); assert_equals(node.data, data); assert_equals(node.ownerDocument, xml); assert_equals(node.nodeType, Node.CDATA_SECTION_NODE); }, 'CDATA data and owner document: ' + data);
+}
+</script>

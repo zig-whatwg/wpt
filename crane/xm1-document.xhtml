@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>XML runner loads XHTML with XML syntax and scripting</title>
+<meta name="variant" content="?first"/>
+<meta name="variant" content="?second"/>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+</head>
+<body>
+<MixedCase id="case"/>
+<script><![CDATA[
+test(() => {
+  assert_equals(document.contentType, 'application/xhtml+xml');
+  assert_equals(document.documentElement.namespaceURI, 'http://www.w3.org/1999/xhtml');
+  assert_equals(document.getElementById('case').localName, 'MixedCase');
+  assert_throws_dom('InvalidStateError', () => document.write('x'));
+}, 'XHTML response uses the XML parser and runs inline CDATA scripts');
+test(() => {
+  assert_true(['?first', '?second'].includes(location.search));
+}, 'XML metadata variants reach the document URL');
+]]></script>
+</body>
+</html>

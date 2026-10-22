@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="data:text/css,%3Aroot%7Bz-index%3A3%7D" type="text/css"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>XML stylesheet PI ownership and asynchronous changes</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script></head><body>
+<script><![CDATA[
+promise_test(async t => {
+  async function until(predicate) {
+    for (let i = 0; i < 100; i++) {
+      if (predicate()) return;
+      await new Promise(r => t.step_timeout(r, 10));
+    }
+    assert_true(predicate(), 'asynchronous PI stylesheet arrived');
+  }
+  const pi = document.firstChild;
+  await until(() => pi.sheet !== null);
+  const oldSheet = pi.sheet;
+  assert_equals(oldSheet.ownerNode, pi);
+  assert_equals(document.styleSheets[0], oldSheet);
+  assert_equals(getComputedStyle(document.documentElement).zIndex, '3');
+  pi.data = 'href="data:text/css,%3Aroot%7Bz-index%3A7%7D" type="text/css"';
+  assert_equals(oldSheet.ownerNode, null);
+  await until(() => pi.sheet !== null && pi.sheet !== oldSheet);
+  assert_equals(getComputedStyle(document.documentElement).zIndex, '7');
+  const retained = pi.sheet;
+  pi.remove();
+  assert_equals(pi.sheet, null);
+  assert_equals(retained.ownerNode, null);
+  assert_equals(retained.cssRules.length, 1);
+  assert_equals(document.styleSheets.length, 0);
+  const pending = document.createProcessingInstruction('xml-stylesheet', 'href="data:text/css,%3Aroot%7Bz-index%3A9%7D"');
+  document.insertBefore(pending, document.documentElement);
+  pending.remove();
+  await new Promise(r => t.step_timeout(r, 30));
+  assert_equals(pending.sheet, null);
+  assert_equals(document.styleSheets.length, 0);
+}, 'PI sheets apply asynchronously and preserve ownership through replacement, removal and pending cancellation');
+]]></script></body></html>

@@ -1,0 +1,47 @@
+<!doctype html><meta charset="utf-8"><title>SVG inline style and rectangle objects</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<body><script>
+const svg = name => document.createElementNS('http://www.w3.org/2000/svg', name);
+for (const name of ['svg', 'rect', 'use', 'foreignObject', 'xm1-unknown']) {
+  test(() => {
+    const element = svg(name), style = element.style;
+    assert_true(style instanceof CSSStyleDeclaration);
+    assert_equals(element.style, style);
+    assert_equals(style.parentRule, null);
+    element.style = 'color: blue;';
+    assert_equals(style.color, 'blue');
+    assert_equals(element.getAttribute('style'), 'color: blue;');
+    element.setAttribute('style', 'opacity: 0.5');
+    assert_equals(style.opacity, '0.5');
+    assert_equals(style.color, '');
+  }, name + ' inline style has stable identity and reflects both mutation directions');
+}
+promise_test(async () => {
+  let owner = svg('use');
+  document.body.appendChild(owner);
+  const style = owner.style, weak = new WeakRef(owner);
+  owner.remove();
+  owner = null;
+  await new Promise(resolve => step_timeout(resolve, 0));
+  TestUtils.gc();
+  style.color = 'red';
+  assert_not_equals(weak.deref(), undefined);
+  assert_equals(weak.deref().style, style);
+  assert_equals(weak.deref().getAttribute('style'), 'color: red;');
+}, 'retained SVG inline style keeps its detached owner alive');
+test(() => {
+  const root = svg('svg'), a = root.createSVGRect(), b = root.createSVGRect();
+  assert_true(a instanceof DOMRect);
+  assert_not_equals(a, b);
+  for (const key of ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left']) assert_equals(a[key], 0, key);
+  a.x = 3; a.y = 4; a.width = 5; a.height = 6;
+  assert_equals(a.right, 8);
+  assert_equals(a.bottom, 10);
+  assert_equals(b.x, 0);
+}, 'createSVGRect returns fresh mutable zero rectangles');
+test(() => {
+  const root = svg('svg'), rect = root.createSVGRect();
+  assert_throws_js(TypeError, () => root.checkIntersection(null, rect));
+  assert_throws_js(TypeError, () => root.checkEnclosure(null, rect));
+}, 'SVG intersection methods reject a null element');
+</script>

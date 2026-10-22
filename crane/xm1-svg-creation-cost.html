@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>SVG createElementNS cost for 100000 elements</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const start = performance.now();
+let last;
+for (let i = 0; i < 100000; ++i) last = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+const elapsed = performance.now() - start;
+test(() => {
+  assert_equals(last.namespaceURI, 'http://www.w3.org/2000/svg');
+  assert_equals(last.localName, 'g');
+}, 'xm1 createElementNS SVG ms: ' + elapsed.toFixed(3));
+</script>

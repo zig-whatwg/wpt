@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Load 100 XML documents through iframe navigation</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const start = performance.now();
+  for (let i = 0; i < 100; ++i) {
+    const frame = document.createElement('iframe');
+    t.add_cleanup(() => frame.remove());
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.src = 'xm1-frame.xml?document=' + i;
+    document.body.appendChild(frame);
+    await loaded;
+    assert_equals(frame.contentDocument.documentElement.localName, 'Frame');
+    assert_true(frame.contentWindow.xmlScriptRan);
+    frame.remove();
+  }
+  console.log('xm1 XML iframe ms: ' + (performance.now() - start));
+}, '100 XML iframe documents preserve case and execute scripts');
+</script>

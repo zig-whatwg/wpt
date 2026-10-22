@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parameter entities remain reusable after growing the declaration table</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const declarations = Array.from({length: 48}, (_, i) => `<!ENTITY &#37; p${i} ''>`).join('');
+  const source = `<!DOCTYPE r [<!ENTITY % many "${declarations}">%many;%p47;%many;]><r/>`;
+  const parsed = new DOMParser().parseFromString(source, 'application/xml');
+  assert_equals(parsed.getElementsByTagName('parsererror').length, 0);
+  assert_equals(parsed.documentElement.localName, 'r');
+}, 'A completed parameter entity expansion clears its recursion guard after table growth');
+</script>

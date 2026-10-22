@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Undeclared XML general entities are fatal</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Firefox 158 and Safari 27 reject undeclared entities even with external markup.
+// Browser majority, row 113 Q17/Q18/Q19 (2026-10-22); no resource is fetched.
+const configurations = [
+  ['no DTD', '', '', true],
+  ['internal DTD without PE references', '', '<!DOCTYPE r>', true],
+  ['unreferenced parameter declaration', '', "<!DOCTYPE r [<!ENTITY % p ''>]>", true],
+  ['external subset', '', "<!DOCTYPE r SYSTEM 'about:blank'>", true],
+  ['internal parameter reference', '', "<!DOCTYPE r [<!ENTITY % p ''>%p;]>", true],
+  ['external parameter reference', '', "<!DOCTYPE r [<!ENTITY % p SYSTEM 'about:blank'>%p;]>", true],
+  ['standalone no with external subset', "<?xml version='1.0' standalone='no'?>", "<!DOCTYPE r SYSTEM 'about:blank'>", true],
+  ['standalone yes with external subset', "<?xml version='1.0' standalone='yes'?>", "<!DOCTYPE r SYSTEM 'about:blank'>", true],
+  ['standalone yes with parameter reference', "<?xml version='1.0' standalone='yes'?>", "<!DOCTYPE r [<!ENTITY % p ''>%p;]>", true]
+];
+for (const [name, declaration, doctype, fatal] of configurations) {
+  for (const attribute of [false, true]) {
+    test(() => {
+      const body = attribute ? "<r a='pre&missing;post'/>" : '<r>pre&missing;post</r>';
+      const doc = new DOMParser().parseFromString(declaration + doctype + body, 'application/xml');
+      assert_equals(!!doc.querySelector('parsererror'), fatal);
+    }, name + ': undeclared entity in ' + (attribute ? 'attribute' : 'content'));
+  }
+}
+test(() => {
+  const doc = new DOMParser().parseFromString("<!DOCTYPE r SYSTEM 'about:blank' [<!ATTLIST r a CDATA '&missing;'>]><r/>", 'application/xml');
+  assert_not_equals(doc.querySelector('parsererror'), null);
+}, 'external subset does not permit an undeclared entity in an attribute default');
+</script>

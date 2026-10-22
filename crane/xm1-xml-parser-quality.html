@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XML well-formedness, declarations, namespaces and attribute defaults</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// XML 1.0 Fifth Edition §§2–4; Namespaces in XML 1.0 Third Edition §§5–7.
+const parseXML = source => new DOMParser().parseFromString(source, "application/xml");
+const invalid = [
+  ["mismatched end tag", "<r></s>"],
+  ["second root", "<r/><s/>"],
+  ["duplicate attribute", '<r a="1" a="2"/>'],
+  ["literal null", "<r>\u0000</r>"],
+  ["null character reference", "<r>&#0;</r>"],
+  ["surrogate reference", "<r>&#xD800;</r>"],
+  ["out of range reference", "<r>&#x110000;</r>"],
+  ["missing reference semicolon", "<r>&#65</r>"],
+  ["undeclared entity", "<r>&unknown;</r>"],
+  ["unterminated CDATA", "<r><![CDATA[text</r>"],
+  ["CDATA terminator in text", "<r>]]></r>"],
+  ["reserved PI target", "<r><?XmL data?></r>"],
+  ["colon in PI target", "<r><?p:t data?></r>"],
+  ["malformed XML declaration", '<?xml encoding="UTF-8"?><r/>'],
+  ["malformed encoding name", '<?xml version="1.0" encoding="8UTF"?><r/>'],
+  ["unbound prefix", "<p:r/>"],
+  ["multiple colons", '<a:b:c xmlns:a="urn:a"/>'],
+  ["duplicate expanded attribute", '<r xmlns:a="urn:x" xmlns:b="urn:x" a:x="1" b:x="2"/>'],
+  ["reserved xml prefix", '<r xmlns:xml="urn:wrong"/>'],
+  ["prefixed namespace undeclaration", '<r xmlns:p=""/>'],
+  ["malformed ELEMENT declaration", '<!DOCTYPE r [<!ELEMENT r WHAT>]><r/>'],
+  ["mixed separators in children", '<!DOCTYPE r [<!ELEMENT r (a,b|c)>]><r/>'],
+  ["missing mixed content star", '<!DOCTYPE r [<!ELEMENT r (#PCDATA|a)>]><r/>'],
+  ["malformed ATTLIST type", '<!DOCTYPE r [<!ATTLIST r a WHATEVER "x">]><r/>'],
+  ["empty attribute enumeration", '<!DOCTYPE r [<!ATTLIST r a () "x">]><r/>'],
+  ["missing attribute default", '<!DOCTYPE r [<!ATTLIST r a CDATA>]><r/>'],
+  ["invalid character in default", '<!DOCTYPE r [<!ATTLIST r a CDATA "&#0;">]><r/>'],
+  ["literal less than in default", '<!DOCTYPE r [<!ATTLIST r a CDATA "<">]><r/>'],
+  ["forward entity in default", '<!DOCTYPE r [<!ATTLIST r a CDATA "&e;"><!ENTITY e "hello">]><r/>'],
+  ["malformed NOTATION declaration", '<!DOCTYPE r [<!NOTATION n WHATEVER>]><r/>'],
+  ["parameter entity inside internal declaration", '<!DOCTYPE r [<!ENTITY % t "ANY"><!ELEMENT r %t;>]><r/>'],
+  ["recursive general entity", '<!DOCTYPE r [<!ENTITY e "&e;">]><r>&e;</r>'],
+  ["external entity in attribute", '<!DOCTYPE r [<!ENTITY e SYSTEM "about:blank">]><r a="&e;"/>'],
+  ["colon in general entity name", '<!DOCTYPE r [<!ENTITY p:e "text">]><r>&p:e;</r>']
+];
+for (const [name, source] of invalid) {
+  test(() => assert_greater_than(parseXML(source).getElementsByTagName("parsererror").length, 0), name);
+}
+
+test(() => {
+  const d = parseXML('<r>&#65;&#x1F642;&lt;&amp;&quot;&apos;&gt;</r>');
+  assert_equals(d.documentElement.textContent, 'A🙂<&"\'>');
+}, "character and predefined references");
+test(() => {
+  const d = parseXML('<r><![CDATA[<x>&e;]]><?target data?></r>');
+  assert_equals(d.documentElement.firstChild.nodeType, Node.CDATA_SECTION_NODE);
+  assert_equals(d.documentElement.firstChild.data, '<x>&e;');
+  assert_equals(d.documentElement.lastChild.nodeType, Node.PROCESSING_INSTRUCTION_NODE);
+  assert_equals(d.documentElement.lastChild.target, 'target');
+  assert_equals(d.documentElement.lastChild.data, 'data');
+}, "CDATA and processing instructions retain their node types");
+test(() => {
+  const d = parseXML('<?xml version="1.0" encoding="UTF-8"?><r>\r\nx\r</r>');
+  assert_equals(d.documentElement.textContent, '\nx\n');
+}, "XML declaration and end of line normalization");
+test(() => {
+  const d = parseXML('<r xmlns="urn:r" xmlns:p="urn:p" p:a="1"><c xmlns=""/></r>');
+  assert_equals(d.documentElement.namespaceURI, 'urn:r');
+  assert_equals(d.documentElement.getAttributeNS('urn:p', 'a'), '1');
+  assert_equals(d.documentElement.firstChild.namespaceURI, null);
+  const copy = parseXML(new XMLSerializer().serializeToString(d));
+  assert_equals(copy.documentElement.getAttributeNS('urn:p', 'a'), '1');
+  assert_equals(copy.documentElement.firstChild.namespaceURI, null);
+}, "namespace scope survives an XMLSerializer round trip");
+test(() => {
+  const d = parseXML('<!DOCTYPE r [<!ENTITY e "first"><!ENTITY e "last">]><r a="&e;">&e;</r>');
+  assert_equals(d.documentElement.getAttribute('a'), 'first');
+  assert_equals(d.documentElement.textContent, 'first');
+}, "the first internal entity declaration wins");
+
+const defaults = [
+  ["default attribute", '<!ATTLIST r a CDATA "default">', '<r/>', 'default'],
+  ["explicit attribute overrides default", '<!ATTLIST r a CDATA "default">', '<r a="explicit"/>', 'explicit'],
+  ["first attribute declaration wins", '<!ATTLIST r a CDATA "first"><!ATTLIST r a CDATA "last">', '<r/>', 'first'],
+  ["entity reference in default", '<!ENTITY e "hello"><!ATTLIST r a CDATA "&e;">', '<r/>', 'hello'],
+  ["tokenized explicit value", '<!ATTLIST r a NMTOKENS #IMPLIED>', '<r a="  one   two  "/>', 'one two'],
+  ["tokenized default value", '<!ATTLIST r a NMTOKENS "  one   two  ">', '<r/>', 'one two'],
+  ["CDATA retains spaces", '<!ATTLIST r a CDATA "  one   two  ">', '<r/>', '  one   two  '],
+  ["character reference retains tab", '<!ATTLIST r a NMTOKENS #IMPLIED>', '<r a="  one&#9;two  "/>', 'one\ttwo'],
+  ["FIXED is not validated", '<!ATTLIST r a CDATA #FIXED "one">', '<r a="two"/>', 'two'],
+  ["REQUIRED is not validated", '<!ATTLIST r a CDATA #REQUIRED>', '<r/>', null],
+  ["empty ATTLIST is accepted", '<!ATTLIST r>', '<r/>', null],
+  ["PUBLIC-only notation is accepted", '<!NOTATION n PUBLIC "identifier">', '<r/>', null]
+];
+for (const [name, subset, body, value] of defaults) {
+  test(() => {
+    const d = parseXML('<!DOCTYPE r [' + subset + ']>' + body);
+    assert_equals(d.getElementsByTagName('parsererror').length, 0);
+    assert_equals(d.documentElement.getAttribute('a'), value);
+  }, name);
+}
+test(() => {
+  const d = parseXML('<!DOCTYPE r [<!ATTLIST r xmlns CDATA "urn:default" xmlns:p CDATA "urn:p" p:a CDATA "yes">]><r/>');
+  assert_equals(d.documentElement.namespaceURI, 'urn:default');
+  assert_equals(d.documentElement.getAttributeNS('urn:p', 'a'), 'yes');
+}, "defaulted namespace attributes take effect before name resolution");
+</script>
