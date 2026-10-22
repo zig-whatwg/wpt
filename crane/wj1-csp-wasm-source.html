@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'nonce-wj1'">
+<title>Wasm constructor adaptation preserves CSP violation source location</title>
+<link rel="help" href="https://w3c.github.io/webappsec-csp/#create-violation-for-global">
+<script nonce="wj1" src="/resources/testharness.js"></script>
+<script nonce="wj1" src="/resources/testharnessreport.js"></script>
+<script nonce="wj1">
+promise_test(async t => {
+  const violation = new Promise(resolve => {
+    document.addEventListener('securitypolicyviolation', resolve, {once:true});
+  });
+  const script = document.createElement('script');
+  script.nonce = 'wj1';
+  script.textContent = "try { new WebAssembly.Module(new Uint8Array([0,97,115,109,1,0,0,0])); } catch(e) {}\n//# sourceURL=https://wj1-source.test/caller.js";
+  document.head.appendChild(script);
+  script.remove();
+  const event = await violation;
+  assert_equals(event.blockedURI, 'wasm-eval');
+  assert_equals(event.sourceFile, 'https://wj1-source.test/caller.js');
+  assert_equals(event.lineNumber, 1);
+  assert_equals(event.columnNumber, 7);
+}, 'Blocked Module construction reports the calling script source location');
+</script>

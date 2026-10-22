@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebAssembly.Exception constructor ordering</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const C = WebAssembly.Exception;
+  assert_equals(C.name, 'Exception');
+  // Golden rule 2: Firefox/Safari retain length 1; the two-argument spec is older.
+  assert_equals(C.length, 1);
+  assert_equals(C.prototype.constructor, C);
+  const tag = new WebAssembly.Tag({parameters:[]});
+  assert_throws_js(TypeError, () => C(tag, []));
+  const seen = [];
+  const proto = {};
+  const target = new Proxy(function(){}, {get(t, key, receiver) {
+    if (key === 'prototype') {seen.push('prototype'); return proto;}
+    return Reflect.get(t, key, receiver);
+  }});
+  const made = Reflect.construct(C, [tag, [], {get traceStack(){seen.push('traceStack'); return true;}}], target);
+  assert_array_equals(seen, ['prototype', 'traceStack']);
+  assert_equals(Object.getPrototypeOf(made), proto);
+  const sentinel = {};
+  assert_throws_exactly(sentinel, () => new C(tag, [], {get traceStack(){throw sentinel;}}));
+}, 'Exception preserves interface shape, custom prototype, and getter order');
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const foreign = frame.contentWindow;
+  const intrinsic = foreign.WebAssembly.Exception.prototype;
+  const NewTarget = new foreign.Function();
+  NewTarget.prototype = null;
+  foreign.WebAssembly.Exception = function(){throw new Error('mutable namespace');};
+  const tag = new WebAssembly.Tag({parameters:[]});
+  const made = Reflect.construct(WebAssembly.Exception, [tag, []], NewTarget);
+  assert_equals(Object.getPrototypeOf(made), intrinsic);
+}, 'Exception primitive NewTarget prototype falls back to its realm intrinsic');
+</script>

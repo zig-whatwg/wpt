@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebAssembly Exception construction cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const tag = new WebAssembly.Tag({parameters:[]});
+const make = () => new WebAssembly.Exception(tag,[]);
+const read = e => e.is(tag) ? 1 : 0;
+let checksum = 0;
+function batch() {
+  const values = new Array(100);
+  for (let i = 0; i < 100; i++) values[i] = make();
+  for (let i = 0; i < 100; i++) checksum += read(values[i]);
+}
+for (let i = 0; i < 10; i++) batch();
+checksum = 0;
+const start = performance.now();
+for (let i = 0; i < 1000; i++) batch();
+const elapsed = performance.now() - start;
+test(() => assert_equals(checksum, 1000 * 100),
+  `Wasm Exception construction: ${elapsed.toFixed(6)} ms for 1000 batches`);
+</script>

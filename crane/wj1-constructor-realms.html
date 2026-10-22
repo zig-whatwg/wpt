@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebAssembly constructor instanceof across realms</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => { frame.onload = resolve; });
+  frame.src = '/common/blank.html';
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const other = frame.contentWindow;
+  const bytes = new Uint8Array([0,97,115,109,1,0,0,0]);
+  const module = new WebAssembly.Module(bytes);
+  const tag = new WebAssembly.Tag({parameters:[]});
+  for (const [name,args] of [
+    ['Module',[bytes]], ['Instance',[module]], ['Memory',[{initial:0}]],
+    ['Table',[{element:'externref',initial:0}]], ['Global',[{value:'i32'},42]],
+    ['Exception',[tag,[]]],
+  ]) {
+    const C = WebAssembly[name];
+    const F = other.WebAssembly[name];
+    const local = Reflect.construct(C,args);
+    const foreign = Reflect.construct(F,args);
+    assert_true(local instanceof C,name + ' local');
+    assert_false(local instanceof F,name + ' local against foreign');
+    assert_true(foreign instanceof F,name + ' foreign');
+    assert_false(foreign instanceof C,name + ' foreign against local');
+    assert_true(foreign instanceof F.bind(undefined),name + ' foreign bind');
+    assert_true(Function.prototype[Symbol.hasInstance].call(F,foreign),name + ' explicit hasInstance');
+    assert_false(Function.prototype[Symbol.hasInstance].call(C,foreign),name + ' explicit wrong realm');
+    const cross = Reflect.construct(C,args,F);
+    assert_equals(Object.getPrototypeOf(cross),F.prototype,name + ' cross newTarget');
+    assert_true(cross instanceof F,name + ' cross newTarget instanceof');
+  }
+}, 'WebAssembly constructor instanceof uses each realm original prototype');
+</script>

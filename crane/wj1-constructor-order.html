@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebAssembly constructor prototype reads and retained intrinsics</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#internally-create-a-new-object-implementing-the-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const bytes = new Uint8Array([0,97,115,109,1,0,0,0]);
+const module = new WebAssembly.Module(bytes);
+const cases = [["Module", [bytes]], ["Instance", [module]],
+  ["Memory", [{initial: 0}]], ["Table", [{element: "anyfunc", initial: 0}]],
+  ["Global", [{value: "i32"}]]];
+for (const [name, args] of cases) {
+  test(() => {
+    let reads = 0;
+    const prototype = {};
+    const target = new Proxy(function () {}, {
+      get(t, key, receiver) {
+        if (key === "prototype") { ++reads; return prototype; }
+        return Reflect.get(t, key, receiver);
+      }
+    });
+    const value = Reflect.construct(WebAssembly[name], args, target);
+    assert_equals(reads, 1);
+    assert_equals(Object.getPrototypeOf(value), prototype);
+  }, `${name}: reads newTarget.prototype exactly once`);
+
+  test(t => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    t.add_cleanup(() => iframe.remove());
+    const realm = iframe.contentWindow;
+    const expected = realm.WebAssembly[name].prototype;
+    const target = new realm.Function();
+    target.prototype = null;
+    realm.WebAssembly = new Proxy({}, {get() { assert_unreached("mutable namespace lookup"); }});
+    assert_equals(Object.getPrototypeOf(Reflect.construct(WebAssembly[name], args, target)), expected);
+  }, `${name}: fallback uses the intrinsic after the namespace is replaced`);
+
+  test(() => {
+    const sentinel = {};
+    const target = new Proxy(function () {}, {get(t, key, receiver) {
+      if (key === "prototype") throw sentinel;
+      return Reflect.get(t, key, receiver);
+    }});
+    assert_throws_exactly(sentinel, () => Reflect.construct(WebAssembly[name], args, target));
+  }, `${name}: propagates a prototype getter exception`);
+
+  test(() => {
+    let revoke;
+    const revocable = Proxy.revocable(function () {}, {get(t, key, receiver) {
+      if (key === "prototype") { revoke(); return undefined; }
+      return Reflect.get(t, key, receiver);
+    }});
+    revoke = revocable.revoke;
+    assert_throws_js(TypeError, () => Reflect.construct(WebAssembly[name], args, revocable.proxy));
+  }, `${name}: a proxy revoked by the prototype getter throws during GetFunctionRealm`);
+}
+for (const name of ["Memory", "Table"]) {
+  test(() => {
+    const order = [];
+    const prototype = {};
+    const target = new Proxy(function () {}, {get(t, key, receiver) {
+      if (key === "prototype") { order.push("prototype"); return prototype; }
+      return Reflect.get(t, key, receiver);
+    }});
+    const descriptor = {initial: 0, element: "anyfunc", get address() {
+      order.push("address"); return "i32";
+    }};
+    Reflect.construct(WebAssembly[name], [descriptor], target);
+    assert_array_equals(order, ["prototype", "address"]);
+  }, `${name}: prototype selection precedes descriptor conversion`);
+}
+</script>

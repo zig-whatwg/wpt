@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebAssembly Memory uses NewTarget's realm for a primitive prototype</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#internally-create-a-new-object-implementing-the-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<iframe id="other"></iframe>
+<script>
+test(() => {
+  const realm = document.getElementById("other").contentWindow;
+  const target = new realm.Function();
+  target.prototype = null;
+  const memory = Reflect.construct(WebAssembly.Memory, [{initial: 0}], target);
+  assert_equals(Object.getPrototypeOf(memory), realm.WebAssembly.Memory.prototype);
+}, "A primitive newTarget.prototype selects the Memory prototype from newTarget's realm");
+</script>

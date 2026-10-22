@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebAssembly constructor cost controls</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Each measurement keeps only one batch live and checks the constructed values.
+// Timing is the subtest name so the same frozen runner records both sides.
+function measure(label, batches, make, read) {
+  let checksum = 0;
+  function batch() {
+    const values = new Array(100);
+    for (let i = 0; i < values.length; i++) values[i] = make();
+    for (let i = 0; i < values.length; i++) checksum += read(values[i]);
+  }
+  for (let i = 0; i < 10; i++) batch();
+  checksum = 0;
+  const start = performance.now();
+  for (let i = 0; i < batches; i++) batch();
+  const elapsed = performance.now() - start;
+  test(() => assert_equals(checksum, batches * 100),
+    `${label}: ${elapsed.toFixed(6)} ms for ${batches} batches`);
+}
+measure('Wasm Memory construction', 100,
+  () => new WebAssembly.Memory({initial:0,maximum:1}), m => m.buffer.byteLength === 0 ? 1 : 0);
+measure('Wasm Table construction', 1000,
+  () => new WebAssembly.Table({element:'externref',initial:0}), t => t.length === 0 ? 1 : 0);
+measure('Wasm Global construction', 1000,
+  () => new WebAssembly.Global({value:'i32'}, 42), g => g.value === 42 ? 1 : 0);
+const tag = new WebAssembly.Tag({parameters:[]});
+measure('Wasm Exception construction', 1000,
+  () => new WebAssembly.Exception(tag, []), e => e.is(tag) ? 1 : 0);
+measure('Wasm Exception traced construction', 10,
+  () => new WebAssembly.Exception(tag, [], {traceStack:true}), e => e.is(tag) ? 1 : 0);
+</script>

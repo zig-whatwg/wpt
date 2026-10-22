@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Held WebAssembly callables retain their realm intrinsics</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/wasm/jsapi/wasm-module-builder.js"></script>
+<body>
+<script>
+const wj1EmptyModuleBytes = new Uint8Array([0,97,115,109,1,0,0,0]);
+for (const name of ['Module','Instance','Memory','Table','Global']) {
+  promise_test(async () => {
+    let frame = document.createElement('iframe');
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    document.body.append(frame);
+    await loaded;
+    const target = new frame.contentWindow.Function('return WebAssembly.' + name + '.prototype');
+    target.prototype = null;
+    frame.remove();
+    frame = null;
+    await TestUtils.gc();
+    const args = {Module:[wj1EmptyModuleBytes], Instance:[new WebAssembly.Module(wj1EmptyModuleBytes)],
+      Memory:[{initial:0}], Table:[{initial:0,element:'anyfunc'}], Global:[{value:'i32'}]}[name];
+    assert_equals(Object.getPrototypeOf(Reflect.construct(WebAssembly[name], args, target)), target());
+  }, name + ' fallback works through a held NewTarget after its iframe is removed and collected');
+}
+promise_test(async () => {
+  let frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.append(frame);
+  await loaded;
+  let original = new frame.contentWindow.Function('return 42');
+  const marker = new WebAssembly.Suspending(original);
+  original = null;
+  frame.remove();
+  frame = null;
+  await TestUtils.gc();
+  const b = new WasmModuleBuilder();
+  const i = b.addImport('m','f',kSig_i_v);
+  b.addFunction('f', kSig_i_v).addBody([kExprCallFunction,i]).exportFunc();
+  const instance = b.instantiate({m:{f:marker}});
+  assert_equals(await WebAssembly.promising(instance.exports.f)(), 42);
+}, 'A held Suspending marker retains its import realm Promise intrinsics after iframe removal and GC');
+</script>
+</body>
