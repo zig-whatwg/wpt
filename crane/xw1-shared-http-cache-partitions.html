@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SharedWorker HTTP cache remains partitioned by its owner site</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#http-cache-partitions">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const name = 'xw1-' + token();
+  const url = new URL('/resource-timing/resources/cacheable-and-validated.py?content=xw1&partition=' + token(), location.href).href;
+  const worker = new SharedWorker('/crane/xw1-shared-http-cache-worker.js', name);
+  t.add_cleanup(() => { worker.port.postMessage({close: true}); worker.port.close(); });
+  const ask = cache => new Promise((resolve, reject) => {
+    worker.onerror = () => reject(new Error('SharedWorker failed'));
+    worker.port.onmessage = event => resolve(event.data);
+    worker.port.postMessage({url, cache});
+  });
+  const first = await ask('default');
+  assert_equals(first.text, 'xw1');
+  const hit = await ask('only-if-cached');
+  assert_equals(hit.transferSize, 0, 'first owner has a usable cache');
+
+  const other = new URL('/crane/xw1-shared-http-cache-owner.html', get_host_info().HTTP_NOTSAMESITE_ORIGIN);
+  other.search = new URLSearchParams({owner: location.origin, name, resource: url});
+  let popup;
+  const answer = new Promise(resolve => {
+    const listener = event => {
+      if (event.source === popup && event.data.name === name) resolve(event.data);
+    };
+    addEventListener('message', listener);
+    t.add_cleanup(() => removeEventListener('message', listener));
+  });
+  popup = open(other.href);
+  assert_not_equals(popup, null);
+  t.add_cleanup(() => popup.close());
+  const result = await answer;
+  assert_false('error' in result, result.error);
+  assert_equals(result.miss.error, 'TypeError', 'other top-level site cannot read the first cache');
+  assert_not_equals(result.first.instanceToken, first.instanceToken, 'same URL and name still select different workers');
+  assert_equals(result.first.text, 'xw1');
+  assert_equals(result.hit.transferSize, 0, 'other top-level site has its own usable cache');
+  assert_equals((await ask('only-if-cached')).transferSize, 0, 'first partition survives the other owner');
+}, 'two top-level sites sharing a SharedWorker URL and name keep separate workers and HTTP caches');
+</script>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Owner for SharedWorker HTTP cache partition test</title>
+<body>
+<script>
+const args = new URLSearchParams(location.search);
+const ownerOrigin = args.get('owner');
+const name = args.get('name');
+if (args.get('frame') !== '1') {
+  const child = document.createElement('iframe');
+  const url = new URL(location.href);
+  url.host = new URL(ownerOrigin).host;
+  url.searchParams.set('frame', '1');
+  addEventListener('message', event => {
+    if (event.source === child.contentWindow && event.data.name === name)
+      opener.postMessage(event.data, ownerOrigin);
+  });
+  child.src = url;
+  document.body.append(child);
+} else {
+  (async () => {
+    const worker = new SharedWorker('/crane/xw1-shared-http-cache-worker.js', name);
+    const ask = cache => new Promise((resolve, reject) => {
+      worker.onerror = () => reject(new Error('SharedWorker failed'));
+      worker.port.onmessage = event => resolve(event.data);
+      worker.port.postMessage({url: args.get('resource'), cache});
+    });
+    try {
+      const miss = await ask('only-if-cached');
+      const first = await ask('default');
+      const hit = await ask('only-if-cached');
+      parent.postMessage({name, miss, first, hit}, '*');
+    } catch (error) {
+      parent.postMessage({name, error: error.message}, '*');
+    } finally {
+      worker.port.postMessage({close: true});
+      worker.port.close();
+    }
+  })();
+}
+</script>

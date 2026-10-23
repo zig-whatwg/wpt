@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="timeout" content="long">
+<title>1000 asynchronous XMLHttpRequests</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+const t=async_test('1000 asynchronous XMLHttpRequests');
+(async()=>{const start=performance.now();for(let i=0;i<1000;++i)await new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('GET','/xhr/resources/folder.txt');x.onload=()=>x.status===200?resolve():reject(new Error('status '+x.status));x.onerror=reject;x.send();});const elapsed=performance.now()-start;test(()=>assert_true(elapsed>=0),'XW1 async XHR: '+elapsed.toFixed(3)+' ms for 1000 requests');t.done();})().catch(t.step_func(e=>{throw e}));
+</script>

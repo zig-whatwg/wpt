@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>100 iframe realm creations</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frames = [];
+  t.add_cleanup(() => frames.forEach(frame => frame.remove()));
+  const start = performance.now();
+  for (let i = 0; i < 100; ++i) {
+    await new Promise(resolve => {
+      const frame = document.createElement('iframe');
+      frames.push(frame);
+      frame.onload = resolve;
+      frame.srcdoc = '<!doctype html><p>frame</p>';
+      document.body.append(frame);
+    });
+  }
+  const elapsed = performance.now() - start;
+  test(() => assert_true(elapsed >= 0),
+    'XW1 iframe starts: ' + elapsed.toFixed(3) + ' ms for 100 iframes');
+  assert_equals(frames.length, 100);
+}, '100 iframe documents load with their own realms');
+</script>

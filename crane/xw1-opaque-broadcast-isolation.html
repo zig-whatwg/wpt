@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opaque origins keep distinct BroadcastChannel partitions</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frames = [];
+  const token = 'xw1-' + Math.random();
+  const results = new Map();
+  const complete = new Promise(resolve => {
+    window.addEventListener('message', t.step_func(e => {
+      if (!e.data || e.data.token !== token) return;
+      results.set(e.data.id, e.data.seen);
+      if (results.size === 2) resolve();
+    }));
+  });
+  for (let id=0; id<2; ++id) {
+    const f=document.createElement('iframe');
+    f.sandbox='allow-scripts';
+    f.srcdoc=`<script>
+      const a=new BroadcastChannel(${JSON.stringify(token)});
+      const b=new BroadcastChannel(${JSON.stringify(token)});
+      const seen=[];
+      b.onmessage=e=>seen.push(e.data);
+      onmessage=e=>{
+        if(e.data!=='start')return;
+        a.postMessage(${id});
+        setTimeout(()=>{parent.postMessage({token:${JSON.stringify(token)},id:${id},seen},'*');a.close();b.close()},100);
+      };
+    <\/script>`;
+    document.body.append(f);
+    t.add_cleanup(()=>f.remove());
+    frames.push(f);
+  }
+  await Promise.all(frames.map(f=>new Promise(resolve=>f.onload=resolve)));
+  for(const f of frames)f.contentWindow.postMessage('start','*');
+  await complete;
+  assert_array_equals(results.get(0),[0]);
+  assert_array_equals(results.get(1),[1]);
+}, 'Two sandboxed opaque origins have separate BroadcastChannel partitions, with a same-origin control');
+</script>

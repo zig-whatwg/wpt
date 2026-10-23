@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="timeout" content="long">
+<title>100 worker starts</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+const t=async_test('100 dedicated worker starts');
+(async()=>{const url=URL.createObjectURL(new Blob(['postMessage(1);'],{type:'text/javascript'}));try{const start=performance.now();for(let i=0;i<100;++i)await new Promise((resolve,reject)=>{const w=new Worker(url);w.onmessage=e=>{w.terminate();e.data===1?resolve():reject(new Error('bad message'));};w.onerror=e=>{w.terminate();reject(e);};});const elapsed=performance.now()-start;test(()=>assert_true(elapsed>=0),'XW1 worker starts: '+elapsed.toFixed(3)+' ms for 100 workers');t.done();}finally{URL.revokeObjectURL(url);}})().catch(t.step_func(e=>{throw e}));
+</script>

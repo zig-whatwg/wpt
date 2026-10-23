@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="timeout" content="long">
+<title>1000 synchronous XMLHttpRequests</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+const start=performance.now();
+let ok=0;
+for(let i=0;i<1000;++i){const x=new XMLHttpRequest();x.open('GET','/xhr/resources/folder.txt',false);x.send();if(x.status===200)++ok;}
+const elapsed=performance.now()-start;
+test(()=>assert_equals(ok,1000),'XW1 sync XHR: '+elapsed.toFixed(3)+' ms for 1000 requests');
+</script>

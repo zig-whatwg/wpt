@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>content preserves complete URL tokens and adjacent components</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-an-ident-like-token">
+<link rel="help" href="https://drafts.csswg.org/css-content-3/#content-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const url = 'https://example.org/picture.svg';
+const serialized = `url("${url}")`;
+const cases = [
+  [`url(${url}) 'tail'`, `${serialized} "tail"`, 'unquoted URL followed by text'],
+  [`url('${url}') 'tail'`, `${serialized} "tail"`, 'quoted URL followed by text'],
+  [String.raw`u\72 l(${url}) 'tail'`, `${serialized} "tail"`, 'escaped function name'],
+  [` /* prefix */ url( \t${url} \n) 'tail'`, `${serialized} "tail"`, 'comments and URL whitespace'],
+  [`url(${url}) counter(item)`, `${serialized} counter(item)`, 'function after an unquoted URL'],
+  [`'lead' url(${url})`, `"lead" ${serialized}`, 'unquoted URL after text'],
+];
+for (const [input, expected, label] of cases) {
+  test(() => {
+    const element = document.createElement('div');
+    element.style.setProperty('content', input);
+    assert_equals(element.style.getPropertyValue('content'), expected);
+  }, `content token boundary: ${label}`);
+}
+for (const input of ['url(bad name) "tail"', 'url(bad(name)) "tail"']) {
+  test(() => {
+    const element = document.createElement('div');
+    element.style.setProperty('content', input);
+    assert_equals(element.style.getPropertyValue('content'), '');
+  }, `content rejects malformed URL: ${input}`);
+}
+</script>
