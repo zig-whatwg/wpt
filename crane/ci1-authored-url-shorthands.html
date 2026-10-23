@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Specified and computed shorthand URL serialization</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#serializing-css-values">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#relative-urls">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row119 Q69: use the same frozen URL metadata in longhand and shorthand reads.
+// Mask-border follows Safari's implemented shorthand, per row119 Q52.
+let nextId = 0;
+for (const property of ['background', 'marker', 'mask', 'mask-border']) {
+  for (const raw of ['picture.svg', '#icon']) {
+    test(t => {
+      const target = document.createElement('div');
+      target.id = `ci1-shorthand-url-${nextId++}`;
+      document.body.append(target);
+      t.add_cleanup(() => target.remove());
+      const sheet = document.createElement('style');
+      sheet.textContent = `#${target.id} { ${property}: url("${raw}"); }`;
+      document.head.append(sheet);
+      t.add_cleanup(() => sheet.remove());
+      const specifiedUrl = `url("${raw}")`;
+      assert_true(sheet.sheet.cssRules[0].style.getPropertyValue(property).includes(specifiedUrl), 'specified shorthand retains authored URL');
+      const expected = raw[0] === '#' ? raw : new URL(raw, document.baseURI).href;
+      const computed = getComputedStyle(target).getPropertyValue(property);
+      assert_true(computed.includes(`url("${expected}")`), 'computed shorthand uses its resolved URL or local fragment');
+      if (raw[0] !== '#') assert_false(computed.includes(specifiedUrl), 'computed shorthand cannot retain a relative URL');
+    }, `${property} shorthand URL: ${raw}`);
+  }
+}
+</script>

@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated authored URL in a stylesheet CSSOM declaration</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>.ci1-isolated {}</style>
+<script>
+// Isolates css/css-syntax/url-whitespace-consumption.html's failing check.
+test(() => {
+  const style = document.styleSheets[0].cssRules[0].style;
+  style.setProperty('background-image', 'url("foo")');
+  assert_equals(style.getPropertyValue('background-image'), 'url("foo")');
+}, 'specified stylesheet URL retains authored relative text');
+</script>

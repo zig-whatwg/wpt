@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nested paint and filter colors preserve computation dependencies</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#tree-counting">
+<link rel="help" href="https://drafts.csswg.org/filter-effects-1/#funcdef-filter-drop-shadow">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function thirdSibling(t) {
+  const parent = document.createElement('div');
+  for (let i = 0; i < 3; ++i) parent.appendChild(document.createElement('span'));
+  document.body.appendChild(parent);
+  t.add_cleanup(() => parent.remove());
+  return parent.lastElementChild;
+}
+
+test(t => {
+  const target = thirdSibling(t);
+  target.style.fill = 'url("#paint") rgb(calc(sibling-index() * 20) 0 0)';
+  assert_not_equals(target.style.fill, '');
+  assert_equals(getComputedStyle(target).fill, 'url("#paint") rgb(60, 0, 0)');
+}, 'Paint fallback color uses the element tree-count input');
+
+test(t => {
+  const target = thirdSibling(t);
+  target.style.filter = 'drop-shadow(rgb(calc(sibling-count() * 20) 0 0) 1px 2px)';
+  assert_not_equals(target.style.filter, '');
+  assert_equals(getComputedStyle(target).filter, 'drop-shadow(rgb(60, 0, 0) 1px 2px 0px)');
+}, 'Drop-shadow color uses the element tree-count input');
+
+test(t => {
+  const target = thirdSibling(t);
+  target.style.filter = 'drop-shadow(rgb(calc(sibling-index() * 20) 0 0) 1px 2px)';
+  const child = target.appendChild(document.createElement('span'));
+  child.style.filter = 'inherit';
+  assert_equals(getComputedStyle(child).filter, 'drop-shadow(rgb(60, 0, 0) 1px 2px 0px)');
+}, 'Inherited filter keeps the parent computed color instead of recounting siblings');
+
+test(t => {
+  const target = thirdSibling(t);
+  target.style.fill = 'url("#paint") rgb(random(fixed .5, 0, 200) 0 0)';
+  assert_not_equals(target.style.fill, '');
+  assert_equals(getComputedStyle(target).fill, 'url("#paint") rgb(100, 0, 0)');
+}, 'Paint fallback computes a fixed random color without an external draw');
+
+test(t => {
+  const host = document.createElement('div');
+  host.id = 'ci1-b1-color-part-host';
+  const shadow = host.attachShadow({mode: 'open'});
+  shadow.innerHTML = '<span></span><span part="target"></span><span></span>';
+  const sheet = document.createElement('style');
+  sheet.textContent = '#ci1-b1-color-part-host::part(target) {' +
+    'fill:url("#paint") rgb(calc(sibling-index() * 20) 0 0);' +
+    'filter:drop-shadow(rgb(calc(sibling-count() * 20) 0 0) 1px 2px)}';
+  document.body.appendChild(sheet);
+  document.body.appendChild(host);
+  t.add_cleanup(() => { host.remove(); sheet.remove(); });
+  const style = getComputedStyle(shadow.children[1]);
+  assert_equals(style.fill, 'url("#paint") rgb(0, 0, 0)');
+  assert_equals(style.filter, 'drop-shadow(rgb(0, 0, 0) 1px 2px 0px)');
+}, 'A part declaration keeps its tree-count restriction inside both color aggregates');
+</script>

@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cursor fallback grammar and list image CSSOM values</title>
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/#cursor">
+<link rel="help" href="https://drafts.csswg.org/css-lists-3/#propdef-list-style-image">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><span id="child"></span></div>
+<script>
+const parent = document.getElementById('parent');
+const child = document.getElementById('child');
+test(() => {
+  assert_equals(getComputedStyle(child).cursor, 'auto');
+  assert_equals(getComputedStyle(child).listStyleImage, 'none');
+}, 'Initial cursor and list-style-image values are exposed');
+test(() => {
+  parent.style.cursor = 'url("https://example.test/one.cur") 1 -2, url("https://example.test/two.png"), grab';
+  assert_equals(parent.style.cursor, 'url("https://example.test/one.cur") 1 -2, url("https://example.test/two.png"), grab');
+  assert_equals(getComputedStyle(child).cursor, getComputedStyle(parent).cursor);
+  parent.style.cursor = '';
+}, 'Cursor fallback order and optional hotspot pair survive inheritance');
+test(() => {
+  parent.style.listStyleImage = 'url("https://example.test/marker.png")';
+  assert_equals(getComputedStyle(child).listStyleImage, 'url("https://example.test/marker.png")');
+  parent.style.listStyleImage = '';
+}, 'List image inherits its computed URL');
+for (const value of ['url(a.cur)', 'url(a.cur) pointer', 'url(a.cur) 1, pointer', 'url(a.cur) 1px 2px, pointer', 'pointer, url(a.cur)', 'linear-gradient(red, blue), pointer']) {
+  test(() => {
+    parent.style.cursor = 'crosshair';
+    parent.style.cursor = value;
+    assert_equals(parent.style.cursor, 'crosshair');
+    parent.style.cursor = '';
+  }, 'Reject malformed cursor without replacing declaration: ' + value);
+}
+test(() => {
+  const style = document.createElement('div').style;
+  style.cssText = 'cursor: copy; list-style-image: none';
+  assert_equals(style.length, 2);
+  assert_array_equals([style.item(0), style.item(1)], ['cursor', 'list-style-image']);
+  assert_equals(style.getPropertyValue('cursor'), 'copy');
+  assert_true(Array.from(getComputedStyle(child)).includes('cursor'));
+  assert_true(Array.from(getComputedStyle(child)).includes('list-style-image'));
+}, 'Both properties enumerate through specified and computed CSSOM');
+</script>

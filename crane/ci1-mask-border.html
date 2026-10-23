@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shipped mask-border shorthand and the mask reset set</title>
+<link rel="help" href="https://drafts.fxtf.org/css-masking-1/#the-mask-border">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q50 browser probe: integrator-probes-1023f/results/maskborder-*.json.
+test(() => {
+  assert_false(CSS.supports('mask-border-mode', 'alpha'));
+  assert_false(CSS.supports('mask-border-mode', 'luminance'));
+}, 'The unshipped mask-border-mode remains unsupported');
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.setProperty('mask-border', 'round url(a) 10 20 10 20 fill / 2px 3px / 4px');
+  assert_true(CSS.supports('mask-border', '10 fill / 2px / 4px round'));
+  assert_equals(style.getPropertyValue('mask-border'), 'url("a") 10 20 fill / 2px 3px / 4px round');
+  for (const [property, expected] of [
+    ['mask-border-source', 'url("a")'], ['mask-border-slice', '10 20 fill'],
+    ['mask-border-width', '2px 3px'], ['mask-border-outset', '4px'],
+    ['mask-border-repeat', 'round']])
+    assert_equals(style.getPropertyValue(property), expected, property);
+}, 'Mask-border expands and serializes the five supported longhands');
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.setProperty('mask-border', 'url(a) 10 fill / 2 / 3 round');
+  style.setProperty('mask', 'none');
+  assert_equals(style.getPropertyValue('mask-border'), 'none');
+  for (const property of ['mask-image', 'mask-position', 'mask-size', 'mask-repeat',
+    'mask-origin', 'mask-clip', 'mask-composite', 'mask-mode', 'mask-border-source',
+    'mask-border-slice', 'mask-border-width', 'mask-border-outset', 'mask-border-repeat'])
+    style.removeProperty(property);
+  assert_equals(style.length, 0);
+}, 'Mask resets exactly its layer properties and the five supported mask-border longhands');
+
+test(t => {
+  const element = document.createElement('div');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  element.style.cssText = 'font-size:20px;mask-border:url(a) 10% fill / 1em auto / 2em round';
+  const computed = getComputedStyle(element);
+  assert_equals(computed.getPropertyValue('mask-border-slice'), '10% fill');
+  assert_equals(computed.getPropertyValue('mask-border-width'), '20px auto');
+  assert_equals(computed.getPropertyValue('mask-border-outset'), '40px');
+  assert_equals(computed.getPropertyValue('mask-border-repeat'), 'round');
+}, 'Mask-border computes absolute lengths without geometry');
+
+// Q52: integrator-probes-1023g/results/q89q52-*.json, Safari's eight cases.
+for (const [input, specified, expected] of [
+  ['none', 'none', 'none'],
+  ['10 /', null, null],
+  ['10 / / 2', '10 / / 2', 'none'],
+  ['0 / 2', '', 'none'],
+  ['0 / / 2', '', 'none'],
+  ['url(a) 0 / 2', '', `url("${new URL('a', document.URL).href}") 0 / 2 / 0 stretch`],
+  ['round url(a) 10 fill / auto / 2px', 'url("a") 10 fill / / 2px round',
+    `url("${new URL('a', document.URL).href}") 10 fill / auto / 2px round`],
+  ['fill 10', '10 fill', 'none']]) {
+  test(t => {
+    const element = document.createElement('div');
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(CSS.supports('mask-border', input), specified !== null);
+    element.style.setProperty('mask-border', input);
+    assert_equals(element.style.getPropertyValue('mask-border'), specified === null ? '' : specified);
+    if (expected !== null)
+      assert_equals(getComputedStyle(element).getPropertyValue('mask-border'), expected);
+  }, `Mask-border browser serialization: ${input}`);
+}
+</script>

@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated authored URL in generated content</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+// Isolates css/css-content/parsing/content-valid.html's URL assertion.
+test(() => {
+  target.style.content = 'url("picture.svg")';
+  assert_equals(target.style.content, 'url("picture.svg")');
+}, 'specified content URL retains authored relative text');
+</script>

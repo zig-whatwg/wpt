@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG paint, references and mask values share the CSS cascade</title>
+<link rel="help" href="https://www.w3.org/TR/SVG2/painting.html">
+<link rel="help" href="https://drafts.fxtf.org/css-masking-1/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="host"><div id="target"></div></div>
+<script>
+const host = document.getElementById('host');
+const target = document.getElementById('target');
+function reset() { host.style.cssText = ''; target.style.cssText = ''; }
+function read(property) { return getComputedStyle(target).getPropertyValue(property); }
+
+test(() => {
+  reset();
+  assert_equals(read('fill'), 'rgb(0, 0, 0)');
+  for (const property of ['stroke', 'marker-start', 'marker-mid', 'marker-end', 'filter', 'clip-path', 'mask-image'])
+    assert_equals(read(property), 'none', property);
+  assert_equals(read('stroke-width'), '1px');
+  assert_equals(read('mask-type'), 'luminance');
+}, 'Paint and reference properties expose their specified initial values');
+
+test(() => {
+  reset();
+  host.style.cssText = 'fill:currentcolor;stroke:currentcolor;color:rgb(1, 2, 3)';
+  target.style.color = 'rgb(4, 5, 6)';
+  assert_equals(read('fill'), 'rgb(4, 5, 6)');
+  assert_equals(read('stroke'), 'rgb(4, 5, 6)');
+}, 'Inherited currentcolor paint resolves against the receiving element');
+
+test(() => {
+  reset();
+  host.style.setProperty('fill', 'url("#paint") currentcolor');
+  target.style.color = 'rgb(4, 5, 6)';
+  assert_true(read('fill').endsWith(' rgb(4, 5, 6)'), read('fill'));
+  assert_true(read('fill').includes('#paint'));
+}, 'An inherited paint reference retains its currentcolor fallback');
+
+test(() => {
+  reset();
+  target.style.setProperty('marker', 'url("#arrow")');
+  const expected = target.style.getPropertyValue('marker-start');
+  assert_not_equals(expected, '');
+  assert_equals(target.style.getPropertyValue('marker-mid'), expected);
+  assert_equals(target.style.getPropertyValue('marker-end'), expected);
+  assert_equals(target.style.getPropertyValue('marker'), expected);
+}, 'Marker shorthand expands to all three reference longhands');
+
+test(() => {
+  reset();
+  target.style.cssText = 'font-size:20px;stroke-width:2em;text-indent:2em hanging each-line';
+  assert_equals(read('stroke-width'), '40px');
+  assert_equals(read('text-indent'), '40px hanging each-line');
+  target.style.setProperty('stroke-width', '5');
+  assert_equals(read('stroke-width'), '5px');
+}, 'SVG number widths and text indentation compute without geometry');
+
+test(() => {
+  reset();
+  host.style.cssText = 'font-size:20px;stroke-width:2em;text-indent:-2em hanging';
+  target.style.fontSize = '10px';
+  assert_equals(read('stroke-width'), '40px');
+  assert_equals(read('text-indent'), '-40px hanging');
+}, 'Inherited lengths and text-indent flags retain the parent computed value');
+
+test(() => {
+  reset();
+  target.style.cssText = 'color:rgb(1, 2, 3);font-size:20px;filter:blur(1em) brightness(50%) drop-shadow(1px 2px)';
+  assert_equals(read('filter'), 'blur(20px) brightness(0.5) drop-shadow(rgb(1, 2, 3) 1px 2px 0px)');
+}, 'Filter components compute lengths, percentages and currentcolor');
+
+test(() => {
+  reset();
+  target.style.cssText = 'font-size:20px;clip-path:circle(2em at 25% 75%) content-box';
+  assert_equals(read('clip-path'), 'circle(40px at 25% 75%) content-box');
+}, 'Clip-path computes typed shape components without a layout backend');
+
+test(() => {
+  reset();
+  for (const property of ['fill', 'stroke']) {
+    target.style.setProperty(property, 'rgb(1, 2, 3)');
+    target.style.setProperty(property, 'url("#paint") red blue');
+    assert_equals(target.style.getPropertyValue(property), 'rgb(1, 2, 3)', property);
+  }
+  target.style.setProperty('filter', 'blur(1px)');
+  target.style.setProperty('filter', 'blur(-1px)');
+  assert_equals(target.style.getPropertyValue('filter'), 'blur(1px)');
+}, 'Invalid paint and filter assignment preserves the previous declaration');
+
+test(() => {
+  reset();
+  target.style.cssText = 'mask-image:none;mask-position:10px 20px,30px 40px;mask-repeat:no-repeat,space';
+  assert_equals(read('mask-position'), '10px 20px, 30px 40px');
+  assert_equals(read('mask-repeat'), 'no-repeat, space');
+}, 'Computed mask lists preserve authored items even with fewer image layers');
+
+test(() => {
+  reset();
+  target.style.cssText = 'mask-border-source:url("#border");mask-border-slice:10;mask-border-width:2;mask-border-outset:3;mask-border-repeat:round';
+  target.style.setProperty('mask', 'url("#mask") no-repeat 10px 20px / 30px 40px');
+  for (const [property, expected] of [
+    ['mask-border-source', 'none'], ['mask-border-slice', '0'],
+    ['mask-border-width', 'auto'], ['mask-border-outset', '0'],
+    ['mask-border-repeat', 'stretch']])
+    assert_equals(target.style.getPropertyValue(property), expected, property);
+  assert_equals(target.style.getPropertyValue('mask-position'), '10px 20px');
+  assert_equals(target.style.getPropertyValue('mask-size'), '30px 40px');
+}, 'The mask shorthand resets every mask-border longhand');
+
+test(() => {
+  reset();
+  target.style.cssText = 'object-position:right 10px bottom 20px';
+  assert_equals(read('object-position'), 'calc(100% - 10px) calc(100% - 20px)');
+}, 'Edge-offset positions compute into two length-percentage components');
+</script>

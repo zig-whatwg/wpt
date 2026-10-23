@@ -1,0 +1,105 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Specified CSS URLs retain authored text and computed URLs retain parse-time resolution</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#relative-urls">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row119 Q68, Q65–Q67. Border-image-source joins in (c) when it exists.
+const paths = [
+  ['background-image', 'url("picture.svg")'],
+  ['content', 'url("picture.svg") "tail"'],
+  ['cursor', 'url("picture.svg") 1 2, pointer'],
+  ['list-style-image', 'url("picture.svg")'],
+  ['mask-image', 'url("picture.svg")'],
+  ['mask-border-source', 'url("picture.svg")'],
+  ['fill', 'url("picture.svg")'],
+  ['stroke', 'url("picture.svg")'],
+  ['marker-start', 'url("picture.svg")'],
+  ['marker-mid', 'url("picture.svg")'],
+  ['marker-end', 'url("picture.svg")'],
+  ['clip-path', 'url("picture.svg")'],
+  ['filter', 'url("picture.svg")'],
+];
+let nextId = 0;
+for (const [property, input] of paths) {
+  for (const location of ['inline', 'stylesheet']) {
+    test(t => {
+      const target = document.createElement('div');
+      target.id = `ci1-url-${nextId++}`;
+      document.body.append(target);
+      t.add_cleanup(() => target.remove());
+      let specified;
+      if (location === 'inline') {
+        specified = target.style;
+        specified.setProperty(property, input);
+      } else {
+        const sheet = document.createElement('style');
+        sheet.textContent = `#${target.id} { ${property}: ${input}; }`;
+        document.head.append(sheet);
+        t.add_cleanup(() => sheet.remove());
+        specified = sheet.sheet.cssRules[0].style;
+      }
+      assert_equals(specified.getPropertyValue(property), input, 'authored value');
+      const absolute = new URL('picture.svg', document.baseURI).href;
+      assert_equals(getComputedStyle(target).getPropertyValue(property), input.replace('picture.svg', absolute), 'computed absolute URL');
+    }, `${location} ${property}: specified relative, computed absolute`);
+  }
+}
+for (const property of ['background-image', 'cursor', 'fill', 'marker-start', 'clip-path', 'filter', 'content']) {
+  test(t => {
+    const target = document.createElement('div');
+    document.body.append(target);
+    t.add_cleanup(() => target.remove());
+    const suffix = property === 'cursor' ? ', pointer' : '';
+    const fragment = `url("#icon")${suffix}`;
+    target.style.setProperty(property, fragment);
+    assert_equals(target.style.getPropertyValue(property), fragment);
+    assert_equals(getComputedStyle(target).getPropertyValue(property), fragment);
+    const other = `url("a.b#icon")${suffix}`;
+    target.style.setProperty(property, other);
+    assert_equals(target.style.getPropertyValue(property), other);
+    assert_equals(getComputedStyle(target).getPropertyValue(property), `url("${new URL('a.b#icon', document.baseURI).href}")${suffix}`);
+  }, `${property}: local fragment differs from a nonlocal fragment URL`);
+}
+test(t => {
+  const sheet = document.createElement('style');
+  sheet.textContent = '@font-face { font-family: Ci1AuthoredFont; src: url("face.woff2"); }';
+  document.head.append(sheet);
+  t.add_cleanup(() => sheet.remove());
+  const rule = sheet.sheet.cssRules[0];
+  assert_equals(rule.style.getPropertyValue('src'), 'url("face.woff2")');
+  assert_true(rule.cssText.includes('url("face.woff2")'));
+}, '@font-face src descriptor text remains authored');
+test(t => {
+  const sheet = document.createElement('style');
+  document.head.append(sheet);
+  t.add_cleanup(() => sheet.remove());
+  sheet.sheet.insertRule('@import url("ci1-relative.css");', 0);
+  const rule = sheet.sheet.cssRules[0];
+  assert_equals(rule.href, 'ci1-relative.css');
+  assert_true(rule.cssText.includes('url("ci1-relative.css")'));
+}, '@import href and cssText remain authored');
+test(t => {
+  const base = document.createElement('base');
+  base.href = new URL('/ci1-original-base/', document.URL).href;
+  document.head.prepend(base);
+  t.add_cleanup(() => base.remove());
+  const sheet = document.createElement('style');
+  sheet.textContent = '#ci1-frozen-base { background-image: url("picture.svg"); }';
+  document.head.append(sheet);
+  t.add_cleanup(() => sheet.remove());
+  const target = document.createElement('div');
+  target.id = 'ci1-frozen-base';
+  document.body.append(target);
+  t.add_cleanup(() => target.remove());
+  const original = `url("${new URL('picture.svg', base.href).href}")`;
+  const rule = sheet.sheet.cssRules[0];
+  assert_equals(rule.style.backgroundImage, 'url("picture.svg")');
+  assert_equals(getComputedStyle(target).backgroundImage, original);
+  base.href = new URL('/ci1-changed-base/', document.URL).href;
+  assert_equals(rule.style.backgroundImage, 'url("picture.svg")');
+  assert_equals(getComputedStyle(target).backgroundImage, original, 'already parsed URL is not resolved again');
+}, 'changing the document base preserves the already parsed URL');
+</script>

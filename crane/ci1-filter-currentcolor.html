@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated drop-shadow currentcolor inheritance regression</title>
+<link rel="help" href="https://drafts.fxtf.org/filter-effects/#funcdef-filter-drop-shadow">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent" style="color:red;font-size:20px;filter:drop-shadow(1em 2px currentcolor)">
+  <div id="child" style="color:green;font-size:10px;filter:inherit"></div>
+</div>
+<script>
+// Isolates the first assertion of upstream drop-shadow-currentcolor-inheritance.
+// The whole upstream file must also pass after this regression is fixed.
+test(() => {
+  assert_equals(getComputedStyle(document.getElementById('child')).filter,
+    'drop-shadow(rgb(0, 128, 0) 20px 2px 0px)');
+}, 'Inherited drop-shadow keeps the parent length and uses the child currentcolor');
+</script>

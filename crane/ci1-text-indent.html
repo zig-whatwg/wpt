@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Text indentation computed values and inheritance</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const parent = document.createElement('div');
+  const child = document.createElement('div');
+  parent.append(child);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  return { parent, child };
+}
+test(t => {
+  const { parent, child } = fixture(t);
+  parent.style.cssText = 'font-size:20px;text-indent:each-line -2em hanging';
+  child.style.fontSize = '10px';
+  assert_equals(parent.style.textIndent, '-2em hanging each-line');
+  assert_equals(getComputedStyle(parent).textIndent, '-40px hanging each-line');
+  assert_equals(getComputedStyle(child).textIndent, '-40px hanging each-line');
+}, 'Text indent inherits the computed offset and both flags');
+test(t => {
+  const { child } = fixture(t);
+  child.style.textIndent = '-20%';
+  assert_equals(getComputedStyle(child).textIndent, '-20%');
+  child.style.textIndent = '0';
+  assert_equals(child.style.textIndent, '0px');
+}, 'Signed percentages remain percentages and unitless zero becomes px');
+test(t => {
+  const { child } = fixture(t);
+  child.style.textIndent = '4px';
+  for (const invalid of ['auto', 'hanging', 'each-line', '1', '1px 2px', '1px hanging hanging', '1px each-line each-line']) {
+    child.style.textIndent = invalid;
+    assert_equals(child.style.textIndent, '4px', invalid);
+  }
+}, 'Invalid indentation declarations preserve the previous value');
+test(t => {
+  const { parent, child } = fixture(t);
+  parent.style.textIndent = '3px hanging';
+  child.style.textIndent = 'initial';
+  assert_equals(getComputedStyle(child).textIndent, '0px');
+  child.style.textIndent = 'inherit';
+  assert_equals(getComputedStyle(child).textIndent, '3px hanging');
+  child.style.textIndent = 'unset';
+  assert_equals(getComputedStyle(child).textIndent, '3px hanging');
+}, 'Text indent handles initial, inherit and unset as an inherited property');
+</script>
