@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame's document is parsed as its response body arrives</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#navigate-html">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 7.5.1 "load an HTML document": each networking task fills the
+// parser's input byte stream, and only "when no more bytes are available"
+// does the parser get the implied EOF. The server sends the frame's document
+// in two chunks a second apart.
+function frameMessage(iframe, data) {
+  return new Promise(resolve => {
+    window.addEventListener("message", function listener(event) {
+      if (event.source === iframe.contentWindow && event.data === data) {
+        window.removeEventListener("message", listener);
+        resolve();
+      }
+    });
+  });
+}
+
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  t.add_cleanup(() => iframe.remove());
+  iframe.src = "streamnav-chunked.py?" + Math.random();
+  let loaded = false;
+  const load = new Promise(resolve => iframe.addEventListener("load", () => { loaded = true; resolve(); }));
+  const first = frameMessage(iframe, "first");
+  document.body.appendChild(iframe);
+  await first;
+  const doc = iframe.contentDocument;
+  assert_not_equals(doc.getElementById("first"), null, "the first chunk is parsed");
+  assert_equals(doc.getElementById("second"), null, "the second chunk has not arrived");
+  assert_equals(doc.readyState, "loading", "the document is still loading");
+  assert_false(loaded, "no load event before the body has arrived");
+  await load;
+  assert_not_equals(doc.getElementById("second"), null, "the second chunk is parsed");
+  assert_equals(doc.readyState, "complete");
+}, "the first chunk is in the frame's document before the rest arrives");
+
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  iframe.src = "streamnav-chunked.py?" + Math.random();
+  let loads = 0;
+  iframe.addEventListener("load", () => loads++);
+  const first = frameMessage(iframe, "first");
+  document.body.appendChild(iframe);
+  await first;
+  const doc = iframe.contentDocument;
+  iframe.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_equals(loads, 0, "a frame removed mid-body fires no load event");
+  assert_equals(doc.getElementById("second"), null, "nothing is parsed after the removal");
+}, "a frame removed while its body arrives stops parsing it");
+
+promise_test(async t => {
+  const iframe = document.createElement("iframe");
+  t.add_cleanup(() => iframe.remove());
+  iframe.src = "streamnav-chunked.py?" + Math.random();
+  const first = frameMessage(iframe, "first");
+  document.body.appendChild(iframe);
+  await first;
+  const doc = iframe.contentDocument;
+  const opened = new Promise(resolve => t.step_timeout(resolve, 1500));
+  iframe.contentWindow.stop();
+  await opened;
+  assert_equals(doc.getElementById("second"), null, "window.stop() discards the rest of the body");
+  assert_not_equals(doc.readyState, "loading", "window.stop() ends the load");
+}, "window.stop() while the body arrives discards the rest of it");
+</script>

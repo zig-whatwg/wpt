@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Fifty frames load benchmark</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The cost of loading 50 frames of a 30 KB page each: every frame's
+// document is parsed as its body arrives (streamnav). The time is in the
+// subtest's name; the assertions only check that every frame loaded whole.
+promise_test(async t => {
+  const start = performance.now();
+  const frames = await Promise.all(Array.from({length: 50}, (_, i) => new Promise(resolve => {
+    const f = document.createElement("iframe");
+    f.onload = () => resolve(f);
+    f.src = "streamnav-cost-frame-page.html?" + i;
+    document.body.append(f);
+  })));
+  const elapsed = performance.now() - start;
+  for (const f of frames) assert_equals(f.contentDocument.querySelectorAll("section").length, 300);
+  t.step_func(() => {})();
+  promise_test(async () => {}, "Fifty frames: " + elapsed.toFixed(3) + " ms");
+}, "fifty frames load whole");
+</script>
