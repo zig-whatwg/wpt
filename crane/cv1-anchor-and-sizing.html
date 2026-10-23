@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: anchor and sizing values, CSSOM enumeration and root metrics</title>
+<link rel="help" href="https://drafts.csswg.org/css-anchor-position-1/#anchor-pos">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#font-relative-lengths">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/css/support/parsing-testcommon.js"></script>
+<body>
+<script>
+for (const property of ['top', 'right', 'bottom', 'left', 'inset-block-start', 'inset-inline-end']) {
+  test_valid_value(property, 'anchor(left --name, calc(10% + 2px))', 'anchor(--name left, calc(10% + 2px))');
+}
+for (const property of ['width','height','min-width','max-width','min-height','max-height',
+                        'inline-size','block-size','min-inline-size','max-inline-size','min-block-size','max-block-size']) {
+  test_valid_value(property, 'anchor-size(block --name, 0)', 'anchor-size(--name block, 0px)');
+  test_valid_value(property, 'fit-content(calc(10% + 2em))');
+}
+test(() => {
+  const e = document.createElement('div');
+  e.style.setProperty('top', 'anchor(--f\\6f o left, 0)');
+  assert_equals(e.style.getPropertyValue('top'), 'anchor(--foo left, 0px)');
+  e.style.setProperty('top', 'anchor(foo left)');
+  assert_equals(e.style.getPropertyValue('top'), 'anchor(--foo left, 0px)');
+  assert_equals(e.style.removeProperty('top'), 'anchor(--foo left, 0px)');
+  assert_equals(e.style.length, 0);
+}, 'Anchor names decode once; invalid replacement preserves the old declaration');
+test(() => {
+  const e = document.createElement('div'); document.body.append(e);
+  try {
+    const style = getComputedStyle(e);
+    const names = Array.from(style);
+    for (const name of ['content-visibility','user-select','text-orientation','min-width','max-inline-size'])
+      assert_true(names.includes(name), name + ' is enumerated');
+    assert_false(names.includes('-webkit-text-orientation'), 'legacy shorthand is not enumerated');
+  } finally { e.remove(); }
+}, 'The supported longhands participate in getComputedStyle enumeration');
+test(() => {
+  const root = document.documentElement;
+  const before = root.style.cssText;
+  const e = document.createElement('div'); document.body.append(e);
+  try {
+    root.style.cssText = 'font-size:20px;line-height:30px;writing-mode:vertical-rl;text-orientation:upright';
+    e.style.cssText = 'display:none;width:calc(1rem);height:calc(2rlh)';
+    assert_equals(getComputedStyle(e).width, '20px');
+    assert_equals(getComputedStyle(e).height, '60px');
+  } finally { root.style.cssText = before; e.remove(); }
+}, 'Root font-size and line-height reach descendant relative units');
+</script>

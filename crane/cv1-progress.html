@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Progress functions compute consistent ratios</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#progress">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  const target = document.getElementById('target');
+  for (const [value, expected] of [
+    ['progress(5, 0, 10)', '0.5'],
+    ['progress(5px, 0px, 10px)', '0.5'],
+    ['progress(50%, 0%, 100%)', '0.5'],
+    ['progress(100px, 10px, 10px)', '0'],
+    ['calc(progress(no-clamp 20px, 0px, 10px) / 4)', '0.5']
+  ]) {
+    target.style.opacity = '';
+    target.style.opacity = value;
+    assert_not_equals(target.style.opacity, '', value + ' parses');
+    assert_equals(getComputedStyle(target).opacity, expected, value);
+  }
+}, 'progress computes numbers, lengths and percentages with clamped and unclamped results');
+</script>

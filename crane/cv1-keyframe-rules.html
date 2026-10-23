@@ -1,0 +1,108 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Keyframe CSSOM storage, mutations, and traced relationships</title>
+<link rel="help" href="https://drafts.csswg.org/css-animations-1/#dom-interfaces">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+function makeRule() {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@keyframes "fade" { from { opacity:0 } to { opacity:1 } }');
+  assert_equals(sheet.cssRules.length, 1);
+  return sheet.cssRules[0];
+}
+test(() => {
+  const rule = makeRule(), child = rule[0];
+  assert_true(rule instanceof CSSKeyframesRule);
+  assert_true(child instanceof CSSKeyframeRule);
+  assert_equals(rule.type, 7);
+  assert_equals(child.type, 8);
+  assert_equals(rule.name, 'fade');
+  assert_equals(rule.length, 2);
+  assert_equals(rule.cssRules[0], child);
+  assert_equals(rule[2], undefined);
+  assert_equals(child.parentRule, rule);
+  assert_equals(child.parentStyleSheet, rule.parentStyleSheet);
+  assert_equals(child.style, child.style);
+  assert_equals(child.style.parentRule, child);
+  assert_equals(child.cssText, '0% { opacity: 0; }');
+}, 'Keyframe interfaces share live indexed rules and the generated CSSRule state');
+test(() => {
+  const rule = makeRule();
+  rule.appendRule('from {opacity:.25}');
+  const removed = rule.findRule('0%');
+  assert_equals(removed, rule[2]);
+  rule.deleteRule('from');
+  assert_equals(rule.length, 2);
+  assert_equals(removed.parentRule, null);
+  assert_equals(removed.parentStyleSheet, null);
+  assert_equals(removed.style.opacity, '0.25');
+  assert_equals(rule.findRule('from'), rule[0]);
+  rule.appendRule('25%,75% {top:1px}');
+  rule.appendRule('75%,25% {top:2px}');
+  assert_equals(rule.findRule('25%, 75%').style.top, '1px');
+  assert_equals(rule.findRule('75%,25%').style.top, '2px');
+  assert_equals(rule.findRule('75%'), null);
+  for (const invalid of ['from{} to{}', 'from{} garbage', '@media all{}', '120%{}']) {
+    rule.appendRule(invalid);
+    assert_equals(rule.length, 4, invalid);
+  }
+}, 'Append accepts one valid rule and delete removes the last exact selector match');
+test(() => {
+  const rule = makeRule(), child = rule[0];
+  child.keyText = 'FROM, .5%, TO';
+  assert_equals(child.keyText, '0%, 0.5%, 100%');
+  // Q63: Firefox/Safari's atomic no-op for invalid selectors.
+  child.keyText = 'not-a-key';
+  assert_equals(child.keyText, '0%, 0.5%, 100%');
+  rule.name = 'initial';
+  assert_equals(rule.name, 'initial');
+  assert_true(rule.cssText.includes('@keyframes "initial"'));
+}, 'Keyframe selector setters validate atomically and names serialize reserved strings');
+test(() => {
+  const child = makeRule()[0], style = child.style;
+  child.style = 'left:2px;top:1px!important;animation-duration:1s;animation-timing-function:linear';
+  assert_equals(style.cssText, 'left: 2px; animation-timing-function: linear;');
+  style.setProperty('left', '3px', 'important');
+  style.animationDuration = '2s';
+  assert_equals(style.left, '2px');
+  assert_equals(style.animationDuration, '');
+  assert_equals(child.style, style);
+}, 'Keyframe declaration restrictions apply to cssText, setProperty, and attributes');
+promise_test(async () => {
+  let rule = makeRule(), child = rule[0];
+  const style = child.style;
+  rule = child = null;
+  await garbageCollect();
+  await garbageCollect();
+  const retainedChild = style.parentRule;
+  const retainedParent = retainedChild.parentRule;
+  assert_true(retainedChild instanceof CSSKeyframeRule);
+  assert_true(retainedParent instanceof CSSKeyframesRule);
+  assert_equals(retainedChild.style, style);
+  assert_equals(retainedParent[0], retainedChild);
+  assert_equals(retainedParent.parentStyleSheet.cssRules[0], retainedParent);
+  style.opacity = '.75';
+  assert_equals(retainedChild.cssText, '0% { opacity: 0.75; }');
+}, 'A retained style keeps its keyframe, keyframes rule, and sheet reachable');
+promise_test(async () => {
+  const rule = makeRule();
+  let child = rule[0], style = child.style;
+  const weakChild = new WeakRef(child), weakStyle = new WeakRef(style);
+  child = style = null;
+  await garbageCollect();
+  await garbageCollect();
+  assert_equals(rule[0], weakChild.deref());
+  assert_equals(rule[0].style, weakStyle.deref());
+  const removed = rule[0];
+  rule.deleteRule('from');
+  await garbageCollect();
+  assert_equals(removed.parentRule, null);
+  assert_equals(removed.parentStyleSheet, null);
+  assert_equals(removed.style.opacity, '0');
+  removed.style.opacity = '.5';
+  assert_equals(removed.cssText, '0% { opacity: 0.5; }');
+}, 'A retained keyframes rule keeps handed-out children and a removed child remains usable');
+</script>

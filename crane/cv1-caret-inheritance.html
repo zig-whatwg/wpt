@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Caret automatic colors resolve on the inheriting element</title>
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/#caret-color">
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#currentcolor-color">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const input of ['auto', 'currentcolor', 'auto currentcolor', 'currentcolor auto']) {
+  test(t => {
+    const parent = document.createElement('div');
+    const child = document.createElement('div');
+    parent.style.color = 'blue';
+    parent.style.caretColor = input;
+    child.style.color = 'red';
+    parent.append(child);
+    document.body.append(parent);
+    t.add_cleanup(() => parent.remove());
+    assert_equals(parent.style.caretColor, input);
+    const two = input === 'auto currentcolor';
+    assert_equals(getComputedStyle(child).caretColor,
+                  two ? 'rgb(255, 0, 0) rgb(255, 0, 0)' : 'rgb(255, 0, 0)');
+    child.style.color = 'lime';
+    assert_equals(getComputedStyle(child).caretColor,
+                  two ? 'rgb(0, 255, 0) rgb(0, 255, 0)' : 'rgb(0, 255, 0)');
+  }, `Inherited caret-color ${input} uses the receiving element's color`);
+}
+</script>

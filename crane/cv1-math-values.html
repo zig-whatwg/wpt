@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed CSS math values preserve types and compute without layout</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#calc-type-checking">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#calc-serialize">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const [property, input, expected] of [
+  ['width', 'calc(1in + 2px)', 'calc(98px)'],
+  ['width', 'calc(2em + 3px)', 'calc(2em + 3px)'],
+  ['width', 'calc((2 + 3) * 4px)', 'calc(20px)'],
+  ['width', 'calc(20px + 100% - 100%)', 'calc(0% + 20px)'],
+  ['width', 'calc(10px * 10px / 2px)', 'calc(50px)'],
+  ['width', 'min(30px, 1in, 10px)', 'calc(10px)'],
+  ['width', 'clamp(100px, 0px, 50px)', 'calc(100px)'],
+  ['width', 'clamp(none, 10px, none)', 'calc(10px)'],
+]) test(() => {
+  const style = document.createElement('div').style;
+  style.setProperty(property, input);
+  assert_equals(style.getPropertyValue(property), expected);
+}, `${property}: ${input} has a normalized specified value`);
+
+for (const [property, input] of [
+  ['width', 'calc(0 + 1px)'],
+  ['width', 'calc(0 * 1px + 1s)'],
+  ['width', 'calc(1px * 1px)'],
+  ['width', 'calc(1px+2px)'],
+  ['width', 'min(1px,)'],
+  ['opacity', 'calc(.25 + 25%)'],
+  ['border-top-width', 'calc(1px + 0%)'],
+]) test(() => {
+  const style = document.createElement('div').style;
+  style.setProperty(property, input);
+  assert_equals(style.getPropertyValue(property), '');
+}, `${property}: ${input} rejects an invalid calculation`);
+
+for (const [property, input, expected] of [
+  ['opacity', 'calc(25%)', '0.25'],
+  ['opacity', 'calc(2)', '1'],
+  ['opacity', 'calc(0 / 0)', '0'],
+  ['z-index', 'calc(2.5)', '3'],
+  ['z-index', 'calc(-1.5)', '-1'],
+  ['font-size', 'calc(2em + 3px)', '35px'],
+]) test(t => {
+  const parent = document.createElement('div');
+  parent.style.fontSize = '16px';
+  const target = parent.appendChild(document.createElement('div'));
+  target.style.setProperty(property, input);
+  document.body.appendChild(parent);
+  t.add_cleanup(() => parent.remove());
+  assert_equals(getComputedStyle(target).getPropertyValue(property), expected);
+}, `${property}: ${input} computes using available information`);
+</script>

@@ -1,0 +1,110 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS UI values and inertness consumers</title>
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/">
+<link rel="help" href="https://drafts.csswg.org/css-forms-1/#field-sizing">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t, html = '') {
+  const root = document.createElement('div');
+  root.innerHTML = html;
+  document.body.append(root);
+  t.add_cleanup(() => { getSelection().removeAllRanges(); root.remove(); });
+  return root;
+}
+for (const [property, values] of [
+  ['box-sizing', ['content-box', 'border-box']],
+  ['field-sizing', ['fixed', 'content']],
+  ['resize', ['none', 'both', 'horizontal', 'vertical', 'block', 'inline']],
+  ['caret-shape', ['auto', 'bar', 'block', 'underscore']],
+  ['caret-animation', ['auto', 'manual']],
+  ['interactivity', ['auto', 'inert']],
+]) test(t => {
+  const root = fixture(t);
+  for (const value of values) {
+    root.style.setProperty(property, value.toUpperCase());
+    assert_equals(root.style.getPropertyValue(property), value, 'specified ' + value);
+    assert_equals(getComputedStyle(root).getPropertyValue(property), value, 'computed ' + value);
+    assert_true(CSS.supports(property, value), 'supports ' + value);
+  }
+  assert_true(Array.from(getComputedStyle(root)).includes(property));
+  assert_false(CSS.supports(property, 'bogus'));
+}, property + ' parses, computes and is enumerated');
+test(t => {
+  const root = fixture(t);
+  root.style.cssText = 'outline-offset:-2.5px;outline:red solid 2px';
+  assert_equals(root.style.outline, '2px solid red');
+  assert_equals(root.style.outlineOffset, '-2.5px');
+  root.style.outlineStyle = 'none';
+  assert_equals(getComputedStyle(root).outlineWidth, '2px');
+  assert_equals(getComputedStyle(root).outlineOffset, '-2.5px');
+}, 'Outline uses width/style/color order, leaves offset alone, and none retains computed width');
+test(t => {
+  const root = fixture(t);
+  root.style.cssText = 'color:blue;caret-color:auto red;accent-color:currentColor';
+  assert_equals(root.style.caretColor, 'auto red');
+  assert_equals(getComputedStyle(root).caretColor, 'rgb(0, 0, 255) rgb(255, 0, 0)');
+  assert_equals(getComputedStyle(root).accentColor, 'rgb(0, 0, 255)');
+  root.style.caretColor = 'red auto';
+  assert_equals(root.style.caretColor, 'red auto');
+  assert_equals(getComputedStyle(root).caretColor, 'rgb(255, 0, 0)');
+}, 'Two-color caret retains specified auto and resolves computed automatic colors');
+test(t => {
+  const root = fixture(t, '<div></div>');
+  root.style.cssText = 'caret-color:red;caret-shape:block;caret-animation:manual;accent-color:blue;interactivity:inert;resize:both;box-sizing:border-box;field-sizing:content';
+  const child = getComputedStyle(root.firstChild);
+  assert_equals(child.caretColor, 'rgb(255, 0, 0)');
+  assert_equals(child.caretShape, 'block');
+  assert_equals(child.caretAnimation, 'manual');
+  assert_equals(child.accentColor, 'rgb(0, 0, 255)');
+  assert_equals(child.interactivity, 'inert');
+  assert_equals(child.resize, 'none');
+  assert_equals(child.boxSizing, 'content-box');
+  assert_equals(child.fieldSizing, 'fixed');
+}, 'UI inheritance follows each property definition');
+test(t => {
+  const root = fixture(t, '<button>start</button><div style="interactivity:inert"><button>blocked</button><button style="interactivity:auto">restored</button></div>');
+  const [start, blocked, restored] = root.querySelectorAll('button');
+  start.focus(); blocked.focus();
+  assert_equals(document.activeElement, start);
+  restored.focus();
+  assert_equals(document.activeElement, restored);
+}, 'CSS inertness blocks focus while explicit auto follows the published target-value rule');
+test(t => {
+  const root = fixture(t, '<button>start</button><div inert><button style="interactivity:auto">blocked</button></div>');
+  const [start, blocked] = root.querySelectorAll('button');
+  start.focus(); blocked.focus();
+  assert_equals(document.activeElement, start);
+  assert_equals(getComputedStyle(root.lastChild).interactivity, 'inert');
+  assert_equals(getComputedStyle(blocked).interactivity, 'auto');
+}, 'An inert attribute cannot be escaped by a descendant explicit auto');
+test(t => {
+  const root = fixture(t, '<div style="interactivity:inert"><dialog><button>inside</button></dialog></div>');
+  const dialog = root.querySelector('dialog'), button = root.querySelector('button');
+  t.add_cleanup(() => dialog.close());
+  dialog.showModal(); button.focus();
+  assert_equals(getComputedStyle(dialog).interactivity, 'auto');
+  assert_equals(document.activeElement, button);
+  dialog.style.interactivity = 'inert';
+  assert_equals(getComputedStyle(dialog).interactivity, 'inert');
+  dialog.close();
+}, 'A modal UA auto value escapes inherited CSS inertness and permits an author override');
+test(t => {
+  const root = fixture(t, '<dialog inert style="interactivity:auto"><button>inside</button></dialog>');
+  const dialog = root.firstChild, button = dialog.firstChild;
+  t.add_cleanup(() => dialog.close());
+  dialog.showModal(); button.focus();
+  assert_equals(getComputedStyle(dialog).interactivity, 'inert');
+  assert_not_equals(document.activeElement, button);
+}, 'A modal own inert attribute overrides author auto');
+for (const host of [false, true]) test(t => {
+  const root = fixture(t, '<span>a</span><span' + (host ? ' inert' : ' style="interactivity:inert"') + '>b<strong style="user-select:text">c</strong><em style="interactivity:auto">d</em></span><span>e</span>');
+  const range = document.createRange(); range.selectNodeContents(root);
+  getSelection().removeAllRanges(); getSelection().addRange(range);
+  assert_equals(getSelection().toString(), host ? 'ae' : 'ade');
+  assert_equals(range.toString(), 'abcde');
+  assert_equals(root.innerText, 'abcde');
+}, (host ? 'Host inertness' : 'CSS inertness') + ' filters Selection without changing Range or innerText');
+</script>

@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: declared and computed transition serialization</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#transition-shorthand-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function target(t) {
+  const element = document.createElement('div');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+// Row118 Q86, Chrome155/Firefox158/Safari27: computed forms unanimous;
+// declared zero-duration omission follows the Chrome/Safari majority.
+for (const [name, css, declared, computed] of [
+  ['zero duration before delay', 'transition:opacity 0s 1s', 'opacity 1s', 'opacity 0s 1s'],
+  ['initial plus delay', 'transition:initial;transition-delay:1s', '', '0s 1s'],
+  ['positive duration control', 'transition:opacity 1s', 'opacity 1s', 'opacity 1s'],
+  ['zero duration without delay', 'transition:opacity 0s', 'opacity', 'opacity']
+]) {
+  test(t => {
+    const element = target(t);
+    element.style.cssText = css;
+    assert_equals(element.style.transition, declared, 'declared');
+    assert_equals(getComputedStyle(element).transition, computed, 'computed');
+  }, `Transition serialization distinguishes both surfaces: ${name}`);
+}
+test(t => {
+  const element = target(t);
+  for (const [value, expected] of [
+    ['ease ease', 'ease'], ['ease linear', 'linear'], ['linear ease', 'ease linear'],
+    ['normal normal', 'normal'], ['normal allow-discrete', 'allow-discrete']
+  ]) {
+    element.style.transition = value;
+    assert_equals(element.style.transition, expected, value);
+  }
+}, 'Transition keyword-like property names follow unanimous browser default omission');
+test(t => {
+  const element = target(t);
+  element.style.cssText = 'transition-property:opacity,width;transition-duration:1s;transition-timing-function:ease;transition-delay:0s;transition-behavior:normal';
+  assert_equals(element.style.transition, 'opacity 1s, width');
+  assert_equals(element.style.transitionDuration, '1s', 'reading the shorthand does not mutate its source lists');
+}, 'Declared transition serialization follows the majority for unequal list lengths');
+test(t => {
+  const element = target(t);
+  for (const css of ['transition-property:linear;transition-timing-function:ease', 'transition-property:allow-discrete;transition-behavior:normal']) {
+    element.style.cssText = css;
+    assert_equals(element.style.transition, '');
+  }
+}, 'Incomplete transition longhands cannot serialize a declared shorthand');
+</script>

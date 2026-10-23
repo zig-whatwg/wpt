@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS interaction longhand grammars, computation and enumeration</title>
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/#content-selection">
+<link rel="help" href="https://drafts.csswg.org/css-contain-2/#content-visibility">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="child"></div></div>
+<script>
+for (const [property, values] of [
+  ['user-select', ['auto', 'text', 'none', 'contain', 'all']],
+  ['content-visibility', ['visible', 'hidden', 'auto']],
+]) {
+  for (const value of values) test(() => {
+    const el = document.createElement('div');
+    document.body.append(el);
+    try {
+      el.style.setProperty(property, value.toUpperCase());
+      assert_equals(el.style.getPropertyValue(property), value);
+      assert_equals(getComputedStyle(el).getPropertyValue(property), value);
+      assert_true(Array.from(getComputedStyle(el)).includes(property));
+      assert_true(CSS.supports(property, value));
+    } finally { el.remove(); }
+  }, `${property}: ${value} parses, computes and is enumerated`);
+  for (const value of ['bogus', '0', 'none auto', '"auto"']) test(() => {
+    const el = document.createElement('div');
+    el.style.setProperty(property, value);
+    assert_equals(el.style.getPropertyValue(property), '');
+    assert_false(CSS.supports(property, value));
+  }, `${property} rejects ${value}`);
+}
+test(() => {
+  const el = document.createElement('div');
+  el.style.setProperty('-webkit-user-select', 'none');
+  assert_equals(el.style.getPropertyValue('user-select'), 'none');
+  el.style.userSelect = 'text';
+  assert_equals(el.style.webkitUserSelect, 'text');
+  assert_equals(el.style.length, 1);
+}, '-webkit-user-select aliases user-select in both directions');
+test(() => {
+  const parent = document.getElementById('parent');
+  const child = document.getElementById('child');
+  parent.style.cssText = 'user-select: none; content-visibility: hidden';
+  assert_equals(getComputedStyle(child).userSelect, 'auto');
+  assert_equals(getComputedStyle(child).contentVisibility, 'visible');
+  child.style.cssText = 'user-select: inherit; content-visibility: inherit';
+  assert_equals(getComputedStyle(child).userSelect, 'none');
+  assert_equals(getComputedStyle(child).contentVisibility, 'hidden');
+  child.style.cssText = 'user-select: unset; content-visibility: unset';
+  assert_equals(getComputedStyle(child).userSelect, 'auto');
+  assert_equals(getComputedStyle(child).contentVisibility, 'visible');
+}, 'computed values do not inherit unless requested');
+</script>

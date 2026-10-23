@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sibling-count cache scaling, reverse population order</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>.cv1-scaling > i { margin-left:calc(1px * sibling-index());margin-top:calc(1px * sibling-count()) }</style>
+<body>
+<script>
+test(t => {
+  const samples = [];
+  // Q114: alternate population order between acceptance invocations.
+  const order = [4000, 1000];
+  for (const size of order) {
+    const root = document.createElement('div');
+    root.className = 'cv1-scaling';
+    root.innerHTML = '<i></i>'.repeat(size);
+    document.body.append(root);
+    const children = Array.from(root.children);
+    const start = performance.now();
+    let total = 0;
+    for (const child of children) total += parseFloat(getComputedStyle(child).marginLeft);
+    const duration = performance.now() - start;
+    assert_equals(total, size * (size + 1) / 2);
+    assert_equals(getComputedStyle(children[size - 1]).marginTop, size + 'px');
+    samples.push({size, milliseconds:duration});
+    root.remove();
+  }
+  console.log('CV1_SIBLING_ORDER=' + order.join(','));
+  document.title = 'CV1_SIBLING_SCALING ' + JSON.stringify(samples);
+  console.log(document.title);
+}, 'Separate computed-style reads share a scalar sibling cache');
+</script>

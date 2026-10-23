@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Box alignment parsing, computed values, shorthand defaulting and inheritance</title>
+<link rel="help" href="https://drafts.csswg.org/css-align-3/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><div id="parent"><div id="target"></div></div>
+<script>
+for (const property of ['align-content','justify-content','align-items','justify-items','align-self','justify-self']) {
+  test(() => {
+    target.style.cssText = '';
+    target.style.setProperty(property,'safe center');
+    assert_equals(target.style.getPropertyValue(property),'safe center');
+    assert_equals(getComputedStyle(target).getPropertyValue(property),'safe center');
+    assert_true(Array.from(getComputedStyle(target)).includes(property));
+    target.style.setProperty(property,'center safe');
+    assert_equals(target.style.getPropertyValue(property),'safe center');
+  }, property + ' has typed grammar, computed value and enumeration');
+}
+test(() => {
+  target.style.cssText = 'place-content:baseline;place-items:center;place-self:baseline last baseline';
+  assert_equals(target.style.placeContent,'baseline start');
+  assert_equals(target.style.justifyContent,'start');
+  assert_equals(target.style.placeItems,'center');
+  assert_equals(target.style.placeSelf,'baseline last baseline');
+}, 'Place shorthands consume whole components and use their specified defaults');
+test(() => {
+  const p = document.getElementById('parent');
+  p.style.cssText = 'justify-items:legacy right;align-items:center';
+  target.style.cssText = '';
+  assert_equals(getComputedStyle(target).justifyItems,'legacy right');
+  assert_equals(getComputedStyle(target).alignItems,'normal');
+  p.style.justifyItems = 'start';
+  assert_equals(getComputedStyle(target).justifyItems,'normal');
+}, 'Only legacy justify-items propagates through the non-inherited initial value');
+</script>

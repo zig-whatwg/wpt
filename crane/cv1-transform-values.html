@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: individual transform specified and computed values</title>
+<link rel="help" href="https://drafts.csswg.org/css-transforms-2/#individual-transforms">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function target(t) {
+  const element = document.createElement('div');
+  element.style.fontSize = '16px';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+test(t => {
+  const element = target(t);
+  element.style.scale = '50% 50% 100%';
+  assert_equals(element.style.scale, '0.5');
+  assert_equals(getComputedStyle(element).scale, '0.5');
+  element.style.scale = 'calc(200%) calc(3)';
+  assert_equals(element.style.scale, 'calc(200%) calc(3)');
+  assert_equals(getComputedStyle(element).scale, '2 3');
+}, 'Scale normalizes literal percentages but computes calculated percentages later');
+test(t => {
+  const element = target(t);
+  for (const [input, specified, computed] of [
+    ['-0.5 0 0 400grad', 'x -400grad', 'x -360deg'],
+    ['400grad 0 0 -2', '-400grad', '-360deg'],
+    ['0 0 0 400grad', '0 0 0 400grad', '0 0 0 360deg'],
+    ['400grad 1 2 3', '1 2 3 400grad', '1 2 3 360deg']
+  ]) {
+    element.style.rotate = input;
+    assert_equals(element.style.rotate, specified, input);
+    assert_equals(getComputedStyle(element).rotate, computed, input);
+  }
+}, 'Rotation preserves the zero vector and normalizes reversed principal axes');
+test(t => {
+  const element = target(t);
+  for (const [input, specified, computed] of [
+    ['2em 0px 0px', '2em', '32px'],
+    ['2em 0%', '2em 0%', '32px 0%'],
+    ['10% 2em 3em', '10% 2em 3em', '10% 32px 48px']
+  ]) {
+    element.style.translate = input;
+    assert_equals(element.style.translate, specified, input);
+    assert_equals(getComputedStyle(element).translate, computed, input);
+  }
+}, 'Resolved translation retains percentages without requiring geometry');
+test(t => {
+  const parent = target(t);
+  parent.style.cssText = 'font-size:10px;translate:2em;rotate:1turn;scale:2';
+  const child = document.createElement('div');
+  child.style.cssText = 'font-size:30px;translate:inherit;rotate:inherit;scale:inherit';
+  parent.append(child);
+  const computed = getComputedStyle(child);
+  assert_equals(computed.translate, '20px');
+  assert_equals(computed.rotate, '360deg');
+  assert_equals(computed.scale, '2');
+}, 'Explicit inheritance copies computed individual transforms');
+test(t => {
+  const element = target(t);
+  const computed = getComputedStyle(element);
+  for (const name of ['scale', 'rotate', 'translate']) {
+    assert_true(Array.from(computed).includes(name), name);
+    assert_equals(computed.getPropertyValue(name), 'none', name);
+  }
+  for (const [name, value] of [['scale', '1 2 3 4'], ['rotate', 'x y 1deg'], ['translate', '1px 2px 3%']]) {
+    assert_false(CSS.supports(name, value), name + ': ' + value);
+  }
+}, 'Individual transforms are enumerated with initial values and reject invalid axes');
+</script>

@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS tree-counting values follow DOM siblings and source scope</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#tree-counting">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t, html) {
+  const root = document.createElement('div');
+  root.innerHTML = html;
+  document.body.append(root);
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+function counts(element, pseudo = null) {
+  const style = getComputedStyle(element, pseudo);
+  return [style.marginLeft, style.marginTop];
+}
+const countStyle = 'margin-left:calc(1px * sibling-index());margin-top:calc(1px * sibling-count())';
+test(t => {
+  const root = fixture(t, '<i></i>text<!--comment--><b></b><em></em>');
+  const target = root.querySelector('b');
+  target.style.cssText = countStyle;
+  assert_array_equals(counts(target), ['2px', '3px']);
+  root.prepend(document.createElement('span'));
+  assert_array_equals(counts(target), ['3px', '4px']);
+  root.querySelector('i').remove();
+  assert_array_equals(counts(target), ['2px', '3px']);
+  root.prepend(target);
+  assert_array_equals(counts(target), ['1px', '3px']);
+  root.append(document.createTextNode('tail'));
+  assert_array_equals(counts(target), ['1px', '3px']);
+}, 'Only element siblings count and insertion removal and moves invalidate the pair');
+test(t => {
+  const root = fixture(t, '<svg><g></g>text<!--comment--><text>value</text></svg>');
+  const target = root.querySelector('text');
+  target.setAttribute('style', countStyle);
+  assert_array_equals(counts(target), ['2px', '2px']);
+}, 'Foreign elements participate in the same element-only sibling count');
+test(t => {
+  const root = fixture(t, '<i></i><b class="cv1-sibling-pseudo"></b><em></em>');
+  const sheet = document.createElement('style');
+  sheet.textContent = '.cv1-sibling-pseudo::before {content:"x";' + countStyle + '}';
+  root.append(sheet);
+  assert_array_equals(counts(root.querySelector('b'), '::before'), ['2px', '4px']);
+}, 'A pseudo-element uses its originating element and counts style elements too');
+test(t => {
+  const root = fixture(t, '<i></i><div></div>');
+  const host = root.lastElementChild;
+  host.className = 'cv1-sibling-host';
+  host.innerHTML = 'text<b></b><!--comment--><em></em>';
+  const shadow = host.attachShadow({mode:'open'});
+  shadow.innerHTML = '<style>:host {' + countStyle + '} ::slotted(*) {' + countStyle + '} .own {' + countStyle + '}</style><slot></slot><div class="own" part="item"></div>';
+  assert_array_equals(counts(host), ['2px', '2px']);
+  assert_array_equals(counts(host.querySelector('em')), ['2px', '2px']);
+  assert_array_equals(counts(shadow.querySelector('.own')), ['3px', '3px']);
+  const outer = document.createElement('style');
+  outer.textContent = '.cv1-sibling-host::part(item) {' + countStyle + '}';
+  root.append(outer);
+  assert_array_equals(counts(shadow.querySelector('.own')), ['0px', '0px']);
+}, 'Own scope host and slotted rules count DOM siblings while outer part rules yield zero');
+test(t => {
+  const root = fixture(t, '<i></i><div><b></b><em></em><strong></strong></div>');
+  const parent = root.lastElementChild, child = parent.querySelector('b');
+  parent.style.cssText = 'font-size:calc(10px * sibling-index());animation-duration:calc(1s * sibling-count())';
+  child.style.animationDuration = 'inherit';
+  assert_equals(getComputedStyle(parent).fontSize, '20px');
+  assert_equals(getComputedStyle(child).fontSize, '20px');
+  assert_equals(getComputedStyle(child).animationDuration, '2s');
+}, 'Inheritance keeps the parent computed count instead of reevaluating for the child');
+test(t => {
+  const root = fixture(t, '<i></i><b></b><em></em>');
+  const target = root.querySelector('b');
+  target.style.cssText = countStyle;
+  assert_array_equals(counts(target), ['2px', '3px']);
+  const other = document.implementation.createHTMLDocument('other');
+  other.body.append(other.adoptNode(target));
+  root.append(document.createElement('strong'));
+  root.append(document.adoptNode(target));
+  assert_array_equals(counts(target), ['4px', '4px']);
+}, 'Adoption and reinsertion reject the previous document and tree-version cache');
+test(t => {
+  const old = document.documentElement.style.cssText;
+  t.add_cleanup(() => { document.documentElement.style.cssText = old; });
+  document.documentElement.style.cssText = countStyle;
+  assert_array_equals(counts(document.documentElement), ['1px', '1px']);
+}, 'The document element is the sole element sibling');
+</script>

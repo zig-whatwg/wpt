@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: ordinary-property random values, keys and substitution</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#random-caching">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function element(t, text) {
+  const node = document.createElement('div');
+  node.style.cssText = text;
+  document.body.append(node);
+  t.add_cleanup(() => node.remove());
+  return node;
+}
+function value(node, property) { return getComputedStyle(node).getPropertyValue(property); }
+
+test(t => {
+  assert_true(CSS.supports('left', 'random(fixed .5, 0px, 100px)'));
+  const node = element(t, 'left:random(fixed .5,0px,100px);top:random(fixed .5,0px,100px,3px);right:random(fixed 1,0px,100px,33.333px)');
+  assert_equals(value(node, 'left'), '50px');
+  assert_equals(value(node, 'top'), '51px');
+  assert_equals(value(node, 'right'), '100px');
+}, 'fixed draws use inclusive step buckets and maximum snapping');
+
+test(t => {
+  assert_true(CSS.supports('left', 'random(--shared,0px,1000px)'));
+  const a = element(t, 'left:random(--shared,0px,1000px);top:random(--shared,0px,1000px)');
+  const b = element(t, 'left:random(--shared,0px,1000px)');
+  assert_equals(value(a, 'left'), value(a, 'top'));
+  assert_equals(value(a, 'left'), value(b, 'left'));
+}, 'explicit names share the draw across properties and elements');
+
+test(t => {
+  assert_true(CSS.supports('left', 'random(0px,1000px)'));
+  const node = element(t, 'left:random(0px,1000px)');
+  const before = value(node, 'left');
+  node.style.color = 'red';
+  assert_equals(value(node, 'left'), before);
+  node.remove();
+  document.body.append(node);
+  assert_equals(value(node, 'left'), before);
+}, 'recalculation and reattachment keep the document draw');
+
+test(t => {
+  assert_true(CSS.supports('margin', 'random(0px,1000px)'));
+  // Q82: Safari27's five-element probe follows Values5 §9.4.1.
+  for (let i = 0; i < 5; ++i) {
+    const node = element(t, 'margin:random(--k,0px,0px) random(0px,1000px)');
+    const a = value(node, 'margin-left');
+    node.style.margin = 'random(0px,1000px)';
+    const b = value(node, 'margin-top');
+    node.style.margin = 'random(0px,1000px) 1px';
+    assert_equals(value(node, 'margin-top'), b, 'D uses index one');
+    node.style.margin = '1px random(0px,1000px)';
+    assert_equals(value(node, 'margin-left'), b, 'E uses index one');
+    node.style.margin = 'random(0px,1000px) random(0px,1000px)';
+    assert_equals(value(node, 'margin-top'), b, 'C first draw uses index one');
+    assert_equals(value(node, 'margin-left'), a, 'A and C second draws use index two');
+    assert_not_equals(a, b, 'the named function advances the ordinal');
+  }
+}, 'named functions advance the property index before shorthand expansion');
+
+test(t => {
+  assert_true(CSS.supports('left', 'random-item(fixed 0,1px,2px)'));
+  const node = element(t, 'left:random-item(fixed 0,random-item(fixed 1,1px,2px),3px);top:random-item(fixed 1,invalid,3px)');
+  assert_equals(value(node, 'left'), '2px');
+  assert_equals(value(node, 'top'), '3px');
+}, 'random-item substitutes only the selected nested branch');
+
+test(t => {
+  assert_true(CSS.supports('left', 'random-item(fixed 0,invalid,3px)'));
+  const node = element(t, 'left:7px;left:random-item(fixed 0,invalid,3px)');
+  assert_equals(value(node, 'left'), 'auto');
+}, 'invalid selected values unset the winner instead of exposing a lower declaration');
+
+test(t => {
+  assert_true(CSS.supports('margin', 'random-item(fixed 0,1px 2px,3px 4px)'));
+  const node = element(t, 'margin:random-item(fixed 0,1px 2px,3px 4px);margin-left:9px');
+  assert_equals(value(node, 'margin-top'), '1px');
+  assert_equals(value(node, 'margin-right'), '2px');
+  assert_equals(value(node, 'margin-bottom'), '1px');
+  assert_equals(value(node, 'margin-left'), '9px');
+}, 'pending shorthand substitution preserves a later overriding longhand');
+</script>

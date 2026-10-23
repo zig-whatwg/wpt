@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Computed zero lengths beside percentages</title>
+<link rel="help" href="https://github.com/w3c/csswg-drafts/issues/3482">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(t => {
+  const target = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => target.remove());
+  for (const value of ['calc(10% + 0px)', 'calc(10% - 0px)', 'calc(10% + 0em)', 'calc(10% + 0vw)']) {
+    target.style.flexBasis = value;
+    assert_not_equals(target.style.flexBasis, '', value + ' parses');
+    assert_equals(getComputedStyle(target).flexBasis, '10%', value);
+    assert_true(target.style.flexBasis.includes('calc('), 'declared expression stays intact');
+  }
+  target.style.flexBasis = 'calc(0% + 10px)';
+  assert_equals(getComputedStyle(target).flexBasis, 'calc(0% + 10px)', 'zero percentage stays');
+  target.style.flexBasis = 'calc(10% + 1px)';
+  assert_equals(getComputedStyle(target).flexBasis, 'calc(10% + 1px)', 'nonzero length stays');
+}, 'Only a computed zero length beside a percentage is canonicalized away');
+</script>

@@ -1,0 +1,34 @@
+<meta charset="utf-8">
+<title>Crane: quirks lengths retain CSS token boundaries</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#deprecated-quirky-length">
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#serialization">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => assert_equals(document.compatMode, 'BackCompat'), 'The fixture exercises quirks mode');
+
+for (const [input, expected] of [['1', '1px'], ['+1', '1px'], ['-1', '-1px'], ['1.5', '1.5px'], ['+1.5', '1.5px'], ['-1.5', '-1.5px']]) {
+  test(t => {
+    const element = document.body.appendChild(document.createElement('div'));
+    t.add_cleanup(() => element.remove());
+    element.setAttribute('style', `letter-spacing:${input}`);
+    assert_equals(element.style.letterSpacing, expected);
+    assert_equals(getComputedStyle(element).letterSpacing, expected);
+    assert_false(CSS.supports('letter-spacing', input), 'CSS.supports uses the standard grammar even in quirks mode');
+  }, `Quirky letter-spacing accepts the single number token ${input}`);
+}
+
+for (const name of ['max-width', 'max-height', 'min-width', 'min-height', 'letter-spacing']) {
+  for (const input of ['+/**/1', '+/**/1px', '+ 1']) {
+    test(t => {
+      const element = document.body.appendChild(document.createElement('div'));
+      t.add_cleanup(() => element.remove());
+      element.setAttribute('style', `${name}:${input}`);
+      assert_equals(element.style.getPropertyValue(name), '');
+      const initial = name.startsWith('max-') ? 'none' : name.startsWith('min-') ? 'auto' : 'normal';
+      assert_equals(getComputedStyle(element).getPropertyValue(name), initial);
+    }, `${name} rejects separated tokens in ${input}`);
+  }
+}
+</script>

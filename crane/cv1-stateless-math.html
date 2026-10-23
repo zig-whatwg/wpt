@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stateless CSS math preserves types and special values</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#round-func">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+const target = document.getElementById('target');
+for (const [value, expected] of [
+  ['round(nearest, 15px, 6px)', '18px'],
+  ['round(down, -3px, 2px)', '-4px'],
+  ['mod(-18px, 5px)', '2px'],
+  ['rem(-18px, 5px)', '-3px'],
+  ['hypot(3px, 4px)', '5px'],
+  ['abs(-4px)', '4px'],
+  ['calc(sin(90deg) * 10px)', '10px'],
+  ['calc(log(8, 2) * 1px)', '3px'],
+  ['calc(pow(2, 3) * 1px)', '8px'],
+  ['calc(sign(-0px) * -1px / 0)', '0px'],
+  ['calc(clamp(-1, 1 / sign(-0), 1) * 1px)', '-1px'],
+  ['calc(pow(NaN, 0) * 1px)', '1px'],
+  ['calc(hypot(infinity, NaN) * 1px)', '0px'],
+]) {
+  test(() => {
+    target.style.marginLeft = '';
+    target.style.marginLeft = value;
+    assert_not_equals(target.style.marginLeft, '', 'accepted');
+    assert_equals(getComputedStyle(target).marginLeft, expected);
+  }, `margin-left: ${value}`);
+}
+test(() => {
+  target.style.marginLeft = '8px';
+  target.style.marginLeft = 'sin(1px)';
+  assert_equals(target.style.marginLeft, '8px');
+}, 'Dimensionally invalid trigonometry cannot replace a valid declaration');
+</script>

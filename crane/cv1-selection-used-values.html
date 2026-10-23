@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection uses user-select values without expanding explicit Ranges</title>
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/#content-selection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function target(t, markup) {
+  const root = document.createElement('div');
+  root.innerHTML = markup;
+  document.body.append(root);
+  t.add_cleanup(() => { getSelection().removeAllRanges(); root.remove(); });
+  return root;
+}
+function text(node) {
+  const range = document.createRange(); range.selectNodeContents(node);
+  getSelection().removeAllRanges(); getSelection().addRange(range);
+  return getSelection().toString();
+}
+test(t => {
+  const root = target(t, '<span>abc</span>'); root.style.userSelect = 'all';
+  const range = document.createRange();
+  range.setStart(root.firstChild.firstChild, 1); range.setEnd(root.firstChild.firstChild, 2);
+  getSelection().addRange(range);
+  assert_equals(getSelection().toString(), 'b');
+}, 'user-select:all preserves script-created substring endpoints');
+test(t => {
+  const root = target(t, '<div contenteditable style="user-select:none">editable</div>');
+  root.style.userSelect = 'none';
+  assert_equals(text(root.firstChild), 'editable');
+}, 'an editing host has the selectable used value contain');
+test(t => {
+  const root = target(t, 'before<br><span style="user-select:none">omitted</span>after');
+  assert_equals(text(root), 'before\nafter');
+}, 'filtering none preserves an existing rendered line break');
+for (const type of ['button', 'submit', 'RESET']) {
+  test(t => {
+    const root = target(t, '<input>'); root.firstChild.type = type;
+    assert_equals(getComputedStyle(root.firstChild).userSelect, 'none');
+    root.firstChild.style.userSelect = 'text';
+    assert_equals(getComputedStyle(root.firstChild).userSelect, 'text');
+  }, 'UA input ' + type + ' selection default is overridable');
+}
+test(t => {
+  const root = target(t, '<button>selectable</button><meter></meter><progress></progress><select></select>');
+  for (const element of root.children) assert_equals(getComputedStyle(element).userSelect, 'auto', element.localName);
+}, 'ordinary button, meter, progress and select keep browser-majority auto defaults');
+</script>

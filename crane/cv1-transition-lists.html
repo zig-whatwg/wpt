@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: transition shorthand list matching on both CSSOM surfaces</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#transition-property-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row118 Q89: integrator-probes-1023g/results/q89q52-{chrome,firefox,safari}.json.
+// Short lists repeat by majority; longer lists truncate by the specification
+// in the three-way split. Declared serialization has its own omission rule.
+const cases = [
+ ['repeat a short duration list', 'transition-property:opacity,width;transition-duration:1s', '', 'opacity 1s, width 1s'],
+ ['truncate a longer duration list', 'transition-property:opacity;transition-duration:1s,2s', '', 'opacity 1s'],
+ ['repeat durations and delays independently', 'transition-property:opacity,width,height;transition-duration:1s,2s;transition-delay:0s,.5s', '', 'opacity 1s, width 2s 0.5s, height 1s'],
+ ['complete declared lists preserve their unequal lengths', 'transition-property:opacity,width;transition-duration:1s;transition-timing-function:ease;transition-delay:0s;transition-behavior:normal', 'opacity 1s, width', 'opacity 1s, width 1s']
+];
+for (const [value, expected] of [
+ ['ease ease','ease'], ['ease linear','linear'], ['linear ease','ease linear'],
+ ['normal normal','normal'], ['normal allow-discrete','allow-discrete']
+]) cases.push([`keyword-like property ${value}`, `transition:${value}`, expected, expected]);
+for (const [name, css, declared, computed] of cases) {
+ test(t => {
+   const element = document.createElement('div');
+   document.body.append(element);
+   t.add_cleanup(() => element.remove());
+   element.style.cssText = css;
+   assert_equals(element.style.transition, declared, 'declared');
+   assert_equals(getComputedStyle(element).transition, computed, 'computed');
+ }, `Transition list serialization: ${name}`);
+}
+</script>

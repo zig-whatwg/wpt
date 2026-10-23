@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Grid flex calculations preserve typed values</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#calc-type-checking">
+<link rel="help" href="https://drafts.csswg.org/css-grid-2/#track-sizing">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+const target = document.getElementById('target');
+for (const property of ['grid-auto-columns', 'grid-auto-rows',
+                        'grid-template-columns', 'grid-template-rows']) {
+  test(t => {
+    t.add_cleanup(() => target.removeAttribute('style'));
+    target.style.setProperty(property, 'calc(1fr + 2fr)');
+    assert_equals(target.style.getPropertyValue(property), 'calc(3fr)');
+    assert_equals(getComputedStyle(target).getPropertyValue(property), '3fr');
+    target.style.setProperty(property, 'minmax(1px, calc(2fr / 4))');
+    assert_equals(target.style.getPropertyValue(property), 'minmax(1px, calc(0.5fr))');
+    assert_equals(getComputedStyle(target).getPropertyValue(property), 'minmax(1px, 0.5fr)');
+  }, `${property} accepts flex math as a track breadth and minmax maximum`);
+  test(t => {
+    t.add_cleanup(() => target.removeAttribute('style'));
+    for (const invalid of ['calc(1fr + 100px)', 'minmax(calc(1fr), 2px)']) {
+      target.style.removeProperty(property);
+      target.style.setProperty(property, invalid);
+      assert_equals(target.style.getPropertyValue(property), '', invalid);
+    }
+  }, `${property} rejects mixed flex types and a flexible minmax minimum`);
+}
+</script>

@@ -1,0 +1,103 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed color values preserve their channels and inherited currentcolor</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#resolving-color-values">
+<link rel="help" href="https://drafts.csswg.org/css-color-5/#relative-colors">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function target(t) {
+  const element = document.createElement('div');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+test(t => {
+  const element = target(t);
+  element.style.color = 'color(display-p3 1.25 -.5 .123456 / .123456)';
+  assert_equals(element.style.color, 'color(display-p3 1.25 -0.5 0.123456 / 0.123456)');
+  assert_equals(getComputedStyle(element).color, 'color(display-p3 1.25 -0.5 0.123456 / 0.123456)');
+}, 'Non-sRGB computed colors retain out-of-gamut values and modern alpha precision');
+
+test(t => {
+  const element = target(t);
+  for (const [value, expected] of [
+    ['rgb(none 128 255 / none)', 'color(srgb none 0.501961 1 / none)'],
+    ['hsl(none 20% 40%)', 'hsl(none 20% 40%)'],
+    ['hwb(120 none 20%)', 'hwb(120 none 20%)'],
+    ['lab(50% 20% -20%)', 'lab(50 25 -25)'],
+    ['oklch(50% 50% 450deg)', 'oklch(0.5 0.2 90)']
+  ]) {
+    element.style.color = value;
+    assert_equals(getComputedStyle(element).color, expected, value);
+  }
+}, 'Missing channels and polar/nonpolar color coordinates keep their typed representation');
+
+test(t => {
+  const parent = target(t);
+  parent.style.cssText = 'color:red;background-color:color-mix(in srgb,currentcolor,white)';
+  const child = document.createElement('span');
+  child.style.cssText = 'color:blue;background-color:inherit';
+  parent.append(child);
+  assert_equals(getComputedStyle(parent).backgroundColor, 'color(srgb 1 0.5 0.5)');
+  assert_equals(getComputedStyle(child).backgroundColor, 'color(srgb 0.5 0.5 1)');
+  parent.style.color = 'black';
+  assert_equals(getComputedStyle(parent).backgroundColor, 'color(srgb 0.5 0.5 0.5)');
+  assert_equals(getComputedStyle(child).backgroundColor, 'color(srgb 0.5 0.5 1)');
+}, 'An inherited mixed color resolves currentcolor against the child on every read');
+
+test(t => {
+  const element = target(t);
+  element.style.color = 'color-mix(in srgb,rgb(255 0 0 / .25),rgb(0 0 255 / .75))';
+  assert_equals(getComputedStyle(element).color, 'color(srgb 0.25 0 0.75 / 0.5)');
+  element.style.color = 'color-mix(in srgb,red 0%,blue 0%)';
+  assert_equals(getComputedStyle(element).color, 'color(srgb 0.5 0 0.5 / 0)');
+}, 'Mixing premultiplies alpha and handles zero-total weights');
+
+test(t => {
+  const element = target(t);
+  element.style.color = 'rgb(from color(srgb 1.5 0 -.5) calc(r / 2) g b)';
+  assert_equals(getComputedStyle(element).color, 'color(srgb 0.75 0 -0.5)');
+  element.style.color = 'rgb(from red r g b / calc(alpha / 2))';
+  assert_equals(getComputedStyle(element).color, 'color(srgb 1 0 0 / 0.5)');
+}, 'Relative colors calculate with unclipped channels and channel keywords');
+
+test(t => {
+  const element = target(t);
+  element.style.cssText = 'color-scheme:dark;color:color-mix(in srgb,light-dark(red,blue),white)';
+  assert_equals(getComputedStyle(element).color, 'color(srgb 0.5 0.5 1)');
+  element.style.colorScheme = 'light';
+  assert_equals(getComputedStyle(element).color, 'color(srgb 1 0.5 0.5)');
+}, 'A nested light-dark color resolves from the element color scheme');
+
+test(t => {
+  const element = target(t);
+  for (const value of ['color(display-p3 1 0)', 'rgb(from red r,g,b)',
+    'rgb(from red l g b)', 'color-mix(in srgb longer hue,red,blue)',
+    'color-mix(in srgb,red -1%,blue)', 'contrast-color(red,blue)']) {
+    element.style.color = 'red';
+    element.style.color = value;
+    assert_equals(element.style.color, 'red', value);
+    assert_false(CSS.supports('color', value), value);
+  }
+}, 'Invalid advanced-color grammar preserves the earlier declaration');
+
+// Q76: integrator-probes-1022j/results/colormix-{chrome,firefox,safari}.json.
+test(t => {
+  const element = target(t);
+  for (const [args, specified, computed] of [
+    ['red 70%, blue 70%', 'red 70%, blue 70%', 'color(srgb 0.5 0 0.5)'],
+    ['red 50%, blue 50%', 'red, blue', 'color(srgb 0.5 0 0.5)'],
+    ['red 30%, blue 30%', 'red 30%, blue 30%', 'color(srgb 0.5 0 0.5 / 0.6)'],
+    ['red 40%, blue 40%, green 40%', 'red 40%, blue 40%, green 40%', 'color(srgb 0.333333 0.16732 0.333333)'],
+    ['red 30%, blue 90%', 'red 30%, blue 90%', 'color(srgb 0.25 0 0.75)'],
+    ['red, blue', 'red, blue', 'color(srgb 0.5 0 0.5)'],
+    ['red 50%, blue', 'red, blue', 'color(srgb 0.5 0 0.5)']
+  ]) {
+    element.style.color = `color-mix(in srgb, ${args})`;
+    assert_equals(element.style.color, `color-mix(in srgb, ${specified})`, args);
+    assert_equals(getComputedStyle(element).color, computed, args);
+  }
+}, 'Mix percentages are omitted only when every share is exactly 100 percent divided by the color count');
+</script>

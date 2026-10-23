@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: flex specified and computed values without layout</title>
+<link rel="help" href="https://drafts.csswg.org/css-flexbox-1/#flexibility">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function target(t) {
+  const element = document.createElement('div');
+  element.style.fontSize = '16px';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+// Q79: pinned WPT and all three aligned browsers use 0% when basis is omitted.
+test(t => {
+  const element = target(t);
+  for (const [input, expected] of [['1', '1 1 0%'], ['2 3', '2 3 0%'], ['1 2 0', '1 2 0px'], ['none', '0 0 auto'], ['auto', '1 1 auto']]) {
+    element.style.flex = input;
+    assert_equals(element.style.flex, expected, input);
+    assert_equals(getComputedStyle(element).flex, expected, input);
+  }
+}, 'Flex omitted and explicit zero bases remain distinct');
+test(t => {
+  const element = target(t);
+  for (const [input, expected] of [['2em', '32px'], ['20%', '20%'], ['content', 'content'], ['fit-content(2em)', 'fit-content(32px)']]) {
+    element.style.flexBasis = input;
+    assert_equals(getComputedStyle(element).flexBasis, expected, input);
+  }
+}, 'Flex basis computes relative units and preserves percentages and intrinsic sizing');
+test(t => {
+  const element = target(t);
+  element.style.flexGrow = 'calc(-1)';
+  element.style.flexShrink = 'calc(2 + 1)';
+  element.style.flexBasis = 'calc(-2em)';
+  assert_equals(element.style.flexGrow, 'calc(-1)');
+  assert_equals(getComputedStyle(element).flexGrow, '0');
+  assert_equals(getComputedStyle(element).flexShrink, '3');
+  assert_equals(getComputedStyle(element).flexBasis, '0px');
+  assert_false(CSS.supports('flex-grow', '-1'));
+  assert_false(CSS.supports('flex', '1 2 calc(0)'));
+}, 'Flex factors clamp calculated results and reject invalid literal or basis types');
+test(t => {
+  const parent = target(t);
+  parent.style.cssText = 'font-size:10px;flex:2 3 2em';
+  const child = document.createElement('div');
+  child.style.cssText = 'font-size:30px;flex:inherit';
+  parent.append(child);
+  assert_equals(getComputedStyle(child).flex, '2 3 20px');
+}, 'Flex inheritance copies the computed basis instead of recomputing the parent unit');
+test(t => {
+  const computed = getComputedStyle(target(t));
+  for (const [name, expected] of [['flex-grow', '0'], ['flex-shrink', '1'], ['flex-basis', 'auto']]) {
+    assert_true(Array.from(computed).includes(name), name);
+    assert_equals(computed.getPropertyValue(name), expected, name);
+  }
+}, 'All flex longhands are enumerated with their initial values');
+</script>

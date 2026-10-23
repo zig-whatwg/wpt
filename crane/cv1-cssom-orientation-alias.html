@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: the orientation alias can express the longhand initial</title>
+<link rel="help" href="https://drafts.csswg.org/css-writing-modes-4/#text-orientation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const element = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => element.remove());
+  assert_equals(getComputedStyle(element).textOrientation, 'mixed');
+  assert_equals(getComputedStyle(element).getPropertyValue('-webkit-text-orientation'), 'vertical-right');
+  assert_true(CSS.supports('-webkit-text-orientation', 'vertical-right'));
+  assert_false(CSS.supports('-webkit-text-orientation', 'mixed'));
+}, 'The prefixed computed initial is valid in its own grammar');
+
+for (const input of ['vertical-right', 'VERTICAL-RIGHT', '\\76 ertical-right']) {
+  test(t => {
+    const parent = document.body.appendChild(document.createElement('div'));
+    const child = parent.appendChild(document.createElement('span'));
+    t.add_cleanup(() => parent.remove());
+    parent.style.setProperty('-webkit-text-orientation', input);
+    assert_equals(parent.style.textOrientation, 'mixed');
+    assert_equals(parent.style.getPropertyValue('-webkit-text-orientation'), 'vertical-right');
+    assert_equals(getComputedStyle(child).textOrientation, 'mixed');
+    assert_equals(getComputedStyle(child).getPropertyValue('-webkit-text-orientation'), 'vertical-right');
+  }, `Prefixed ${JSON.stringify(input)} sets and inherits the standard mixed value`);
+}
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.textOrientation = 'mixed';
+  assert_equals(style.getPropertyValue('-webkit-text-orientation'), 'vertical-right');
+  for (const [input, expected] of [['upright', 'upright'], ['sideways', 'sideways'], ['sideways-right', 'sideways']]) {
+    style.setProperty('-webkit-text-orientation', input);
+    assert_equals(style.getPropertyValue('-webkit-text-orientation'), expected);
+    assert_equals(style.textOrientation, expected);
+  }
+  style.setProperty('-webkit-text-orientation', 'mixed');
+  assert_equals(style.textOrientation, 'sideways', 'An invalid alias assignment keeps the prior declaration');
+}, 'The alias and standard name share one declaration without accepting prefixed mixed');
+
+for (const keyword of ['initial', 'inherit', 'unset', 'revert', 'revert-layer']) {
+  test(() => {
+    const style = document.createElement('div').style;
+    style.setProperty('-webkit-text-orientation', keyword);
+    assert_equals(style.textOrientation, keyword);
+    assert_equals(style.getPropertyValue('-webkit-text-orientation'), keyword);
+  }, `CSS-wide ${keyword} keeps the same spelling through both names`);
+}
+</script>

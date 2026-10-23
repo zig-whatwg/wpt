@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Content visibility applicability and selectable descendants</title>
+<link rel="help" href="https://drafts.csswg.org/css-contain-2/#content-visibility">
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/#content-selection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t, markup) {
+  const host = document.createElement('div');
+  host.innerHTML = markup;
+  document.body.append(host);
+  t.add_cleanup(() => { getSelection().removeAllRanges(); host.remove(); });
+  return host;
+}
+function selectedText(node) {
+  const selection = getSelection();
+  selection.removeAllRanges();
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  selection.addRange(range);
+  return selection.toString();
+}
+for (const display of ['inline', 'contents', 'table', 'table-cell']) {
+  test(t => {
+    const host = fixture(t, '<span>kept</span>');
+    host.firstChild.style.cssText = 'display:' + display + ';content-visibility:hidden';
+    assert_equals(host.innerText, 'kept');
+    assert_equals(selectedText(host), 'kept');
+  }, 'content-visibility does not skip a ' + display + ' element without size containment');
+}
+test(t => {
+  const host = fixture(t, 'a<span style="user-select:none">hidden<strong style="user-select:text">b</strong></span>c');
+  assert_equals(selectedText(host), 'abc');
+  assert_equals(host.innerText, 'ahiddenbc');
+}, 'Selection restores explicit text descendants and innerText ignores user-select');
+test(t => {
+  const host = fixture(t, '<div style="user-select:none"><span>hidden</span></div>');
+  assert_equals(selectedText(host.firstChild.firstChild), '');
+}, 'Selection starting within a subtree resolves auto from its none ancestor');
+test(t => {
+  const host = fixture(t, '<div style="content-visibility:hidden"><input></div>');
+  const input = host.querySelector('input');
+  input.focus();
+  assert_not_equals(document.activeElement, input);
+  host.firstChild.style.contentVisibility = 'visible';
+  input.focus();
+  assert_equals(document.activeElement, input);
+}, 'Skipped contents become focusable after content-visibility changes to visible');
+</script>

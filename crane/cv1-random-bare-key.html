@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bare dashed identifier as a random key</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#dashed-idents">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(t => {
+  const target = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => target.remove());
+  target.style.color = 'random-item(--, rgb(1, 0, 0), rgb(0, 1, 0))';
+  assert_in_array(getComputedStyle(target).color, ['rgb(1, 0, 0)', 'rgb(0, 1, 0)']);
+  target.style.left = 'random(--, 1px, 2px)';
+  const left = parseFloat(getComputedStyle(target).left);
+  assert_greater_than_equal(left, 1);
+  assert_less_than_equal(left, 2);
+}, 'The bare -- identifier is valid for both random functions');
+</script>

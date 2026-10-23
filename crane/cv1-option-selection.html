@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Option Selection text uses browser widget behavior and CSS user-select</title>
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/#content-selection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function optionFixture(t, size) {
+  const root = document.createElement('div');
+  const option = document.createElement('option');
+  option.innerHTML = 'a<span style="user-select:none">b<strong style="user-select:text">c</strong></span>d';
+  if (size) {
+    const select = document.createElement('select'); select.size = size;
+    select.append(option); root.append(select);
+  } else root.append(option);
+  document.body.append(root);
+  t.add_cleanup(() => { getSelection().removeAllRanges(); root.remove(); });
+  return {root, option};
+}
+function selected(option) {
+  const range = document.createRange(); range.selectNodeContents(option);
+  getSelection().removeAllRanges(); getSelection().addRange(range);
+  return range;
+}
+for (const size of [1, 2, 0]) test(t => {
+  const {option} = optionFixture(t, size), range = selected(option);
+  assert_equals(getSelection().toString(), size ? '' : 'acd');
+  assert_equals(range.toString(), 'abcd');
+  assert_equals(option.innerText, 'abcd');
+  assert_equals(getComputedStyle(option).userSelect, 'auto');
+}, size ? 'Options in a select of size ' + size + ' contribute no Selection text' :
+  'An option outside a select filters none content and restores explicit text descendants');
+test(t => {
+  const {root, option} = optionFixture(t, 2);
+  selected(option); assert_equals(getSelection().toString(), '');
+  root.append(option);
+  const range = document.createRange();
+  range.setStart(option.firstChild, 0); range.setEnd(option.querySelector('strong').firstChild, 1);
+  getSelection().removeAllRanges(); getSelection().addRange(range);
+  assert_equals(getSelection().toString(), 'ac');
+  assert_equals(range.toString(), 'abc');
+}, 'Moving an option out of its select restores selection and preserves DOM Range endpoints');
+</script>

@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Legacy HSL conversion preserves an exact half channel before byte rounding</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#hsl-to-rgb">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const element = document.createElement('div');
+  element.style.color = 'hsl(120 0% 50%)';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(getComputedStyle(element).color, 'rgb(128, 128, 128)');
+}, 'HSL achromatic half channels round to 128 together');
+</script>

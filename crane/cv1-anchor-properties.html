@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane anchor property values without geometry</title>
+<link rel="help" href="https://drafts.csswg.org/css-anchor-position-1/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const cases = [
+  ['anchor-name','--a, --A','--a, --A','--a, --A'],
+  ['anchor-scope','ALL','all','all'],
+  ['anchor-scope','--f\\6f o, --bar','--foo, --bar','--foo, --bar'],
+  ['position-anchor','normal','normal','normal'],
+  ['position-anchor','none','none','none'],
+  ['position-anchor','auto','auto','auto'],
+  ['position-anchor','--Foo','--Foo','--Foo'],
+  ['position-anchor','match-parent','match-parent','match-parent'],
+  ['position-area','top left','left top','left top'],
+  ['position-area','inline-end block-start','block-start inline-end','start end'],
+  ['position-area','span-all start','span-all start','inline-start'],
+  ['position-area','self-start span-all','self-start span-all','self-block-start'],
+  ['position-try-fallbacks','flip-start flip-inline --foo, top left','--foo flip-start flip-inline, left top','--foo flip-start flip-inline, left top'],
+  ['position-try','normal --foo','--foo','--foo'],
+  ['position-try','most-width --foo, flip-x','most-width --foo, flip-x','most-width --foo, flip-x'],
+];
+for (const [property,input,specified,computed] of cases) test(t => {
+  const e = document.createElement('div'); document.body.append(e); t.add_cleanup(() => e.remove());
+  e.style.setProperty(property,input);
+  assert_equals(e.style.getPropertyValue(property),specified,'specified');
+  assert_equals(getComputedStyle(e).getPropertyValue(property),computed,'computed');
+}, `${property}: ${input} preserves specified and computed semantics`);
+test(t => {
+  const e = document.createElement('div'); document.body.append(e); t.add_cleanup(() => e.remove());
+  e.style.cssText='position-anchor:--foo;position:absolute';
+  assert_equals(e.style.getPropertyValue('position-anchor'),'--foo');
+  assert_equals(getComputedStyle(e).getPropertyValue('position-anchor'),'--foo');
+  assert_true(Array.from(getComputedStyle(e)).includes('position'));
+}, 'position remains an independent enumerated longhand');
+test(t => {
+  const p = document.createElement('div'), e = document.createElement('div');
+  p.append(e); document.body.append(p); t.add_cleanup(() => p.remove());
+  p.style.cssText='anchor-name:--foo;anchor-scope:all;position-anchor:--foo;position-area:left;position-try:most-width flip-x';
+  const style=getComputedStyle(e);
+  for(const [name,initial] of [['anchor-name','none'],['anchor-scope','none'],['position-anchor','normal'],['position-area','none'],['position-try','none']])
+    assert_equals(style.getPropertyValue(name),initial,name);
+  e.style.setProperty('position-area','inherit');
+  assert_equals(getComputedStyle(e).getPropertyValue('position-area'),'left');
+}, 'anchor property initials are not inherited and explicit inherit works');
+test(t => {
+  const e=document.createElement('div'); document.body.append(e); t.add_cleanup(() => e.remove());
+  e.style.cssText='margin-left:1px;margin-inline-start:2px';
+  assert_equals(getComputedStyle(e).marginLeft,'2px');
+  e.style.setProperty('margin-left','1px');
+  assert_equals(getComputedStyle(e).marginLeft,'1px');
+}, 'declaration order breaks physical and logical property ties after CSSOM updates');
+</script>

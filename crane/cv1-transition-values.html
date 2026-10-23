@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: transition declarations and computed lists</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-2/#transition-shorthand-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function target(t) {
+  const element = document.createElement('div');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+test(t => {
+  const element = target(t);
+  element.style.transition = 'allow-discrete 1s -3s top, opacity 2s linear';
+  for (const [name, expected] of [
+    ['transition-property', 'top, opacity'], ['transition-duration', '1s, 2s'],
+    ['transition-delay', '-3s, 0s'], ['transition-timing-function', 'ease, linear'],
+    ['transition-behavior', 'allow-discrete, normal']
+  ]) {
+    assert_equals(element.style.getPropertyValue(name), expected, name);
+    assert_equals(getComputedStyle(element).getPropertyValue(name), expected, name);
+  }
+}, 'Transition shorthand expands every constituent list in matching order');
+test(t => {
+  const element = target(t);
+  element.style.transitionDuration = '500ms, calc(-1s)';
+  element.style.transitionDelay = '-500ms, 1s';
+  assert_equals(element.style.transitionDuration, '500ms, calc(-1s)');
+  assert_equals(getComputedStyle(element).transitionDuration, '0.5s, 0s');
+  assert_equals(getComputedStyle(element).transitionDelay, '-0.5s, 1s');
+}, 'Transition times compute seconds and clamp durations without clamping delays');
+test(t => {
+  const element = target(t);
+  element.style.transitionProperty = 'ALL, INVALID, width, width';
+  assert_equals(element.style.transitionProperty, 'all, INVALID, width, width');
+  assert_equals(getComputedStyle(element).transitionProperty, 'all, INVALID, width, width');
+  element.style.transitionTimingFunction = 'linear(0, .5 25% 75%, 1)';
+  assert_equals(getComputedStyle(element).transitionTimingFunction, 'linear(0 0%, 0.5 25%, 0.5 75%, 1 100%)');
+  assert_false(CSS.supports('transition-property', 'none, top'));
+  assert_false(CSS.supports('transition', '-1s'));
+}, 'Transition property lists retain unknown identifiers and share complete easing values');
+test(t => {
+  const parent = target(t);
+  parent.style.transition = 'opacity 500ms linear -1s allow-discrete';
+  const child = document.createElement('div');
+  child.style.transition = 'inherit';
+  parent.append(child);
+  const computed = getComputedStyle(child);
+  assert_equals(computed.transitionProperty, 'opacity');
+  assert_equals(computed.transitionDuration, '0.5s');
+  assert_equals(computed.transitionDelay, '-1s');
+  assert_equals(computed.transitionTimingFunction, 'linear');
+  assert_equals(computed.transitionBehavior, 'allow-discrete');
+}, 'Transition shorthand inheritance copies all five computed lists');
+test(t => {
+  const computed = getComputedStyle(target(t));
+  for (const [name, expected] of [
+    ['transition-property', 'all'], ['transition-duration', '0s'], ['transition-delay', '0s'],
+    ['transition-timing-function', 'ease'], ['transition-behavior', 'normal']
+  ]) {
+    assert_true(Array.from(computed).includes(name), name);
+    assert_equals(computed.getPropertyValue(name), expected, name);
+  }
+}, 'Every transition longhand is enumerated with its initial value');
+</script>

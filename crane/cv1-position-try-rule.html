@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Position try rules retain their live restricted descriptor objects</title>
+<link rel="help" href="https://drafts.csswg.org/css-anchor-position-1/#position-try-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+function makeRule() {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@position-try --Foo { top:1px; margin:2px; color:red; --x:y; left:3px!important; }');
+  assert_equals(sheet.cssRules.length, 1);
+  return sheet.cssRules[0];
+}
+test(() => {
+  const rule = makeRule();
+  assert_true(rule instanceof CSSPositionTryRule);
+  assert_true(rule.style instanceof CSSPositionTryDescriptors);
+  assert_equals(rule.name, '--Foo');
+  assert_equals(rule.type, 0);
+  assert_equals(rule.style, rule.style);
+  assert_equals(rule.style.parentRule, rule);
+  assert_equals(rule.style.top, '1px');
+  assert_equals(rule.style.margin, '2px');
+  for (const name of ['color', '--x', 'left']) assert_equals(rule.style.getPropertyValue(name), '');
+}, 'Correct CSSOM interfaces and restricted declarations');
+test(() => {
+  const rule = makeRule();
+  rule.style.top = '4px';
+  rule.style.setProperty('color', 'blue');
+  rule.style.setProperty('left', '5px', 'important');
+  assert_equals(rule.style.top, '4px');
+  assert_equals(rule.style.getPropertyValue('color'), '');
+  assert_equals(rule.style.left, '');
+  rule.style = 'right:6px; color:red; bottom:7px!important;';
+  assert_equals(rule.style.cssText, 'right: 6px;');
+  assert_equals(rule.cssText, '@position-try --Foo { right: 6px; }');
+}, 'Descriptor attribute, setProperty, cssText and PutForwards share restrictions');
+promise_test(async () => {
+  let rule = makeRule();
+  const descriptor = rule.style;
+  rule = null;
+  await garbageCollect();
+  await garbageCollect();
+  assert_equals(descriptor.top, '1px');
+  const retained = descriptor.parentRule;
+  assert_true(retained instanceof CSSPositionTryRule);
+  assert_equals(retained.name, '--Foo');
+  assert_equals(retained.style, descriptor);
+  assert_equals(retained.parentStyleSheet.cssRules[0], retained);
+  descriptor.top = '8px';
+  assert_true(retained.cssText.includes('top: 8px;'));
+}, 'A descriptor keeps its rule and sheet reachable after other script references are dropped');
+promise_test(async () => {
+  const rule = makeRule();
+  let descriptor = rule.style;
+  const weak = new WeakRef(descriptor);
+  descriptor = null;
+  await garbageCollect();
+  await garbageCollect();
+  assert_equals(rule.style, weak.deref());
+  assert_equals(rule.style.parentRule, rule);
+  rule.parentStyleSheet.deleteRule(0);
+  await garbageCollect();
+  assert_equals(rule.parentStyleSheet, null);
+  assert_equals(rule.style.top, '1px');
+}, 'A retained rule keeps its SameObject descriptor and survives deletion from its sheet');
+</script>

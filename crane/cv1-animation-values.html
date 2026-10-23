@@ -1,0 +1,92 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: animation values, easing and reset-only fields</title>
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+const target = document.getElementById('target');
+function clean(t) { target.removeAttribute('style'); t.add_cleanup(() => target.removeAttribute('style')); }
+test(t => {
+  clean(t);
+  target.style.animationDuration = '500ms, 3s';
+  target.style.animationDelay = '-500ms, 1s';
+  assert_equals(target.style.animationDuration, '500ms, 3s');
+  assert_equals(getComputedStyle(target).animationDuration, '0.5s, 3s');
+  assert_equals(getComputedStyle(target).animationDelay, '-0.5s, 1s');
+}, 'Time lists retain specified units and compute seconds');
+test(t => {
+  clean(t);
+  target.style.animationDuration = 'auto, 500ms';
+  assert_equals(getComputedStyle(target).animationDuration, '0s, 0.5s');
+  for (const timeline of ['none', '--named', 'scroll()', 'view()', 'auto, auto']) {
+    target.style.animationTimeline = timeline;
+    assert_equals(getComputedStyle(target).animationDuration, 'auto, 0.5s', timeline);
+  }
+}, 'Auto duration resolves only with one automatic timeline');
+test(t => {
+  clean(t);
+  target.style.animationName = '"none", "INITIAL", "multi word"';
+  assert_equals(target.style.animationName, '"none", "INITIAL", multi\\ word');
+  assert_equals(getComputedStyle(target).animationName, target.style.animationName);
+}, 'Names retain reserved strings and escape ordinary identifiers');
+test(t => {
+  clean(t);
+  target.style.cssText = 'animation-composition:add;animation-timeline:--old;animation-range:entry;animation:one 1s,two 2s';
+  assert_equals(target.style.animationTimeline, 'auto');
+  assert_equals(target.style.animationRangeStart, 'normal');
+  assert_equals(target.style.animationRangeEnd, 'normal');
+  assert_equals(target.style.animationComposition, 'add');
+  assert_equals(target.style.animationDuration, '1s, 2s');
+}, 'Animation resets timeline and ranges once and preserves composition');
+test(t => {
+  clean(t);
+  target.style.animationTimingFunction = 'linear(0, 0.5 25% 75%, 1)';
+  assert_equals(target.style.animationTimingFunction, 'linear(0, 0.5 25% 75%, 1)');
+  assert_equals(getComputedStyle(target).animationTimingFunction, 'linear(0 0%, 0.5 25%, 0.5 75%, 1 100%)');
+}, 'Linear keeps specified stops and expands computed stops');
+test(t => {
+  clean(t);
+  target.style.animationTimingFunction = 'steps(calc(2 + sign(100em - 1px)))';
+  assert_equals(getComputedStyle(target).animationTimingFunction, 'steps(3)');
+  target.style.animationTimingFunction = 'steps(calc(1 + sign(1em - 100px)), jump-none)';
+  assert_equals(getComputedStyle(target).animationTimingFunction, 'steps(2, jump-none)');
+}, 'Steps resolve element-dependent counts before clamping');
+test(t => {
+  clean(t);
+  target.style.animationTimingFunction = 'steps(calc(-10), start)';
+  assert_equals(target.style.animationTimingFunction, 'steps(calc(-10), start)');
+  assert_equals(getComputedStyle(target).animationTimingFunction, 'steps(1, start)');
+  for (const value of ['steps(calc(1), jump-none)', 'steps(calc(0/0))', 'cubic-bezier(calc(-2), 0, 1, 1)']) {
+    assert_false(CSS.supports('animation-timing-function', value), value);
+  }
+}, 'Easing owning boundaries reject known invalid bounds and clamp counts');
+test(t => {
+  clean(t);
+  for (const value of ['linear(sign(1em - 1px), 1)', 'linear(0 calc(sign(1em - 1px)*10%), 1)', 'cubic-bezier(0, sign(1em - 1px), 1, 1)']) {
+    assert_false(CSS.supports('animation-timing-function', value), value);
+  }
+  assert_true(CSS.supports('animation-timing-function', 'linear(0, 1)'));
+}, 'Linear and cubic reject element-dependent arguments by browser majority');
+test(t => {
+  clean(t);
+  target.style.animationRange = 'entry calc(10% - 10%) entry calc(50% + 50%)';
+  assert_equals(target.style.animationRange, 'entry calc(0%) entry calc(100%)');
+  assert_equals(getComputedStyle(target).animationRange, 'entry');
+}, 'Range defaults omit calculations only after computation');
+test(t => {
+  clean(t);
+  target.style.fontSize = '10px';
+  target.style.animationTimeline = 'view(2em calc(1% + 1em) inline), scroll(y root)';
+  assert_equals(getComputedStyle(target).animationTimeline, 'view(inline 20px calc(1% + 10px)), scroll(root y)');
+}, 'Timeline functions compute insets and serialize in grammar order');
+test(t => {
+  clean(t);
+  const style = getComputedStyle(target);
+  for (const name of ['animation-duration', 'animation-timing-function', 'animation-delay', 'animation-iteration-count', 'animation-direction', 'animation-fill-mode', 'animation-play-state', 'animation-name', 'animation-composition', 'animation-timeline', 'animation-range-start', 'animation-range-end']) {
+    assert_true(Array.from(style).includes(name), name);
+    assert_not_equals(style.getPropertyValue(name), '', name);
+  }
+}, 'Every animation longhand is enumerated with an initial value');
+</script>

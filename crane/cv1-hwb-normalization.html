@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HWB conversion normalizes the authored white and black ratio</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#hwb-to-rgb">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const element = document.createElement('div');
+  element.style.color = 'hwb(0 200% 100%)';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(getComputedStyle(element).color, 'rgb(170, 170, 170)');
+}, 'HWB normalizes white and black before any RGB clipping');
+</script>

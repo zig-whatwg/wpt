@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection excludes skipped content without changing Range text</title>
+<link rel="help" href="https://drafts.csswg.org/css-contain-2/#content-visibility">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.createElement('div');
+  host.style.contentVisibility = 'hidden';
+  host.textContent = 'skipped contents';
+  document.body.append(host);
+  const selection = getSelection();
+  selection.removeAllRanges();
+  t.add_cleanup(() => { selection.removeAllRanges(); host.remove(); });
+  const range = document.createRange();
+  range.selectNodeContents(host);
+  selection.addRange(range);
+  assert_equals(range.toString(), 'skipped contents');
+  assert_equals(selection.toString(), '');
+}, 'A hidden block keeps raw Range text while Selection excludes its skipped contents');
+</script>

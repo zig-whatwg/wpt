@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Grid placement values and shorthand defaulting</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><div id="target"></div>
+<script>
+for (const property of ['grid-row-start', 'grid-row-end', 'grid-column-start', 'grid-column-end']) {
+  test(() => {
+    target.style.cssText = '';
+    target.style.setProperty(property, 'A 2 SpAn');
+    assert_equals(target.style.getPropertyValue(property), 'span 2 A');
+    assert_equals(getComputedStyle(target).getPropertyValue(property), 'span 2 A');
+    assert_true(Array.from(getComputedStyle(target)).includes(property));
+    target.style.setProperty(property, 'span 0');
+    assert_equals(target.style.getPropertyValue(property), 'span 2 A');
+  }, property + ' grammar, computed value and enumeration');
+}
+test(() => {
+  target.style.gridArea = 'item';
+  for (const p of ['gridRowStart', 'gridRowEnd', 'gridColumnStart', 'gridColumnEnd'])
+    assert_equals(target.style[p], 'item');
+  target.style.gridArea = 'auto / item / auto / item';
+  assert_equals(target.style.gridArea, 'auto / item');
+  assert_equals(getComputedStyle(target).gridArea, 'auto / item');
+}, 'grid-area defaults named lines and omits reconstructible components');
+test(() => {
+  target.style.gridRow = 'span calc(-2) A / auto';
+  assert_equals(target.style.gridRow, 'span calc(-2) A');
+  assert_equals(getComputedStyle(target).gridRow, 'span A');
+}, 'grid integer math clamps the computed span after preserving specified math');
+</script>

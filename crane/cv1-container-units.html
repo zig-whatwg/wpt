@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Container lengths fall back until query containers can be established</title>
+<link rel="help" href="https://drafts.csswg.org/css-conditional-5/#container-lengths">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Q96: container-type is not supported yet. The future container-queries
+// implementation must extend the eligibility query when enabling it.
+for (const container of [false, true]) {
+  for (const [unit, viewport] of [['cqw','svw'], ['cqh','svh'], ['cqi','svi'], ['cqb','svb'], ['cqmin','svmin'], ['cqmax','svmax']]) {
+    test(t => {
+      const parent = document.createElement('section');
+      const element = document.createElement('div');
+      parent.append(element);
+      document.documentElement.append(parent);
+      t.add_cleanup(() => parent.remove());
+      if (container) parent.style.setProperty('container-type', 'size');
+      // An unsupported container-type cannot establish a size container.
+      assert_equals(parent.style.getPropertyValue('container-type'), '');
+      element.style.left = '2' + viewport;
+      const expected = getComputedStyle(element).left;
+      element.style.left = '2' + unit;
+      assert_equals(element.style.left, '2' + unit);
+      assert_equals(getComputedStyle(element).left, expected);
+    }, `${unit}: ${container ? 'unsupported container-type ancestor' : 'ordinary real element'}`);
+  }
+}
+</script>

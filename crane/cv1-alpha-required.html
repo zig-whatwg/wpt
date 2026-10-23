@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Relative alpha requires an alpha argument</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-5/#relative-alpha">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElement('div');
+  element.style.color = 'alpha(from red)';
+  assert_equals(element.style.color, '');
+}, 'An alpha origin without slash and alpha argument is invalid');
+</script>

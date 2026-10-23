@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bad CSS tokens remain invalid across declaration serialization</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#typedef-declaration-value">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const style = document.createElement('div').style;
+  style.cssText = 'background-image: url(a b); color: red';
+  assert_equals(style.backgroundImage, '');
+  assert_equals(style.color, 'red');
+}, 'cssText rejects a bad URL while retaining the following declaration');
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.cssText = 'content: "broken\n; opacity: 0.5';
+  assert_equals(style.content, '');
+  assert_equals(style.opacity, '0.5');
+}, 'cssText rejects a bad string while retaining the following declaration');
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.cssText = '--bad: image-set(url(a b) 1x); --good: url("")';
+  assert_equals(style.getPropertyValue('--bad'), '');
+  assert_not_equals(style.getPropertyValue('--good'), '');
+}, 'custom properties reject nested bad tokens but allow empty URL syntax');
+
+test(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('div { background-image: image-set(url(a b) 1x); color: blue }');
+  assert_equals(sheet.cssRules[0].style.backgroundImage, '');
+  assert_equals(sheet.cssRules[0].style.color, 'blue');
+}, 'stylesheet declarations cannot hide a bad URL inside image-set');
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.cssText = 'background-image: url("")';
+  assert_not_equals(style.backgroundImage, '');
+}, 'empty url syntax is accepted independently of resource validity');
+</script>

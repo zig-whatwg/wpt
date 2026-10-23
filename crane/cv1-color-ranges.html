@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resolved Lab family ranges</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#resolving-color-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(t => {
+  const target = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => target.remove());
+  const cases = [
+    ['lab(from red 200 300 400)', 'lab(100 300 400)'],
+    ['lab(from red -200 -300 -400)', 'lab(0 -300 -400)'],
+    ['oklab(from red 2 3 4)', 'oklab(1 3 4)'],
+    ['oklab(from red -2 -3 -4)', 'oklab(0 -3 -4)'],
+    ['lch(from red 200 300 400)', 'lch(100 300 40)'],
+    ['lch(from red -200 -300 -400)', 'lch(0 0 320)'],
+    ['oklch(from red 2 3 400)', 'oklch(1 3 40)'],
+    ['oklch(from red -2 -3 -400)', 'oklch(0 0 320)'],
+    ['rgb(from red 510 -255 0)', 'color(srgb 2 -1 0)'],
+    ['color(from red display-p3 2 -1 .5)', 'color(display-p3 2 -1 0.5)'],
+  ];
+  for (const [value, expected] of cases) {
+    target.style.color = value;
+    assert_not_equals(target.style.color, '', value + ' parses');
+    assert_equals(getComputedStyle(target).color, expected, value);
+  }
+}, 'Resolved Lab lightness and polar chroma clamp while opponent and RGB channels stay extended');
+</script>

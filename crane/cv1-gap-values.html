@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gap values share typed math and canonical aliases</title>
+<link rel="help" href="https://drafts.csswg.org/css-gaps-1/#gaps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><div id="target"></div>
+<script>
+for (const name of ['row-gap','column-gap','grid-row-gap','grid-column-gap']) {
+  test(() => {
+    target.style.cssText = 'font-size:20px';
+    target.style.setProperty(name,'calc(2em + 3px)');
+    assert_equals(getComputedStyle(target).getPropertyValue(name),'43px');
+    target.style.setProperty(name,'calc(10px - 2em)');
+    assert_equals(getComputedStyle(target).getPropertyValue(name),'0px');
+    target.style.setProperty(name,'normal');
+    assert_equals(getComputedStyle(target).getPropertyValue(name),'normal');
+  }, name + ' computes math, clamps negatives and preserves normal');
+}
+test(() => {
+  target.style.cssText = 'grid-row-gap:10px;column-gap:20%';
+  assert_equals(target.style.cssText,'gap: 10px 20%;');
+  assert_equals(target.style.gridGap,'10px 20%');
+  assert_equals(target.style[0],'row-gap');
+  const names = Array.from(getComputedStyle(target));
+  assert_true(names.includes('row-gap'));
+  assert_true(names.includes('column-gap'));
+  assert_false(names.includes('grid-row-gap'));
+}, 'Legacy gap names share canonical longhands and shorthand serialization');
+</script>

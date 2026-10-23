@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Partial products around sibling functions</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#calc-simplification">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+test(() => {
+  const target = document.createElement('div');
+  target.style.rotate = 'calc(sibling-index() * 2rad * pi)';
+  assert_equals(target.style.rotate, 'calc(360deg * sibling-index())');
+  target.style.rotate = 'calc(sibling-count() * 1rad * pi)';
+  assert_equals(target.style.rotate, 'calc(180deg * sibling-count())');
+  target.style.left = 'calc(sibling-index() * 2px * 3 / 2)';
+  assert_equals(target.style.left, 'calc(3px * sibling-index())');
+}, 'Numeric factors combine while unresolved sibling functions remain');
+</script>

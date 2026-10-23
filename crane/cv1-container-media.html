@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Container units in elementless media queries</title>
+<link rel="help" href="https://drafts.csswg.org/css-conditional-5/#container-lengths">
+<link rel="help" href="https://drafts.csswg.org/mediaqueries-5/#units">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const portrait = matchMedia('(max-aspect-ratio:1/1)').matches;
+for (const [feature, unit] of [['width','cqw'], ['height','cqh'], ['width','cqi'], ['height','cqb'], [portrait ? 'width' : 'height','cqmin'], [portrait ? 'height' : 'width','cqmax']]) {
+  test(() => assert_true(matchMedia(`(${feature}:100${unit})`).matches), `${unit} uses the small viewport in a media query`);
+}
+for (const [feature, unit] of [['width','cqw'], ['height','cqh']]) {
+  test(() => assert_false(matchMedia(`(${feature}:90${unit})`).matches), `90${unit} does not equal the viewport ${feature}`);
+}
+for (const query of ['(width:100cqunknown)', 'not (width:100cqunknown)']) {
+  test(() => assert_false(matchMedia(query).matches), `${query}: unknown units remain unknown`);
+}
+test(t => {
+  const old = document.documentElement.style.writingMode;
+  t.add_cleanup(() => { document.documentElement.style.writingMode = old; });
+  document.documentElement.style.writingMode = 'vertical-rl';
+  assert_true(matchMedia('(width:100cqi)').matches);
+  assert_true(matchMedia('(height:100cqb)').matches);
+}, 'elementless logical units use the initial writing mode');
+</script>

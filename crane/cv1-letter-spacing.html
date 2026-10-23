@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Letter spacing computes lengths, inherits percentages and resolves zero</title>
+<link rel="help" href="https://drafts.csswg.org/css-text-4/#letter-spacing-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent" style="font-size:20px"><span id="target" style="font-size:40px"></span></div>
+<script>
+test(() => {
+  const parent = document.getElementById('parent');
+  const target = document.getElementById('target');
+  parent.style.setProperty('letter-spacing', '1em');
+  assert_equals(parent.style.getPropertyValue('letter-spacing'), '1em');
+  assert_equals(getComputedStyle(target).getPropertyValue('letter-spacing'), '20px');
+  parent.style.setProperty('letter-spacing', '10%');
+  assert_equals(getComputedStyle(target).getPropertyValue('letter-spacing'), '10%');
+  target.style.setProperty('letter-spacing', 'calc(1em - 40px)');
+  assert_equals(getComputedStyle(target).getPropertyValue('letter-spacing'), 'normal');
+  assert_true(Array.from(getComputedStyle(target)).includes('letter-spacing'));
+}, 'letter-spacing is supported and preserves computed inheritance with legacy zero serialization');
+</script>

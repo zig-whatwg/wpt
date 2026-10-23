@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Five thousand CSS declarations and one thousand computed styles</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const sheet = document.createElement('style');
+  const container = document.createElement('section');
+  const rules = [];
+  const elements = [];
+  for (let i = 0; i < 1000; ++i) {
+    rules.push(`.cv1-${i} { color: rgb(${i % 256}, 0, 0); margin-left: ${i % 20}px; padding-top: 2px; opacity: .9; white-space: pre; }`);
+    const element = document.createElement('div');
+    element.className = `cv1-${i}`;
+    container.append(element);
+    elements.push(element);
+  }
+  document.body.append(container);
+  const start = performance.now();
+  sheet.textContent = rules.join('\n');
+  document.head.append(sheet);
+  for (let i = 0; i < elements.length; ++i) {
+    const style = getComputedStyle(elements[i]);
+    assert_equals(style.marginLeft, `${i % 20}px`);
+    assert_equals(style.paddingTop, '2px');
+  }
+  console.log('CV1_STYLESHEET_MS=' + (performance.now() - start).toFixed(3));
+  container.remove();
+  sheet.remove();
+}, 'parse 5,000 declarations and read 1,000 computed styles');
+</script>

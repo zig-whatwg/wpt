@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Converted powerless hue suppresses colorfulness noise</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#powerless">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// CSSWG #14133/#14244: converted powerless components follow the newer
+// noise-suppression rule, including stable serialization and reparsing.
+for (const [input, expected] of [
+  ['lch(from lab(50 0.001 0) l c h)', 'lch(50 0 none)'],
+  ['oklch(from oklab(0.5 0.000002 0) l c h)', 'oklch(0.5 0 none)'],
+  ['hsl(from color(srgb 0.5 0.500000001 0.5) h s l)', 'hsl(none 0% 50%)'],
+  ['hwb(from color(srgb 0.5 0.500000001 0.5) h w b)', 'hwb(none 50% 50%)'],
+  ['hsl(from hsl(180 0% 50%) h s l)', 'color(srgb 0.5 0.5 0.5)'],
+]) {
+  test(t => {
+    const target = document.body.appendChild(document.createElement('span'));
+    t.add_cleanup(() => target.remove());
+    target.style.color = input;
+    assert_equals(getComputedStyle(target).color, expected);
+    target.style.color = expected;
+    assert_equals(getComputedStyle(target).color, expected, 'computed value reparses identically');
+  }, input + ' uses the computed powerless rule');
+}
+</script>

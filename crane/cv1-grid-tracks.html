@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane CSS Grid typed track values without layout</title>
+<link rel="help" href="https://drafts.csswg.org/css-grid-2/#track-sizing">
+<link rel="help" href="https://drafts.csswg.org/css-grid-3/#intrinsic-repeat">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+function fresh(t) {
+  target.style.cssText = "font-size:16px";
+  t.add_cleanup(() => { target.style.cssText = ""; });
+  return target.style;
+}
+test(t => {
+  const s = fresh(t);
+  s.gridAutoColumns = "minmax(2em, 1fr) fit-content(calc(10px + 50%))";
+  assert_equals(s.gridAutoColumns, "minmax(2em, 1fr) fit-content(calc(50% + 10px))");
+  assert_equals(getComputedStyle(target).gridAutoColumns,
+    "minmax(32px, 1fr) fit-content(calc(50% + 10px))");
+}, "Track sizes retain typed length-percentage and flexible breadths");
+
+test(t => {
+  const s = fresh(t);
+  s.gridTemplateColumns = "[] 1em [] repeat(2, [a b] minmax(2em, 3fr) [c]) []";
+  assert_equals(s.gridTemplateColumns, "1em repeat(2, [a b] minmax(2em, 3fr) [c])");
+  assert_equals(getComputedStyle(target).gridTemplateColumns,
+    "16px repeat(2, [a b] minmax(32px, 3fr) [c])");
+}, "Non-grid computed tracks preserve finite repeats and line-name groups");
+
+test(t => {
+  const s = fresh(t);
+  s.gridTemplateRows = "subgrid [] [a a] repeat(2, [] [b]) repeat(auto-fill, [c])";
+  assert_equals(s.gridTemplateRows,
+    "subgrid [] [a a] repeat(2, [] [b]) repeat(auto-fill, [c])");
+  assert_equals(getComputedStyle(target).gridTemplateRows, s.gridTemplateRows);
+}, "Subgrid specified and computed name lists retain empty groups");
+
+test(t => {
+  const s = fresh(t);
+  s.gridTemplateColumns = "1px repeat(auto-fill, auto fit-content(2em)) 3px";
+  assert_equals(s.gridTemplateColumns, "1px repeat(auto-fill, auto fit-content(2em)) 3px");
+  // Q48: Grid 2 §7.2 is normative; the none fallback is still CSSWG #10915.
+  assert_equals(getComputedStyle(target).gridTemplateColumns,
+    "1px repeat(auto-fill, auto fit-content(32px)) 3px");
+}, "Intrinsic auto-repeat preserves its computed list pending CSSWG 10915");
+
+test(t => {
+  const s = fresh(t);
+  s.gridTemplateAreas = '"  a a ... " "b b ."';
+  assert_equals(s.gridTemplateAreas, '"a a ." "b b ."');
+  assert_equals(getComputedStyle(target).gridTemplateAreas, s.gridTemplateAreas);
+  s.gridTemplateAreas = '"a a" "a ."';
+  assert_equals(s.gridTemplateAreas, '"a a ." "b b ."');
+}, "Named grid areas normalize cells and reject nonrectangular regions");
+
+test(t => {
+  const s = fresh(t);
+  s.gridTemplate = '[a] "x x" auto [b] [c] "y y" 2em [d] / 1fr 2fr';
+  assert_equals(s.gridTemplate, '[a] "x x" [b c] "y y" 2em [d] / 1fr 2fr');
+  assert_equals(s.gridTemplateRows, "[a] auto [b c] 2em [d]");
+  assert_equals(s.gridTemplateAreas, '"x x" "y y"');
+}, "Grid-template area form merges adjacent row boundary names");
+
+test(t => {
+  const s = fresh(t);
+  s.cssText = "grid-auto-rows:2px;grid-auto-columns:3px;grid-auto-flow:column dense";
+  s.gridTemplate = "1px / 4px";
+  assert_equals(s.gridAutoColumns, "3px");
+  s.grid = "dense auto-flow 5px / 6px";
+  assert_equals(s.grid, "auto-flow dense 5px / 6px");
+  assert_equals(s.gridAutoRows, "5px");
+  assert_equals(s.gridAutoColumns, "auto");
+  assert_equals(s.gridAutoFlow, "dense");
+  assert_equals(s.gridTemplateRows, "none");
+  assert_equals(s.gridTemplateColumns, "6px");
+  assert_equals(s.gridTemplateAreas, "none");
+}, "Grid resets implicit tracks while grid-template preserves them");
+</script>
