@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane follow-up: transparent provenance and the normative powerless-hue boundary</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#serializing-sRGB-values">
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#powerless">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for(const input of ['transparent','rgba(0, 0, 0, 0)']) test(t=>{
+ const e=document.createElement('div'); document.body.append(e); t.add_cleanup(()=>e.remove());
+ e.style.backgroundColor=input;
+ assert_equals(e.style.backgroundColor,input,'declared spelling');
+ assert_equals(getComputedStyle(e).backgroundColor,'rgba(0, 0, 0, 0)');
+},`authored ${input} preserves its spelling and computes to transparent black`);
+for(const shorthand of ['none','border-box content-box']) test(t=>{
+ const e=document.createElement('div'); document.body.append(e); t.add_cleanup(()=>e.remove());
+ e.style.backgroundColor='red'; e.style.background=shorthand;
+ assert_equals(e.style.backgroundColor,'transparent','Q86 user-ruled initial keyword');
+ assert_equals(getComputedStyle(e).backgroundColor,'rgba(0, 0, 0, 0)');
+},`background:${shorthand} resets color to the declared initial keyword`);
+// Q135 FINAL and integrator-probes-1023v/results/q135-{chrome,firefox,safari}.json:
+// browser thresholds/precision differ; keep Color 4 §4.4.1's normative epsilon.
+for(const x of [0.000003,0.0000041,0.000005,0.000009,0.000011]) {
+ const origin=`oklab(0.2 ${x} -0.000000001)`;
+ for(const input of [`oklch(from ${origin} l c h)`,`color-mix(in oklch, ${origin})`]) test(t=>{
+  const e=document.createElement('div'); document.body.append(e); t.add_cleanup(()=>e.remove());
+  e.style.color=input; const text=getComputedStyle(e).color;
+  const match=/^oklch\((\S+) (\S+) (\S+)\)$/.exec(text);
+  assert_not_equals(match,null,text);
+  assert_approx_equals(Number(match[1]),0.2,0.00001);
+  if(x<0.000004) {
+   assert_equals(Number(match[2]),0);
+   assert_equals(match[3],'none');
+  } else {
+   // CSSOM's existing six-decimal writer is unchanged by Q135. Native
+   // tests separately pin unrounded chroma to 1e-12.
+   assert_greater_than(Number(match[2]),0);
+   assert_approx_equals(Number(match[2]),Math.hypot(x,1e-9),0.0000005);
+   assert_greater_than(Number(match[3]),359);
+   assert_less_than(Number(match[3]),360);
+  }
+  e.style.color=text; assert_equals(getComputedStyle(e).color,text,'serialization round trip');
+ },`Q135 normative powerless boundary and stable re-read: ${input}`);
+}
+</script>

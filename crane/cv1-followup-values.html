@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane follow-up: position-visibility and interpolate-size values</title>
+<link rel="help" href="https://drafts.csswg.org/css-anchor-position-1/#position-visibility">
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#interpolate-size">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const values = [
+ ['position-visibility','always','always'],
+ ['position-visibility','ANCHOR-VALID','anchor-valid'],
+ ['position-visibility','anchor-visible','anchor-visible'],
+ ['position-visibility','anchors-valid','anchor-valid'],
+ ['position-visibility','anchors-visible','anchor-visible'],
+ ['position-visibility','no-overflow','no-overflow'],
+ ['position-visibility','no-overflow anchors-visible anchor-valid','anchor-valid anchor-visible no-overflow'],
+ ['position-visibility','anchor-visible no-overflow','anchor-visible no-overflow'],
+ ['position-visibility','no-overflow anchor-valid','anchor-valid no-overflow'],
+ ['position-visibility','anchor-visible anchor-valid','anchor-valid anchor-visible'],
+ ['interpolate-size','NUMERIC-ONLY','numeric-only'],
+ ['interpolate-size','allow-keywords','allow-keywords'],
+ ['contain','STRICT','strict'],
+ ['contain','content','content'],
+ ['contain','paint style','style paint'],
+ ['contain','layout inline-size','inline-size layout'],
+];
+for (const [name,input,expected] of values) test(t => {
+ const e=document.createElement('div'); document.body.append(e); t.add_cleanup(()=>e.remove());
+ assert_true(CSS.supports(name,input)); e.style.setProperty(name,input);
+ assert_equals(e.style.getPropertyValue(name),expected,'specified');
+ assert_equals(getComputedStyle(e).getPropertyValue(name),expected,'computed');
+}, `${name}: ${input} has canonical specified and computed values`);
+for (const [name,inputs] of [
+ ['position-visibility',['normal','always no-overflow','anchor-valid anchors-valid','anchor-visible anchors-visible','no-overflow no-overflow','anchor-visible,anchor-valid','anchor-valid junk']],
+ ['interpolate-size',['auto','none','numeric-only allow-keywords','allow-keywords, numeric-only']],
+ ['contain',['auto','none paint','strict layout','content size','size inline-size','layout layout','paint, style']],
+]) for(const input of inputs) test(()=>assert_false(CSS.supports(name,input)),`${name}: reject ${input}`);
+test(t=>{
+ const p=document.createElement('div'),e=document.createElement('div'); p.append(e); document.body.append(p); t.add_cleanup(()=>p.remove());
+ p.style.cssText='position-visibility:always;interpolate-size:allow-keywords';
+ assert_equals(getComputedStyle(e).getPropertyValue('position-visibility'),'anchor-visible');
+ assert_equals(getComputedStyle(e).getPropertyValue('interpolate-size'),'allow-keywords');
+ e.style.cssText='position-visibility:inherit;interpolate-size:initial';
+ assert_equals(getComputedStyle(e).getPropertyValue('position-visibility'),'always');
+ assert_equals(getComputedStyle(e).getPropertyValue('interpolate-size'),'numeric-only');
+ e.style.cssText='all:initial';
+ assert_equals(getComputedStyle(e).getPropertyValue('position-visibility'),'anchor-visible');
+ assert_equals(getComputedStyle(e).getPropertyValue('interpolate-size'),'numeric-only');
+ const names=Array.from(getComputedStyle(e));
+ for(const name of ['position-visibility','interpolate-size']) assert_equals(names.filter(n=>n===name).length,1,name+' enumerated once');
+},'initial, inheritance, all and getComputedStyle enumeration use registered longhands');
+for(const [input,specified,computed] of [
+ ['paint layout style','layout style paint','content'],
+ ['paint layout style size','size layout style paint','strict'],
+ ['paint inline-size layout style','inline-size layout style paint','inline-size layout style paint'],
+]) test(t=>{
+ const p=document.createElement('div'),e=document.createElement('div'); p.append(e); document.body.append(p); t.add_cleanup(()=>p.remove());
+ p.style.contain=input;
+ assert_equals(p.style.contain,specified);
+ assert_equals(getComputedStyle(p).contain,computed);
+ assert_equals(getComputedStyle(e).contain,'none','contain is not inherited');
+},`contain:${input} canonicalizes without inheriting`);
+</script>

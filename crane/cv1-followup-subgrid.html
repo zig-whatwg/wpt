@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane follow-up: style-derived invalid subgrid resolved values</title>
+<link rel="help" href="https://drafts.csswg.org/css-grid-2/#subgrid-listing">
+<link rel="help" href="https://drafts.csswg.org/css-grid-2/#resolved-track-list">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for(const [label,parentStyle,childStyle] of [
+ ['block parent','display:block',''],
+ ['flex parent','display:flex',''],
+ ['absolute position','display:grid','position:absolute'],
+ ['fixed position','display:grid','position:fixed'],
+ ['layout containment','display:grid','contain:layout'],
+ ['content containment','display:grid','contain:content'],
+ ['strict containment','display:grid','contain:strict'],
+ ['paint containment','display:grid','contain:paint'],
+ ['auto content visibility','display:grid','content-visibility:auto'],
+ ['hidden content visibility','display:grid','content-visibility:hidden'],
+]) for(const name of ['grid-template-rows','grid-template-columns']) test(t=>{
+ const p=document.createElement('div'),e=document.createElement('div'); p.append(e); document.body.append(p); t.add_cleanup(()=>p.remove());
+ p.style.cssText=parentStyle; e.style.cssText='display:grid;'+childStyle; e.style.setProperty(name,'subgrid [a]');
+ assert_equals(e.style.getPropertyValue(name),'subgrid [a]','declared value remains subgrid');
+ assert_equals(getComputedStyle(e).getPropertyValue(name),'none','style-derived used value');
+},`${name}: ${label} cannot establish a subgrid`);
+for(const childDisplay of ['none','block','contents']) test(t=>{
+ const e=document.createElement('div'); document.body.append(e); t.add_cleanup(()=>e.remove());
+ e.style.cssText=`display:${childDisplay};grid-template-columns:subgrid [a]`;
+ assert_equals(getComputedStyle(e).gridTemplateColumns,'subgrid [a]');
+},`display:${childDisplay} exposes the computed track list`);
+test(t=>{
+ const p=document.createElement('div'),e=document.createElement('div'); p.append(e); document.body.append(p); t.add_cleanup(()=>p.remove());
+ p.style.display='none'; e.style.cssText='display:grid;grid-template-columns:subgrid [a]';
+ assert_equals(getComputedStyle(e).gridTemplateColumns,'subgrid [a]');
+ p.style.display='block';
+ assert_equals(getComputedStyle(e).gridTemplateColumns,'none');
+},'an ancestor display change invalidates the box eligibility fact');
+</script>
