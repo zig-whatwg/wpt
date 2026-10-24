@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="variant" content="?requireFetch=true">
+<meta name="timeout" content="long">
+<title>Style resource fetch-once correctness</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><div id="host"></div>
+<script>
+promise_test(async t => {
+  performance.setResourceTimingBufferSize(2000);
+  const host = document.getElementById('host');
+  const urls = Array.from({length:10}, (_, i) =>
+    new URL('/resource-timing/resources/blue.png?cr1-cost=' + i, location.href).href);
+  const entries = new Map();
+  const observer = new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) if (urls.includes(entry.name))
+      entries.set(entry.name, (entries.get(entry.name) || 0) + 1);
+  });
+  observer.observe({type:'resource', buffered:true});
+  t.add_cleanup(() => { observer.disconnect(); host.remove(); });
+  const elements = [];
+  const firstStart = performance.now();
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 1000; ++i) {
+    const element = document.createElement('div');
+    element.style.cssText = 'width:1px;height:1px;background-image:url("' + urls[i % 10] + '")';
+    elements.push(element);
+    fragment.append(element);
+  }
+  host.append(fragment);
+  const requireFetch = new URL(location.href).searchParams.has('requireFetch');
+  if (requireFetch) {
+    const deadline = performance.now() + 10000;
+    while (entries.size !== 10 && performance.now() < deadline)
+      await new Promise(resolve => t.step_timeout(resolve, 20));
+    assert_equals(entries.size, 10, 'Every distinct image was fetched');
+  } else {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise(resolve => t.step_timeout(resolve, 500));
+  }
+  console.log('CR1_RESOURCE_FIRST_LOAD_MS=' + (performance.now() - firstStart).toFixed(3));
+  for (const element of elements) getComputedStyle(element).backgroundImage;
+  const start = performance.now();
+  let readCount = 0;
+  for (let round = 0; round < 10; ++round)
+    for (const element of elements)
+      if (getComputedStyle(element).backgroundImage.includes('blue.png')) ++readCount;
+  console.log('CR1_RESOURCE_REUSE_MS=' + (performance.now() - start).toFixed(3));
+  assert_equals(readCount, 10000);
+  if (requireFetch) {
+    await new Promise(resolve => t.step_timeout(resolve, 50));
+    for (const url of urls) assert_equals(entries.get(url), 1, 'One fetch for ' + url);
+  }
+}, '1,000 elements share 10 image URLs; repeated style reads reuse the resolved values');
+</script>

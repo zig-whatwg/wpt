@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Invalid FontFace constructor style retains its initial value</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading-3/#font-face-constructor">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const face = new FontFace('Cr1InvalidStyle', 'url(/fonts/Ahem.ttf)', {style: 'left'});
+  assert_equals(face.style, 'normal', 'All three browsers preserve the initial style');
+  assert_equals(face.status, 'error');
+  const promise = face.loaded;
+  assert_equals(face.load(), promise);
+  await promise_rejects_dom(t, 'SyntaxError', promise);
+  assert_throws_dom('SyntaxError', () => { face.style = 'right'; });
+  assert_equals(face.style, 'normal', 'A failed setter keeps the old value');
+}, 'Invalid constructor style reads as normal without a constructor exception');
+</script>

@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Completed image reuse keeps synchronous state and asynchronous events</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const url = new URL('/resource-timing/resources/blue.png?cr1-available', location).href;
+  const first = new Image();
+  await new Promise((resolve, reject) => {
+    first.onload = resolve;
+    first.onerror = reject;
+    first.src = url;
+  });
+  const image = new Image();
+  let loaded = false;
+  const event = new Promise((resolve, reject) => {
+    image.onload = () => { loaded = true; resolve(); };
+    image.onerror = reject;
+  });
+  image.src = url;
+  assert_true(image.complete, 'the completed image is available synchronously');
+  assert_equals(image.naturalWidth, first.naturalWidth);
+  assert_false(loaded, 'load is an element task');
+  assert_equals(image.currentSrc, '', 'current URL changes in the queued task');
+  await Promise.resolve();
+  assert_false(loaded, 'the load task follows this microtask');
+  await event;
+  assert_equals(image.currentSrc, url);
+  const canary = new Image();
+  await new Promise((resolve, reject) => {
+    canary.onload = resolve;
+    canary.onerror = reject;
+    canary.src = url + '-canary';
+  });
+  assert_equals(performance.getEntriesByName(url).length, 1, 'reuse makes no new request/timing');
+}, 'HTML available-images reuse is synchronous except currentSrc and load');
+
+promise_test(async t => {
+  const url = new URL('/resource-timing/resources/blue.png?cr1-cors-cache', location).href;
+  async function load(cors) {
+    const image = new Image();
+    if (cors !== null) image.crossOrigin = cors;
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+      image.src = url;
+    });
+  }
+  await load(null);
+  await load('anonymous');
+  await load('use-credentials');
+  await load('anonymous');
+  assert_equals(performance.getEntriesByName(url).length, 3, 'CORS setting is part of the cache key');
+}, 'available-images keys distinguish all three CORS settings');
+</script>

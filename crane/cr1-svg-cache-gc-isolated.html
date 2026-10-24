@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated document-owned SVG resource cache after collection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  document.body.append(svg);
+  t.add_cleanup(() => svg.remove());
+  const url = new URL('/images/green.svg?cr1-cache-gc', location.href).href;
+  async function useResource() {
+    const use = document.createElementNS(ns, 'use');
+    const loaded = new Promise((resolve, reject) => {
+      use.onload = resolve;
+      use.onerror = () => reject(new Error('cached SVG failed'));
+    });
+    use.setAttribute('href', url);
+    svg.append(use);
+    await loaded;
+    use.remove();
+  }
+  await useResource();
+  TestUtils.gc();
+  TestUtils.gc();
+  await useResource();
+  assert_equals(performance.getEntriesByName(url).length, 1,
+    'the consuming document retains the parsed resource after the first use is collected');
+}, 'A document retains its cached SVG resource after all previous use elements are dropped');
+</script>

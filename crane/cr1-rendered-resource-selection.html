@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Only used box images start CSS resource fetches</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#fetch-a-style-resource">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const urls = new Map();
+  function image(name) {
+    const url = new URL('/resource-timing/resources/blue.png?cr1-selection-' + name, location.href).href;
+    urls.set(name, url);
+    return `url("${url}")`;
+  }
+  function box(name, parent = document.body, extra = '') {
+    const element = document.createElement('div');
+    element.style.cssText = `width:20px;height:20px;background-image:${image(name)};${extra}`;
+    if (parent) parent.append(element);
+    t.add_cleanup(() => element.remove());
+    return element;
+  }
+  box('visible');
+  box('visibility-hidden', document.body, 'visibility:hidden');
+  const none = box('display-none', document.body, 'display:none');
+  box('inside-none', none);
+  const contents = box('display-contents', document.body, 'display:contents');
+  box('inside-contents', contents);
+  const detached = box('detached', null);
+  getComputedStyle(detached).backgroundImage;
+  const host = document.createElement('div');
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  box('outside-flat-tree', host);
+  const shadow = host.attachShadow({mode:'closed'});
+  box('shadow-child', shadow);
+  const pseudo = document.createElement('div');
+  pseudo.id = 'cr1-generated';
+  document.body.append(pseudo);
+  t.add_cleanup(() => pseudo.remove());
+  const sheet = document.createElement('style');
+  sheet.textContent = `#cr1-generated::before { content:${image('before-content')}; }
+    #cr1-generated::after { content:none; background-image:${image('absent-after')}; }`;
+  document.head.append(sheet);
+  t.add_cleanup(() => sheet.remove());
+  await new Promise(resolve => t.step_timeout(resolve, 1200));
+  for (const name of ['visible', 'visibility-hidden', 'inside-contents', 'shadow-child', 'before-content']) {
+    const entries = performance.getEntriesByName(urls.get(name));
+    assert_equals(entries.length, 1, name + ' is fetched once');
+    assert_equals(entries[0].initiatorType, 'css');
+  }
+  for (const name of ['display-none', 'inside-none', 'display-contents', 'detached', 'outside-flat-tree', 'absent-after']) {
+    assert_equals(performance.getEntriesByName(urls.get(name)).length, 0, name + ' does not fetch');
+  }
+  none.style.display = 'block';
+  document.body.append(detached);
+  await new Promise(resolve => t.step_timeout(resolve, 1200));
+  for (const name of ['display-none', 'inside-none', 'detached']) {
+    assert_equals(performance.getEntriesByName(urls.get(name)).length, 1, name + ' fetches when used');
+  }
+}, 'Rendering selects connected flat-tree boxes and generated content, and mutations retry selection');
+</script>

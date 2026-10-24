@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed image choices compute before inheritance and preserve CSSOM</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#image-set-notation">
+<link rel="help" href="https://drafts.csswg.org/css-color-5/#light-dark">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function element(t, declarations, parent = document.body) {
+  const target = document.createElement('div');
+  target.style.cssText = declarations;
+  parent.appendChild(target);
+  t.add_cleanup(() => target.remove());
+  return target;
+}
+
+test(t => {
+  const target = element(t, 'background-image:image-set("dummy://one" type("image/png"), url("dummy://two") 192dpi)');
+  assert_equals(target.style.backgroundImage,
+    'image-set(url("dummy://one") 1x type("image/png"), url("dummy://two") 192dpi)');
+  assert_equals(getComputedStyle(target).backgroundImage,
+    'image-set(url("dummy://one") 1dppx type("image/png"), url("dummy://two") 2dppx)');
+}, 'image-set keeps each candidate and computes resolution without selecting');
+
+test(t => {
+  const target = element(t, 'background-image:url("dummy://control")');
+  target.style.backgroundImage = 'image-set(image-set(url("dummy://bad") 1x) 2x)';
+  assert_equals(target.style.backgroundImage, 'url("dummy://control")');
+}, 'direct image-set nesting does not replace the previous declaration');
+
+test(t => {
+  const parent = element(t, 'color-scheme:dark;background-image:light-dark(url("dummy://light"),url("dummy://dark"))');
+  const child = element(t, 'color-scheme:light;background-image:inherit', parent);
+  assert_equals(getComputedStyle(parent).backgroundImage, 'url("dummy://dark")');
+  assert_equals(getComputedStyle(child).backgroundImage, 'url("dummy://dark")');
+  parent.style.colorScheme = 'light';
+  assert_equals(getComputedStyle(parent).backgroundImage, 'url("dummy://light")');
+  assert_equals(getComputedStyle(child).backgroundImage, 'url("dummy://light")');
+}, 'light-dark chooses using the declaring element before inheritance');
+
+test(t => {
+  const target = element(t, 'color-scheme:dark;background-image:url("dummy://first"),light-dark(url("dummy://light"),url("dummy://dark")),none');
+  assert_equals(getComputedStyle(target).backgroundImage,
+    'url("dummy://first"), url("dummy://dark"), none');
+  target.style.backgroundImage = 'light-dark(none,none)';
+  assert_equals(getComputedStyle(target).backgroundImage, 'image(rgba(0, 0, 0, 0))');
+}, 'background layers retain their order and light-dark none becomes transparent');
+
+test(t => {
+  const target = element(t, 'color-scheme:dark;content:light-dark(url("dummy://light"),url("dummy://dark")) attr(data-label)');
+  target.setAttribute('data-label', 'chosen');
+  assert_equals(getComputedStyle(target).content, 'url("dummy://dark") "chosen"');
+  target.style.content = 'light-dark(none,none)';
+  assert_equals(getComputedStyle(target).content, 'image(rgba(0, 0, 0, 0))');
+}, 'generated content combines typed images with attribute substitution');
+
+test(t => {
+  const target = element(t, 'color-scheme:dark;cursor:light-dark(image-set("dummy://light" 1x),url("dummy://dark")) 1.5 -2.9, pointer');
+  assert_equals(getComputedStyle(target).cursor, 'url("dummy://dark") 1.5 -2.9, pointer');
+  const before = target.style.cursor;
+  target.style.cursor = 'light-dark(url("dummy://good"),linear-gradient(red,blue)),pointer';
+  assert_equals(target.style.cursor, before);
+}, 'cursor image choices keep hotspots and reject generated images in either branch');
+
+test(t => {
+  const target = element(t, 'background-image:image-set(-webkit-cross-fade(url("dummy://a"),image-set(url("dummy://b") 1x),50%) 1x)');
+  assert_equals(target.style.backgroundImage,
+    'image-set(-webkit-cross-fade(url("dummy://a"), image-set(url("dummy://b") 1x), 0.5) 1x)');
+  assert_equals(getComputedStyle(target).backgroundImage,
+    'image-set(-webkit-cross-fade(url("dummy://a"), image-set(url("dummy://b") 1dppx), 0.5) 1dppx)');
+}, 'legacy cross-fade exposes both image inputs and permits indirect image-set nesting');
+</script>

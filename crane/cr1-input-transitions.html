@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image-button type reentry retains its last source</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const input = document.createElement('input');
+  input.type = 'image';
+  document.body.append(input);
+  t.add_cleanup(() => input.remove());
+  const url = new URL('/resource-timing/resources/blue.png?cr1-input-reentry', location).href;
+  let events = 0;
+  let resolveLoad;
+  input.onload = t.step_func(() => { ++events; resolveLoad(); });
+  input.onerror = t.unreached_func('image decode should succeed');
+  const loaded = new Promise(resolve => { resolveLoad = resolve; });
+  input.src = url;
+  await loaded;
+  assert_equals(events, 1);
+  input.type = 'text';
+  input.type = 'image';
+  await new Promise(resolve => t.step_timeout(resolve, 150));
+  assert_equals(events, 1, 'unchanged reentry does not refetch');
+  assert_equals(performance.getEntriesByName(url).length, 1);
+  const again = new Promise(resolve => { resolveLoad = resolve; });
+  input.setAttribute('src', url);
+  await again;
+  assert_equals(events, 2, 'setting src is a separate trigger, even to the same string');
+  assert_equals(performance.getEntriesByName(url).length, 2);
+}, 'type reentry and explicit src assignment have different triggers');
+</script>

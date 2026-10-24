@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG external references use an inert resource document</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  globalThis.cr1SvgScriptRan = false;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  const use = document.createElementNS(ns, 'use');
+  const loaded = new Promise((resolve, reject) => {
+    use.addEventListener('load', resolve, {once:true});
+    use.addEventListener('error', () => reject(new Error('valid external SVG failed')), {once:true});
+  });
+  svg.append(use);
+  document.body.append(svg);
+  t.add_cleanup(() => svg.remove());
+  use.setAttribute('href', '/crane/cr1-secure-resource.svg#ok');
+  await loaded;
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_false(cr1SvgScriptRan, 'the resource script is inert');
+  assert_equals(performance.getEntriesByType('resource').filter(e => e.name.includes('cr1-secondary')).length, 0);
+}, 'external SVG references neither execute scripts nor fetch secondary resources');
+</script>

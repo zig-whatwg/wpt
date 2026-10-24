@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resource buffer overflow after an awaited script load</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const absolute of [false, true]) {
+  promise_test(async t => {
+    const script = document.createElement('script');
+    t.add_cleanup(() => {
+      script.remove();
+      performance.setResourceTimingBufferSize(250);
+    });
+    performance.clearResourceTimings();
+    performance.setResourceTimingBufferSize(1);
+    const loaded = new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = reject;
+    });
+    script.src = 'rt2-empty.js?initial=' + absolute;
+    document.head.appendChild(script);
+    await loaded;
+    assert_equals(performance.getEntriesByType('resource').length, 1, 'initial script entry');
+    const load = suffix => {
+      const url = 'rt2-server-timing.txt?buffer=' + absolute + suffix;
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', absolute ? new URL(url, location.href).href : url, false);
+      xhr.send();
+      assert_equals(xhr.status, 200, 'synchronous fetch completed');
+    };
+    load('second');
+    load('third');
+    performance.clearResourceTimings();
+    performance.setResourceTimingBufferSize(3);
+    load('fourth');
+    assert_equals(performance.getEntriesByType('resource').length, 0, 'secondary entries wait for the buffer task');
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+    assert_equals(performance.getEntriesByType('resource').length, 3, 'all secondary entries are copied');
+  }, (absolute ? 'Absolute' : 'Relative') + ' synchronous XHR after a script load preserves secondary timing entries');
+}
+</script>

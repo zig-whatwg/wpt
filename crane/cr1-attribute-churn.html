@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Attribute mutation cost without CSS resources</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><div id="target"></div>
+<script>
+test(() => {
+  const target = document.getElementById('target');
+  for (let i = 0; i < 1000; ++i) target.setAttribute('data-warmup', String(i));
+  const start = performance.now();
+  for (let i = 0; i < 100000; ++i) {
+    switch (i % 3) {
+      case 0: target.setAttribute('class', i % 2 ? 'odd' : 'even'); break;
+      case 1: target.setAttribute('data-count', String(i)); break;
+      case 2: target.setAttribute('style', i % 2 ? 'color:red' : 'color:blue'); break;
+    }
+  }
+  console.log('CR1_ATTRIBUTE_CHURN_MS=' + (performance.now() - start).toFixed(3));
+  assert_equals(target.getAttribute('class'), 'odd');
+}, '100,000 connected attribute mutations with no resource-bearing values');
+</script>

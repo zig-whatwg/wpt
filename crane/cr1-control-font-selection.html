@@ -1,0 +1,144 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Rendered form-control text selects CSS fonts</title>
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#font-matching-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Browser evidence: tmp/analysis/integrator-probes-1023a/results/
+// ctlfont-{chrome,firefox,safari}.json, row117 Q62. All agree except password
+// B: Chrome/Firefox match mask glyphs, Safari also requests the value's B.
+const kinds = [
+  ['dom-text', 'YYY', () => {const e = document.createElement('div'); e.textContent = 'AB'; return e;}],
+  ['input-value', 'YNY', () => {const e = document.createElement('input'); e.value = 'B'; return e;}],
+  ['input-placeholder', 'YYN', () => {const e = document.createElement('input'); e.placeholder = 'A'; return e;}],
+  ['input-value-over-placeholder', 'YNY', () => {const e = document.createElement('input'); e.value = 'B'; e.placeholder = 'A'; return e;}],
+  ['textarea-value', 'YNY', () => {const e = document.createElement('textarea'); e.value = 'B'; return e;}],
+  ['textarea-placeholder', 'YYN', () => {const e = document.createElement('textarea'); e.placeholder = 'A'; return e;}],
+  ['input-button', 'YNY', () => {const e = document.createElement('input'); e.type = 'button'; e.value = 'B'; return e;}],
+  ['submit-default', 'YNN', () => {const e = document.createElement('input'); e.type = 'submit'; return e;}],
+  ['submit-empty', 'YNN', () => {const e = document.createElement('input'); e.type = 'submit'; e.setAttribute('value', ''); return e;}],
+  ['reset-default', 'YNN', () => {const e = document.createElement('input'); e.type = 'reset'; return e;}],
+  ['reset-empty', 'YNN', () => {const e = document.createElement('input'); e.type = 'reset'; e.setAttribute('value', ''); return e;}],
+  ['file-empty', 'YNN', () => {const e = document.createElement('input'); e.type = 'file'; return e;}],
+  ['password', 'YNN', () => {const e = document.createElement('input'); e.type = 'password'; e.value = 'B'; return e;}],
+  ['select-all-options', 'YYY', () => {const e = document.createElement('select'); e.innerHTML = '<option>A</option><option selected>B</option>'; return e;}]
+];
+let serial = 0;
+const turn = () => new Promise(resolve => requestAnimationFrame(resolve));
+async function selectionTurn() {
+  await turn();
+  await document.fonts.ready;
+  await turn();
+  await turn();
+}
+async function fixture(t, control, range) {
+  await document.fonts.ready;
+  const family = 'Cr1ControlFont' + (++serial);
+  const url = new URL('/fonts/Ahem.ttf?cr1-control=' + family + '-' + Math.random(), location.href).href;
+  const container = document.createElement('div');
+  const style = document.createElement('style');
+  style.textContent = `@font-face{font-family:${family};src:url('${url}');unicode-range:${range}}
+    #${family}{font-family:${family};font-size:20px}#${family}::placeholder{font-family:inherit;font-size:inherit;font-style:inherit;font-weight:inherit}`;
+  control.id = family;
+  container.append(style, control);
+  document.body.append(container);
+  t.add_cleanup(() => container.remove());
+  return {url, control, container};
+}
+for (const [kind, expected, make] of kinds) {
+  for (const hidden of [false, true]) {
+    for (const [index, range] of ['U+0-10FFFF', 'U+41', 'U+42'].entries()) {
+      promise_test(async t => {
+        const control = make();
+        if (hidden) control.style.display = 'none';
+        const {url} = await fixture(t, control, range);
+        await selectionTurn();
+        assert_equals(performance.getEntriesByName(url).length, !hidden && expected[index] === 'Y' ? 1 : 0);
+      }, `${kind}, ${hidden ? 'hidden' : 'rendered'}, unicode-range ${range}`);
+    }
+  }
+}
+for (const kind of ['input', 'textarea', 'button', 'submit', 'reset']) {
+  promise_test(async t => {
+    const control = document.createElement(kind === 'textarea' ? 'textarea' : 'input');
+    if (kind !== 'textarea' && kind !== 'input') control.type = kind;
+    control.value = 'A';
+    const {url} = await fixture(t, control, 'U+42');
+    await selectionTurn();
+    assert_equals(performance.getEntriesByName(url).length, 0, 'B is initially unused');
+    const before = document.fonts.ready;
+    control.value = 'B';
+    const after = document.fonts.ready;
+    assert_not_equals(after, before, 'value changes invalidate settled font selection');
+    await after;
+    assert_equals(performance.getEntriesByName(url).length, 1);
+  }, `${kind} value changes after settled ready select newly used characters`);
+}
+for (const kind of ['input', 'textarea']) {
+  promise_test(async t => {
+    const control = document.createElement(kind);
+    control.value = 'A';
+    const {url} = await fixture(t, control, 'U+42');
+    await selectionTurn();
+    assert_equals(performance.getEntriesByName(url).length, 0);
+    control.setRangeText('B', 0, 1);
+    await document.fonts.ready;
+    assert_equals(performance.getEntriesByName(url).length, 1);
+  }, `${kind} setRangeText after settled ready invalidates used-font selection`);
+  promise_test(async t => {
+    const control = document.createElement(kind);
+    control.defaultValue = 'B';
+    control.value = 'A';
+    const form = document.createElement('form');
+    form.append(control);
+    const {url, container} = await fixture(t, control, 'U+42');
+    // fixture initially inserts the control directly; move it into its form.
+    container.append(form);
+    form.append(control);
+    await selectionTurn();
+    assert_equals(performance.getEntriesByName(url).length, 0, 'dirty value suppresses default B');
+    form.reset();
+    await document.fonts.ready;
+    assert_equals(performance.getEntriesByName(url).length, 1);
+  }, `${kind} reset after settled ready selects its restored default value`);
+}
+promise_test(async t => {
+  const control = document.createElement('input');
+  control.type = 'password';
+  const {url} = await fixture(t, control, 'U+2022');
+  await selectionTurn();
+  assert_equals(performance.getEntriesByName(url).length, 0);
+  control.value = 'B';
+  await document.fonts.ready;
+  assert_equals(performance.getEntriesByName(url).length, 1, 'Crane UA mask is U+2022, Q66');
+}, 'A password change after settled ready selects mask characters rather than its value');
+promise_test(async t => {
+  const control = document.createElement('textarea');
+  control.textContent = 'A';
+  control.value = 'B';
+  const {url} = await fixture(t, control, 'U+41');
+  await selectionTurn();
+  assert_equals(performance.getEntriesByName(url).length, 0, 'stale child text is not rendered');
+}, 'A dirty textarea excludes its stale child text from font selection');
+promise_test(async t => {
+  const control = document.createElement('select');
+  control.innerHTML = '<option selected>A</option><option>A</option>';
+  const {url} = await fixture(t, control, 'U+42');
+  await selectionTurn();
+  assert_equals(performance.getEntriesByName(url).length, 0);
+  control.options[1].textContent = 'B';
+  await document.fonts.ready;
+  assert_equals(performance.getEntriesByName(url).length, 1, 'unselected option text is used');
+}, 'Changing an unselected option after settled ready selects its new characters');
+promise_test(async t => {
+  const control = document.createElement('input');
+  control.type = 'submit';
+  control.value = '';
+  const {url} = await fixture(t, control, 'U+20');
+  await selectionTurn();
+  assert_equals(performance.getEntriesByName(url).length, 1);
+}, 'An empty rendered control selects its first available font for line metrics');
+</script>

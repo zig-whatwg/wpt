@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Failed automatic CSS fonts have no unseen unhandled rejection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  await document.fonts.ready;
+  const url = '/crane/cr1-missing-auto-font.woff2?unique=' + Math.random();
+  const container = document.createElement('div');
+  t.add_cleanup(() => container.remove());
+  container.innerHTML = `<style>@font-face{font-family:Cr1AutoReject;src:url('${url}')}</style>
+    <div style="font-family:Cr1AutoReject">A</div>`;
+  document.body.append(container);
+  await document.fonts.ready;
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(performance.getEntriesByName(new URL(url, location.href).href).length, 1);
+}, 'An automatic missing CSS font completes without rejecting an unseen script promise');
+</script>

@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Used font requests finish before fonts.ready removes their text</title>
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#font-matching-algorithm">
+<link rel="help" href="https://drafts.csswg.org/css-font-loading-3/#dom-fontfaceset-ready">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  await document.fonts.ready;
+  const url = new URL('/fonts/Ahem.ttf?cr1-used-font=' + Math.random(), location.href).href;
+  let observer;
+  const entry = new Promise(resolve => {
+    observer = new PerformanceObserver(list => {
+      const found = list.getEntries().find(item => item.name === url);
+      if (found) resolve(found);
+    });
+    observer.observe({type: 'resource'});
+  });
+  t.add_cleanup(() => observer.disconnect());
+  const container = document.createElement('div');
+  t.add_cleanup(() => container.remove());
+  container.innerHTML = `<style>@font-face{font-family:Cr1UsedTiming;src:url('${url}')}</style>
+    <div style="font-family:Cr1UsedTiming">The used text requests its font.</div>`;
+  document.body.append(container);
+  await document.fonts.ready;
+  container.remove();
+  const result = await Promise.race([
+    entry,
+    new Promise((_, reject) => t.step_timeout(() => reject(new Error('No used-font ResourceTiming entry')), 2000))
+  ]);
+  assert_equals(result.initiatorType, 'css');
+  assert_equals(performance.getEntriesByName(url).length, 1);
+}, 'TAO loader pattern: used text requests its font before ready allows removal');
+
+promise_test(async t => {
+  const oldReady = document.fonts.ready;
+  await oldReady;
+  const container = document.createElement('div');
+  t.add_cleanup(() => container.remove());
+  const url = '/fonts/Ahem.ttf?cr1-ready-flush=' + Math.random();
+  container.innerHTML = `<style>@font-face{font-family:Cr1ReadyFlush;src:url('${url}')}</style>
+    <div style="font-family:Cr1ReadyFlush">A</div>`;
+  document.body.append(container);
+  const newReady = document.fonts.ready;
+  assert_not_equals(newReady, oldReady, 'A settled ready read discovers new used fonts');
+  await newReady;
+  assert_equals(performance.getEntriesByName(new URL(url, location.href).href).length, 1);
+}, 'A settled ready getter flushes newly used font selection');
+</script>

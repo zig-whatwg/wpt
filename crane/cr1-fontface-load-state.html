@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FontFace loading state and promise identity</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading-3/#font-face-load">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const face = new FontFace('Cr1MissingFace', 'url(/fonts/cr1-does-not-exist.ttf)');
+  assert_equals(face.status, 'unloaded');
+  const pending = face.loaded;
+  assert_true(pending instanceof Promise);
+  assert_equals(face.load(), pending);
+  assert_equals(face.status, 'loading');
+  assert_equals(face.load(), pending);
+  await promise_rejects_dom(t, 'NetworkError', pending);
+  assert_equals(face.status, 'error');
+  assert_equals(face.loaded, pending);
+  assert_equals(face.load(), pending);
+}, 'A failed URL font has one promise and transitions unloaded, loading, error');
+promise_test(async t => {
+  const face = new FontFace('Cr1InvalidFace', 'not-a-font-source');
+  assert_equals(face.status, 'error');
+  await promise_rejects_dom(t, 'SyntaxError', face.loaded);
+  assert_equals(face.load(), face.loaded);
+}, 'An invalid source rejects the status promise with SyntaxError');
+</script>

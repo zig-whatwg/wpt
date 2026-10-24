@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FontFaceSet loading events and ready ordering</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading/#events">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+promise_test(async t => {
+  await document.fonts.ready;
+  const face = new FontFace('Cr1MissingEvents', 'url(/crane/cr1-font-events-missing.woff2)');
+  document.fonts.add(face);
+  t.add_cleanup(() => { document.fonts.delete(face); });
+  const order = [];
+  const loading = new Promise(resolve => document.fonts.addEventListener('loading', t.step_func(e => {
+    assert_true(e.isTrusted);
+    assert_array_equals(e.fontfaces, []);
+    order.push('loading');
+    resolve();
+  }), {once:true}));
+  const done = new Promise(resolve => document.fonts.addEventListener('loadingdone', t.step_func(e => {
+    assert_true(e.isTrusted);
+    assert_array_equals(e.fontfaces, []);
+    order.push('done');
+    resolve();
+  }), {once:true}));
+  const failed = new Promise(resolve => document.fonts.addEventListener('loadingerror', t.step_func(e => {
+    assert_true(e.isTrusted);
+    assert_array_equals(e.fontfaces, [face]);
+    order.push('error');
+    resolve();
+  }), {once:true}));
+  const loaded = face.load();
+  const ready = document.fonts.ready;
+  const readyStep = ready.then(t.step_func(value => {
+    assert_equals(value, document.fonts);
+    order.push('ready');
+  }));
+  await promise_rejects_dom(t, 'NetworkError', loaded);
+  await Promise.all([loading, readyStep, done, failed]);
+  // Q50 three-browser probe: Chrome/Firefox split, Safari omits done/error.
+  // The spec decides: ready settles before the task dispatching done/error.
+  assert_array_equals(order, ['loading', 'ready', 'done', 'error']);
+}, 'FontFaceSet fires trusted loading/done/error events and settles ready');
+</script>

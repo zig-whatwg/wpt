@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image functions close at EOF without accepting trailing tokens</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-function">
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#image-set-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const cases = [
+  ["url('dummy://a'", 'url("dummy://a")'],
+  ["src('dummy://a'", 'url("dummy://a")'],
+  ["image-set(url('dummy://a'", 'image-set(url("dummy://a") 1x)'],
+  ["image-set(url(dummy://a)", 'image-set(url("dummy://a") 1x)'],
+  ["image-set(url(dummy://a) type('image/png'", 'image-set(url("dummy://a") 1x type("image/png"))'],
+  ["light-dark(url(dummy://a),none", 'light-dark(url("dummy://a"), none)'],
+  ["-webkit-cross-fade(url(dummy://a),url(dummy://b),50%", '-webkit-cross-fade(url("dummy://a"), url("dummy://b"), 0.5)'],
+];
+for (const property of ['background-image', 'list-style-image', 'content']) {
+  for (const [input, expected] of cases) {
+    test(() => {
+      const target = document.createElement('div');
+      target.style.setProperty(property, input);
+      assert_equals(target.style.getPropertyValue(property), expected);
+    }, property + ': EOF closes ' + input);
+  }
+  for (const input of ["url('dummy://a' junk)", "image-set(url('dummy://a' junk)"]) {
+    test(() => {
+      const target = document.createElement('div');
+      target.style.setProperty(property, 'none');
+      target.style.setProperty(property, input);
+      assert_equals(target.style.getPropertyValue(property), 'none');
+    }, property + ': trailing tokens stay invalid in ' + input);
+  }
+}
+</script>

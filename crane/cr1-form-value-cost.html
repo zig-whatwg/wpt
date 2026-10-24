@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Control value write cost without font resource interest</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const input = document.body.appendChild(document.createElement('input'));
+const textarea = document.body.appendChild(document.createElement('textarea'));
+const select = document.body.appendChild(document.createElement('select'));
+select.innerHTML = '<option>A</option><option>B</option><option>C</option><option>D</option>';
+const option = select.options[2];
+
+function measure(name, write, check) {
+  test(() => {
+    for (let i = 0; i < 1000; ++i) write(i);
+    const start = performance.now();
+    for (let i = 0; i < 100000; ++i) write(i);
+    console.log('CR1_FORM_' + name + '_MS=' + (performance.now() - start).toFixed(3));
+    check();
+  }, '100,000 connected ' + name + ' writes without font resource interest');
+}
+measure('INPUT_VALUE', i => { input.value = i % 2 ? 'B' : 'A'; },
+  () => assert_equals(input.value, 'B'));
+measure('TEXTAREA_VALUE', i => { textarea.value = i % 2 ? 'B' : 'A'; },
+  () => assert_equals(textarea.value, 'B'));
+measure('INPUT_RANGE', i => input.setRangeText(i % 2 ? 'D' : 'C', 0, 1),
+  () => assert_equals(input.value, 'D'));
+measure('TEXTAREA_RANGE', i => textarea.setRangeText(i % 2 ? 'D' : 'C', 0, 1),
+  () => assert_equals(textarea.value, 'D'));
+measure('SELECT_INDEX', i => { select.selectedIndex = i % 4; },
+  () => assert_equals(select.selectedIndex, 3));
+measure('OPTION_SELECTED', i => { option.selected = i % 2 === 1; },
+  () => assert_true(option.selected));
+</script>

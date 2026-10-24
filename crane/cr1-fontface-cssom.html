@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><title>Font face descriptor CSSOM</title>
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+function fontRule(t, text) {
+  const style = document.createElement('style');
+  style.textContent = '@font-face {' + text + '}';
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  return style.sheet.cssRules[0];
+}
+test(t => {
+  const rule = fontRule(t, 'font-family: cr1; src: url(a.woff2); font-weight: 300 700; font-stretch: 75% 125%; unicode-range: U+4??');
+  assert_equals(rule.style, rule.style);
+  assert_equals(rule.style.parentRule, rule);
+  assert_equals(rule.style.fontWeight, '300 700');
+  assert_equals(rule.style.fontStretch, '75% 125%');
+  assert_equals(rule.style.unicodeRange, 'U+400-4FF');
+  rule.style.src = 'local("cr1 local"), url(b.woff2)';
+  assert_true(rule.style.src.includes('b.woff2'));
+  rule.style.setProperty('font-weight', '200 600');
+  assert_equals(rule.style.getPropertyValue('FONT-WEIGHT'), '200 600');
+  rule.style.setProperty('font-weight', 'bolder');
+  assert_equals(rule.style.fontWeight, '200 600');
+  assert_equals(rule.style.removeProperty('font-weight'), '200 600');
+  assert_equals(rule.style.fontWeight, '');
+  rule.style.cssText = 'src: url(c); font-weight: 0; color: red; unicode-range: U+110000';
+  assert_equals(rule.style.length, 1);
+  assert_equals(rule.style.item(0), 'src');
+  assert_equals(rule.style.getPropertyPriority('src'), '');
+}, 'Font descriptors have their own grammar and live CSSOM view');
+</script>

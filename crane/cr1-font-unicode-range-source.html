@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Font unicode-range descriptors preserve their source tokenization</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-declaration">
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#descdef-font-face-unicode-range">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const cases = [
+  ['unicode-range: U+41', 'U+41'],
+  ['UNICODE-RANGE: U+0-7F /* c */', 'U+0-7F'],
+  ['unicode-r\\61nge: U+41, /* c */ U+42', 'U+41, U+42'],
+  ['unicode-range: U+41; color: red', 'U+41'],
+  ['UnIcOdE-RaNgE: u+0041-005a, U+4??', 'U+41-5A, U+400-4FF'],
+  ['unicode-\\72 ange: U+41', 'U+41'],
+  ['unicode-range: /* before */ U+41/**/,/* between */U+42 /* after */', 'U+41, U+42'],
+  ['unicode-range: U+41 !important; unicode-range: U+42', 'U+42'],
+  ['unicode-range: U+41 !/**/important', ''],
+  ['unicode-range: U/**/+41', ''],
+  ['unicode-range: U+/**/41', ''],
+  ['unicode-range: U+4/**/1', ''],
+  ['unicode-range: U+41-/**/42', ''],
+  ['unicode-range: U+ 41', ''],
+  ['unicode-range: \\55+41', ''],
+];
+
+for (const path of ['stylesheet', 'insertRule', 'cssText']) {
+  for (const [declaration, expected] of cases) {
+    test(t => {
+      const style = document.createElement('style');
+      document.head.append(style);
+      t.add_cleanup(() => { style.remove(); });
+      if (path === 'stylesheet') {
+        style.textContent = '@font-face {' + declaration + '}';
+      } else if (path === 'insertRule') {
+        style.sheet.insertRule('@font-face {' + declaration + '}', 0);
+      } else {
+        style.sheet.insertRule('@font-face {}', 0);
+        style.sheet.cssRules[0].style.cssText = declaration;
+      }
+      assert_equals(style.sheet.cssRules.length, 1);
+      assert_equals(style.sheet.cssRules[0].style.getPropertyValue('unicode-range'), expected);
+    }, path + ': ' + declaration);
+  }
+}
+</script>

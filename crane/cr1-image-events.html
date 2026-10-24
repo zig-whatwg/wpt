@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image button and SVG image completion ordering</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const kind of ['input', 'image']) {
+  promise_test(async t => {
+    const element = kind === 'input' ? document.createElement('input') :
+      document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    if (kind === 'input') element.type = 'image';
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    const order = [];
+    const complete = new Promise((resolve, reject) => {
+      element.onload = t.step_func(() => { order.push('load'); resolve(); });
+      element.onerror = t.step_func(() => reject(new Error('unexpected image error')));
+    });
+    const url = '/resource-timing/resources/blue.png?cr1-events-' + kind;
+    if (kind === 'input') element.src = url;
+    else element.setAttribute('href', url);
+    element.remove();
+    order.push('sync');
+    Promise.resolve().then(() => order.push('microtask'));
+    await complete;
+    assert_array_equals(order, ['sync', 'microtask', 'load']);
+  }, kind + ' image load remains observable after removal and follows microtasks');
+}
+
+for (const href of ['', ' \t\n', 'http://[']) {
+  promise_test(async t => {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    let returned = false;
+    const error = new Promise((resolve, reject) => {
+      element.onload = () => reject(new Error('invalid href loaded'));
+      element.onerror = t.step_func(() => { assert_true(returned); resolve(); });
+    });
+    element.setAttribute('href', href);
+    returned = true;
+    await error;
+  }, 'SVG image invalid href queues an error: ' + JSON.stringify(href));
+}
+</script>

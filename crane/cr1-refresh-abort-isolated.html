@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated Refresh-header fetch abort on document.open</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async_test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  frame.onload = t.step_func(() => {
+    frame.onload = null;
+
+    frame.contentWindow.fetch("/common/blank.html").then(
+      t.unreached_func("Fetch should have been aborted"),
+      t.step_func_done());
+
+    frame.contentDocument.open();
+  });
+  frame.src = "/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/resources/http-refresh.py?0";
+}, "document.open() aborts documents that are queued for navigation through Refresh header with timeout 0 (fetch())");
+</script>

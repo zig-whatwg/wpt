@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A rendered CSS background starts a resource fetch</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#fetch-a-style-resource">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const url = new URL('/resource-timing/resources/blue.png?cr1-background', location.href).href;
+  const seen = new Promise(resolve => {
+    const observer = new PerformanceObserver(list => {
+      const entry = list.getEntries().find(entry => entry.name === url);
+      if (entry) resolve(entry);
+    });
+    observer.observe({type: 'resource', buffered: true});
+    t.add_cleanup(() => observer.disconnect());
+    t.step_timeout(() => resolve(null), 3000);
+  });
+  const element = document.createElement('div');
+  element.style.cssText = `width: 20px; height: 20px; background-image: url("${url}")`;
+  t.add_cleanup(() => element.remove());
+  document.body.append(element);
+  // No getComputedStyle or geometry read: rendering itself requests the image.
+  const entry = await seen;
+  assert_not_equals(entry, null, 'The rendered background must be fetched');
+  assert_equals(entry.initiatorType, 'css');
+  assert_equals(performance.getEntriesByName(url).length, 1);
+}, 'A connected box fetches its CSS background without a style getter');
+</script>

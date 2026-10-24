@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated CSS rule URL whitespace serialization</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax/#consume-ident-like-token">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>.cr1-q68-unused {}</style>
+<script>
+// Row 117 Q68: url-whitespace-consumption.html has one subtest. Preserve
+// its fallback-write check and all three assertions in an isolated fixture.
+function roundTripUrl(input) {
+  const style = document.styleSheets[0].cssRules[0].style;
+  const fallback = 'url("fallback")';
+  style.setProperty("background-image", fallback);
+  style.setProperty("background-image", input);
+  const result = style.getPropertyValue("background-image");
+  return result === fallback ? false : result;
+}
+test(() => {
+  assert_equals(roundTripUrl('url("foo")'), 'url("foo")');
+  assert_equals(roundTripUrl('url( "foo")'), 'url("foo")');
+  assert_equals(roundTripUrl('url("foo" )'), 'url("foo")');
+}, "whitespace is optional between url( token and the string token");
+</script>

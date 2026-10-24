@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image cache URL storage survives its synchronous lookup</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+async function loadImage(url) {
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('valid image failed to load'));
+    image.src = url;
+  });
+}
+
+for (const long of [false, true]) {
+  promise_test(async t => {
+    const query = long ? 'x'.repeat(6144) : 'short';
+    const url = new URL('/images/green.png?cr1-url-storage=' + query, location.href).href;
+    await loadImage(url);
+    const overwriteURL = new URL('/images/green.png?cr1-url-storage=' +
+      (long ? 'y'.repeat(6144) : 'other'), location.href).href;
+    await loadImage(overwriteURL);
+    let loaded = false;
+    const completion = new Promise((resolve, reject) => {
+      let image = new Image();
+      image.onload = t.step_func(event => {
+        const owner = event.currentTarget;
+        assert_equals(owner.currentSrc, url, 'the task owns the complete resolved URL');
+        assert_true(owner.complete);
+        assert_greater_than(owner.naturalWidth, 0);
+        assert_false(owner.isConnected);
+        loaded = true;
+        resolve();
+      });
+      image.onerror = () => reject(new Error('available image failed'));
+      image.src = url;
+      assert_true(image.complete, 'available image state changes synchronously');
+      assert_equals(image.currentSrc, '', 'currentSrc waits for the element task');
+      image = null;
+    });
+    // Fully serialize a different, same-length cached URL after the target
+    // lookup returns. These hits reuse parsing storage without new requests.
+    for (let i = 0; i < 32; ++i) {
+      const other = new Image();
+      other.src = overwriteURL;
+      assert_true(other.complete, 'the overwrite lookup hits an already loaded image');
+    }
+    TestUtils.gc();
+    TestUtils.gc();
+    await Promise.resolve();
+    assert_false(loaded, 'load remains a task after the microtask checkpoint');
+    await completion;
+    await loadImage('/images/green.png?cr1-url-storage-canary=' + long);
+    assert_equals(performance.getEntriesByName(url).length, 1, 'cache reuse makes no second request');
+  }, (long ? 'Long fallback' : 'Short temporary') + ' image URL survives stack reuse and collection before its load task');
+}
+
+promise_test(async t => {
+  await loadImage('/images/green.png?cr1-url-storage-base-prime');
+  const base = document.createElement('base');
+  base.href = new URL('/resource-timing/resources/', location.href).href;
+  document.head.append(base);
+  t.add_cleanup(() => { base.remove(); });
+  const relative = 'green.png?cr1-url-storage-base-miss';
+  const before = new URL(relative, base.href).href;
+  const after = new URL('/images/' + relative, location.href).href;
+  const image = new Image();
+  const completion = new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('image did not use the later base URL'));
+  });
+  image.src = relative;
+  assert_false(image.complete, 'this URL is absent from the available-image list');
+  base.href = new URL('/images/', location.href).href;
+  await completion;
+  assert_equals(image.currentSrc, after, 'a miss still selects and resolves after the microtask');
+  await loadImage('/images/green.png?cr1-url-storage-base-canary');
+  assert_equals(performance.getEntriesByName(before).length, 0, 'the first lookup URL was not fetched');
+  assert_equals(performance.getEntriesByName(after).length, 1);
+}, 'A cache miss observes a base mutation before the image-selection microtask');
+</script>

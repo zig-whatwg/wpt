@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Distinct FontFace objects share an equivalent font resource</title>
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#font-fetching-requirements">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+promise_test(async t => {
+  const url = new URL('/fonts/Ahem.ttf?cr1-font-reuse=pending', location.href).href;
+  const first = new FontFace('cr1-cache-first', `url("${url}")`);
+  const second = new FontFace('cr1-cache-second', `url("${url}")`);
+  const firstPromise = first.load();
+  const secondPromise = second.load();
+  assert_not_equals(firstPromise, secondPromise, 'Each face owns its own status promise');
+  await Promise.allSettled([firstPromise, secondPromise]);
+  const entries = performance.getEntriesByName(url, 'resource');
+  assert_equals(entries.length, 1, 'The equivalent pending resource has one request and timing entry');
+  assert_equals(first.loaded, firstPromise);
+  assert_equals(second.loaded, secondPromise);
+}, 'Two concurrently requested FontFaces share one equivalent resource');
+
+promise_test(async t => {
+  const url = new URL('/fonts/Ahem.ttf?cr1-font-reuse=complete', location.href).href;
+  const first = new FontFace('cr1-cache-loaded', `url("${url}")`);
+  await Promise.allSettled([first.load()]);
+  await garbageCollect();
+  const second = new FontFace('cr1-cache-later', `url("${url}")`);
+  await Promise.allSettled([second.load()]);
+  assert_equals(performance.getEntriesByName(url, 'resource').length, 1,
+    'A later face reuses the completed resource without a second timing entry');
+  assert_equals(first.status, second.status);
+}, 'A later FontFace reuses its document\'s completed font resource');
+</script>

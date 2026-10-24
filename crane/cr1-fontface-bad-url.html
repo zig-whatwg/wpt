@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Invalid font source tokens survive declaration parsing</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="rules"></style>
+<script>
+test(() => {
+  const sheet = document.getElementById('rules').sheet;
+  sheet.insertRule('@font-face { src: local(), /*empty*/, url(should be quoted.ttf), junk }');
+  assert_equals(sheet.cssRules[0].style.getPropertyValue('src'), '');
+}, 'a bad-url token must not become a valid empty url during CSS serialization');
+</script>

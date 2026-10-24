@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Specified CSS URLs stay relative while computed URLs retain their parse-time base</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#serializing-css-values">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#relative-urls">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// CSSOM 6.7.2, CSS Values 4 4.5.1, and row 117 Q68: specified
+// serialization preserves the authored URL; computed serialization uses
+// the absolute URL resolved when the declaration was parsed.
+function hiddenElement(t) {
+  const element = document.createElement("div");
+  element.style.display = "none";
+  document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+
+function styleRule(t, text) {
+  const style = document.createElement("style");
+  style.textContent = text;
+  document.head.appendChild(style);
+  t.add_cleanup(() => style.remove());
+  return style.sheet.cssRules[0];
+}
+
+for (const value of [
+  'url("picture.svg")',
+  'url("picture.svg") / "alt text"',
+  'url("picture.svg") "hello"',
+  'url("picture.svg") "hello" / "alt text"'
+]) {
+  test(t => {
+    const element = hiddenElement(t);
+    element.style.content = value;
+    assert_equals(element.style.content, value);
+  }, "Inline specified content preserves relative URL: " + value);
+}
+
+for (const value of ['url("foo")', 'url( "foo")', 'url("foo" )']) {
+  test(t => {
+    const rule = styleRule(t, ".cr1-url-unused {}");
+    rule.style.setProperty("background-image", value);
+    assert_equals(rule.style.getPropertyValue("background-image"), 'url("foo")');
+  }, "CSSStyleRule setProperty preserves a relative URL: " + value);
+}
+
+test(t => {
+  const element = hiddenElement(t);
+  element.style.backgroundImage = 'url("picture.svg")';
+  assert_equals(element.style.backgroundImage, 'url("picture.svg")');
+}, "Inline specified background-image preserves a relative URL");
+
+test(t => {
+  const rule = styleRule(t, '.cr1-url-unused { background-image: url("picture.svg") }');
+  assert_equals(rule.style.backgroundImage, 'url("picture.svg")');
+}, "Parsed stylesheet declaration preserves its relative URL");
+
+test(t => {
+  const element = hiddenElement(t);
+  const absolute = new URL("picture.svg", document.baseURI).href;
+  element.style.backgroundImage = 'url("picture.svg")';
+  assert_equals(getComputedStyle(element).backgroundImage, 'url("' + absolute + '")');
+}, "Computed background-image serializes the resolved absolute URL");
+
+test(t => {
+  const element = hiddenElement(t);
+  const absolute = new URL("picture.svg", document.baseURI).href;
+  element.style.content = 'url("picture.svg") "hello" / "alt text"';
+  assert_equals(getComputedStyle(element).content,
+    'url("' + absolute + '") "hello" / "alt text"');
+}, "Computed content resolves only the URL component");
+
+test(t => {
+  const base = document.createElement("base");
+  base.href = new URL("/crane/resources/first/", location.href).href;
+  document.head.insertBefore(base, document.head.firstChild);
+  t.add_cleanup(() => base.remove());
+  const element = hiddenElement(t);
+  const parsedURL = new URL("picture.svg", document.baseURI).href;
+  element.style.backgroundImage = 'url("picture.svg")';
+  base.href = new URL("/crane/resources/second/", location.href).href;
+  assert_equals(getComputedStyle(element).backgroundImage, 'url("' + parsedURL + '")');
+}, "Computed URL retains the base captured before the first computed-style read");
+</script>

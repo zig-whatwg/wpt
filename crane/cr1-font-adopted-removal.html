@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Adopted font stylesheet removal severs CSS connections</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading/#font-face-css-connection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@font-face { font-family: Cr1AdoptedRemoval; src: local(Cr1AdoptedRemoval); font-weight: 500 }');
+  const original = [...document.adoptedStyleSheets];
+  t.add_cleanup(() => { document.adoptedStyleSheets = original; });
+  document.adoptedStyleSheets = [...original, sheet];
+  const oldFace = [...document.fonts].find(face => face.family === 'Cr1AdoptedRemoval');
+  assert_true(!!oldFace, 'the adopted rule owns a font face');
+  document.adoptedStyleSheets = [...original, sheet, sheet];
+  document.adoptedStyleSheets = [...original, sheet];
+  assert_true(document.fonts.has(oldFace), 'removing only a duplicate keeps the connection');
+  const host = document.createElement('div');
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  const shadow = host.attachShadow({mode:'open'});
+  shadow.adoptedStyleSheets = [sheet];
+  shadow.adoptedStyleSheets = [];
+  assert_true(document.fonts.has(oldFace), 'a shadow adoption cannot sever the document connection');
+  document.adoptedStyleSheets = original;
+  document.adoptedStyleSheets = [...original, sheet];
+  sheet.cssRules[0].style.fontWeight = '900';
+  const nextFace = [...document.fonts].find(face => face.family === 'Cr1AdoptedRemoval');
+  assert_not_equals(nextFace, oldFace, 'same-task readoption creates a new face');
+  assert_equals(oldFace.weight, '500', 'the old independent snapshot survives');
+  assert_equals(nextFace.weight, '900');
+  assert_false(document.fonts.has(oldFace));
+}, 'Only removing the document adoption permanently severs the CSS font connection');
+</script>

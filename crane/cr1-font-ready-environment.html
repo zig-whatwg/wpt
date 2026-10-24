@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Font readiness waits for the document environment</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading/#font-face-set-ready">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const result = new Promise(resolve => {
+    const listener = t.step_func(event => {
+      if (event.source !== frame.contentWindow || event.data?.kind !== 'cr1-font-ready-env') return;
+      removeEventListener('message', listener);
+      resolve(event.data);
+    });
+    addEventListener('message', listener);
+    t.add_cleanup(() => removeEventListener('message', listener));
+  });
+  frame.srcdoc = `<!doctype html><script>
+    const order = [];
+    let imageLoaded = false;
+    document.addEventListener('DOMContentLoaded', () => order.push('dom'));
+    addEventListener('load', () => order.push('load'));
+    const first = document.fonts.ready;
+    const sameBefore = first === document.fonts.ready;
+    first.then(() => {
+      order.push('ready');
+      parent.postMessage({kind:'cr1-font-ready-env', order, imageLoaded,
+        sameBefore, sameAfter:first === document.fonts.ready,
+        state:document.readyState}, '*');
+    });
+  <\/script><img src='/images/blue.png?pipe=trickle(d0.2)&cr1-font-ready-env'
+    onload='imageLoaded = true'>`;
+  document.body.append(frame);
+  const observed = await result;
+  assert_true(observed.imageLoaded, 'the ordinary image loaded');
+  // Q50 probe (2026-10-22): Chrome/Safari wait; Firefox differs.
+  assert_array_equals(observed.order, ['dom', 'load', 'ready']);
+  assert_equals(observed.state, 'complete');
+  assert_true(observed.sameBefore);
+  assert_true(observed.sameAfter, 'settlement preserves the ready promise identity');
+}, 'An ordinary delayed image holds initial fonts.ready until document load');
+</script>

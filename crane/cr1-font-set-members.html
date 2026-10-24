@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FontFaceSet membership and live setlike iteration</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#idl-setlike">
+<link rel="help" href="https://drafts.csswg.org/css-font-loading/#fontfaceset">
+<meta name="assert" content="Expected red in Crane until row117 Q7 and Q35: FontFace owner state and interface-valued setlike bindings.">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+function face(name) { return new FontFace('cr1-set-' + name, 'url(/fonts/Ahem.ttf)'); }
+function own(t, value) { document.fonts.add(value); t.add_cleanup(() => { document.fonts.delete(value); }); return value; }
+test(t => {
+  const start = document.fonts.size;
+  const a = own(t, face('a'));
+  const b = own(t, face('b'));
+  assert_true(document.fonts.has(a));
+  assert_equals(document.fonts.add(a), document.fonts);
+  assert_equals(document.fonts.size, start + 2);
+  const members = Array.from(document.fonts).filter(x => x === a || x === b);
+  assert_array_equals(members, [a,b]);
+  assert_array_equals(Array.from(document.fonts.keys()).filter(x => x === a || x === b), [a,b]);
+  assert_array_equals(Array.from(document.fonts.values()).filter(x => x === a || x === b), [a,b]);
+  for (const [key, value] of document.fonts.entries()) assert_equals(key, value);
+  assert_true(document.fonts.delete(a));
+  assert_false(document.fonts.delete(a));
+  assert_false(document.fonts.has(a));
+}, 'FontFaceSet generic setlike members preserve interface identity and insertion order');
+test(t => {
+  const a = own(t, face('live-a'));
+  const b = own(t, face('live-b'));
+  const c = face('live-c');
+  t.add_cleanup(() => { document.fonts.delete(c); });
+  const iterator = document.fonts.values();
+  let next;
+  do { next = iterator.next(); } while (!next.done && next.value !== a);
+  assert_false(next.done);
+  document.fonts.delete(b);
+  document.fonts.add(c);
+  const rest = Array.from(iterator);
+  assert_false(rest.includes(b));
+  assert_true(rest.includes(c));
+}, 'a live FontFaceSet iterator sees additions and skips deleted entries');
+test(t => {
+  const a = own(t, face('foreach-a'));
+  const receiver = {};
+  let seen = false;
+  document.fonts.forEach(function(value, key, set) {
+    assert_equals(this, receiver);
+    assert_equals(value, key);
+    assert_equals(set, document.fonts);
+    if (value === a) seen = true;
+  }, receiver);
+  assert_true(seen);
+}, 'FontFaceSet forEach receives the member twice and the set');
+promise_test(async t => {
+  (() => { const value = face('retained'); value.cr1Marker = 117; document.fonts.add(value); })();
+  await garbageCollect();
+  await garbageCollect();
+  const retained = Array.from(document.fonts).find(value => value.cr1Marker === 117);
+  assert_true(retained instanceof FontFace);
+  t.add_cleanup(() => { document.fonts.delete(retained); });
+  assert_true(document.fonts.has(retained));
+}, 'FontFaceSet owns each member across forced collection');
+</script>

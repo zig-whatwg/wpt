@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Compression Streams 10 MiB in 64 KiB chunks</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+const chunkSize = 64 * 1024;
+const input = new Uint8Array(10 * 1024 * 1024);
+for (let i = 0; i < input.length; ++i) input[i] = (i * 31 + (i >>> 8)) & 255;
+
+async function transform(stream, bytes) {
+  const writer = stream.writable.getWriter();
+  const reader = stream.readable.getReader();
+  const chunks = [];
+  let size = 0;
+  const consume = (async () => {
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+  })();
+  const produce = (async () => {
+    for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+      await writer.write(bytes.subarray(offset, offset + chunkSize));
+    }
+    await writer.close();
+  })();
+  await Promise.all([consume, produce]);
+  const result = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+}
+
+for (const format of ["deflate", "deflate-raw", "gzip"]) {
+  promise_test(async () => {
+    const start = performance.now();
+    const compressed = await transform(new CompressionStream(format), input);
+    const output = await transform(new DecompressionStream(format), compressed);
+    const elapsed = performance.now() - start;
+    assert_equals(output.byteLength, input.byteLength, "decoded length");
+    let mismatch = -1;
+    for (let i = 0; i < input.length; ++i) {
+      if (input[i] !== output[i]) { mismatch = i; break; }
+    }
+    assert_equals(mismatch, -1, "all decoded bytes match");
+    console.log("CM1_COST_MS " + format + " " + elapsed);
+  }, format + " round trips 10 MiB in 64 KiB chunks");
+}
+</script>

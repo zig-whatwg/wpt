@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSSOM resource changes are fetched at the rendering opportunity</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#the-cssstylesheet-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of ['setProperty', 'cssText', 'rule.style', 'insertRule', 'replaceSync', 'replace']) {
+  promise_test(async t => {
+    const url = new URL('/resource-timing/resources/blue.png?cr1-cssom-' + mode, location.href).href;
+    const element = document.createElement('div');
+    element.id = 'cr1-' + mode.replace('.', '-');
+    element.style.cssText = 'width:20px;height:20px';
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    const seen = new Promise(resolve => {
+      const observer = new PerformanceObserver(list => {
+        const entry = list.getEntries().find(e => e.name === url);
+        if (entry) resolve(entry);
+      });
+      observer.observe({type:'resource', buffered:true});
+      t.add_cleanup(() => observer.disconnect());
+      t.step_timeout(() => resolve(null), 3000);
+    });
+    const value = `url("${url}")`;
+    if (mode === 'setProperty') element.style.setProperty('background-image', value);
+    else if (mode === 'cssText') element.style.cssText += `;background-image:${value}`;
+    else {
+      const sheet = new CSSStyleSheet();
+      const rule = `#${element.id} { background-image:${value} }`;
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+      t.add_cleanup(() => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet); });
+      if (mode === 'rule.style') {
+        sheet.insertRule(`#${element.id} { color:red }`);
+        sheet.cssRules[0].style.setProperty('background-image', value);
+      } else if (mode === 'insertRule') sheet.insertRule(rule);
+      else if (mode === 'replaceSync') sheet.replaceSync(rule);
+      else await sheet.replace(rule);
+    }
+    const entry = await seen;
+    assert_not_equals(entry, null, 'the CSSOM-created used resource was fetched');
+    assert_equals(entry.initiatorType, 'css');
+    assert_equals(performance.getEntriesByName(url).length, 1);
+  }, mode + ' preserves a used background URL through parsing and rendering');
+}
+</script>

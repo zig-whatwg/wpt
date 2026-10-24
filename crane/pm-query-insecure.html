@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Permissions in a non-secure context</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  assert_false(isSecureContext);
+  const result = await navigator.permissions.query({name: "geolocation"});
+  assert_equals(result.state, "denied");
+}, "A non-secure context has denied geolocation permission");
+
+promise_test(async () => {
+  assert_false(isSecureContext);
+  const result = await navigator.permissions.query({name: "storage-access"});
+  assert_equals(result.state, "prompt");
+}, "Storage-access query hides a denied permission state");
+</script>

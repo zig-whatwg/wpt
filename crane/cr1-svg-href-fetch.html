@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG image and use href requests do not depend on display</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const namespace = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(namespace, 'svg');
+  svg.style.display = 'none';
+  const image = document.createElementNS(namespace, 'image');
+  const use = document.createElementNS(namespace, 'use');
+  const useLoaded = new Promise((resolve, reject) => {
+    use.onload = resolve;
+    use.onerror = () => reject(new Error('valid SVG resource failed'));
+  });
+  image.setAttribute('href', '/resource-timing/resources/blue.png?cr1-svg-image');
+  use.setAttribute('href', '/images/green.svg?cr1-svg-use');
+  svg.append(image, use);
+  document.body.append(svg);
+  t.add_cleanup(() => svg.remove());
+  await useLoaded;
+  const deadline = performance.now() + 3000;
+  let entries;
+  do {
+    entries = performance.getEntriesByType('resource').filter(entry => entry.name.includes('?cr1-svg-'));
+    if (entries.length >= 2) break;
+    await new Promise(resolve => t.step_timeout(resolve, 20));
+  } while (performance.now() < deadline);
+  assert_equals(entries.length, 2);
+  assert_equals(entries.find(entry => entry.name.includes('cr1-svg-image')).initiatorType, 'image');
+  assert_equals(entries.find(entry => entry.name.includes('cr1-svg-use')).initiatorType, 'other');
+}, 'connected SVG href requests start even under display:none');
+</script>

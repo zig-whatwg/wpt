@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated relative content URL serialization</title>
+<meta name="variant" content="?case=0">
+<meta name="variant" content="?case=1">
+<meta name="variant" content="?case=2">
+<meta name="variant" content="?case=3">
+<link rel="help" href="https://drafts.csswg.org/cssom/#serializing-css-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/css/support/parsing-testcommon.js"></script>
+<div id="target"></div>
+<script>
+// Row 117 Q68: select exactly one of content-valid.html's four lost
+// subtests, using the same upstream assertion helper without editing WPT.
+const cases = [
+  'url("picture.svg")',
+  'url("picture.svg") / "alt text"',
+  'url("picture.svg") "hello"',
+  'url("picture.svg") "hello" / "alt text"'
+];
+const selected = Number(new URLSearchParams(location.search).get("case") || "0");
+test_valid_value("content", cases[selected]);
+</script>

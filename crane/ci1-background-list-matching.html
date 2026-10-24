@@ -1,0 +1,172 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Q119 background resolved lists</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Basis: Q119 FINAL/Q120 in tmp/plans/codex-cssimages-questions.md (2026-10-23).
+// Per-case Chrome/Firefox/Safari observations and userAgent versions are in
+// tmp/analysis/integrator-probes-1023u/results/q119-{P1..P5,C6,C7}-{chrome,firefox,safari}.json.
+// These expectations follow the integrator's per-property ruling, including
+// the majority's untruncated position/repeat/origin/clip longhands; they do not
+// claim all three browsers serialize those longhands identically.
+// Backgrounds 3 #layering repeats/truncates used layers to the image count;
+// Q119/Q120 separately decide which repetitions CSSOM exposes in each property.
+const cases = [
+  {
+    "name": "P1",
+    "input": {
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\"), url(\"https://example.test/c.png\")",
+      "background-position-x": "10px, 20px",
+      "background-position-y": "30px"
+    },
+    "specified": "",
+    "computed": "url(\"https://example.test/a.png\") repeat scroll 10px 30px / auto padding-box border-box, url(\"https://example.test/b.png\") repeat scroll 20px 30px / auto padding-box border-box, rgba(0, 0, 0, 0) url(\"https://example.test/c.png\") repeat scroll 10px 30px / auto padding-box border-box",
+    "longhands": {
+      "background-color": "rgba(0, 0, 0, 0)",
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\"), url(\"https://example.test/c.png\")",
+      "background-position-x": "10px, 20px",
+      "background-position-y": "30px",
+      "background-size": "auto, auto, auto",
+      "background-repeat": "repeat",
+      "background-attachment": "scroll",
+      "background-origin": "padding-box",
+      "background-clip": "border-box"
+    }
+  },
+  {
+    "name": "P2",
+    "input": {
+      "background-image": "url(\"https://example.test/a.png\")",
+      "background-size": "10px, 20px"
+    },
+    "specified": "",
+    "computed": "rgba(0, 0, 0, 0) url(\"https://example.test/a.png\") repeat scroll 0% 0% / 10px auto padding-box border-box",
+    "longhands": {
+      "background-color": "rgba(0, 0, 0, 0)",
+      "background-image": "url(\"https://example.test/a.png\")",
+      "background-position-x": "0%",
+      "background-position-y": "0%",
+      "background-size": "10px auto, 20px auto",
+      "background-repeat": "repeat",
+      "background-attachment": "scroll",
+      "background-origin": "padding-box",
+      "background-clip": "border-box"
+    }
+  },
+  {
+    "name": "P3",
+    "input": {
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\")",
+      "background-repeat": "no-repeat, repeat-x, repeat-y"
+    },
+    "specified": "",
+    "computed": "url(\"https://example.test/a.png\") no-repeat scroll 0% 0% / auto padding-box border-box, rgba(0, 0, 0, 0) url(\"https://example.test/b.png\") repeat-x scroll 0% 0% / auto padding-box border-box",
+    "longhands": {
+      "background-color": "rgba(0, 0, 0, 0)",
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\")",
+      "background-position-x": "0%",
+      "background-position-y": "0%",
+      "background-size": "auto, auto",
+      "background-repeat": "no-repeat, repeat-x, repeat-y",
+      "background-attachment": "scroll",
+      "background-origin": "padding-box",
+      "background-clip": "border-box"
+    }
+  },
+  {
+    "name": "P4",
+    "input": {
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\")",
+      "background-attachment": "fixed",
+      "background-origin": "content-box, padding-box, border-box"
+    },
+    "specified": "",
+    "computed": "url(\"https://example.test/a.png\") repeat fixed 0% 0% / auto content-box border-box, rgba(0, 0, 0, 0) url(\"https://example.test/b.png\") repeat fixed 0% 0% / auto padding-box border-box",
+    "longhands": {
+      "background-color": "rgba(0, 0, 0, 0)",
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\")",
+      "background-position-x": "0%",
+      "background-position-y": "0%",
+      "background-size": "auto, auto",
+      "background-repeat": "repeat",
+      "background-attachment": "fixed",
+      "background-origin": "content-box, padding-box, border-box",
+      "background-clip": "border-box"
+    }
+  },
+  {
+    "name": "P5",
+    "input": {
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\")",
+      "background-clip": "border-box"
+    },
+    "specified": "",
+    "computed": "url(\"https://example.test/a.png\") repeat scroll 0% 0% / auto padding-box border-box, rgba(0, 0, 0, 0) url(\"https://example.test/b.png\") repeat scroll 0% 0% / auto padding-box border-box",
+    "longhands": {
+      "background-color": "rgba(0, 0, 0, 0)",
+      "background-image": "url(\"https://example.test/a.png\"), url(\"https://example.test/b.png\")",
+      "background-position-x": "0%",
+      "background-position-y": "0%",
+      "background-size": "auto, auto",
+      "background-repeat": "repeat",
+      "background-attachment": "scroll",
+      "background-origin": "padding-box",
+      "background-clip": "border-box"
+    }
+  },
+  {
+    "name": "C6",
+    "input": {
+      "background-image": "none, none",
+      "background-size": "cover"
+    },
+    "specified": "",
+    "computed": "none repeat scroll 0% 0% / cover padding-box border-box, rgba(0, 0, 0, 0) none repeat scroll 0% 0% / cover padding-box border-box",
+    "longhands": {
+      "background-color": "rgba(0, 0, 0, 0)",
+      "background-image": "none, none",
+      "background-position-x": "0%",
+      "background-position-y": "0%",
+      "background-size": "cover, cover",
+      "background-repeat": "repeat",
+      "background-attachment": "scroll",
+      "background-origin": "padding-box",
+      "background-clip": "border-box"
+    }
+  },
+  {
+    "name": "C7",
+    "input": {
+      "background-position-x": "10px, 20px",
+      "background-position-y": "30px"
+    },
+    "specified": "",
+    "computed": "rgba(0, 0, 0, 0) none repeat scroll 10px 30px / auto padding-box border-box",
+    "longhands": {
+      "background-color": "rgba(0, 0, 0, 0)",
+      "background-image": "none",
+      "background-position-x": "10px, 20px",
+      "background-position-y": "30px",
+      "background-size": "auto",
+      "background-repeat": "repeat",
+      "background-attachment": "scroll",
+      "background-origin": "padding-box",
+      "background-clip": "border-box"
+    }
+  }
+];
+for (const entry of cases) {
+  const element = document.createElement('div');
+  for (const [name, value] of Object.entries(entry.input)) element.style.setProperty(name, value);
+  document.body.appendChild(element);
+  test(() => assert_equals(element.style.getPropertyValue('background'), entry.specified), `${entry.name}: specified background`);
+  const computed = getComputedStyle(element);
+  test(() => assert_equals(computed.getPropertyValue('background'), entry.computed), `${entry.name}: computed background`);
+  for (const [name, value] of Object.entries(entry.longhands)) {
+    test(() => assert_equals(computed.getPropertyValue(name), value), `${entry.name}: computed ${name}`);
+  }
+  element.remove();
+}
+</script>

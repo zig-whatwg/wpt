@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Font load event owns its frozen face list</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading/#fontfacesetloadevent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+test(() => {
+  const event = new FontFaceSetLoadEvent('loadingdone', { bubbles:true, cancelable:true, composed:true });
+  assert_equals(event.type, 'loadingdone');
+  assert_true(event.bubbles);
+  assert_true(event.cancelable);
+  assert_true(event.composed);
+  assert_false(event.isTrusted);
+  assert_array_equals(event.fontfaces, []);
+  assert_true(Object.isFrozen(event.fontfaces));
+  assert_equals(event.fontfaces, event.fontfaces);
+}, 'font load events construct Event state and a stable frozen empty array');
+test(() => {
+  const face = new FontFace('cr1-event', 'url(/fonts/Ahem.ttf)');
+  const input = [face, face];
+  const event = new FontFaceSetLoadEvent('loadingerror', { fontfaces:input });
+  input.length = 0;
+  assert_array_equals(event.fontfaces, [face, face]);
+  assert_not_equals(event.fontfaces, input);
+  assert_equals(event.fontfaces, event.fontfaces);
+  assert_true(Object.isFrozen(event.fontfaces));
+}, 'the copied face array preserves order, duplicates and object identity');
+test(() => {
+  for (const invalid of [null, {}, document.body, 1, 'face'])
+    assert_throws_js(TypeError, () => new FontFaceSetLoadEvent('loadingdone', { fontfaces:[invalid] }));
+}, 'font load event rejects members that are not FontFace instances');
+promise_test(async () => {
+  const event = (() => {
+    const face = new FontFace('cr1-retained-event-face', 'url(/fonts/Ahem.ttf)');
+    face.cr1Identity = 117;
+    return new FontFaceSetLoadEvent('loadingdone', { fontfaces:[face] });
+  })();
+  await garbageCollect();
+  await garbageCollect();
+  assert_equals(event.fontfaces.length, 1);
+  assert_true(event.fontfaces[0] instanceof FontFace);
+  assert_equals(event.fontfaces[0].cr1Identity, 117);
+}, 'the event keeps its faces alive after every other reference is dropped');
+</script>

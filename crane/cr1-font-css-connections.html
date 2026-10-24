@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS-connected faces retain their own identity and descriptor state</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading/#font-face-css-connection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+function sheetFor(t, family) {
+  const style = document.createElement('style');
+  style.textContent = `@font-face {font-family: ${family}; src: local(cr1-uninstalled); font-weight: 400}`;
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  return style;
+}
+function matching(family) {
+  return Array.from(document.fonts).find(face => face.family === family);
+}
+test(t => {
+  const style = sheetFor(t, 'Cr1Reflect');
+  const face = matching('Cr1Reflect');
+  assert_true(face instanceof FontFace);
+  const rule = style.sheet.cssRules[0];
+  rule.style.fontWeight = '600';
+  assert_equals(face.weight, '600');
+  face.weight = '700';
+  assert_equals(rule.style.fontWeight, '700');
+  assert_false(document.fonts.delete(face));
+  document.fonts.clear();
+  assert_true(document.fonts.has(face));
+}, 'CSS-connected descriptors reflect in both directions and resist explicit removal');
+test(t => {
+  const style = sheetFor(t, 'Cr1Reconnect');
+  const before = matching('Cr1Reconnect');
+  style.remove();
+  document.head.append(style);
+  const after = matching('Cr1Reconnect');
+  assert_not_equals(before, after);
+  assert_false(document.fonts.has(before));
+  document.fonts.add(before);
+  t.add_cleanup(() => { document.fonts.delete(before); });
+  assert_true(document.fonts.delete(before));
+}, 'Removing and reinserting the same stylesheet creates a new CSS-connected face');
+test(t => {
+  const style = sheetFor(t, 'Cr1Replace');
+  const before = matching('Cr1Replace');
+  style.sheet.cssRules[0].style.src = 'local(cr1-another-uninstalled)';
+  style.sheet.cssRules[0].style.fontWeight = '900';
+  const after = matching('Cr1Replace');
+  assert_not_equals(before, after);
+  assert_equals(before.weight, '400');
+  assert_equals(after.weight, '900');
+  assert_false(document.fonts.has(before));
+}, 'Replacing src disconnects the old face without changing its descriptors');
+promise_test(async t => {
+  const style = sheetFor(t, 'Cr1KeptFace');
+  let face = matching('Cr1KeptFace');
+  const read = () => face;
+  style.remove();
+  await garbageCollect();
+  await garbageCollect();
+  assert_equals(read().family, 'Cr1KeptFace');
+  assert_equals(read().status, 'unloaded');
+  document.fonts.add(read());
+  t.add_cleanup(() => { document.fonts.delete(read()); });
+  assert_true(document.fonts.has(read()));
+}, 'A script-held disconnected CSS face survives collection with its own descriptors');
+promise_test(async t => {
+  const style = sheetFor(t, 'Cr1PendingFace');
+  const face = matching('Cr1PendingFace');
+  const loaded = face.load();
+  style.remove();
+  assert_false(document.fonts.has(face));
+  await garbageCollect();
+  await promise_rejects_dom(t, 'NetworkError', loaded);
+  assert_equals(face.status, 'error');
+  assert_equals(face.family, 'Cr1PendingFace');
+}, 'A loading face survives disconnection and settles its original loaded promise');
+</script>

@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Resource activity keeps its owner and cached SVG document alive</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const kind of ['input', 'image']) {
+  promise_test(async t => {
+    let element = kind === 'input' ? document.createElement('input') :
+      document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    if (kind === 'input') element.type = 'image';
+    const complete = new Promise((resolve, reject) => {
+      element.onload = t.step_func(function(event) {
+        const owner = event.currentTarget;
+        assert_equals(event.target, owner);
+        assert_equals(owner.localName, kind);
+        assert_equals(owner.ownerDocument, document);
+        assert_false(owner.isConnected);
+        resolve();
+      });
+      element.onerror = t.step_func(() => reject(new Error('valid image failed')));
+    });
+    document.body.append(element);
+    const url = '/resource-timing/resources/blue.png?cr1-gc=' + kind + '&pipe=trickle(d0.2)';
+    if (kind === 'input') element.src = url;
+    else element.setAttribute('href', url);
+    element.remove();
+    element = null;
+    TestUtils.gc();
+    TestUtils.gc();
+    await complete;
+  }, kind + ' pending image activity retains its removed owner through completion');
+}
+
+promise_test(async t => {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  document.body.append(svg);
+  t.add_cleanup(() => svg.remove());
+  const url = new URL('/images/green.svg?cr1-cache-gc', location.href).href;
+  async function useResource() {
+    const use = document.createElementNS(ns, 'use');
+    const loaded = new Promise((resolve, reject) => {
+      use.onload = resolve;
+      use.onerror = () => reject(new Error('cached SVG failed'));
+    });
+    use.setAttribute('href', url);
+    svg.append(use);
+    await loaded;
+    use.remove();
+  }
+  await useResource();
+  TestUtils.gc();
+  TestUtils.gc();
+  await useResource();
+  assert_equals(performance.getEntriesByName(url).length, 1,
+    'the consuming document retains the parsed resource after the first use is collected');
+}, 'A document retains its cached SVG resource after all previous use elements are dropped');
+</script>

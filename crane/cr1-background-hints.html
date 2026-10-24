@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HTML background hints use the normal CSS cascade</title>
+<meta name="timeout" content="long">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/rendering.html#the-page">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/rendering.html#tables-2">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function subject(t, name) {
+  if (name === 'body') {
+    t.add_cleanup(() => { document.body.removeAttribute('background'); document.body.style.backgroundImage = ''; });
+    return document.body;
+  }
+  const table = document.createElement('table');
+  const section = document.createElement(['thead', 'tbody', 'tfoot'].includes(name) ? name : 'tbody');
+  const row = document.createElement('tr');
+  const cell = document.createElement(name === 'th' ? 'th' : 'td');
+  cell.textContent = 'background hint';
+  row.append(cell); section.append(row); table.append(section);
+  document.body.append(table);
+  t.add_cleanup(() => table.remove());
+  return name === 'table' ? table : name === 'tr' ? row : ['td', 'th'].includes(name) ? cell : section;
+}
+function settle(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 1000));
+}
+for (const tag of ['body', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th']) {
+  promise_test(async t => {
+    const element = subject(t, tag);
+    const url = new URL('/resource-timing/resources/blue.png?cr1-hint-' + tag, location).href;
+    element.setAttribute('background', url);
+    assert_equals(getComputedStyle(element).backgroundImage, `url("${url}")`, 'the hint is a computed CSS value');
+    await settle(t);
+    const entries = performance.getEntriesByName(url);
+    assert_equals(entries.length, 1, 'one fetch for the used image');
+    assert_equals(entries[0].initiatorType, 'css');
+    element.removeAttribute('background');
+    assert_equals(getComputedStyle(element).backgroundImage, 'none', 'removing the hint restores the initial value');
+  }, tag + ' background attribute enters the presentational hint origin');
+}
+promise_test(async t => {
+  const element = subject(t, 'td');
+  const url = new URL('/resource-timing/resources/blue.png?cr1-hint-overridden', location).href;
+  element.style.backgroundImage = 'none';
+  element.setAttribute('background', url);
+  assert_equals(getComputedStyle(element).backgroundImage, 'none');
+  await settle(t);
+  assert_equals(performance.getEntriesByName(url).length, 0, 'an overridden hint does not fetch');
+  element.style.backgroundImage = '';
+  await settle(t);
+  assert_equals(performance.getEntriesByName(url).length, 1, 'removing the override makes the hint used');
+}, 'author declarations override a background hint before resource selection');
+promise_test(async t => {
+  const element = document.createElement('div');
+  const url = new URL('/resource-timing/resources/blue.png?cr1-hint-wrong-tag', location).href;
+  element.setAttribute('background', url);
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(getComputedStyle(element).backgroundImage, 'none');
+  await settle(t);
+  assert_equals(performance.getEntriesByName(url).length, 0);
+}, 'background is not a presentational hint on an arbitrary element');
+</script>

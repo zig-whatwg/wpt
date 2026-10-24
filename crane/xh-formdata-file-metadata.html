@@ -1,0 +1,20 @@
+<!doctype html>
+<title>FormData renamed files preserve lastModified</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const method of ["append", "set"]) {
+  test(() => {
+    const original = new File(["body"], "old", {lastModified: 123, type: "text/plain"});
+    const data = new FormData();
+    data[method]("file", original, "new");
+    const renamed = data.get("file");
+    assert_not_equals(renamed, original);
+    assert_equals(renamed.name, "new");
+    assert_equals(renamed.lastModified, 123);
+    assert_equals(renamed.type, "text/plain");
+    assert_equals(data.getAll("file")[0], renamed);
+    assert_equals(Array.from(data)[0][1], renamed);
+  }, method + " with a filename preserves File metadata and result identity");
+}
+</script>

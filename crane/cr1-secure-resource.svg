@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml">
+  <script>globalThis.cr1SvgScriptRan = true;</script>
+  <script href="/common/blank.html?cr1-secondary-script"/>
+  <style>@import url('/common/blank.html?cr1-secondary-import');</style>
+  <image href="/resource-timing/resources/blue.png?cr1-secondary-image"/>
+  <use href="/resource-timing/resources/dummy.svg?cr1-secondary-use#target"/>
+  <foreignObject><h:img src="/resource-timing/resources/blue.png?cr1-secondary-html-image"/><h:link rel="stylesheet" href="/common/blank.html?cr1-secondary-link"/></foreignObject>
+  <g id="ok"><rect width="10" height="10"/></g>
+</svg>
