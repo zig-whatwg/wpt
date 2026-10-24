@@ -1,0 +1,122 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Border image source: CSSOM reset-only member and inheritance</title>
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#border-shorthands">
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#propdef-border-image-source">
+<link rel="help" href="https://drafts.csswg.org/css-cascade-5/#shorthand-property">
+<link rel="help" href="https://drafts.csswg.org/cssom/#the-cssstyledeclaration-interface">
+<link rel="help" href="https://drafts.csswg.org/cssom/#serialize-a-css-value">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const property = 'border-image-source';
+const image = 'url("#frame")';
+function declaration() {
+  return document.createElement('div').style;
+}
+function element(t, parent = document.body) {
+  const node = document.createElement('div');
+  parent.appendChild(node);
+  t.add_cleanup(() => node.remove());
+  return node;
+}
+// CSSOM #dom-cssstyledeclaration-length and #dom-cssstyledeclaration-item:
+// this declaration block has one explicitly set longhand, so it occupies index 0.
+test(() => {
+  const style = declaration();
+  style.setProperty(property, image);
+  assert_equals(style.getPropertyValue(property), image);
+  assert_equals(style.length, 1);
+  assert_equals(style.item(0), property);
+}, 'The image source participates in CSSStyleDeclaration enumeration');
+// Backgrounds 3 #propdef-border-image-source permits only none | <image>.
+// CSSOM setProperty steps 5-6 return without mutation when parsing fails.
+for (const invalid of ['auto', 'url(a) url(b)', 'url(a), url(b)', 'none none', 'red', 'url(a) 2x']) {
+  test(() => {
+    const style = declaration();
+    style.setProperty(property, image);
+    assert_equals(style.getPropertyValue(property), image);
+    style.setProperty(property, invalid);
+    assert_equals(style.getPropertyValue(property), image);
+  }, `Invalid image source preserves its declaration: ${invalid}`);
+}
+// Backgrounds 3 section 3.4 #border-shorthands: border resets border-image
+// to its initial value; the four side shorthands set only width, style and color.
+test(t => {
+  const node = element(t);
+  node.style.setProperty(property, image);
+  assert_equals(node.style.getPropertyValue(property), image);
+  node.style.setProperty('border', '1px solid');
+  assert_equals(node.style.getPropertyValue(property), 'none');
+  assert_equals(getComputedStyle(node).getPropertyValue(property), 'none');
+}, 'The border shorthand resets the specified and computed image source');
+for (const side of ['top', 'right', 'bottom', 'left']) {
+  test(() => {
+    const style = declaration();
+    style.setProperty(property, image);
+    assert_equals(style.getPropertyValue(property), image);
+    style.setProperty(`border-${side}`, '1px solid');
+    assert_equals(style.getPropertyValue(property), image);
+  }, `The border-${side} shorthand preserves the image source`);
+}
+// CSSOM getPropertyValue step 1.2.3 serializes all mapped longhands;
+// serialize-a-css-value step 1.2 returns empty if the shorthand cannot represent
+// every value. Cascade 5 section 3 explicitly says border has no syntax for a
+// noninitial border-image. This assertion is getPropertyValue, not cssText.
+test(() => {
+  const style = declaration();
+  style.setProperty('border', '1px solid');
+  style.setProperty(property, image);
+  assert_equals(style.getPropertyValue(property), image);
+  assert_equals(style.getPropertyValue('border'), '');
+}, 'A noninitial reset-only image source prevents border shorthand serialization');
+// CSSOM serialize-a-css-value step 2 uses canonical order and omits defaults.
+// Exact '1px solid' readback: WPT css/cssom/CSSStyleRule.html lines 99-102.
+// Reset-only none permits border serialization: css/cssom/shorthand-values.html
+// line 28; Backgrounds 3 section 3.4 defines the same reset for this shorthand.
+test(() => {
+  const style = declaration();
+  style.setProperty('border', '1px solid');
+  style.setProperty(property, 'none');
+  assert_equals(style.getPropertyValue(property), 'none');
+  assert_equals(style.getPropertyValue('border'), '1px solid');
+}, 'An initial reset-only image source permits border shorthand serialization');
+// Cascade 5 section 3 #shorthand-property explicitly expands a CSS-wide
+// keyword to every sub-property, including reset-only sub-properties.
+// CSSOM setProperty step 8 sets each corresponding longhand.
+for (const keyword of ['inherit', 'initial', 'unset', 'revert', 'revert-layer']) {
+  test(() => {
+    const style = declaration();
+    style.setProperty('border', keyword);
+    assert_equals(style.getPropertyValue(property), keyword);
+  }, `The border shorthand expands ${keyword} over its reset-only image source`);
+}
+// CSSOM setProperty step 3 invokes removeProperty for the empty string.
+test(() => {
+  const style = declaration();
+  style.setProperty(property, image);
+  assert_equals(style.getPropertyValue(property), image);
+  style.setProperty(property, '');
+  assert_equals(style.getPropertyValue(property), '');
+  assert_equals(style.length, 0);
+}, 'An empty CSSOM image source removes the declaration');
+// Backgrounds 3 section 5.1: initial none, inherited no. Explicit inherit
+// selects the parent's computed value (Cascade 5 #valdef-all-inherit).
+// Q68's existing fragment-only URL rule retains url("#frame") when computed.
+test(t => {
+  const parent = element(t);
+  const child = element(t, parent);
+  parent.style.setProperty(property, image);
+  assert_equals(getComputedStyle(parent).getPropertyValue(property), image);
+  assert_equals(getComputedStyle(child).getPropertyValue(property), 'none');
+}, 'The image source is not inherited by default');
+test(t => {
+  const parent = element(t);
+  const child = element(t, parent);
+  parent.style.setProperty(property, image);
+  child.style.setProperty(property, 'inherit');
+  assert_equals(getComputedStyle(parent).getPropertyValue(property), image);
+  assert_equals(getComputedStyle(child).getPropertyValue(property), image);
+}, 'Explicit inherit keeps the parent computed image source');
+</script>
