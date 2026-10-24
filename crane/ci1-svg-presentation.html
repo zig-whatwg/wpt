@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG presentation attributes: invalid values and nested unitless lengths</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/types.html#presentation-attribute-css-value">
+<link rel="help" href="https://svgwg.org/svg2-draft/styling.html#PresentationAttributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Browser rulings: tmp/analysis/integrator-probes-1022d/results/svgattr-*.json
+// and integrator-probes-1022e/results/svgfn-*.json. Q6 and Q11.
+// The pure CSS parser is row119; presentational-hint wiring is row117.
+const svgNS = 'http://www.w3.org/2000/svg';
+function element(name, attributes = {}) {
+  const result = document.createElementNS(svgNS, name);
+  for (const [key, value] of Object.entries(attributes)) result.setAttribute(key, value);
+  return result;
+}
+function fixture(t) {
+  const root = element('svg');
+  document.body.appendChild(root);
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+function inherited(t, property, parentValue, invalidValue, expected) {
+  const root = fixture(t);
+  const parent = element('g', {[property]: parentValue});
+  const child = element('rect', {[property]: invalidValue});
+  root.appendChild(parent);
+  parent.appendChild(child);
+  assert_equals(getComputedStyle(child).getPropertyValue(property), expected);
+}
+test(t => inherited(t, 'fill', 'red', 'bogus', 'rgb(255, 0, 0)'),
+  'An invalid fill presentation attribute inherits instead of setting initial black');
+test(t => {
+  const root = fixture(t);
+  root.style.overflow = 'visible';
+  const child = element('svg', {overflow: 'bogus'});
+  const control = element('svg');
+  root.appendChild(child);
+  root.appendChild(control);
+  assert_equals(getComputedStyle(control).overflow, 'hidden');
+  assert_equals(getComputedStyle(child).overflow, getComputedStyle(control).overflow);
+}, 'An invalid overflow hint leaves the nested SVG UA declaration in effect');
+test(t => inherited(t, 'fill', 'blue', 'red !important', 'rgb(0, 0, 255)'),
+  'Important is invalid in a presentation attribute value');
+test(t => inherited(t, 'stroke-width', '7', '5foo', '7px'),
+  'An invalid unit leaves inherited stroke-width unchanged');
+test(t => {
+  const root = fixture(t);
+  const child = element('rect', {'stroke-width': '5'});
+  root.appendChild(child);
+  assert_equals(getComputedStyle(child).strokeWidth, '5px');
+}, 'A unitless stroke-width presentation attribute computes in pixels');
+for (const [property, input, controlValue, expected] of [
+  ['filter', 'blur(5)', 'blur(5px)', 'blur(5px)'],
+  ['filter', 'hue-rotate(30)', null, 'none'],
+  ['filter', 'drop-shadow(1 2)', 'drop-shadow(1px 2px)', 'drop-shadow(rgb(0, 0, 0) 1px 2px 0px)'],
+  ['clip-path', 'circle(5 at 10 20)', 'circle(5px at 10px 20px)', 'circle(5px at 10px 20px)'],
+  ['filter', 'blur(5) hue-rotate(30)', null, 'none'],
+]) {
+  test(t => {
+    const root = fixture(t);
+    const child = element('rect', {[property]: input});
+    const control = element('rect');
+    if (controlValue !== null) control.setAttribute(property, controlValue);
+    root.appendChild(child);
+    root.appendChild(control);
+    assert_equals(getComputedStyle(control).getPropertyValue(property), expected);
+    assert_equals(getComputedStyle(child).getPropertyValue(property), expected);
+  }, `${property} presentation attribute ${input} follows the browser unit rule`);
+}
+</script>
