@@ -1,0 +1,579 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed math in image component values</title>
+<link rel="help" href="https://drafts.fxtf.org/filter-effects-1/#FilterProperty">
+<link rel="help" href="https://drafts.fxtf.org/css-masking-1/#the-mask-border">
+<link rel="help" href="https://drafts.csswg.org/css-shapes-1/#shape-function">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#calc-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q142: all three browser probes agree on math-zero, literal-zero and 15deg
+// specified/computed arc rotation. The other two angles follow Values4 math.
+// tmp/analysis/integrator-probes-1024a/results/q142-{chrome,firefox,safari}.json.
+// Q148: Chrome/Safari agree on specified legacy cross-fade. Firefox does not
+// ship it. The integrator chose WebKit's normalized NUMBER for computed math
+// after the two shipping browsers split on number versus percentage spelling.
+// tmp/analysis/integrator-probes-1024b/results/q148-{chrome,firefox,safari}.json.
+function elementFor(t) {
+  const element = document.createElement('div');
+  element.style.cssText = 'font-size:40px;color:red';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+// Basis for the cases below, read in full from the cached spec sections:
+// FILTER scalar amounts: Filter Effects1 section6.1 defines each range and
+// percentage multiplier. Negative math clamps at the outer result (Values4
+// sections10.12 and10.13 step2); only grayscale/invert/opacity/sepia cap at1.
+// Exact upstream controls: css/filter-effects/parsing/filter-computed.html
+// lines34-50,59-69,77-118; specified calc preservation is pinned by
+// filter-parsing-valid.html lines35-51,65-74,82-121.
+// FILTER lengths/angles/shadows: Filter Effects1 sections6.1-6.3; hue-rotate
+// must preserve turns beyond360deg. Computed units/order/currentcolor follow
+// filter-computed.html lines29-32,54-57,71-75. Values4 sections6.1.1 and7.1
+// give 1em=40px here and 1turn=360deg; the third shadow length is nonnegative.
+// MASK BORDER: Masking1 sections8.3-8.5 property/computed-value tables, which
+// delegate value definitions to Backgrounds3 sections5.2-5.4. Slice retains
+// image percentages; width retains geometry percentages and makes lengths
+// absolute; outset permits number/length only. Their nonnegative ranges
+// clamp top-level computed math by Values4 section10.13 step2. Values4
+// sections5.6.1,10.11 and10.13 define remaining calc serialization; specified
+// simplified math still has calc(), computed lone leaves do not.
+// ARC: Shapes1 section3.1.1 arc angle grammar and section3.3 serialization;
+// Q142 probes above decide zero omission. Values4 section7.1 gives angle
+// unit conversion and sections10.11-10.13 give math simplification/spelling.
+const cases = [
+  [
+    "filter",
+    "brightness(calc(300%))",
+    "brightness(calc(300%))",
+    "brightness(3)"
+  ],
+  [
+    "filter",
+    "brightness(calc(3))",
+    "brightness(calc(3))",
+    "brightness(3)"
+  ],
+  [
+    "filter",
+    "brightness(calc(-10%))",
+    "brightness(calc(-10%))",
+    "brightness(0)"
+  ],
+  [
+    "filter",
+    "brightness(calc(-10))",
+    "brightness(calc(-10))",
+    "brightness(0)"
+  ],
+  [
+    "filter",
+    "brightness(calc(50%))",
+    "brightness(calc(50%))",
+    "brightness(0.5)"
+  ],
+  [
+    "filter",
+    "contrast(calc(300%))",
+    "contrast(calc(300%))",
+    "contrast(3)"
+  ],
+  [
+    "filter",
+    "contrast(calc(3))",
+    "contrast(calc(3))",
+    "contrast(3)"
+  ],
+  [
+    "filter",
+    "contrast(calc(-10%))",
+    "contrast(calc(-10%))",
+    "contrast(0)"
+  ],
+  [
+    "filter",
+    "contrast(calc(-10))",
+    "contrast(calc(-10))",
+    "contrast(0)"
+  ],
+  [
+    "filter",
+    "contrast(calc(50%))",
+    "contrast(calc(50%))",
+    "contrast(0.5)"
+  ],
+  [
+    "filter",
+    "saturate(calc(300%))",
+    "saturate(calc(300%))",
+    "saturate(3)"
+  ],
+  [
+    "filter",
+    "saturate(calc(3))",
+    "saturate(calc(3))",
+    "saturate(3)"
+  ],
+  [
+    "filter",
+    "saturate(calc(-10%))",
+    "saturate(calc(-10%))",
+    "saturate(0)"
+  ],
+  [
+    "filter",
+    "saturate(calc(-10))",
+    "saturate(calc(-10))",
+    "saturate(0)"
+  ],
+  [
+    "filter",
+    "saturate(calc(50%))",
+    "saturate(calc(50%))",
+    "saturate(0.5)"
+  ],
+  [
+    "filter",
+    "grayscale(calc(300%))",
+    "grayscale(calc(300%))",
+    "grayscale(1)"
+  ],
+  [
+    "filter",
+    "grayscale(calc(3))",
+    "grayscale(calc(3))",
+    "grayscale(1)"
+  ],
+  [
+    "filter",
+    "grayscale(calc(-10%))",
+    "grayscale(calc(-10%))",
+    "grayscale(0)"
+  ],
+  [
+    "filter",
+    "grayscale(calc(-10))",
+    "grayscale(calc(-10))",
+    "grayscale(0)"
+  ],
+  [
+    "filter",
+    "grayscale(calc(50%))",
+    "grayscale(calc(50%))",
+    "grayscale(0.5)"
+  ],
+  [
+    "filter",
+    "invert(calc(300%))",
+    "invert(calc(300%))",
+    "invert(1)"
+  ],
+  [
+    "filter",
+    "invert(calc(3))",
+    "invert(calc(3))",
+    "invert(1)"
+  ],
+  [
+    "filter",
+    "invert(calc(-10%))",
+    "invert(calc(-10%))",
+    "invert(0)"
+  ],
+  [
+    "filter",
+    "invert(calc(-10))",
+    "invert(calc(-10))",
+    "invert(0)"
+  ],
+  [
+    "filter",
+    "invert(calc(50%))",
+    "invert(calc(50%))",
+    "invert(0.5)"
+  ],
+  [
+    "filter",
+    "opacity(calc(300%))",
+    "opacity(calc(300%))",
+    "opacity(1)"
+  ],
+  [
+    "filter",
+    "opacity(calc(3))",
+    "opacity(calc(3))",
+    "opacity(1)"
+  ],
+  [
+    "filter",
+    "opacity(calc(-10%))",
+    "opacity(calc(-10%))",
+    "opacity(0)"
+  ],
+  [
+    "filter",
+    "opacity(calc(-10))",
+    "opacity(calc(-10))",
+    "opacity(0)"
+  ],
+  [
+    "filter",
+    "opacity(calc(50%))",
+    "opacity(calc(50%))",
+    "opacity(0.5)"
+  ],
+  [
+    "filter",
+    "sepia(calc(300%))",
+    "sepia(calc(300%))",
+    "sepia(1)"
+  ],
+  [
+    "filter",
+    "sepia(calc(3))",
+    "sepia(calc(3))",
+    "sepia(1)"
+  ],
+  [
+    "filter",
+    "sepia(calc(-10%))",
+    "sepia(calc(-10%))",
+    "sepia(0)"
+  ],
+  [
+    "filter",
+    "sepia(calc(-10))",
+    "sepia(calc(-10))",
+    "sepia(0)"
+  ],
+  [
+    "filter",
+    "sepia(calc(50%))",
+    "sepia(calc(50%))",
+    "sepia(0.5)"
+  ],
+  [
+    "filter",
+    "blur(calc(100px))",
+    "blur(calc(100px))",
+    "blur(100px)"
+  ],
+  [
+    "filter",
+    "blur(calc(1em - 10px))",
+    null,
+    "blur(30px)"
+  ],
+  [
+    "filter",
+    "blur(calc(-10px))",
+    null,
+    "blur(0px)"
+  ],
+  [
+    "filter",
+    "hue-rotate(calc(1turn + 90deg))",
+    null,
+    "hue-rotate(450deg)"
+  ],
+  [
+    "filter",
+    "hue-rotate(calc(-0.25turn))",
+    null,
+    "hue-rotate(-90deg)"
+  ],
+  [
+    "filter",
+    "drop-shadow(calc(-1em) calc(2px) calc(-1px))",
+    null,
+    "drop-shadow(rgb(255, 0, 0) -40px 2px 0px)"
+  ],
+  [
+    "mask-border-slice",
+    "calc(10 + 20) calc(20%) fill",
+    "calc(30) calc(20%) fill",
+    "30 20% fill"
+  ],
+  [
+    "mask-border-slice",
+    "calc(-20%)",
+    null,
+    "0%"
+  ],
+  [
+    "mask-border-width",
+    "calc(2) calc(10% + 1em)",
+    null,
+    "2 calc(10% + 40px)"
+  ],
+  [
+    "mask-border-width",
+    "calc(-2) calc(-1em)",
+    null,
+    "0 0px"
+  ],
+  [
+    "mask-border-outset",
+    "calc(2) calc(1em)",
+    null,
+    "2 40px"
+  ],
+  [
+    "mask-border-outset",
+    "calc(-1em)",
+    null,
+    "0px"
+  ],
+  [
+    "clip-path",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(0.25turn + 90deg))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px rotate calc(180deg))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px rotate 180deg)"
+  ],
+  [
+    "clip-path",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(90deg - 180deg))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px rotate calc(-90deg))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px rotate -90deg)"
+  ],
+  [
+    "clip-path",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(360deg - 1turn))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px rotate calc(0deg))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)"
+  ],
+  [
+    "clip-path",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate 0deg)",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)"
+  ],
+  [
+    "clip-path",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(10deg + 5deg))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px rotate calc(15deg))",
+    "shape(from 0px 0px, arc by 10px 20px of 5px rotate 15deg)"
+  ]
+];
+for (const [expression, specified, computed] of [
+  [
+    "calc(0.25 + 0.25)",
+    "calc(0.5)",
+    "0.5"
+  ],
+  [
+    "calc(50%)",
+    "calc(50%)",
+    "0.5"
+  ],
+  [
+    "calc(-10%)",
+    "calc(-10%)",
+    "0"
+  ],
+  [
+    "calc(300%)",
+    "calc(300%)",
+    "1"
+  ],
+  [
+    "50%",
+    "0.5",
+    "0.5"
+  ]
+]) {
+  cases.push([
+    'background-image',
+    `-webkit-cross-fade(url(a.png), url(b.png), ${expression})`,
+    `-webkit-cross-fade(url("a.png"), url("b.png"), ${specified})`,
+    `-webkit-cross-fade(url("${new URL('a.png', document.baseURI).href}"), url("${new URL('b.png', document.baseURI).href}"), ${computed})`
+  ]);
+}
+for (const [property, input, specified, computed] of cases) {
+  test(t => {
+    assert_true(CSS.supports(property, input), 'supported grammar');
+    const element = elementFor(t);
+    element.style.setProperty(property, input);
+    assert_not_equals(element.style.getPropertyValue(property), '', 'declaration retained');
+    if (specified !== null)
+      assert_equals(element.style.getPropertyValue(property), specified, 'specified value');
+    assert_equals(getComputedStyle(element).getPropertyValue(property), computed, 'computed value');
+  }, `${property}: ${input} has typed specified and computed values`);
+}
+// INVALID dimensions: the Filter Effects1 section6.1 grammars, Masking1
+// sections8.3-8.5 grammars and Shapes1 section3.1.1 angle grammar apply inside
+// math under Values4 section10.9. Values4 section5.6 explicitly forbids mixing
+// numbers and percentages in calc(); numbers and lengths likewise cannot add.
+// Legacy cross-fade's numeric progress contract is the Q143/Q148 ruling;
+// WebKit consumeWebkitCrossfade consumes Number or Percentage, never angle
+// or length (cached lane-scratch/webkit-image-parser.cpp lines980-999).
+// CSSOM CSSStyleDeclaration.setProperty steps5-6 rejects invalid values without replacing
+// the supported declaration. Each negative test proves that control first.
+for (const [property, control, invalid] of [
+  [
+    "filter",
+    "brightness(1)",
+    "blur(calc(1%))"
+  ],
+  [
+    "filter",
+    "brightness(1)",
+    "blur(calc(1))"
+  ],
+  [
+    "filter",
+    "brightness(1)",
+    "hue-rotate(calc(1px))"
+  ],
+  [
+    "filter",
+    "brightness(1)",
+    "brightness(calc(1px))"
+  ],
+  [
+    "filter",
+    "brightness(1)",
+    "drop-shadow(calc(1%) 2px)"
+  ],
+  [
+    "mask-border-slice",
+    "1",
+    "calc(1px)"
+  ],
+  [
+    "mask-border-slice",
+    "1",
+    "calc(1 + 10%)"
+  ],
+  [
+    "mask-border-width",
+    "1",
+    "calc(1 + 1px)"
+  ],
+  [
+    "mask-border-outset",
+    "1",
+    "calc(10%)"
+  ],
+  [
+    "clip-path",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(1px))"
+  ],
+  [
+    "clip-path",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(10%))"
+  ],
+  [
+    "clip-path",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(2))"
+  ],
+  [
+    "clip-path",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate calc(0))"
+  ],
+  [
+    "clip-path",
+    "shape(from 0px 0px, arc by 10px 20px of 5px)",
+    "shape(from 0 0, arc by 10px 20px of 5px rotate 0)"
+  ],
+  [
+    "background-image",
+    "-webkit-cross-fade(url(a.png), url(b.png), 50%)",
+    "-webkit-cross-fade(url(a.png), url(b.png), calc(1px))"
+  ],
+  [
+    "background-image",
+    "-webkit-cross-fade(url(a.png), url(b.png), 50%)",
+    "-webkit-cross-fade(url(a.png), url(b.png), calc(1deg))"
+  ],
+  [
+    "background-image",
+    "-webkit-cross-fade(url(a.png), url(b.png), 50%)",
+    "-webkit-cross-fade(url(a.png), url(b.png), calc(1 + 10%))"
+  ]
+]) {
+  test(() => {
+    assert_true(CSS.supports(property, control), 'positive property/grammar control');
+    assert_false(CSS.supports(property, invalid), 'incompatible dimension rejected');
+    const style = document.createElement('div').style;
+    style.setProperty(property, control);
+    const retained = style.getPropertyValue(property);
+    assert_not_equals(retained, '', 'positive declaration control');
+    style.setProperty(property, invalid);
+    assert_equals(style.getPropertyValue(property), retained, 'invalid assignment preserves declaration');
+  }, `${property}: reject ${invalid} without replacing the supported control`);
+}
+// Q152/Q153: Filter Effects1 section6.1 delegates these lengths to Values4
+// section6.1.1. Ordinary specified dimensions keep their units; cap-height
+// computation is deliberately not guessed here. CSSOM setProperty steps5-6
+// preserves the supported control after an invalid assignment.
+for (const input of ['blur(1cap)', 'drop-shadow(-1cap 1cap 1cap)']) {
+  test(() => {
+    assert_true(CSS.supports('filter', input), 'extended literal length supported');
+    const style = document.createElement('div').style;
+    style.setProperty('filter', input);
+    assert_equals(style.getPropertyValue('filter'), input, 'ordinary specified units');
+  }, `filter: ${input} preserves specified extended length units`);
+}
+for (const input of [
+  'blur(-1cap)', 'drop-shadow(0px 0px -1cap)', 'blur(1deg)',
+  'blur(1%)', 'drop-shadow(0px 1deg)', 'blur(1furlong)'
+]) {
+  test(() => {
+    const control = 'blur(1cap)';
+    assert_true(CSS.supports('filter', control), 'supported literal control');
+    assert_false(CSS.supports('filter', input), 'invalid literal rejected');
+    const style = document.createElement('div').style;
+    style.setProperty('filter', control);
+    assert_equals(style.getPropertyValue('filter'), control, 'positive declaration control');
+    style.setProperty('filter', input);
+    assert_equals(style.getPropertyValue('filter'), control, 'invalid assignment preserves control');
+  }, `filter: reject ${input} after a supported extended length control`);
+}
+// FONT BASIS/INHERITANCE: Values4 section6.1.1 defines em from this element's
+// computed font-size; sections10.6 and10.11 reduce sign()/font math. Cascade5
+// sections7.2 and7.3.2 inherit the parent's COMPUTED value. Thus the child's
+// 5px font cannot recompute the parent's 40px-based result. Mask width's
+// geometry percentage stays unresolved under Masking1 section8.4.
+for (const [property, input, computed] of [
+  [
+    "filter",
+    "blur(calc(1em - 10px))",
+    "blur(30px)"
+  ],
+  [
+    "mask-border-slice",
+    "calc(sign(1em - 10px) * 20%)",
+    "20%"
+  ],
+  [
+    "mask-border-width",
+    "calc(10% + 1em)",
+    "calc(10% + 40px)"
+  ],
+  [
+    "mask-border-outset",
+    "calc(1em)",
+    "40px"
+  ]
+]) {
+  test(t => {
+    const parent = elementFor(t);
+    const child = document.createElement('div');
+    child.style.fontSize = '5px';
+    parent.append(child);
+    assert_true(CSS.supports(property, input), 'parent grammar supported');
+    parent.style.setProperty(property, input);
+    child.style.setProperty(property, 'inherit');
+    assert_equals(getComputedStyle(parent).getPropertyValue(property), computed, 'parent font basis');
+    assert_equals(getComputedStyle(child).getPropertyValue(property), computed, 'inherits already-computed value');
+  }, `${property}: inherit ${input} without using the child font basis`);
+}
+</script>
