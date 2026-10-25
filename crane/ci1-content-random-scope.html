@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane Q205: declaration random scope in typed content images</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#random-simplify">
+<link rel="help" href="https://drafts.csswg.org/css-images-3/#gradients">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// UNRUN draft. Activate on d2's actual typed-parser parent before the Q205 fix.
+// Values5 random() is a required Crane feature here. A browser that lacks it
+// provides feature-unavailable evidence, not a counterexample to key rules.
+// The independent ordinary-property prerequisite and plain-gradient control
+// make that distinction visible. No feature-detection return skips a test.
+// These tests read specified style.content, not layout or computed random draws.
+function checkContent(input, expected) {
+  const target = document.createElement('div');
+  assert_true(CSS.supports('content', input), 'valid content image syntax');
+  target.style.content = input;
+  assert_not_equals(target.style.content, '', 'declaration was accepted');
+  assert_equals(target.style.content, expected, 'specified content serialization');
+  assert_equals(target.style.getPropertyValue('content'), expected,
+                'getPropertyValue agrees with the named accessor');
+}
+
+test(() => {
+  for (const input of ['random(1px, 2px)', 'random(auto, 1px, 2px)',
+                       'random(--named, 1px, 2px)', 'random(fixed .5, 1px, 2px)']) {
+    assert_true(CSS.supports('left', input), 'ordinary Values5 support: ' + input);
+  }
+}, 'Q205 Values5 prerequisite: ordinary left accepts omitted auto named and fixed random keys');
+
+test(() => {
+  checkContent('linear-gradient(red, blue)', 'linear-gradient(red, blue)');
+}, 'Q205 content control: plain gradient acceptance and specified serialization');
+
+test(() => {
+  checkContent('linear-gradient(red random(1px, 2px), blue)',
+               'linear-gradient(red random(element-scoped ua-content-1, 1px, 2px), blue)');
+}, 'Q205 content omitted random key preserves the content declaration identity');
+
+test(() => {
+  checkContent('linear-gradient(red random(auto, 1px, 2px), blue)',
+               'linear-gradient(red random(element-scoped ua-content-1, 1px, 2px), blue)');
+}, 'Q205 content auto random key preserves the content declaration identity');
+
+test(() => {
+  checkContent('linear-gradient(red random(property-scoped, 1px, 2px), blue)',
+               'linear-gradient(red random(ua-content, 1px, 2px), blue)');
+  checkContent('linear-gradient(red random(--shared element-scoped property-index-scoped, 1px, 2px), blue)',
+               'linear-gradient(red random(--shared element-scoped ua-content-1, 1px, 2px), blue)');
+}, 'Q205 content property-dependent explicit keys use the enclosing property');
+
+test(() => {
+  // Mixed units keep fixed random() unresolved at the specified stage.
+  checkContent('linear-gradient(red random(fixed .5, 1px, 2%), blue)',
+               'linear-gradient(red random(fixed 0.5, 1px, 2%), blue)');
+}, 'Q205 content control: fixed random key needs no declaration scope');
+
+test(() => {
+  checkContent('linear-gradient(red random(--named, 1px, 2px), blue)',
+               'linear-gradient(red random(--named, 1px, 2px), blue)');
+}, 'Q205 content control: named random key needs no declaration scope');
+
+test(() => {
+  checkContent('  /* random(99px, 100px) */ "random(7px, 8px)" ' +
+               'linear-gradient(red random(--named, 1px, 2px), blue) ' +
+               'linear-gradient(red random(fixed .5, 1px, 2%), blue) ' +
+               'linear-gradient(red random(auto, 3px, 4px), blue random(5px, 6px))',
+               '"random(7px, 8px)" ' +
+               'linear-gradient(red random(--named, 1px, 2px), blue) ' +
+               'linear-gradient(red random(fixed 0.5, 1px, 2%), blue) ' +
+               'linear-gradient(red random(element-scoped ua-content-3, 3px, 4px), blue random(element-scoped ua-content-4, 5px, 6px))');
+}, 'Q205 content ordinals span image items and ignore random spelling in strings and comments');
+
+test(() => {
+  checkContent('linear-gradient(red random(random(1px, 2px), 3px), blue random(auto, 4px, 5px))',
+               'linear-gradient(red random(element-scoped ua-content-1, random(element-scoped ua-content-2, 1px, 2px), 3px), blue random(element-scoped ua-content-3, 4px, 5px))');
+}, 'Q205 content nested numeric random assigns the outer ordinal before the inner ordinal');
+
+test(() => {
+  checkContent('radial-gradient(circle random(1px, 2px), red random(auto, 3px, 4px), blue)',
+               'radial-gradient(random(element-scoped ua-content-1, 1px, 2px), red random(element-scoped ua-content-2, 3px, 4px), blue)');
+}, 'Q205 content radial radius retry preserves the original stop ordinal');
+
+test(() => {
+  checkContent('conic-gradient(at random(1px, 2px) random(auto, 3px, 4px), red, blue)',
+               'conic-gradient(at random(element-scoped ua-content-1, 1px, 2px) random(element-scoped ua-content-2, 3px, 4px), red, blue)');
+}, 'Q205 content conic position axes keep consecutive declaration ordinals');
+
+test(() => {
+  checkContent('image-set(linear-gradient(red random(1px, 2px), blue) 1x, linear-gradient(red random(auto, 3px, 4px), blue) 2x)',
+               'image-set(linear-gradient(red random(element-scoped ua-content-1, 1px, 2px), blue) 1x, linear-gradient(red random(element-scoped ua-content-2, 3px, 4px), blue) 2x)');
+}, 'Q205 content image-set child gradients share the original declaration scope');
+</script>

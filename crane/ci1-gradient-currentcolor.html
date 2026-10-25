@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inherited gradients resolve currentcolor on the receiving element</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#resolving-other-colors">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const blueGradient = 'linear-gradient(rgb(0, 0, 255) 40px, rgb(0, 0, 0))';
+function pair(t) {
+  const parent = document.createElement('div');
+  const child = parent.appendChild(document.createElement('div'));
+  parent.style.cssText = 'color:red;font-size:40px';
+  child.style.cssText = 'color:blue;font-size:10px';
+  document.body.appendChild(parent);
+  t.add_cleanup(() => parent.remove());
+  return {parent, child};
+}
+for (const property of ['background-image', 'border-image-source', 'list-style-image', 'mask-image', 'mask-border-source', 'content']) {
+  test(t => {
+    const {parent, child} = pair(t);
+    parent.style.setProperty(property, 'linear-gradient(currentcolor 1em, black)');
+    assert_not_equals(parent.style.getPropertyValue(property), '');
+    child.style.setProperty(property, 'inherit');
+    assert_equals(getComputedStyle(child).getPropertyValue(property), blueGradient);
+    assert_equals(getComputedStyle(parent).getPropertyValue(property),
+      'linear-gradient(rgb(255, 0, 0) 40px, rgb(0, 0, 0))');
+    assert_true(parent.style.getPropertyValue(property).includes('currentcolor'));
+  }, property + ': inherited scalar positions stay computed while currentcolor uses the receiver');
+}
+for (const shorthand of ['background', 'mask']) {
+  test(t => {
+    const {parent, child} = pair(t);
+    parent.style.setProperty(shorthand, 'linear-gradient(currentcolor 1em, black)');
+    assert_not_equals(parent.style.getPropertyValue(shorthand), '');
+    child.style.setProperty(shorthand, 'inherit');
+    const computed = getComputedStyle(child);
+    assert_equals(computed.getPropertyValue(shorthand + '-image'), blueGradient);
+    assert_true(computed.getPropertyValue(shorthand).includes(blueGradient));
+    assert_false(computed.getPropertyValue(shorthand).includes('currentcolor'));
+  }, shorthand + ': computed shorthand agrees with the resolved image longhand');
+}
+test(t => {
+  const {parent, child} = pair(t);
+  parent.style.backgroundImage = 'image-set(linear-gradient(currentcolor, black) 2x, url(asset.svg))';
+  child.style.backgroundImage = 'inherit';
+  assert_equals(getComputedStyle(child).backgroundImage,
+    'image-set(linear-gradient(rgb(0, 0, 255), rgb(0, 0, 0)) 2dppx, url("' + new URL('asset.svg', document.baseURI).href + '") 1dppx)');
+}, 'image-set keeps every computed descriptor and URL alongside receiver-resolved gradient colors');
+test(t => {
+  const {parent, child} = pair(t);
+  parent.style.backgroundImage = 'linear-gradient(in srgb, currentcolor, black)';
+  child.style.cssText = 'color:color(srgb 1 0 0);background-image:inherit';
+  assert_equals(getComputedStyle(child).backgroundImage,
+    'linear-gradient(color(srgb 1 0 0), rgb(0, 0, 0))');
+}, 'resolving currentcolor preserves the inherited legacy interpolation classification');
+</script>

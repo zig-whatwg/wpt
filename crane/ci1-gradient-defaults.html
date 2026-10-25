@@ -1,0 +1,382 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gradient interpolation defaults at specified and computed stages</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#color-interpolation-method">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Integrator probes 1023j/k/l: use the browser majority separately at each
+// stage. Currentcolor and relative colors stay legacy; computed color-mix
+// is modern, and computed light-dark uses the ELEMENT's selected branch.
+const cases = [
+  {
+    "stop": "red",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "#f00",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "rgb(255 0 0)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "hsl(0 100% 50%)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "hwb(0 0% 0%)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "Canvas",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "transparent",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "color(srgb 1 0 0)",
+    "specified": false,
+    "computed": false,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "lab(50 20 30)",
+    "specified": false,
+    "computed": false,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "lch(50 20 30)",
+    "specified": false,
+    "computed": false,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "oklab(0.5 0.1 0.1)",
+    "specified": false,
+    "computed": false,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "oklch(0.5 0.1 120)",
+    "specified": false,
+    "computed": false,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "currentcolor",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "currentcolor",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "rgb(from red r g b)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "rgb(from color(srgb 1 0 0) r g b)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "hsl(from red h s l)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "oklch(from red l c h)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "color(from red srgb r g b)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "rgb(from currentcolor r g b)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "color-mix(in srgb, red, blue)",
+    "specified": true,
+    "computed": false,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "color-mix(in oklab, red, blue)",
+    "specified": true,
+    "computed": false,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "color-mix(in srgb, currentcolor, red)",
+    "specified": true,
+    "computed": false,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "color-mix(in srgb, red 100%, blue 0%)",
+    "specified": true,
+    "computed": false,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(red, blue)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(red, blue)",
+    "specified": true,
+    "computed": true,
+    "scheme": "dark",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(red, color(srgb 0 0 1))",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(red, color(srgb 0 0 1))",
+    "specified": true,
+    "computed": false,
+    "scheme": "dark",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(color(srgb 1 0 0), blue)",
+    "specified": true,
+    "computed": false,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(color(srgb 1 0 0), blue)",
+    "specified": true,
+    "computed": true,
+    "scheme": "dark",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(currentcolor, red)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(currentcolor, red)",
+    "specified": true,
+    "computed": true,
+    "scheme": "dark",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(oklch(from red l c h), red)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(oklch(from red l c h), red)",
+    "specified": true,
+    "computed": true,
+    "scheme": "dark",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(color-mix(in srgb, red, blue), red)",
+    "specified": true,
+    "computed": false,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(color-mix(in srgb, red, blue), red)",
+    "specified": true,
+    "computed": true,
+    "scheme": "dark",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(light-dark(currentcolor, color(srgb 0 0 1)), color-mix(in srgb, red, blue))",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "light-dark(light-dark(currentcolor, color(srgb 0 0 1)), color-mix(in srgb, red, blue))",
+    "specified": true,
+    "computed": false,
+    "scheme": "dark",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "contrast-color(red)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "contrast-color(oklch(0.5 0.1 30))",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "contrast-color(currentcolor)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "contrast-color(color-mix(in srgb, red, blue))",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "contrast-color(color(srgb 1 0 0))",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "contrast-color(lab(50 20 30))",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "contrast-color(light-dark(red, blue))",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "oklch(0.5 0.1 120)"
+  },
+  {
+    "stop": "alpha(from red / 0.5)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  },
+  {
+    "stop": "alpha(from color(srgb 1 0 0) / 0.5)",
+    "specified": true,
+    "computed": true,
+    "scheme": "light",
+    "parent": "red"
+  }
+];
+function hasMethod(value, method) {
+  assert_true(value.startsWith('linear-gradient('), 'a valid gradient');
+  return value.startsWith(`linear-gradient(in ${method}, `);
+}
+for (const c of cases) {
+  for (const method of ['srgb', 'oklab']) {
+    const input = `linear-gradient(in ${method}, ${c.stop}, blue)`;
+    test(() => {
+      const target = document.createElement('div');
+      target.style.backgroundImage = input;
+      assert_equals(hasMethod(target.style.backgroundImage, method),
+                    c.specified !== (method === 'srgb'));
+    }, `Specified default: ${c.stop}, method ${method}, scheme ${c.scheme}, parent ${c.parent}`);
+    test(t => {
+      const root = document.documentElement;
+      const oldScheme = root.style.colorScheme;
+      const opposite = c.scheme === 'light' ? 'dark' : 'light';
+      root.style.colorScheme = opposite;
+      const parent = document.createElement('div');
+      parent.style.colorScheme = opposite;
+      parent.style.color = c.parent;
+      const target = document.createElement('div');
+      target.style.colorScheme = c.scheme;
+      target.style.backgroundImage = input;
+      parent.append(target);
+      document.body.append(parent);
+      t.add_cleanup(() => { parent.remove(); root.style.colorScheme = oldScheme; });
+      assert_equals(getComputedStyle(root).colorScheme, opposite);
+      assert_equals(getComputedStyle(parent).colorScheme, opposite);
+      assert_equals(getComputedStyle(target).colorScheme, c.scheme);
+      if (c.parent.startsWith('oklch(')) {
+        assert_equals(getComputedStyle(parent).color, c.parent,
+                      'modern inherited color must be supported');
+      }
+      assert_equals(hasMethod(getComputedStyle(target).backgroundImage, method),
+                    c.computed !== (method === 'srgb'));
+    }, `Computed default: ${c.stop}, method ${method}, scheme ${c.scheme}, parent ${c.parent}`);
+  }
+}
+</script>
