@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Font Loading rejects context function occurrences but accepts family spellings</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Q112 final: integrator-probes-1023t/results/q112-{chrome,firefox,safari}.json.
+// Safari ships random(); Firefox/Safari agree on tree-counting occurrences.
+const rejected = [
+  "random(fixed 0.5, 10px, 20px) serif",
+  "calc(random(fixed 0.5, 10px, 20px)) serif",
+  "calc((sibling-index() - sibling-index()) * 1px + 16px) serif",
+  "16px/calc((sibling-count() - sibling-count()) * 1px + 20px) serif",
+  "calc(random(1px, 2px)) serif",
+  "calc(sibling-index() * 1px) serif",
+  "calc(SIBLING-INDEX() * 1px) serif",
+  "calc(sibling\\-index() * 1px) serif"
+];
+for (const font of rejected) {
+  test(() => assert_throws_dom("SyntaxError", () => document.fonts.check(font)),
+       `check rejects function occurrence: ${font}`);
+  promise_test(t => promise_rejects_dom(t, "SyntaxError", document.fonts.load(font)),
+               `load rejects function occurrence: ${font}`);
+  test(() => {
+    const style = document.createElement("span").style;
+    style.font = font;
+    assert_not_equals(style.font, "");
+  }, `style.font still accepts: ${font}`);
+}
+for (const font of [
+  "16px serif",
+  '16px "random(" , serif',
+  "16px random",
+  "16px sibling-index"
+]) {
+  test(() => assert_true(document.fonts.check(font)),
+       `check accepts control or family name: ${font}`);
+  promise_test(async () => assert_array_equals(await document.fonts.load(font), []),
+               `load accepts control or family name: ${font}`);
+}
+</script>

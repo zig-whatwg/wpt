@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Font loading distinguishes invalid strings from unavailable metrics</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading-3/#find-the-matching-font-faces">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// CSS Font Loading 3: find-matching-font-faces step 1, load step 3, check step 2.
+// Q59: three-browser probes in tmp/analysis/integrator-probes-1023n.
+// Metric-dependent size/line-height is accepted; a missing capability is not
+// a syntax error. Firefox/Safari reject tree counts; shipping Safari rejects
+// random(). Generic serif does not select any downloadable face on this page.
+const cases = [
+  ['calc(1cap) serif', true],
+  ['calc(sibling-index() * 1px) serif', false],
+  ['calc(random(1px, 2px)) serif', false],
+  ['bold calc(1em + 2px) serif', true],
+  ['1em/calc(1cap) serif', true],
+  ['16px serif', true],
+  ['bogus', false],
+  ['calc(1ex) serif', true],
+  ['calc(1ch) serif', true],
+  ['calc(1rcap) serif', true],
+  ['calc(1ic) serif', true],
+  ['calc(1cqw) serif', true],
+  ['calc(1vw) serif', true],
+  ['1cap serif', true],
+  ['calc(1lh) serif', true],
+  ['16px/calc(1cap) serif', true],
+  ['16px/calc(sibling-index() * 1px) serif', false],
+  ['calc(sibling-count() * 1px) serif', false],
+];
+for (const [font, valid] of cases) {
+  test(() => {
+    if (valid) assert_true(document.fonts.check(font));
+    else assert_throws_dom('SyntaxError', () => document.fonts.check(font));
+  }, `check(): ${font}`);
+  promise_test(async t => {
+    if (valid) assert_array_equals(await document.fonts.load(font), []);
+    else await promise_rejects_dom(t, 'SyntaxError', document.fonts.load(font));
+  }, `load(): ${font}`);
+}
+</script>

@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane interim CSSOM read-back for shorthand var() and env()</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#substitution-in-shorthand-properties">
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#dom-cssstyledeclaration-getpropertyvalue">
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#dom-cssstyledeclaration-removeproperty">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Q206 PART 2 interim ruling: preserve the trimmed shorthand source for CSSOM
+// read-back and cssText; its constituent longhands remain unset. This does not
+// assert substitution, computed values, or pending-substitution cascade.
+const cases = [
+  { name: "font", members: ["font-style", "font-variant-caps", "font-weight", "font-width", "font-size", "line-height", "font-family", "font-feature-settings", "font-kerning", "font-language-override", "font-optical-sizing", "font-size-adjust", "font-variant-alternates", "font-variant-east-asian", "font-variant-emoji", "font-variant-ligatures", "font-variant-numeric", "font-variant-position", "font-variation-settings"] },
+  { name: "margin", members: ["margin-top", "margin-right", "margin-bottom", "margin-left"] },
+  { name: "background", members: ["background-image", "background-position", "background-size", "background-repeat", "background-origin", "background-clip", "background-attachment", "background-color"] },
+  { name: "border", members: ["border-top-width", "border-right-width", "border-bottom-width", "border-left-width", "border-top-style", "border-right-style", "border-bottom-style", "border-left-style", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"] }
+];
+
+function assertReadback(name, members, fn, priority, setter) {
+  const el = document.createElement("div");
+  const value = `  ${fn}  `;
+  const suffix = priority ? " !important" : "";
+  if (setter) el.style.setProperty(name, value, priority);
+  else el.style.cssText = `${name}: ${value}${suffix};`;
+  assert_equals(el.style.getPropertyValue(name), fn, "shorthand read-back trims authored whitespace");
+  assert_equals(el.style.getPropertyPriority(name), priority);
+  for (const member of members) assert_equals(el.style.getPropertyValue(member), "", `${member} remains unset`);
+  assert_equals(el.style.cssText, `${name}: ${fn}${suffix};`);
+  assert_equals(el.style.removeProperty(name), fn, "removeProperty returns the saved shorthand value");
+  assert_equals(el.style.getPropertyValue(name), "");
+  assert_equals(el.style.getPropertyPriority(name), "");
+  assert_equals(el.style.cssText, "", "removal clears cssText");
+  assert_equals(el.style.length, 0, "removal clears declaration length");
+}
+
+for (const {name, members} of cases) {
+  for (const fn of ["var(--ci1)", "env(ci1)"]) {
+    test(() => {
+      for (const priority of ["", "important"]) assertReadback(name, members, fn, priority, false);
+    }, `cssText parse ${name}: ${fn} retains shorthand read-back`);
+    test(() => {
+      for (const priority of ["", "important"]) assertReadback(name, members, fn, priority, true);
+    }, `setProperty ${name}: ${fn} retains shorthand read-back`);
+  }
+}
+</script>

@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>System fonts retain pending specified values and resolve during cascade</title>
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#font-prop">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Integrator Q28, three-browser probe 1022h: the per-mechanism majorities
+// agree with Chrome's pending-system-font behavior. Host font names vary.
+function targetFor(t, keyword) {
+  assert_true(CSS.supports('font', keyword), 'the system-font keyword is supported');
+  const target = document.createElement('div');
+  document.body.appendChild(target);
+  t.add_cleanup(() => target.remove());
+  target.style.font = keyword;
+  assert_equals(target.style.font, keyword);
+  return target;
+}
+for (const keyword of ['caption', 'icon', 'menu', 'message-box', 'small-caption', 'status-bar']) {
+  test(t => {
+    const target = targetFor(t, keyword);
+    assert_equals(target.style.cssText, 'font: ' + keyword + ';');
+    for (const name of ['font-family', 'font-size', 'font-style', 'font-weight', 'font-width', 'font-kerning'])
+      assert_equals(target.style.getPropertyValue(name), '', name + ' is pending');
+    // Q200, tmp/analysis/integrator-probes-1024d: Safari and CSSOM's coupled getter rule.
+    assert_equals(target.style.getPropertyValue('font-variant'), '');
+  }, keyword + ': specified system font and pending longhands');
+  for (const [name, value] of [['font-weight', '700'], ['font-kerning', 'none']]) {
+    test(t => {
+      const target = targetFor(t, keyword);
+      target.style.setProperty(name, value);
+      assert_equals(target.style.font, '');
+      assert_equals(target.style.getPropertyValue(name), value);
+      assert_equals(target.style.fontFamily, '');
+      assert_equals(target.style.fontSize, '');
+      assert_false(target.style.cssText.startsWith('font: '));
+      assert_true(target.style.cssText.includes('font-style: ;'));
+      assert_true(target.style.cssText.includes('font-variant: normal;'));
+      assert_equals(getComputedStyle(target).getPropertyValue(name), value);
+    }, keyword + ': overriding ' + name + ' keeps other members pending');
+  }
+  test(t => {
+    const target = targetFor(t, keyword);
+    const computed = getComputedStyle(target);
+    assert_not_equals(computed.fontFamily, '');
+    assert_greater_than(parseFloat(computed.fontSize), 0);
+    assert_not_equals(computed.fontStyle, '');
+    assert_not_equals(computed.fontWeight, '');
+    assert_not_equals(computed.getPropertyValue('font-width'), '');
+  }, keyword + ': computed members resolve without leaking pending syntax');
+}
+</script>

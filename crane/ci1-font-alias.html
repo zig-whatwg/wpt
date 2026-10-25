@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane font width legacy alias reaches CSSOM named access</title>
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#font-stretch-prop">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  const style = document.createElement('div').style;
+  style['font-stretch'] = 'condensed';
+  assert_equals(style.getPropertyValue('font-width'), 'condensed');
+  assert_equals(style['font-stretch'], 'condensed');
+  assert_equals(style.cssText, 'font-width: condensed;');
+}, 'font-stretch bracket access maps to one canonical font-width declaration');
+test(() => {
+  const style = document.createElement('div').style;
+  style.fontStretch = 'expanded';
+  assert_equals(style.fontWidth, 'expanded');
+  assert_equals(style.fontStretch, 'expanded');
+  assert_true('font-stretch' in style);
+  assert_true('fontStretch' in style);
+}, 'fontStretch camel case and supported-name queries reach the legacy alias');
+test(() => {
+  const style = getComputedStyle(document.getElementById('target'));
+  assert_true('font-stretch' in style);
+  assert_true('fontStretch' in style);
+  assert_equals(style['font-stretch'], '100%');
+  assert_equals(style.fontStretch, '100%');
+  assert_true(Array.from(style).includes('font-width'));
+  assert_false(Array.from(style).includes('font-stretch'));
+}, 'computed style exposes alias access but enumerates only the canonical longhand');
+for (const [oldName, newName] of [['font-stretch', 'font-width'], ['font-width', 'font-stretch']]) {
+  test(() => {
+    const style = document.createElement('div').style;
+    style.setProperty(oldName, 'var(--width)', 'important');
+    assert_equals(style.getPropertyValue(newName), 'var(--width)');
+    assert_equals(style.getPropertyPriority(newName), 'important');
+  }, oldName + ' preserves a pending variable declaration through ' + newName);
+}
+test(() => {
+  const style = document.createElement('div').style;
+  style['-webkit-appearance'] = 'none';
+  assert_equals(style.getPropertyValue('appearance'), 'none');
+  assert_equals(style['-webkit-appearance'], 'none');
+}, 'the existing appearance alias uses the same supported-name registration');
+</script>

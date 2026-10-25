@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Font width computed initial values and inheritance</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const value of ["", "inherit", "initial", "unset"]) {
+  test(t => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    t.add_cleanup(() => frame.remove());
+    const root = frame.contentDocument.documentElement;
+    root.style.setProperty("font-width", value);
+    assert_equals(frame.contentWindow.getComputedStyle(root).getPropertyValue("font-width"), "100%");
+  }, "Root font-width computes to 100% for " + (value || "no declaration"));
+}
+test(t => {
+  const parent = document.createElement("div");
+  const child = document.createElement("span");
+  parent.style.setProperty("font-width", "condensed");
+  parent.append(child);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  assert_equals(getComputedStyle(child).getPropertyValue("font-width"), "75%");
+}, "Child inherits the parent's computed width percentage");
+</script>

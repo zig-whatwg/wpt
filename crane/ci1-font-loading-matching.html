@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Font loading matches typed weight and oblique requests</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading-3/#find-the-matching-font-faces">
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#font-style-matching">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Q60/Q62: tmp/analysis/integrator-probes-1023o, all three browsers.
+// The two cap requests are accepted by Chrome/Safari. These expected-to-change
+// interim cases pin the declared host-without-fontcap1 matching fallback:
+// missing weight -> 400, missing oblique angle -> normal. They do NOT claim
+// that 400/normal are resolved values. Once initial-font metrics are wired,
+// pin Chrome's 100 and oblique 5deg respectively for the testing adapter.
+// Plain oblique splits three ways: Chrome italic, Firefox oblique 40deg,
+// Safari normal. Fonts4 §2.4 defaults to 14deg; §5.2 checks angles above it
+// first, so Q62 chooses Firefox's oblique 40deg result.
+const requests = [
+  ['calc(1cap / 1px) 16px', 1],
+  ['oblique calc(1cap / 1px * 1deg) 16px', 1],
+  ['bold 16px', 2],
+  ['oblique 10deg 16px', 5],
+  ['16px', 1],
+  ['italic 16px', 4],
+  ['oblique 16px', 6],
+  ['calc(100 + 600) 16px', 2],
+  ['oblique calc(10deg + 20deg) 16px', 6],
+];
+const descriptors = [
+  {weight: '100', style: 'normal'},
+  {weight: '400', style: 'normal'},
+  {weight: '700', style: 'normal'},
+  {weight: '900', style: 'normal'},
+  {weight: '400', style: 'italic'},
+  {weight: '400', style: 'oblique 5deg'},
+  {weight: '400', style: 'oblique 40deg'},
+];
+requests.forEach(([request, expected], index) => {
+  promise_test(async t => {
+    const family = `Ci1Matching${index}`;
+    const faces = descriptors.map(descriptor => {
+      const face = new FontFace(family, 'url(/fonts/Ahem.ttf)', descriptor);
+      document.fonts.add(face);
+      t.add_cleanup(() => { document.fonts.delete(face); });
+      return face;
+    });
+    const font = `${request} ${family}`;
+    assert_false(document.fonts.check(font, 'A'), 'unloaded matching face');
+    const loaded = await document.fonts.load(font, 'A');
+    assert_array_equals(loaded, [faces[expected]], 'matching face identity');
+    assert_equals(faces[expected].status, 'loaded');
+    assert_true(document.fonts.check(font, 'A'), 'loaded matching face');
+  }, `check/load face selection: ${request}`);
+});
+</script>

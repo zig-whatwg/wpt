@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A parsed resource-free CSS rule can introduce typed background layers</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#fetch-a-style-resource">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// One case in a fresh document avoids a previous CSS resource masking interest.
+promise_test(async t => {
+  const element = document.createElement('div');
+  element.id = 'ci1-typed-interest';
+  element.textContent = 'background resource interest';
+  element.style.cssText = 'width:20px;height:20px';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  const style = document.createElement('style');
+  style.textContent = '#ci1-typed-interest { color:red }';
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  // Access parses the sheet and discards its saved source text in Crane.
+  const rule = style.sheet.cssRules[0];
+  const urls = ['a', 'b'].map(name => new URL(
+    '/resource-timing/resources/blue.png?ci1-typed-interest-' + name, location.href).href);
+  const seen = new Set();
+  const completed = new Promise(resolve => {
+    const observer = new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) if (urls.includes(entry.name)) seen.add(entry.name);
+      if (seen.size === urls.length) resolve(true);
+    });
+    observer.observe({type:'resource', buffered:true});
+    t.add_cleanup(() => observer.disconnect());
+    t.step_timeout(() => resolve(false), 3000);
+  });
+  rule.style.setProperty('background-image', urls.map(url => `url("${url}")`).join(', '));
+  // Ordinary top-level URLs only; no image-set choice or geometry assertion.
+  assert_true(await completed, 'both used background layers are fetched after a CSSOM rule edit');
+  for (const url of urls) {
+    const entries = performance.getEntriesByName(url);
+    assert_equals(entries.length, 1, 'one fetch for each used layer');
+    assert_equals(entries[0].initiatorType, 'css');
+  }
+}, 'A resource-free parsed rule introduces typed background-image resource interest');
+</script>

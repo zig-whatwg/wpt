@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane shorthand substitution syntax and parsed priority</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#any-value">
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#dom-cssstyledeclaration-setproperty">
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#dom-cssstyledeclaration-removeproperty">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Q211: declaration-value syntax is checked before the interim raw seam.
+// Argument grammar and substitution evaluation belong to the Variables owner.
+function style(text) {
+  const result = document.createElement("div").style;
+  result.cssText = text;
+  return result;
+}
+const marginNames = ["margin", "margin-top", "margin-right", "margin-bottom", "margin-left"];
+const invalidValues = ["var(--x) !important", "var(--x); color: red", "var(--x))", "var(--x)]", "var(--x)}"];
+for (const previous of ["7px", "var(--old)"]) {
+  for (const invalid of invalidValues) {
+    test(() => {
+      for (const priority of ["", " !important"]) {
+        const s = style(`margin: ${previous}${priority}`);
+        const cssText = s.cssText;
+        const values = marginNames.map(name => s.getPropertyValue(name));
+        const priorities = marginNames.map(name => s.getPropertyPriority(name));
+        s.setProperty("margin", invalid, "");
+        assert_equals(s.cssText, cssText, "invalid setter preserves serialized declarations");
+        assert_array_equals(marginNames.map(name => s.getPropertyValue(name)), values);
+        assert_array_equals(marginNames.map(name => s.getPropertyPriority(name)), priorities);
+        assert_equals(s.color, "", "semicolon does not add another declaration");
+      }
+    }, `invalid shorthand setter preserves ${previous}: ${invalid}`);
+  }
+}
+for (const invalid of ["var(--x) ]", "var(--x) ! foo"]) {
+  test(() => {
+    const s = style(`margin-left: 7px; margin: ${invalid}`);
+    assert_equals(s.marginLeft, "7px");
+    assert_equals(s.margin, "");
+    assert_equals(s.cssText, "margin-left: 7px;");
+  }, `parsed invalid shorthand preserves earlier constituent: ${invalid}`);
+}
+test(() => {
+  const text = "calc(var(--x) + 1px) 2px";
+  for (const setter of [false, true]) {
+    const s = style(setter ? "" : `margin: ${text}`);
+    if (setter) s.setProperty("margin", text);
+    assert_equals(s.margin, text);
+    assert_equals(s.marginLeft, "");
+    assert_equals(s.cssText, `margin: ${text};`);
+  }
+}, "matched nested shorthand tokens retain original text");
+
+for (const [wide, narrow, typed, typedValue] of [
+  ["border", "border-color", "margin-left", "7px"],
+  ["font", "font-variant", "font-weight", "700"]
+]) {
+  test(() => {
+    const s = style(`${wide}: var(--x) !important; ${narrow}: env(y)`);
+    assert_equals(s.getPropertyValue(wide), "var(--x)");
+    assert_equals(s.getPropertyValue(narrow), "");
+    assert_equals(s.cssText, `${wide}: var(--x) !important;`);
+    assert_equals(s.length, 1);
+  }, `fully covered parsed ${narrow} is dropped`);
+  test(() => {
+    const s = style(`${narrow}: var(--x) !important; ${wide}: env(y)`);
+    assert_equals(s.getPropertyValue(narrow), "var(--x)");
+    assert_equals(s.getPropertyValue(wide), "");
+    assert_equals(s.length, 2);
+    assert_equals(s.cssText, `${narrow}: var(--x) !important; ${wide}: env(y);`);
+  }, `partly covered parsed ${wide} remains stored`);
+  for (const removeWide of [false, true]) {
+    test(() => {
+      const s = style(`${wide}: var(--x) !important; ${narrow}: env(y)`);
+      assert_equals(s.removeProperty(removeWide ? wide : narrow), removeWide ? "var(--x)" : "");
+      assert_equals(s.getPropertyValue(wide), "");
+      assert_equals(s.getPropertyValue(narrow), "");
+      assert_equals(s.cssText, "");
+      assert_equals(s.length, 0);
+    }, `remove ${removeWide ? wide : narrow} clears mapped raw shorthand constituents`);
+  }
+  test(() => {
+    const shorthand = wide === "border" ? "margin" : "font";
+    const s = style(`${typed}: ${typedValue} !important; ${shorthand}: var(--x)`);
+    assert_equals(s.getPropertyValue(typed), typedValue);
+    assert_equals(s.removeProperty(shorthand), "");
+    assert_equals(s.getPropertyValue(typed), "");
+    assert_equals(s.getPropertyValue(shorthand), "");
+    assert_equals(s.cssText, "");
+    assert_equals(s.length, 0);
+  }, `remove ${wide === "border" ? "margin" : "font"} removes an important typed constituent`);
+}
+</script>
