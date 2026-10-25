@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Custom property and var() declaration and computed style cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="fixture"></div>
+<script>
+// Lane vars1's cost page: a page heavy with custom properties and var().
+// A root map of 100 variables, a Tailwind-style rule declaring 40 variables
+// on every element, and 1,000 elements whose longhands substitute: plain
+// references, nested references, fallbacks, a shorthand and math.
+test(() => {
+  const fixture = document.getElementById('fixture');
+  const rules = [];
+  const root = [];
+  for (let i = 0; i < 100; ++i) root.push('--c-' + i + ':rgb(' + i + ', 2, 3)');
+  root.push('--m:1px 2px 3px 4px', '--w:5px', '--nested:var(--w)');
+  rules.push(':root{' + root.join(';') + '}');
+  const tw = [];
+  for (let i = 0; i < 40; ++i) tw.push('--tw-' + i + ':0');
+  rules.push('#fixture *{' + tw.join(';') + '}');
+  const elements = [];
+  for (let i = 0; i < 1000; ++i) {
+    const element = document.createElement('span');
+    element.className = 'v-' + i;
+    fixture.appendChild(element);
+    elements.push(element);
+    rules.push('.v-' + i + '{--own:' + i + 'px;color:var(--c-' + (i % 100) + ');margin:var(--m);width:calc(var(--nested) * 2 + var(--own));background-color:var(--missing, rgb(1, 2, 3));padding-left:var(--tw-' + (i % 40) + ')}');
+  }
+  const sheet = new CSSStyleSheet();
+  const start = performance.now();
+  sheet.replaceSync(rules.join('\n'));
+  const parsed = performance.now();
+  document.adoptedStyleSheets = [sheet];
+  let matched = 0;
+  for (let i = 0; i < elements.length; ++i) {
+    const computed = getComputedStyle(elements[i]);
+    if (computed.color === 'rgb(' + (i % 100) + ', 2, 3)' && computed.marginLeft === '4px' &&
+        computed.width === (10 + i) + 'px' && computed.backgroundColor === 'rgb(1, 2, 3)' &&
+        computed.paddingLeft === '0px' && computed.getPropertyValue('--tw-7') === '0') ++matched;
+  }
+  const finished = performance.now();
+  console.log('VARS1_PARSE_MS=' + (parsed - start).toFixed(3));
+  console.log('VARS1_COMPUTED_MS=' + (finished - parsed).toFixed(3));
+  assert_equals(sheet.cssRules.length, 1002);
+  assert_equals(matched, 1000);
+  document.adoptedStyleSheets = [];
+  fixture.remove();
+}, 'Parse a custom-property-heavy sheet and read 1,000 computed styles with var()');
+</script>

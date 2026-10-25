@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>::first-line and ::first-letter computed style cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="fixture"></div>
+<script>
+// Lane vars1's cost page for CSS Pseudo 4's ::first-letter and ::first-line
+// property lists: 1,000 elements, each with a ::first-line, a ::first-letter
+// and a ::before rule declaring the same 12 longhands, half of them outside
+// the first-line list. No var(), so BASE and TIP parse the same sheet.
+// ::before takes every longhand and is the control: only the two filtered
+// pseudo-elements may move.
+test(() => {
+  const fixture = document.getElementById('fixture');
+  const rules = [];
+  const elements = [];
+  for (let i = 0; i < 1000; ++i) {
+    const element = document.createElement('div');
+    element.className = 'f-' + i;
+    element.textContent = 'Line ' + i;
+    fixture.appendChild(element);
+    elements.push(element);
+    const body = '{color:rgb(0, 0, 255);font-size:' + (10 + i % 20) + 'px;letter-spacing:1px;opacity:0.5;' +
+      'background-color:rgb(1, 2, 3);line-height:20px;position:absolute;margin:3px;padding:4px;' +
+      'border-top:2px solid;z-index:' + i + ';float:left}';
+    rules.push('.f-' + i + '::first-line' + body, '.f-' + i + '::first-letter' + body, '.f-' + i + '::before' + body);
+  }
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(rules.join('\n'));
+  document.adoptedStyleSheets = [sheet];
+  const times = {};
+  let matched = 0;
+  for (const pseudo of ['::before', '::first-line', '::first-letter']) {
+    const start = performance.now();
+    for (let i = 0; i < elements.length; ++i) {
+      const computed = getComputedStyle(elements[i], pseudo);
+      if (computed.color === 'rgb(0, 0, 255)' && computed.fontSize === (10 + i % 20) + 'px') ++matched;
+    }
+    times[pseudo] = performance.now() - start;
+  }
+  console.log('VARS1_BEFORE_MS=' + times['::before'].toFixed(3));
+  console.log('VARS1_FIRST_LINE_MS=' + times['::first-line'].toFixed(3));
+  console.log('VARS1_FIRST_LETTER_MS=' + times['::first-letter'].toFixed(3));
+  assert_equals(sheet.cssRules.length, 3000);
+  assert_equals(matched, 3000);
+  document.adoptedStyleSheets = [];
+  fixture.remove();
+}, 'Read 1,000 computed styles each of ::before, ::first-line and ::first-letter');
+</script>
