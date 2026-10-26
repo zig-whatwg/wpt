@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Registered custom property computed style cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="fixture"></div>
+<script>
+// Lane vars1b2's cost page: registered custom properties in the cascade.
+// 20 registrations (typed lengths with font-relative units, colors, numbers;
+// half inherited, half not), a root map setting the inherited ones, and
+// 1,000 elements that set non-inherited ones, substitute registered values
+// into longhands and unregistered properties, and leave others at their
+// initial values; every computed style is read.
+test(() => {
+  for (let i = 0; i < 5; ++i) {
+    CSS.registerProperty({name: '--len-i-' + i, syntax: '<length>', inherits: true, initialValue: i + 'px'});
+    CSS.registerProperty({name: '--len-n-' + i, syntax: '<length>', inherits: false, initialValue: i + 'px'});
+    CSS.registerProperty({name: '--col-i-' + i, syntax: '<color>', inherits: true, initialValue: 'rgb(' + i + ', 0, 0)'});
+    CSS.registerProperty({name: '--num-n-' + i, syntax: '<number>', inherits: false, initialValue: String(i)});
+  }
+  const fixture = document.getElementById('fixture');
+  const rules = [];
+  const root = [];
+  for (let i = 0; i < 5; ++i) root.push('--len-i-' + i + ':' + (i + 1) + 'em', '--col-i-' + i + ':rgb(0, ' + i + ', 0)');
+  rules.push(':root{font-size:10px;' + root.join(';') + '}');
+  const elements = [];
+  for (let i = 0; i < 1000; ++i) {
+    const element = document.createElement('span');
+    element.className = 'r-' + i;
+    fixture.appendChild(element);
+    elements.push(element);
+    rules.push('.r-' + i + '{--len-n-' + (i % 5) + ':calc(' + i + 'px + 1em);--num-n-' + (i % 5) + ':' + i +
+               ';width:var(--len-n-' + (i % 5) + ');color:var(--col-i-' + (i % 5) + ');margin-left:var(--len-i-' + (i % 5) +
+               ');--copy:var(--len-n-' + ((i + 1) % 5) + ')}');
+  }
+  const sheet = new CSSStyleSheet();
+  const start = performance.now();
+  sheet.replaceSync(rules.join('\n'));
+  const parsed = performance.now();
+  document.adoptedStyleSheets = [sheet];
+  let matched = 0;
+  for (let i = 0; i < elements.length; ++i) {
+    const computed = getComputedStyle(elements[i]);
+    if (computed.width === (i + 10) + 'px' && computed.color === 'rgb(0, ' + (i % 5) + ', 0)' &&
+        computed.marginLeft === ((i % 5) + 1) * 10 + 'px' && computed.getPropertyValue('--copy') === ((i + 1) % 5) + 'px' &&
+        computed.getPropertyValue('--num-n-' + (i % 5)) === String(i)) ++matched;
+  }
+  const finished = performance.now();
+  console.log('VARS2_PARSE_MS=' + (parsed - start).toFixed(3));
+  console.log('VARS2_COMPUTED_MS=' + (finished - parsed).toFixed(3));
+  assert_equals(sheet.cssRules.length, 1001);
+  assert_equals(matched, 1000);
+  document.adoptedStyleSheets = [];
+  fixture.remove();
+}, 'Register 20 properties and read 1,000 computed styles that set and substitute them');
+</script>
