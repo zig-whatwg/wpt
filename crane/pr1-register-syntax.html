@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom property registration syntax grammar</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-properties-values-api-1/#syntax-strings">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+let sequence = 0;
+function register(syntax, initialValue) {
+  CSS.registerProperty({name: `--pr1-syntax-${++sequence}`, syntax, initialValue, inherits: false});
+}
+for (const [syntax, initialValue] of [
+  ['*', 'anything'], ['<length>', '2px'], ['<number>', '3'],
+  ['<percentage>', '20%'], ['<length-percentage>', 'calc(2px + 3%)'],
+  ['<string>', '"hello"'], ['<color>', 'red'], ['<integer>', '7'],
+  ['<angle>', '1turn'], ['<time>', '2s'], ['<resolution>', '96dpi'],
+  ['<url>', 'url(example.png)'], ['<image>', 'linear-gradient(red, blue)'],
+  ['<custom-ident>', 'hello'], ['--hello', '--hello'],
+  ['<transform-function>', 'scale(2)'], ['<transform-list>', 'scale(2) rotate(3deg)'],
+  ['<length>+', '2px 3px'], ['<color>#', 'red, blue'], ['foo | <color>', 'blue'],
+]) {
+  test(() => register(syntax, initialValue), `registerProperty accepts syntax ${syntax}`);
+}
+for (const syntax of [
+  '', '<length', '<LENGTH>', '< length>', '<length >', '<length> +',
+  '<transform-list>+', '<transform-list>#', '<length>++', '<length>##',
+  '*|foo', '*+', '|foo', 'foo|', 'foo bar', '/*comment*/foo',
+  'initial', 'INHERIT', 'unset', 'revert', 'revert-layer', 'default',
+]) {
+  test(() => assert_throws_dom('SyntaxError', () => register(syntax, '2px')),
+       `registerProperty rejects syntax ${JSON.stringify(syntax)}`);
+}
+test(() => {
+  const definition = {name: '--pr1-duplicate', syntax: '<length>', initialValue: '1px', inherits: false};
+  CSS.registerProperty(definition);
+  assert_throws_dom('InvalidModificationError', () => CSS.registerProperty({...definition, syntax: '<invalid>'}));
+}, 'Duplicate registration is rejected before invalid syntax');
+</script>

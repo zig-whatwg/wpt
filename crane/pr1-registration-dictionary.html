@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PropertyDefinition conversion and registration ownership</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-properties-values-api-1/#registering-custom-properties">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+let next = 0;
+const name = () => `--pr1-dictionary-${++next}`;
+for (const definition of [undefined, null, 1, 'x', true, {}, {name: '--pr1-missing-inherits'}]) {
+  test(() => assert_throws_js(TypeError, () => CSS.registerProperty(definition)),
+       `Invalid or incomplete dictionary: ${JSON.stringify(definition)}`);
+}
+test(() => {
+  const gets = [];
+  const values = {inherits: false, initialValue: '1px', name: name(), syntax: '<length>'};
+  CSS.registerProperty(new Proxy(values, {get(target, key) { gets.push(key); return target[key]; }}));
+  assert_array_equals(gets, ['inherits', 'initialValue', 'name', 'syntax']);
+}, 'Dictionary members are read once in WebIDL lexicographical order');
+test(() => {
+  const gets = [];
+  assert_throws_js(TypeError, () => CSS.registerProperty(new Proxy({}, {
+    get(target, key) { gets.push(key); return undefined; }
+  })));
+  assert_array_equals(gets, ['inherits']);
+}, 'Missing required inherits stops before reading later members');
+test(() => {
+  const thrown = {sentinel: true};
+  assert_throws_exactly(thrown, () => CSS.registerProperty({
+    inherits: false, get initialValue() { throw thrown; }, name: name(), syntax: '<length>'
+  }));
+}, 'Dictionary getter exceptions propagate unchanged');
+test(() => {
+  const conversions = [];
+  const text = (tag, value) => ({toString() { conversions.push(tag); return value; }});
+  CSS.registerProperty({inherits: {valueOf() { throw Error('ToBoolean must not invoke valueOf'); }},
+    initialValue: text('initialValue', '1px'), name: text('name', name()), syntax: text('syntax', '<length>')});
+  assert_array_equals(conversions, ['initialValue', 'name', 'syntax']);
+}, 'DOMString conversion follows dictionary order and inherits uses ToBoolean');
+test(() => {
+  const property = name();
+  CSS.registerProperty({name: property, inherits: false});
+  const thrown = {sentinel: 'conversion-before-algorithm'};
+  assert_throws_exactly(thrown, () => CSS.registerProperty({name: property, inherits: false,
+    syntax: {toString() {throw thrown;}}}));
+}, 'Dictionary conversion completes before duplicate registration checks');
+test(() => {
+  assert_equals(CSS.registerProperty({name: name(), inherits: false}), undefined);
+}, 'Omitted syntax defaults to universal and permits no initial value');
+test(() => assert_throws_dom('SyntaxError', () => CSS.registerProperty({name: name(), inherits: false, syntax: '<length>'})),
+     'Typed syntax requires an initial value');
+for (const value of ['calc(1em / 1em)', 'calc(1 + random(fixed 0.5, 0, 1))']) {
+  test(() => assert_throws_dom('SyntaxError', () => CSS.registerProperty({name: name(), inherits: false, syntax: '<number>', initialValue: value})),
+       `Initial independence checks unsimplified tokens: ${value}`);
+}
+for (const value of ['var(--x)', 'env(x)', 'f(attr(data-x))']) {
+  test(() => assert_throws_dom('SyntaxError', () => CSS.registerProperty({name: name(), inherits: false, initialValue: value})),
+       `Universal initial rejects arbitrary substitution: ${value}`);
+}
+test(() => {
+  assert_equals(CSS.registerProperty({name: name(), inherits: false, syntax: '<image>', initialValue: 'linear-gradient(red 1em, blue)'}), undefined);
+}, 'Browser behavior treats image initial values as independent');
+test(() => {
+  const definition = {name: name(), inherits: false, syntax: '<length>', initialValue: '1px'};
+  CSS.registerProperty(definition);
+  definition.syntax = '<color>';
+  definition.initialValue = 'red';
+  assert_throws_dom('InvalidModificationError', () => CSS.registerProperty(definition));
+}, 'Registry owns the converted definition after the input object changes');
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html>';
+  document.body.append(frame);
+  await loaded;
+  const property = name();
+  CSS.registerProperty({name: property, inherits: false});
+  frame.contentWindow.CSS.registerProperty({name: property, inherits: false});
+  assert_throws_dom('InvalidModificationError', frame.contentWindow.DOMException,
+    () => frame.contentWindow.CSS.registerProperty({name: property, inherits: false}));
+}, 'Each associated Document has its own scripted property registry');
+</script>
+</body>

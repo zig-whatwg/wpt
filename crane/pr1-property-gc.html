@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSSPropertyRule retains its native registration through collection</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  let sheet = new CSSStyleSheet();
+  sheet.replaceSync('@property --pr1-collected {syntax: " <length> "; inherits: false; initial-value: 7px;}');
+  const rule = sheet.cssRules[0];
+  assert_true(rule instanceof CSSPropertyRule);
+  sheet.deleteRule(0);
+  sheet = null;
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(rule.name, '--pr1-collected');
+  assert_equals(rule.syntax, ' <length> ');
+  assert_false(rule.inherits);
+  assert_equals(rule.initialValue, '7px');
+  assert_equals(rule.parentStyleSheet, null);
+  assert_equals(rule.cssText, '@property --pr1-collected { syntax: " <length> "; inherits: false; initial-value: 7px; }');
+}, 'A lone detached property rule retains all registration fields after GC');
+test(() => {
+  let definition = {name: '--pr1-collected-script', syntax: '<length>', inherits: false, initialValue: '7px'};
+  CSS.registerProperty(definition);
+  definition = null;
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_throws_dom('InvalidModificationError', () => CSS.registerProperty({name: '--pr1-collected-script', inherits: false}));
+}, 'The document registry owns scripted registrations after the input is collected');
+</script>

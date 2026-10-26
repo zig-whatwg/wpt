@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<title>Malformed property prelude completes without a CSSOM rule</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Exact style markup from css/css-properties-values-api/registered-property-parse-crash.html.
+// Register before its final unclosed style element, so EOF exercises the same parser path.
+const completed = async_test('Malformed @property prelude reaches load and exposes no rule');
+addEventListener('load', completed.step_func_done(() => {
+  assert_equals(document.styleSheets.length, 2);
+  assert_equals(document.styleSheets[0].cssRules.length, 0);
+  assert_equals(document.styleSheets[1].cssRules.length, 0);
+}));
+</script>
+<style>
+@property (
+</style>
+<style>

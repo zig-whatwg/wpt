@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated CSSPropertyRule construction regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@property --pr1-basic { syntax: "<length>"; inherits: false; initial-value: 1px; }');
+  assert_equals(sheet.cssRules.length, 1);
+  const rule = sheet.cssRules[0];
+  assert_true(rule instanceof CSSPropertyRule);
+  assert_equals(rule.name, '--pr1-basic');
+  assert_equals(rule.initialValue, '1px');
+}, 'A valid property rule exposes its typed CSSOM record');
+</script>

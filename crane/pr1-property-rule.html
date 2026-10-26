@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Property rule descriptor validation and detached CSSOM records</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-properties-values-api-1/#cssom">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const cases = [
+  ["syntax: '<length>'; syntax: 'bad grammar'; inherits: false; initial-value: 1px", '<length>', '1px'],
+  ["syntax: '<length>'; syntax: invalid; inherits: false; initial-value: 1px", '<length>', '1px'],
+  ["syntax: '<length>'; inherits: false; inherits: invalid; initial-value: 1px", '<length>', '1px'],
+  ["syntax: '<length>'; inherits: false; initial-value: 1px; initial-value: red", null],
+  ["syntax: '<length>'; inherits: false; initial-value: 1px; initial-value: var(--x)", null],
+  ["syntax: '*'; inherits: false; initial-value:", '*', ''],
+];
+for (const [descriptors, syntax, initial] of cases) {
+  test(() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`@property --pr1-x {${descriptors};}`);
+    assert_equals(sheet.cssRules.length, syntax === null ? 0 : 1);
+    if (syntax !== null) {
+      assert_equals(sheet.cssRules[0].syntax, syntax);
+      assert_equals(sheet.cssRules[0].initialValue, initial);
+      assert_false(sheet.cssRules[0].inherits);
+    }
+  }, `Descriptor validation: ${descriptors}`);
+}
+test(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@property --pr1-detached { syntax: " <length> "; inherits: false; initial-value: 1px; }');
+  const rule = sheet.cssRules[0];
+  assert_true(rule instanceof CSSPropertyRule);
+  assert_true(rule instanceof CSSRule);
+  assert_equals(rule.type, 0);
+  assert_equals(rule.parentStyleSheet, sheet);
+  assert_equals(rule.parentRule, null);
+  sheet.deleteRule(0);
+  assert_equals(rule.parentStyleSheet, null);
+  assert_equals(rule.name, '--pr1-detached');
+  assert_equals(rule.syntax, ' <length> ');
+  assert_equals(rule.initialValue, '1px');
+  assert_equals(rule.cssText, '@property --pr1-detached { syntax: " <length> "; inherits: false; initial-value: 1px; }');
+}, 'A detached CSSPropertyRule retains its owned registration and CSSOM spelling');
+test(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@media screen { @supports (display: block) { @layer pr1 { @property --pr1-nested { syntax: "*"; inherits: true; } } } }');
+  const layer = sheet.cssRules[0].cssRules[0].cssRules[0];
+  const rule = layer.cssRules[0];
+  assert_true(rule instanceof CSSPropertyRule);
+  assert_equals(rule.parentRule, layer);
+  assert_equals(rule.parentStyleSheet, sheet);
+  assert_equals(rule.initialValue, null);
+}, 'Property rules retain conditional and layer nesting in CSSOM');
+test(t => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  const root = host.attachShadow({mode: 'open'});
+  const style = document.createElement('style');
+  style.textContent = '@property --pr1-shadow {syntax: "*"; inherits: false;}';
+  root.append(style);
+  assert_equals(style.sheet.cssRules.length, 1);
+  assert_true(style.sheet.cssRules[0] instanceof CSSPropertyRule);
+}, 'Shadow-tree property rules remain visible in CSSOM');
+// All three browsers preserve these descriptor values (Q16, probe 1025l).
+for (const value of ['foo(){}', '{}', '{} foo()', 'foo {} bar', '[foo] {}', 'foo() {}', 'url(a){}']) {
+  test(() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`@property --pr1-braces { syntax: "*"; inherits: false; initial-value: ${value}; }`);
+    assert_equals(sheet.cssRules.length, 1);
+    assert_equals(sheet.cssRules[0].initialValue, value);
+    assert_equals(sheet.cssRules[0].cssText, `@property --pr1-braces { syntax: "*"; inherits: false; initial-value: ${value}; }`);
+    const ordinary = document.createElement('div').style;
+    ordinary.cssText = 'color: red{}; background-color: blue';
+    assert_equals(ordinary.color, '');
+    assert_equals(ordinary.backgroundColor, 'blue');
+  }, `Universal initial-value preserves braces: ${value}`);
+}
+// Chrome and Firefox retain original descriptor text (Q17, probe 1025m).
+for (const [syntax, source, expected] of [
+  ['*', 'a  b', 'a  b'], ['*', 'a/**/b', 'a/**/b'],
+  ['<string>+', "'a' 'b'", "'a' 'b'"], ['<length>', '01PX', '01PX'],
+  ['<length>', 'calc(1px + 2px)', 'calc(1px + 2px)'],
+  ['<color>', 'RED', 'RED'], ['<url>', 'url(a)', 'url(a)'],
+  ['*', '  a \t b  ', 'a \t b']
+]) {
+  test(() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`@property --pr1-text { syntax: "${syntax}"; inherits: false; initial-value: ${source}; }`);
+    assert_equals(sheet.cssRules.length, 1);
+    assert_equals(sheet.cssRules[0].initialValue, expected);
+    assert_equals(sheet.cssRules[0].cssText, `@property --pr1-text { syntax: "${syntax}"; inherits: false; initial-value: ${expected}; }`);
+  }, `Initial-value source spelling: ${syntax} / ${JSON.stringify(source)}`);
+}
+</script>
+</body>

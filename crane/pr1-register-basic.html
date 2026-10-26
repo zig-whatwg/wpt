@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Isolated CSS.registerProperty registration regression</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  CSS.registerProperty({name: '--pr1-basic', syntax: '<length>', inherits: false, initialValue: '1px'});
+  assert_throws_dom('InvalidModificationError', () => CSS.registerProperty({name: '--pr1-basic', inherits: false}));
+}, 'A valid typed property registers once in its document');
+</script>

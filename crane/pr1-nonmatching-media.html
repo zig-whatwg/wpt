@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html class="test-wait">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<!-- Exact registration and actions from css/css-properties-values-api/at-property-non-matching-media-crash.html. -->
+<style id="style">
+  @property --x {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+  }
+</style>
+<script>
+  document.documentElement.offsetTop;
+  style.setAttribute('media', 'braille');
+  document.documentElement.className = '';
+</script>
+<p>PASS if no crash</p>
+<script>
+test(() => {
+  assert_equals(document.documentElement.className, '');
+  assert_equals(style.media, 'braille');
+  assert_equals(style.sheet.cssRules.length, 1);
+  const rule = style.sheet.cssRules[0];
+  assert_true(rule instanceof CSSPropertyRule);
+  assert_equals(rule.name, '--x');
+  assert_equals(rule.initialValue, '0px');
+  assert_equals(getComputedStyle(document.documentElement).getPropertyValue('--x'), '');
+}, 'Nonmatching sheet retains its CSSPropertyRule while its registration is inactive');
+</script>
+</html>
