@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Headless environment variables expose defined defaults and preserve absent values</title>
+<link rel="help" href="https://drafts.csswg.org/css-env-1/#environment">
+<link rel="help" href="https://www.w3.org/TR/virtual-keyboard/#keyboard-inset-variables">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+// CSS Env 1 section 3 step 1 distinguishes defined zeroes from missing values.
+// Rectangular, unobscured desktop viewport; no overlay or hardware segments.
+const zeroLengths = [
+  'safe-area-inset-top', 'safe-area-inset-right',
+  'safe-area-inset-bottom', 'safe-area-inset-left',
+  'safe-area-max-inset-top', 'safe-area-max-inset-right',
+  'safe-area-max-inset-bottom', 'safe-area-max-inset-left',
+  'keyboard-inset-top', 'keyboard-inset-right',
+  'keyboard-inset-bottom', 'keyboard-inset-left',
+  'keyboard-inset-width', 'keyboard-inset-height',
+];
+
+function checkLength(reference, expected) {
+  target.style.marginLeft = '';
+  target.style.marginLeft = `env(${reference}, 37px)`;
+  assert_not_equals(target.style.marginLeft, '', 'the env() reference parses');
+  assert_equals(getComputedStyle(target).marginLeft, expected);
+}
+
+for (const name of zeroLengths) {
+  test(() => checkLength(name, '0px'), `${name} defaults to zero rather than its fallback`);
+}
+
+test(() => {
+  target.style.opacity = 'calc(0.5 * env(preferred-text-scale, 0.25))';
+  assert_not_equals(target.style.opacity, '', 'the env() reference parses');
+  assert_equals(getComputedStyle(target).opacity, '0.5');
+}, 'preferred-text-scale is a unitless number with default 1');
+
+for (const name of ['titlebar-area-x', 'titlebar-area-y',
+                    'titlebar-area-width', 'titlebar-area-height']) {
+  test(() => checkLength(name, '37px'), `${name} is absent without a window controls overlay`);
+}
+
+for (const side of ['width', 'height', 'top', 'right', 'bottom', 'left']) {
+  for (const indices of ['0 0', '1 0', '0 1', '4294967295 4294967295']) {
+    const reference = `viewport-segment-${side} ${indices}`;
+    test(() => checkLength(reference, '37px'), `${reference} is absent on an unsegmented viewport`);
+  }
+}
+
+for (const reference of [
+  'unknown-environment-variable', 'SAFE-AREA-INSET-TOP', '--author-env',
+  'safe-area-inset-top 0', 'safe-area-inset-top 0 0',
+  'safe-area-max-inset-left 0', 'keyboard-inset-height 0 0',
+  'viewport-segment-width', 'viewport-segment-width 0',
+  'viewport-segment-width 0 0 0',
+]) {
+  test(() => checkLength(reference, '37px'), `${reference} takes the fallback`);
+}
+
+test(() => {
+  target.style.marginLeft = 'env(unknown-environment-variable, env(safe-area-inset-top, 37px))';
+  assert_equals(getComputedStyle(target).marginLeft, '0px');
+}, 'a nested fallback can read a defined environment value');
+
+test(() => {
+  target.style.setProperty('--inset', 'env(safe-area-inset-left, 37px)');
+  target.style.marginLeft = 'var(--inset)';
+  assert_equals(getComputedStyle(target).marginLeft, '0px');
+}, 'an environment value survives substitution through a custom property');
+</script>
