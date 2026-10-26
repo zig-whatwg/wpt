@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() delegates supports tests to the shared support evaluator</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#if-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Isolated from if-conditionals.html names 175, 176 and 177.
+for (const [condition, expected] of [
+  ['not (transform-origin: 10em 10em 10em)', 'no'],
+  ['selector(h2 > p)', 'yes'],
+  ['(selector(h2 > p))', 'yes'],
+]) {
+  test(t => {
+    const element = document.createElement('div');
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    element.style.setProperty('--result', `if(supports(${condition}): yes; else: no)`);
+    assert_equals(getComputedStyle(element).getPropertyValue('--result'), expected);
+  }, condition);
+}
+</script>

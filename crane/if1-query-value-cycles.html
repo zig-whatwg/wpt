@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() resolves style feature values lazily</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#if-notation">
+<link rel="help" href="https://drafts.csswg.org/css-conditional-5/#style-container">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// The failed-query-value cases extend css/css-values/if-cycle.html.
+const cases = [
+  ['failed feature value is false under not',
+    'if(style(not (--x: var(--cyclic))): yes; else: no)', 'yes'],
+  ['failed feature value stays false in plain style',
+    'if(style(--x: var(--cyclic)): yes; else: no)', 'no'],
+  ['failed feature value does not equal guaranteed-invalid',
+    'if(style(--absent: var(--cyclic)): yes; else: no)', 'no'],
+  ['CSS-wide initial can equal guaranteed-invalid',
+    'if(style(--absent: initial): yes; else: no)', 'yes'],
+  ['successful or skips a cyclic query value',
+    'if(style((--x) or (--y: var(--result))): yes; else: no)', 'yes'],
+  ['failed and skips a cyclic query value',
+    'if(style((--absent) and (--y: var(--result))): yes; else: no)', 'no'],
+  ['visited query value marks the enclosing property cyclic',
+    'if(style(not (--x: var(--result))): yes; else: no)', ''],
+];
+for (const [name, expression, expected] of cases) {
+  test(t => {
+    const element = document.createElement('div');
+    element.style.setProperty('--x', '11');
+    element.style.setProperty('--cyclic', 'var(--cyclic)');
+    element.style.setProperty('--result', expression);
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(getComputedStyle(element).getPropertyValue('--result'), expected);
+  }, name);
+}
+</script>
+</body>

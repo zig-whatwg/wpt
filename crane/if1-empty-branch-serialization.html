@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() empty branch computed serialization follows CSS Variables</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#if-notation">
+<link rel="help" href="https://drafts.csswg.org/css-variables-1/#serializing-custom-props">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Isolated from if-conditionals.html restoration names 6, 7, 28 and 29.
+// Q25/Q2, integrator probe 1025s: CSS Variables 1 §4.1 requires a single
+// space. The upstream if-conditionals cases expect the browsers' older "".
+for (const [name, expression, value] of [
+  ['6', 'if(style(--x: 0): ;)', '0'],
+  ['7', 'if(style(--x: 0): )', '0'],
+  ['28', 'if(style(--x: 0): true_value; else: )', '3'],
+  ['29', 'if(style(--x: 3): ; else: false_value)', '3'],
+]) {
+  test(t => {
+    const element = document.createElement('div');
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    element.style.setProperty('--x', value);
+    element.style.setProperty('--result', expression);
+    assert_equals(getComputedStyle(element).getPropertyValue('--result'), ' ');
+  }, `if-conditionals ${name}: selected empty branch serializes one space (Q2)`);
+}
+</script>

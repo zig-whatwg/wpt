@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() lazy branches, invalid conditions, and cycles</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#if-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+function element(t, properties) {
+  const target = document.createElement('div');
+  for (const [name, value] of Object.entries(properties)) {
+    target.style.setProperty(name, value);
+  }
+  document.body.append(target);
+  t.add_cleanup(() => target.remove());
+  return target;
+}
+function conditional(t, value, expected, properties = {}) {
+  const target = element(t, {...properties, '--result': value});
+  assert_equals(getComputedStyle(target).getPropertyValue('--result'), expected);
+}
+const cases = [
+  ['invalid boolean condition falls through',
+    'if(style(--present) and invalid: wrong; else: chosen)', 'chosen', {'--present': 'yes'}],
+  ['wrapped condition is parsed late and is invalid',
+    'if({else}: wrong; else: chosen)', 'chosen'],
+  ['unknown conditions stay unknown through negation',
+    'if(not future-query(x): wrong; else: chosen)', 'chosen'],
+  ['selected branch retains its braces',
+    'if(else: {red, blue})', '{red, blue}'],
+  ['missing match invalidates surrounding tokens',
+    'before if(style(--missing): wrong) after', ''],
+  ['unused value introduces no self cycle',
+    'if(style(--missing): var(--result); else: chosen)', 'chosen'],
+  ['unused condition introduces no self cycle',
+    'if(else: chosen; style(--result): wrong)', 'chosen'],
+  ['short-circuited query introduces no self cycle',
+    'if(style(--present) or style(--result): chosen; else: wrong)', 'chosen', {'--present': 'yes'}],
+  ['visited style query marks a self cycle',
+    'if(style(--result): wrong; else: chosen)', ''],
+  ['comparison style query marks a self cycle',
+    'if(style(--result: initial): wrong; else: chosen)', ''],
+  ['condition is substituted before recognizing else',
+    'if(var(--condition): chosen; else: wrong)', 'chosen', {'--condition': 'else'}],
+  ['empty custom value differs from guaranteed-invalid',
+    'if(style(--empty: initial): wrong; else: chosen)', 'chosen', {'--empty': ' '}],
+];
+for (const [name, value, expected, properties] of cases) {
+  test(t => conditional(t, value, expected, properties), name);
+}
+test(t => {
+  const target = element(t, {'font-family': 'monospace'});
+  const child = document.createElement('span');
+  target.append(child);
+  child.style.fontFamily = 'before if(style(--missing): wrong) after';
+  assert_equals(getComputedStyle(child).fontFamily, 'monospace');
+}, 'missing match in a longhand uses invalid-at-computed-value-time fallback');
+</script>
+</body>

@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() queries registered custom values</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#if-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@property --if1-number {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 7;
+}
+</style>
+<body>
+<script>
+'use strict';
+// Browser ruling 1025h: boolean queries include registered initial values.
+for (const value of [null, '7', '8', 'initial']) {
+  test(t => {
+    const element = document.createElement('div');
+    if (value !== null) element.style.setProperty('--if1-number', value);
+    element.style.setProperty('--result', 'if(style(--if1-number): yes; else: no)');
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(getComputedStyle(element).getPropertyValue('--result'), 'yes');
+  }, `registered boolean query is true for ${value === null ? 'default' : value}`);
+}
+for (const value of ['initial', 'calc(1 + 6)']) {
+  test(t => {
+    const element = document.createElement('div');
+    element.style.setProperty('--result', `if(style(--if1-number: ${value}): yes; else: no)`);
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(getComputedStyle(element).getPropertyValue('--result'), 'yes');
+  }, `registered plain query computes ${value} in the property grammar`);
+}
+</script>
+</body>

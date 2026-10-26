@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() preserves unknown features through negation</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#if-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Integrator probe 1025i: style() queries custom properties only. The same
+// false result with and without not distinguishes unknown from boolean false.
+const cases = [
+  ['style(color: red)', 'no'], ['style(color: blue)', 'no'],
+  ['not style(color: red)', 'no'], ['not style(color: blue)', 'no'],
+  ['style(color)', 'no'], ['not style(color)', 'no'],
+  ['style(unknown-prop: value)', 'no'], ['not style(unknown-prop: value)', 'no'],
+  ['supports(nonsense)', 'no'], ['not supports(nonsense)', 'no'],
+  ['supports(color: red)', 'yes'], ['not supports(color: red)', 'no'],
+];
+for (const [condition, expected] of cases) {
+  test(t => {
+    const element = document.createElement('div');
+    element.style.color = 'red';
+    element.style.setProperty('--result', `if(${condition}: yes; else: no)`);
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(getComputedStyle(element).getPropertyValue('--result'), expected);
+  }, condition);
+}
+</script>
+</body>

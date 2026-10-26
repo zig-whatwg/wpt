@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() style ranges preserve shipping comparison grammar</title>
+<link rel="help" href="https://drafts.csswg.org/css-conditional-5/#typedef-style-range">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Integrator probe 1025j: equality participates in chains; opposing directions
+// are unknown. Comments preserve adjacent tokens but whitespace separates them.
+const cases = [
+  ['1 = 1 = 1', 'yes'], ['1 < 2 = 2', 'yes'], ['2 = 2 > 1', 'no'],
+  ['1 < 2 > 1', 'no'], ['1 < 2 < 3', 'yes'], ['3 > 2 > 1', 'yes'],
+  ['1 </**/= 2', 'yes'], ['2 >/**/= 1', 'yes'],
+  ['1 < = 2', 'no'], ['2 > = 1', 'no'],
+];
+for (const [range, expected] of cases) {
+  test(t => {
+    const element = document.createElement('div');
+    element.style.setProperty('--result', `if(style(${range}): yes; else: no)`);
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(getComputedStyle(element).getPropertyValue('--result'), expected);
+  }, range);
+}
+</script>
+</body>

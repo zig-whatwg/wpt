@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>if() style range chains preserve false versus unknown</title>
+<link rel="help" href="https://drafts.csswg.org/css-conditional-5/#typedef-style-range">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Integrator probe 1025k: exact Chrome results. The acceptance matrix includes
+// <= followed by >, and excludes = followed by <=; direction alone is not it.
+const operators = ['=', '<', '<=', '>', '>='];
+const observed = [
+  ['no/yes', 'no/yes', 'no/no', 'no/no', 'no/no'],
+  ['no/yes', 'yes/no', 'yes/no', 'no/no', 'no/no'],
+  ['no/no', 'yes/no', 'yes/no', 'no/yes', 'no/no'],
+  ['no/no', 'no/no', 'no/yes', 'no/yes', 'no/yes'],
+  ['no/no', 'no/no', 'no/no', 'no/yes', 'no/yes'],
+];
+for (let i = 0; i < operators.length; ++i) {
+  for (let j = 0; j < operators.length; ++j) {
+    const query = `1 ${operators[i]} 2 ${operators[j]} 3`;
+    test(t => {
+      const element = document.createElement('div');
+      element.style.setProperty('--positive', `if(style(${query}): yes; else: no)`);
+      element.style.setProperty('--negative', `if(not style(${query}): yes; else: no)`);
+      document.body.append(element);
+      t.add_cleanup(() => element.remove());
+      const computed = getComputedStyle(element);
+      const expected = observed[i][j].split('/');
+      assert_equals(computed.getPropertyValue('--positive'), expected[0], 'positive');
+      assert_equals(computed.getPropertyValue('--negative'), expected[1], 'negated');
+    }, query);
+  }
+}
+</script>
+</body>
