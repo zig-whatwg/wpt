@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr literal and substituted header validation phases</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-substitution">
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#argument-grammar">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row 122 Q18 PART3 (2026-10-25): malformed literal headers retain the
+// shipping-browser parse-time rejection. Substituted headers follow the
+// newer spec, implemented in Chromium e33187e9f31e and WebKit 9208303fc946.
+const cases = [
+  ['literal valid control', 'attr(data-v type(<number>), fallback)', null, true, '3'],
+  ['literal invalid name', 'attr((), fallback)', null, false, 'before'],
+  ['literal invalid name without fallback', 'attr(())', null, false, 'before'],
+  ['literal invalid type', 'attr(data-v type(<num/**/ber>), fallback)', null, false, 'before'],
+  ['literal forbidden url', 'attr(data-v type(<url>), fallback)', null, false, 'before'],
+  ['substituted valid header', 'attr(var(--header), fallback)', 'data-v type(<number>)', true, '3'],
+  ['substituted invalid name', 'attr(var(--header), fallback)', '()', true, 'fallback'],
+  ['substituted invalid type', 'attr(var(--header), fallback)', 'data-v type(<num/**/ber>)', true, 'fallback'],
+  ['substituted forbidden url', 'attr(var(--header), fallback)', 'data-v type(<url>)', true, 'fallback'],
+  ['missing header substitution', 'attr(var(--header), fallback)', null, true, 'fallback'],
+  ['substituted comma is not a fallback separator', 'attr(var(--header))', 'data-v type(<number>), fallback', true, ''],
+  ['empty first argument', 'attr(, fallback)', null, false, 'before'],
+  ['CSS-wide type selects fallback', 'attr(data-v inherit, fallback)', null, true, 'fallback'],
+  ['unknown type selects fallback', 'attr(data-v future-unit, fallback)', null, true, 'fallback'],
+  ['substituted type position', 'attr(data-v var(--header), fallback)', 'type(<number>)', true, '3'],
+  ['substituted unit position', 'attr(data-v var(--header), fallback)', 'px', true, '3px'],
+  ['escaped substitution function name', String.raw`attr(v\61r(--header), fallback)`, 'data-v number', true, '3'],
+  ['substitution nested in an unknown header function', 'attr(unknown(var(--header)), fallback)', 'data-v', true, 'fallback'],
+  ['invalid substituted header with an empty fallback', 'attr(var(--header),)', '()', true, ''],
+  // Q22: the shared argument callback knows that the early pass ran.
+  ['early-invoked valid header', 'attr(...var(--header), fallback)', 'data-v number', true, '3'],
+  ['early-invoked invalid name', 'attr(...var(--header), fallback)', '()', true, 'fallback'],
+  ['early-invoked invalid type', 'attr(...var(--header), fallback)', 'data-v type(<num/**/ber>)', true, 'fallback'],
+  ['early-invoked comma separates arguments', 'attr(...var(--header))', '(), fallback', true, 'fallback']
+];
+
+for (const [name, source, header, valid, expected] of cases) {
+  test(t => {
+    const element = document.createElement('div');
+    element.setAttribute('data-v', '3');
+    if (header !== null) element.style.setProperty('--header', header);
+    element.style.setProperty('--at-phase', 'before');
+    element.style.setProperty('--at-phase', source);
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(CSS.supports('--at-phase', source), valid, 'Parse-time validity');
+    assert_equals(element.style.getPropertyValue('--at-phase') === 'before', !valid,
+      'Only parse-time rejection preserves the earlier declaration');
+    assert_equals(getComputedStyle(element).getPropertyValue('--at-phase').trim(), expected);
+  }, 'attr header phase: ' + name);
+}
+</script>

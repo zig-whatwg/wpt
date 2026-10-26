@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr type syntax tokens and quoted syntax strings</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#syntax">
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row 122 Q16, integrator-probes-1025o/RULINGS.md (2026-10-25).
+// Token cases agree in Chrome/Firefox. Quoted forms follow Firefox and the
+// current draft; <url> exclusion follows Chrome and the attr() grammar.
+const cases = [
+  ['number tokens', '<number>', '3', '3'],
+  ['number quoted', '"<number>"', '3', '3'],
+  ['comments between type tokens', '</**/number/**/>', '3', '3'],
+  ['comments inside a syntax string', '"</**/number/**/>"', '3', null],
+  ['comment splitting a type name', '<num/**/ber>', '3', null],
+  ['whitespace inside angle brackets', '< number>', '3', null],
+  ['escaped type name', String.raw`<n\75 mber>`, '3', '3'],
+  ['list tokens', '<number>+', '3 4', '3 4'],
+  ['comment before a multiplier', '<number>/**/+', '3 4', '3 4'],
+  ['whitespace before a multiplier', '<number> +', '3 4', null],
+  ['list syntax string', '"<number>+"', '3 4', '3 4'],
+  ['comment inside a list syntax string', '"<number>/**/+"', '3 4', null],
+  ['comments around an alternative', '<number>/**/|/**/auto', 'auto', 'auto'],
+  ['comment splitting a literal identifier', 'au/**/to', 'auto', null],
+  ['universal token syntax', '*', 'one two', 'one two'],
+  ['universal syntax string', '"*"', 'one two', 'one two'],
+  ['url type excluded in token syntax', '<url>', 'url(data:,ok)', null],
+  ['url type excluded in a syntax string', '"<url>"', 'url(data:,ok)', null],
+  ['url alternative invalidates token syntax', '<url> | <number>', '3', null],
+  ['unused url alternative invalidates a syntax string', '"<number> | <url>"', '3', null]
+];
+
+for (const [name, syntax, attribute, expected] of cases) {
+  test(t => {
+    const element = document.createElement('div');
+    element.setAttribute('data-v', attribute);
+    const value = `attr(data-v type(${syntax}), fallback)`;
+    element.style.setProperty('--at-syntax', value);
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(CSS.supports('--at-syntax', value), expected !== null,
+      'Parse-time argument validity');
+    if (expected === null) {
+      assert_equals(element.style.getPropertyValue('--at-syntax'), '',
+        'Invalid syntax drops the declaration instead of selecting fallback');
+    } else {
+      assert_not_equals(element.style.getPropertyValue('--at-syntax'), '');
+      assert_equals(getComputedStyle(element).getPropertyValue('--at-syntax').trim(), expected);
+    }
+  }, 'attr type(): ' + name);
+}
+</script>

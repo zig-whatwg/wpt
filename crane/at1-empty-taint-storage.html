@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Empty attr() output does not taint a stored custom property</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-security">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q32: tmp/analysis/integrator-probes-1025t/RULINGS.md, 2026-10-25.
+// Chrome and Firefox preserve the URL in both cases. Unlike attr() output
+// containing tokens, an empty result carries no taint across var() storage.
+// Direct empty attr() inside src() is covered separately in at1-taint-boundaries.
+const image = 'url("data:,at1-empty-taint")';
+function fixture(t) {
+  const element = document.createElement('div');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  element.style.backgroundImage = image;
+  const expected = getComputedStyle(element).backgroundImage;
+  assert_not_equals(expected, 'none', 'The literal URL control must parse');
+  return {element, expected};
+}
+
+test(t => {
+  const {element, expected} = fixture(t);
+  element.style.backgroundImage = '';
+  element.style.backgroundImage = `${image} attr(data-missing,)`;
+  assert_not_equals(element.style.backgroundImage, '', 'The declaration must be accepted');
+  assert_equals(getComputedStyle(element).backgroundImage, expected);
+}, 'A direct empty attr() sibling leaves a literal URL valid');
+
+test(t => {
+  const {element, expected} = fixture(t);
+  element.style.setProperty('--image', `${image} attr(data-missing,)`);
+  element.style.backgroundImage = 'var(--image)';
+  const computed = getComputedStyle(element);
+  const stored = computed.getPropertyValue('--image').trim();
+  assert_not_equals(stored, '', 'The custom property must have a value');
+  assert_false(stored.includes('attr('), 'The empty attr() must be substituted');
+  assert_true(stored.startsWith('url('), 'The literal URL must survive storage');
+  assert_equals(computed.backgroundImage, expected);
+}, 'A stored URL beside empty attr() remains untainted when read through var()');
+</script>

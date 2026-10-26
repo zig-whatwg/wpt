@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr() uses each winning declaration's tree scope across exported parts</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#funcdef-attr">
+<link rel="help" href="https://drafts.csswg.org/css-shadow/#part">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+let sequence = 0;
+function fixture(t) {
+  const outer = document.createElement('div');
+  outer.id = `at1-outer-${++sequence}`;
+  const outerRoot = outer.attachShadow({mode:'open'});
+  outerRoot.innerHTML = `<style>
+    #middle::part(middle-name) { background-color:attr(data-color type(<color>), black); }
+  </style><div id="middle" exportparts="middle-name:outer-name, middle-name:alias"></div>`;
+  const middle = outerRoot.querySelector('#middle');
+  const middleRoot = middle.attachShadow({mode:'open'});
+  middleRoot.innerHTML = '<div id="inner" exportparts="leaf:middle-name"></div>';
+  const inner = middleRoot.querySelector('#inner');
+  const innerRoot = inner.attachShadow({mode:'open'});
+  innerRoot.innerHTML = `<style>
+    span { border-top-color:attr(data-color type(<color>), black); }
+    span::before { content:"before"; }
+  </style><span part="leaf"></span>`;
+  const leaf = innerRoot.querySelector('span');
+  const style = document.createElement('style');
+  style.textContent = `#${outer.id}::part(outer-name) { color:attr(data-color type(<color>), black); }
+    #${outer.id}::part(alias)::before { color:attr(data-color type(<color>), black); }`;
+  document.head.append(style);
+  document.body.append(outer);
+  t.add_cleanup(() => { outer.remove(); style.remove(); });
+  outer.setAttribute('data-color', 'red');
+  middle.setAttribute('data-color', 'green');
+  inner.setAttribute('data-color', 'yellow');
+  leaf.setAttribute('data-color', 'blue');
+  return {outer, middle, inner, leaf, style};
+}
+
+test(t => {
+  const f = fixture(t);
+  const computed = getComputedStyle(f.leaf);
+  assert_equals(computed.color, 'rgb(255, 0, 0)');
+  assert_equals(computed.backgroundColor, 'rgb(0, 128, 0)');
+  assert_equals(computed.borderTopColor, 'rgb(0, 0, 255)');
+}, 'One computed style reads three distinct origins selected by its declarations');
+
+test(t => {
+  const f = fixture(t);
+  assert_equals(getComputedStyle(f.leaf).color, 'rgb(255, 0, 0)');
+  f.outer.setAttribute('data-color', 'purple');
+  f.middle.setAttribute('data-color', 'orange');
+  f.leaf.setAttribute('data-color', 'cyan');
+  const computed = getComputedStyle(f.leaf);
+  assert_equals(computed.color, 'rgb(128, 0, 128)');
+  assert_equals(computed.backgroundColor, 'rgb(255, 165, 0)');
+  assert_equals(computed.borderTopColor, 'rgb(0, 255, 255)');
+}, 'Attribute mutations invalidate the corresponding origins across three shadow boundaries');
+
+test(t => {
+  const f = fixture(t);
+  assert_equals(getComputedStyle(f.leaf, '::before').color, 'rgb(255, 0, 0)');
+  f.outer.setAttribute('data-color', 'green');
+  assert_equals(getComputedStyle(f.leaf, '::before').color, 'rgb(0, 128, 0)');
+}, 'A sub-pseudo-element of a forwarded part reads the declaration-scope host');
+
+test(t => {
+  const f = fixture(t);
+  assert_equals(getComputedStyle(f.leaf).color, 'rgb(255, 0, 0)');
+  f.inner.setAttribute('exportparts', 'leaf:other');
+  assert_not_equals(getComputedStyle(f.leaf).color, 'rgb(255, 0, 0)');
+  f.inner.setAttribute('exportparts', 'leaf:middle-name');
+  assert_equals(getComputedStyle(f.leaf).color, 'rgb(255, 0, 0)');
+}, 'Changing an intermediate export map removes and restores the outer declaration');
+
+// Q25: identical expanded names on different resolved origins are not a cycle.
+// Swap lexical property names to pin resolution-order independence.
+for (const [outerName, innerName] of [['--a', '--z'], ['--z', '--a']]) {
+  test(t => {
+    const host = document.createElement('div');
+    host.id = `at1-cycle-origin-${++sequence}`;
+    const root = host.attachShadow({mode:'open'});
+    root.innerHTML = `<style>span { ${innerName}:attr(data-v type(*), inner); }</style><span part="leaf"></span>`;
+    const leaf = root.querySelector('span');
+    const style = document.createElement('style');
+    style.textContent = `#${host.id}::part(leaf) {
+      ${outerName}:attr(data-v type(*), outer);
+      --origin-raw:attr(data-v);
+    }`;
+    host.setAttribute('data-v', `var(${innerName})`);
+    leaf.setAttribute('data-v', '3');
+    document.head.append(style);
+    document.body.append(host);
+    t.add_cleanup(() => { host.remove(); style.remove(); });
+    const read = name => getComputedStyle(leaf).getPropertyValue(name).trim();
+    assert_equals(read('--origin-raw'), `"var(${innerName})"`, 'outer declaration reads host');
+    assert_equals(read(innerName), '3', 'inner declaration reads part');
+    assert_equals(read(outerName), '3', 'distinct owners do not form a cycle');
+    leaf.setAttribute('data-v', '5');
+    assert_equals(read(outerName), '5', 'both origins remain valid after mutation');
+  }, `Attribute cycle keys include the resolved origin: ${outerName} depends on ${innerName}`);
+}
+</script>

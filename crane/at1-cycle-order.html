@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr() cycle detection across custom-property computation</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-substitution">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Isolated from css/css-values/attr-cycle.html, subtest 27. Chrome and
+// Firefox pass this case (row 122 Q24, integrator-probes-1025q).
+test(t => {
+  const element = document.createElement('div');
+  element.setAttribute('data-foo', 'attr(data-bar, 11) var(--y, 3)');
+  element.setAttribute('data-bar', 'var(--y)');
+  element.style.setProperty('--y', 'attr(data-foo)');
+  element.style.setProperty('--x', 'attr(data-foo type(*))');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(getComputedStyle(element).getPropertyValue('--x'),
+    '"var(--y)" "attr(data-bar, 11) var(--y, 3)"');
+}, 'A raw attr() custom property can be computed while another property reads that attribute');
+</script>

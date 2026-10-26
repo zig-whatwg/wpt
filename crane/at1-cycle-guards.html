@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr() cycle guards cover successful reads and end before fallback</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-substitution">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row 122 Q24, integrator-probes-1025q/RULINGS.md (2026-10-25):
+// Chrome and Firefox guard every successful read, including raw and number.
+// They split on failed conversions and missing names; the spec decides:
+// release before fallback, and never guard a missing attribute.
+const cases = [
+  ['raw-string control', 'attr(data-b raw-string)', null, 'other', '"other"'],
+  ['omitted-type control', 'attr(data-b)', null, 'other', '"other"'],
+  ['number control', 'attr(data-a number, 7)', '5', null, '5'],
+  ['literal conversion fallback', 'attr(data-a number, fb)', 'word', null, 'fb'],
+  ['different-attribute fallback', 'attr(data-a number, attr(data-b))', 'word', 'other', '"other"'],
+  ['different missing attributes', 'attr(data-a, attr(data-b, inner))', null, null, 'inner'],
+  ['unused same-attribute fallback', 'attr(data-a, attr(data-a))', 'x', null, '"x"'],
+  ['raw text does not recurse', 'attr(data-a)', 'attr(data-a)', null, '"attr(data-a)"'],
+  ['guard covers nested bare read', 'attr(data-a type(*), outer)', 'attr(data-a)', null, 'outer'],
+  ['guard covers nested raw-string read', 'attr(data-a type(*), outer)', 'attr(data-a raw-string)', null, 'outer'],
+  ['guard covers nested number read', 'attr(data-a type(*), outer)', 'attr(data-a number, inner)', null, 'outer'],
+  ['guard covers nested unit read', 'attr(data-a type(*), outer)', 'attr(data-a px, inner)', null, 'outer'],
+  ['guard covers nested typed read', 'attr(data-a type(*), outer)', 'attr(data-a type(<number>), inner)', null, 'outer'],
+  ['number failure releases guard before raw fallback', 'attr(data-a number, attr(data-a raw-string))', 'word', null, '"word"'],
+  ['typed failure releases guard before raw fallback', 'attr(data-a type(<length>), attr(data-a raw-string))', 'word', null, '"word"'],
+  ['typed failure can read a different attribute', 'attr(data-a type(<length>), attr(data-b))', 'word', 'other', '"other"'],
+  ['missing typed read has omitted-type fallback', 'attr(data-a type(*), attr(data-a))', null, null, '""'],
+  ['missing typed read has explicit raw fallback', 'attr(data-a type(*), attr(data-a raw-string, inner))', null, null, 'inner'],
+  ['attribute-only cycle takes outer fallback', 'attr(data-a type(*), outer)', 'attr(data-a type(*), inner)', null, 'outer'],
+  ['property cycle stays invalid despite attr fallback', 'attr(data-a type(*), outer)', 'var(--at-cycle)', null, ''],
+  ['number failure releases guard before omitted-type fallback', 'attr(data-a number, attr(data-a))', 'word', null, '"word"'],
+  ['missing bare reads do not guard a name', 'attr(data-a, attr(data-a, inner))', null, null, 'inner'],
+  ['missing typed reads do not guard a name', 'attr(data-a type(*), attr(data-a type(*), inner))', null, null, 'inner'],
+  ['missing number reads do not guard a name', 'attr(data-a number, attr(data-a number, 3))', null, null, '3']
+];
+for (const [name, source, a, b, expected] of cases) {
+  test(t => {
+    const element = document.createElement('div');
+    if (a !== null) element.setAttribute('data-a', a);
+    if (b !== null) element.setAttribute('data-b', b);
+    element.style.setProperty('--at-cycle', source);
+    assert_not_equals(element.style.getPropertyValue('--at-cycle'), '', 'declaration accepted');
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(getComputedStyle(element).getPropertyValue('--at-cycle').trim(), expected);
+  }, name);
+}
+</script>

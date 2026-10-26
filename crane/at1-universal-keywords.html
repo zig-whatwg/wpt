@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr universal syntax preserves CSS-wide values</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#parse-with-a-syntax">
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-notation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The same keyword behavior as attr-css-wide-keywords.html, without a
+// registered-property prerequisite. A visible fallback detects a matcher
+// that rejects a keyword before the consuming property sees it.
+function fixture(t, attribute, property, fallback) {
+  const parent = document.createElement('div');
+  parent.style.color = 'blue';
+  parent.style.fontStyle = 'normal';
+  parent.style.setProperty('--at-universal', 'parent-token');
+  const element = document.createElement('em');
+  element.setAttribute('data-v', attribute);
+  const source = `attr(data-v type(*), ${fallback})`;
+  element.style.setProperty(property, source);
+  parent.append(element);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  assert_true(CSS.supports(property, source), 'Valid argument grammar');
+  assert_not_equals(element.style.getPropertyValue(property), '', 'Stored declaration');
+  return element;
+}
+
+for (const [keyword, property, fallback, expected] of [
+  ['inherit', 'font-style', 'italic', 'normal'],
+  ['revert', 'font-style', 'normal', 'italic'],
+  ['initial', 'color', 'red', 'rgb(0, 0, 0)'],
+  ['unset', 'color', 'red', 'rgb(0, 0, 255)']
+]) {
+  test(t => {
+    const element = fixture(t, keyword, property, fallback);
+    assert_equals(getComputedStyle(element).getPropertyValue(property), expected);
+  }, `type(*) passes ${keyword} to ${property} without taking fallback`);
+}
+
+for (const keyword of ['inherit', 'revert', 'initial', 'unset']) {
+  for (const chained of [false, true]) {
+    test(t => {
+      const value = chained ? `attr(data-missing, ${keyword})` : keyword;
+      const element = fixture(t, value, '--at-universal', 'wrong-fallback');
+      assert_equals(getComputedStyle(element).getPropertyValue('--at-universal').trim(),
+        keyword === 'initial' ? '' : 'parent-token');
+    }, `type(*) ${chained ? 'nested substitution' : 'literal value'} preserves ${keyword}`);
+  }
+}
+
+for (const attribute of ['', 'var(--absent,)']) {
+  test(t => {
+    const element = fixture(t, attribute, '--at-universal', 'wrong-fallback');
+    // Q2 / row 123 Q25 PART 2: a valid empty custom value serializes as
+    // one space (CSS Variables 1 §4.1), unlike the guaranteed-invalid value.
+    assert_equals(getComputedStyle(element).getPropertyValue('--at-universal'), ' ');
+  }, `type(*) accepts an empty result from ${JSON.stringify(attribute)}`);
+}
+</script>

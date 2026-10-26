@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr() taint follows URL components and selected substitutions</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-security">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const literalURL = '"data:,at1-taint"';
+function fixture(t) {
+  const element = document.createElement('div');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  element.setAttribute('data-color', 'red');
+  element.setAttribute('data-type', 'image/png');
+  return element;
+}
+function background(element, text) {
+  element.style.backgroundImage = '';
+  element.style.backgroundImage = text;
+  return getComputedStyle(element).backgroundImage;
+}
+function literalControl(element, text) {
+  const value = background(element, text);
+  assert_not_equals(value, 'none', `Literal image control must parse: ${text}`);
+  return value;
+}
+function requireSubstitution(element, text) {
+  // A declaration rejected because attr()/var() is absent must not look
+  // like successful enforcement of the URL taint rule.
+  element.style.setProperty('--substitution-probe', text);
+  const value = getComputedStyle(element).getPropertyValue('--substitution-probe').trim();
+  assert_not_equals(value, '', 'The custom property must substitute successfully');
+  assert_false(value.includes('attr('), 'No unresolved attr() may remain');
+  assert_false(value.includes('var('), 'No unresolved var() may remain');
+}
+
+test(t => {
+  const element = fixture(t);
+  const expected = literalControl(element, `image(${literalURL}, red)`);
+  assert_equals(background(element,
+    `image(${literalURL}, attr(data-color type(<color>)))`), expected);
+}, 'A direct image() fallback color does not taint its sibling literal URL');
+
+test(t => {
+  const element = fixture(t);
+  literalControl(element, `image(${literalURL}, red)`);
+  element.style.setProperty('--image',
+    `image(${literalURL}, attr(data-color type(<color>)))`);
+  requireSubstitution(element, 'var(--image)');
+  assert_equals(background(element, 'var(--image)'), 'none');
+}, 'Passing the same image() through var() taints the whole substitution');
+
+test(t => {
+  const element = fixture(t);
+  const expected = literalControl(element, `image-set(url(${literalURL}) type("image/png"))`);
+  assert_equals(background(element,
+    `image-set(url(${literalURL}) type(attr(data-type)))`), expected);
+}, 'A direct image-set() type string does not taint its sibling URL');
+
+test(t => {
+  const element = fixture(t);
+  literalControl(element, `image-set(url(${literalURL}) type("image/png"))`);
+  element.style.setProperty('--image',
+    `image-set(url(${literalURL}) type(attr(data-type)))`);
+  requireSubstitution(element, 'var(--image)');
+  assert_equals(background(element, 'var(--image)'), 'none');
+}, 'Passing a tainted image-set() type through var() also taints its URL');
+
+test(t => {
+  const element = fixture(t);
+  literalControl(element, `url(${literalURL})`);
+  requireSubstitution(element, `attr(data-missing type(<image>), url(${literalURL}))`);
+  assert_equals(background(element,
+    `attr(data-missing type(<image>), url(${literalURL}))`), 'none');
+}, 'A literal URL selected as an attr() fallback is still tainted');
+
+test(t => {
+  const element = fixture(t);
+  literalControl(element, `src(${literalURL})`);
+  requireSubstitution(element, `src(${literalURL} attr(data-missing,))`);
+  assert_equals(background(element,
+    `src(${literalURL} attr(data-missing,))`), 'none');
+}, 'An empty attr() substitution still taints the containing URL function');
+
+test(t => {
+  const element = fixture(t);
+  const expected = literalControl(element, `image(${literalURL}, red)`);
+  assert_equals(background(element,
+    `image(${literalURL}, attr(data-missing type(<color>), red))`), expected);
+}, 'A fallback color from attr() does not taint a sibling literal URL');
+
+test(t => {
+  const element = fixture(t);
+  const expected = literalControl(element, `url(${literalURL})`);
+  element.style.setProperty('--literal', `url(${literalURL})`);
+  assert_equals(background(element,
+    'var(--literal, attr(data-missing))'), expected);
+}, 'An unused var() fallback does not contribute attr() taint');
+</script>

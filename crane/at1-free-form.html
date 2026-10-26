@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr free-form argument boundaries</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#component-function-commas">
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-notation">
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#early-resolution">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row 122 Q30/Q31 final ruling (2026-10-25):
+// tmp/analysis/integrator-probes-1025r/RULINGS.md.
+// Values 5's syntactic wrappers and strict attr() fallback apply here.
+// Compat cost: attr(x, Arial, sans-serif) works in Chrome and Firefox but
+// is invalid here; authors write attr(x, {Arial, sans-serif}). Revisit when
+// an engine records a decline, a standards position objects, or WPT tests it.
+const cases = [
+  ['literal control', 'attr(data-v number, fallback)', true, '3'],
+  ['wrapped raw header without fallback', 'attr({data-v})', true, '"3"'],
+  ['wrapped numeric header', 'attr({data-v number}, fallback)', true, '3'],
+  ['wrapped substituted header', 'attr({var(--header)}, fallback)', true, '3'],
+  ['whitespace around wrappers', 'attr( {data-v number} , {fallback} )', true, '3'],
+  ['wrapped comma fallback', 'attr(data-missing, {one, two})', true, 'one, two'],
+  ['wrapped plain fallback', 'attr(data-missing, {one})', true, 'one'],
+  ['wrapped empty fallback', 'attr(data-missing, {})', true, ''],
+  ['substituted comma stays in fallback', 'attr(data-missing, var(--fallback))', true, 'one, two'],
+  ['substituted comma stays in wrapped fallback', 'attr(data-missing, {var(--fallback)})', true, 'one, two'],
+  ['nested ordinary function keeps its comma', 'attr(data-missing, unknown(one, two))', true, 'unknown(one, two)'],
+  ['wrapped empty header', 'attr({}, fallback)', false, 'before'],
+  ['used unwrapped comma fallback', 'attr(data-missing, one, two)', false, 'before'],
+  ['unused unwrapped comma fallback', 'attr(data-v, one, two)', false, 'before'],
+  ['third empty argument', 'attr(data-missing, one,)', false, 'before'],
+  ['non-leading header block', 'attr(data-v {}, fallback)', false, 'before'],
+  ['mixed wrapped header', 'attr({data-v} number, fallback)', false, 'before'],
+  ['two fallback blocks', 'attr(data-missing, {one} {two})', false, 'before'],
+  ['non-leading fallback block', 'attr(data-missing, one {})', false, 'before'],
+  ['semicolon in wrapped header', 'attr({data-v; number}, fallback)', false, 'before'],
+  ['semicolon in wrapped fallback', 'attr(data-missing, {one; two})', false, 'before'],
+  ['bang in wrapped fallback', 'attr(data-missing, {one ! two})', false, 'before'],
+  ['unused invalid wrapped fallback', 'attr(data-v, {one ! two})', false, 'before'],
+  ['early comma makes a third argument at computed time', 'attr(data-missing, ...var(--fallback))', true, ''],
+  ['one wrapper preserves an inner block as data', 'attr(data-missing, {{one, two}})', true, '{one, two}']
+];
+
+for (const [name, source, valid, expected] of cases) {
+  test(t => {
+    const element = document.createElement('div');
+    element.setAttribute('data-v', '3');
+    element.style.setProperty('--header', 'data-v number');
+    element.style.setProperty('--fallback', 'one, two');
+    element.style.setProperty('--at-free-form', 'before');
+    element.style.setProperty('--at-free-form', source);
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(CSS.supports('--at-free-form', source), valid, 'Parse-time validity');
+    assert_equals(element.style.getPropertyValue('--at-free-form') === 'before', !valid,
+      'Only parse-time rejection preserves the earlier declaration');
+    assert_equals(getComputedStyle(element).getPropertyValue('--at-free-form').trim(), expected);
+  }, 'attr free-form: ' + name);
+}
+</script>

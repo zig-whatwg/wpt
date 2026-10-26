@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr() URL taint keeps original offsets across background layers</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-security">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const safeURL = 'url("data:,at1-offset-safe-with-a-long-prefix")';
+const gradient = 'linear-gradient(red, blue)';
+const dynamicGradient = 'linear-gradient(attr(data-color type(<color>)), blue)';
+function fixture(t) {
+  const element = document.createElement('div');
+  element.setAttribute('data-color', 'red');
+  element.setAttribute('data-url', 'data:,at1-offset-dynamic');
+  element.setAttribute('data-image', 'url("data:,at1-offset-dynamic")');
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+function read(element, text) {
+  element.style.backgroundImage = '';
+  element.style.backgroundImage = text;
+  return getComputedStyle(element).backgroundImage;
+}
+function control(element, text) {
+  const value = read(element, text);
+  assert_not_equals(value, 'none', 'Literal image layers must parse');
+  return value;
+}
+function substituted(element, text) {
+  element.style.setProperty('--at-offset-probe', text);
+  const value = getComputedStyle(element).getPropertyValue('--at-offset-probe').trim();
+  assert_not_equals(value, '', 'Substitution succeeds before URL enforcement');
+  assert_false(value.includes('attr('), 'No unresolved attr()');
+  assert_false(value.includes('var('), 'No unresolved var()');
+}
+for (const urlFirst of [false, true]) {
+  test(t => {
+    const element = fixture(t);
+    const join = color => urlFirst ? `${safeURL}, ${color}` : `${color}, ${safeURL}`;
+    const expected = control(element, join(gradient));
+    assert_equals(read(element, join(dynamicGradient)), expected);
+  }, `A tainted gradient leaves the ${urlFirst ? 'preceding' : 'following'} URL layer untainted`);
+}
+for (const urlFirst of [false, true]) {
+  test(t => {
+    const element = fixture(t);
+    const join = image => urlFirst ? `${image}, ${safeURL}` : `${safeURL}, ${image}`;
+    control(element, join('image-set("data:,at1-offset-dynamic" 1x)'));
+    const source = join('image-set(attr(data-url) 1x)');
+    substituted(element, source);
+    assert_equals(read(element, source), 'none');
+  }, `A tainted image-set string invalidates the ${urlFirst ? 'first' : 'second'} background layer`);
+}
+test(t => {
+  const element = fixture(t);
+  control(element, `${gradient}, ${safeURL}`);
+  element.style.setProperty('--at-offset-image', `${dynamicGradient}, ${safeURL}`);
+  substituted(element, 'var(--at-offset-image)');
+  assert_equals(read(element, 'var(--at-offset-image)'), 'none');
+}, 'Whole-result var() taint reaches a URL after a non-URL function');
+test(t => {
+  const element = fixture(t);
+  control(element, `${safeURL}, url("data:,at1-offset-dynamic")`);
+  const source = `${safeURL}, attr(data-image type(<image>))`;
+  substituted(element, source);
+  assert_equals(read(element, source), 'none');
+}, 'A typed image returned by attr() retains taint after another serialized URL');
+</script>

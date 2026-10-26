@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Namespace rule token parsing and CSSOM serialization</title>
+<link rel="help" href="https://drafts.csswg.org/css-namespaces-3/#syntax">
+<link rel="help" href="https://drafts.csswg.org/cssom/#serialize-a-css-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function sheetFor(t, text) {
+  const style = document.createElement('style');
+  style.textContent = text;
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  return style.sheet;
+}
+
+for (const [source, prefix, uri] of [
+  ['n\\73 "urn:x"', 'ns', 'urn:x'],
+  ['n/**/"urn:x"', 'n', 'urn:x'],
+  ['n"urn:x"', 'n', 'urn:x'],
+  ['/*before*/ n "urn:x" /*after*/', 'n', 'urn:x'],
+  ['n url(relative/path)', 'n', 'relative/path'],
+  ['n URL( "a\\62 c" )', 'n', 'abc'],
+  ['n url(a\\20 b)', 'n', 'a b'],
+  ['Ns u\\72 l(urn:x)', 'Ns', 'urn:x'],
+  ['inherit "urn:x"', 'inherit', 'urn:x'],
+  ['n ""', 'n', ''],
+  ['url(urn:x)', '', 'urn:x'],
+  ['"urn:x"', '', 'urn:x']
+]) {
+  test(t => {
+    const sheet = sheetFor(t, `@namespace ${source};`);
+    assert_equals(sheet.cssRules.length, 1);
+    assert_equals(sheet.cssRules[0].prefix, prefix);
+    assert_equals(sheet.cssRules[0].namespaceURI, uri);
+  }, `@namespace accepts and decodes ${JSON.stringify(source)}`);
+}
+
+for (const source of ['n "urn:x', 'n url(urn:x', 'n url("urn:x"']) {
+  test(t => {
+    const sheet = sheetFor(t, `@namespace ${source}`);
+    assert_equals(sheet.cssRules.length, 1);
+    assert_equals(sheet.cssRules[0].prefix, 'n');
+    assert_equals(sheet.cssRules[0].namespaceURI, 'urn:x');
+  }, `@namespace accepts CSS Syntax EOF recovery for ${JSON.stringify(source)}`);
+}
+
+for (const source of [
+  '1n "x"', '* "x"', 'n n "x"', 'n', 'n url(x) trailing',
+  'n url("x") trailing', 'n url("x" invalid)', 'n url(x y)',
+  'n "x" "y"', 'n "bad\nstring"', 'n url(x))', 'n 123'
+]) {
+  test(t => {
+    assert_equals(sheetFor(t, `@namespace ${source};`).cssRules.length, 0);
+  }, `@namespace rejects ${JSON.stringify(source)}`);
+}
+
+test(t => {
+  const rule = sheetFor(t, '@namespace \\31 prefix "a\\22 b";').cssRules[0];
+  assert_equals(rule.prefix, '1prefix');
+  assert_equals(rule.namespaceURI, 'a"b');
+  assert_equals(rule.cssText, '@namespace \\31 prefix url("a\\"b");');
+  const again = sheetFor(t, rule.cssText).cssRules[0];
+  assert_equals(again.prefix, rule.prefix);
+  assert_equals(again.namespaceURI, rule.namespaceURI);
+}, 'Namespace CSSOM serialization escapes decoded values and round-trips');
+</script>

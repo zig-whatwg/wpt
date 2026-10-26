@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr taint through if conditions without unsupported-function skips</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-security">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@property --some-string {
+  syntax: "<string>";
+  inherits: false;
+  initial-value: "empty";
+}
+.target {
+  --condition-val: 3;
+  --true: true;
+  --some-string: attr(data-foo);
+}
+</style>
+<body>
+<script>
+const url = "https://does-not-exist.test/404.png";
+function check(t, value, attribute, expected) {
+  const element = document.createElement("div");
+  element.className = "target";
+  element.setAttribute("data-foo", attribute);
+  document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  assert_true(CSS.supports("background-image", value), "The authored function grammar is supported");
+  element.style.setProperty("--unregistered", value);
+  const computed = getComputedStyle(element).getPropertyValue("--unregistered");
+  assert_not_equals(computed, "", "The substitution has a computed value");
+  assert_true(CSS.supports("background-image", computed), "The upstream test's support guard must run its assertion");
+  element.style.backgroundImage = value;
+  assert_equals(getComputedStyle(element).backgroundImage, expected);
+}
+test(t => {
+  check(t, `image-set(if(style(--some-string): url(${url});))`, url, "none");
+}, "attr-security-if line 66: a registered string condition carries taint into image-set");
+test(t => {
+  check(t, `image-set(if(style(--condition-val: attr(data-foo type(*))): url(${url}); style(--true): url(${url}); else: url(${url});))`, "1", "none");
+}, "attr-security-if line 76: a false tainted condition taints the selected later branch");
+test(t => {
+  check(t, `image-set(if(style(--true): url(${url}); else: attr(data-foo);))`, url,
+        `image-set(url("${url}") 1dppx)`);
+}, "An untainted selected if branch remains a usable image URL");
+</script>

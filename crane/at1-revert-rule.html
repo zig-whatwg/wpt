@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr() fallback rule rollback with and without nesting</title>
+<link rel="help" href="https://drafts.csswg.org/css-cascade-5/#revert-rule-keyword">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const nested of [false, true]) {
+  for (const value of ['revert-rule', 'attr(data-missing, revert-rule)']) {
+    test(t => {
+      const element = document.createElement('div');
+      element.id = 'at1-revert-target';
+      const style = document.createElement('style');
+      const rules = `#at1-revert-target { color: green; }
+        #at1-revert-target { color: red; color: ${value}; }`;
+      style.textContent = nested ? `:root { ${rules} }` : rules;
+      document.head.append(style);
+      document.body.append(element);
+      t.add_cleanup(() => { element.remove(); style.remove(); });
+      assert_true(CSS.supports('color', value));
+      assert_equals(getComputedStyle(element).color, 'rgb(0, 128, 0)');
+    }, `${nested ? 'Nested' : 'Top-level'} rule rollback using ${value}`);
+  }
+}
+</script>

@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Registered property taint controls</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-security">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@property --registered-url { syntax: "<url>"; inherits: false; initial-value: url("https://example.test/initial.png"); }
+@property --registered-string { syntax: "<string>"; inherits: false; initial-value: "initial"; }
+@property --registered-length { syntax: "<length>"; inherits: false; initial-value: 0px; }
+</style>
+<div id="target" data-url="https://example.test/private.png" data-length="12"></div>
+<script>
+const target = document.getElementById("target");
+function check(text, property, expected) {
+  target.style.cssText = text;
+  assert_equals(getComputedStyle(target).getPropertyValue(property), expected);
+  target.removeAttribute("style");
+}
+test(() => {
+  check('--image: url("https://example.test/private.png"); --name: --image; --registered-url: var(var(--name));',
+        '--registered-url', 'url("https://example.test/private.png")');
+}, "An untainted substituted name preserves a registered URL");
+test(() => {
+  check('--registered-url: url("https://example.test/private.png");',
+        '--registered-url', 'url("https://example.test/private.png")');
+}, "An untainted literal registered URL stays valid");
+test(() => {
+  check('--registered-string: attr(data-url);',
+        '--registered-string', '"https://example.test/private.png"');
+}, "A tainted registered string remains a string");
+test(() => {
+  check('--registered-length: attr(data-length px);', '--registered-length', '12px');
+}, "A tainted registered length remains valid");
+</script>

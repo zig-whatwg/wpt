@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Registered URL grammar receives attr taint from a substituted var name</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-security">
+<link rel="help" href="https://drafts.css-houdini.org/css-properties-values-api-1/#calculation-of-computed-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@property --registered-url {
+  syntax: "<url>";
+  inherits: false;
+  initial-value: url("https://example.test/initial.png");
+}
+</style>
+<div id="target" data-image-name="--image"></div>
+<script>
+test(() => {
+  const target = document.getElementById("target");
+  target.style.cssText = '--image: url("https://example.test/private.png"); --registered-url: var(attr(data-image-name type(*)));';
+  assert_equals(getComputedStyle(target).getPropertyValue("--registered-url"),
+                'url("https://example.test/initial.png")');
+}, "A tainted var name makes a registered URL invalid at computed-value time");
+</script>

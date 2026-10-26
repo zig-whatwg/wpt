@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>attr() stylesheet namespaces and expanded attribute identities</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-notations">
+<link rel="help" href="https://drafts.csswg.org/css-namespaces-3/#declaration">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+let nextId = 0;
+function fixture(t, namespaces, declarations, svg = false) {
+  const element = svg
+    ? document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    : document.createElement('div');
+  element.id = `attr-namespace-${++nextId}`;
+  const style = document.createElement('style');
+  style.textContent = `${namespaces} *|*#${element.id} { ${declarations} }`;
+  document.head.append(style);
+  document.body.append(element);
+  t.add_cleanup(() => { element.remove(); style.remove(); });
+  return {element, style, read: name => getComputedStyle(element).getPropertyValue(name).trim()};
+}
+
+test(t => {
+  const f = fixture(t, '@namespace css "urn:attribute";', '--result: attr(css|value number, fallback)');
+  f.element.setAttributeNS('urn:attribute', 'markup:value', '14');
+  assert_equals(f.read('--result'), '14');
+}, 'Stylesheet prefixes select an expanded name independently of markup prefixes');
+
+test(t => {
+  const f = fixture(t, '@namespace n\\73 "urn:attribute";', '--result: attr(ns|value number, fallback)');
+  f.element.setAttributeNS('urn:attribute', 'markup:value', '14');
+  assert_equals(f.style.sheet.cssRules[0].prefix, 'ns');
+  assert_equals(f.read('--result'), '14');
+}, 'Escaped namespace prefixes are decoded before matching attr() names');
+
+test(t => {
+  const f = fixture(t, '@namespace n "urn:old"; @namespace n "urn:new";', '--result: attr(n|value number, fallback)');
+  f.element.setAttributeNS('urn:old', 'a:value', '12');
+  f.element.setAttributeNS('urn:new', 'b:value', '34');
+  assert_equals(f.read('--result'), '34');
+}, 'The last declaration of a namespace prefix wins');
+
+test(t => {
+  const f = fixture(t, '@namespace N "urn:attribute";', '--result: attr(n|value number, fallback)');
+  f.element.setAttributeNS('urn:attribute', 'n:value', '14');
+  assert_equals(f.read('--result'), 'fallback');
+}, 'Namespace prefixes are case-sensitive');
+
+test(t => {
+  const f = fixture(t, '@namespace "urn:attribute"; @namespace empty "";', '--a: attr(value); --b: attr(|value); --c: attr(empty|value);');
+  f.element.setAttribute('value', 'plain');
+  f.element.setAttributeNS('urn:attribute', 'n:value', 'namespaced');
+  for (const name of ['--a', '--b', '--c']) assert_equals(f.read(name), '"plain"');
+}, 'Default namespaces do not affect attributes, and an empty URI is the null namespace');
+
+test(t => {
+  const f = fixture(t, '@namespace n url(relative/path);', '--result: attr(n|value number, fallback)');
+  f.element.setAttributeNS('relative/path', 'n:value', '14');
+  assert_equals(f.style.sheet.cssRules[0].namespaceURI, 'relative/path');
+  assert_equals(f.read('--result'), '14');
+}, 'Namespace URI strings are not resolved against the stylesheet URL');
+
+test(t => {
+  const f = fixture(t, '@namespace n "urn:first";', '--result: attr(n|value number, fallback)');
+  const other = document.createElement('style');
+  other.textContent = '@namespace n "urn:other";';
+  document.head.append(other);
+  t.add_cleanup(() => other.remove());
+  f.element.setAttributeNS('urn:first', 'a:value', '14');
+  f.element.setAttributeNS('urn:other', 'b:value', '99');
+  assert_equals(f.read('--result'), '14');
+}, 'Namespace declarations in another stylesheet do not replace this sheet bindings');
+
+test(t => {
+  const f = fixture(t, '@namespace a "urn:attribute"; @namespace b "urn:attribute";', '--result: attr(a|value type(*), outer)');
+  f.element.setAttributeNS('urn:attribute', 'n:value', 'attr(b|value type(*), inner)');
+  assert_equals(f.read('--result'), 'outer');
+}, 'Attribute cycle detection uses expanded names across namespace prefix aliases');
+
+test(t => {
+  const f = fixture(t, '', '--result: attr(data-value type(*), outer)');
+  f.element.setAttribute('data-value', 'attr(DATA-VALUE type(*), inner)');
+  assert_equals(f.read('--result'), 'outer');
+}, 'HTML case aliases share one attribute substitution context');
+
+test(t => {
+  const f = fixture(t, '@namespace n "urn:attribute";', '--a: attr(n|Value); --b: attr(n|value, fallback)', true);
+  f.element.setAttributeNS('urn:attribute', 'n:Value', 'mixed');
+  assert_equals(f.read('--a'), '"mixed"');
+  assert_equals(f.read('--b'), 'fallback');
+}, 'SVG attribute local names remain case-sensitive');
+
+for (const method of ['setProperty', 'cssText', 'insertRule', 'nested insertRule']) {
+  test(t => {
+    const f = fixture(t, '@namespace n "urn:edit";', '');
+    f.element.setAttributeNS('urn:edit', 'markup:value', '23');
+    const declaration = '--result: attr(n|value number, fallback)';
+    const sheet = f.style.sheet;
+    if (method === 'setProperty') {
+      sheet.cssRules[1].style.setProperty('--result', 'attr(n|value number, fallback)');
+    } else if (method === 'cssText') {
+      sheet.cssRules[1].style.cssText = declaration;
+    } else if (method === 'insertRule') {
+      sheet.insertRule(`#${f.element.id} { ${declaration} }`, sheet.cssRules.length);
+    } else {
+      const index = sheet.insertRule('@media all {}', sheet.cssRules.length);
+      sheet.cssRules[index].insertRule(`#${f.element.id} { ${declaration} }`, 0);
+    }
+    assert_equals(f.read('--result'), '23');
+  }, `CSSOM ${method} captures the containing sheet namespace map`);
+}
+
+test(t => {
+  const f = fixture(t, '', '');
+  f.element.setAttributeNS('urn:first', 'a:value', '17');
+  f.element.setAttributeNS('urn:second', 'b:value', '29');
+  const sheet = new CSSStyleSheet();
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  t.add_cleanup(() => {
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet);
+  });
+  const body = `#${f.element.id} { --result: attr(n|value number, missing) }`;
+  sheet.replaceSync(`@namespace n "urn:first"; ${body}`);
+  assert_equals(f.read('--result'), '17');
+  sheet.replaceSync(`@namespace n "urn:second"; ${body}`);
+  assert_equals(f.read('--result'), '29');
+  sheet.replaceSync(body);
+  assert_equals(f.read('--result'), 'missing');
+}, 'replaceSync rebuilds namespace bindings and drops every old prefix');
+
+promise_test(async t => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@namespace n "urn:old"; div { --result: attr(n|value number, fallback) }');
+  const oldRule = sheet.cssRules[1];
+  const specified = oldRule.style.getPropertyValue('--result');
+  sheet.replaceSync('@namespace n "urn:new"; div { --result: 42 }');
+  if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  assert_equals(oldRule.parentStyleSheet, null);
+  assert_equals(oldRule.style.getPropertyValue('--result'), specified);
+  assert_equals(sheet.cssRules[1].style.getPropertyValue('--result'), '42');
+}, 'A retained old rule keeps its pending declaration after sheet replacement and GC');
+
+test(t => {
+  const f = fixture(t, '@namespace n "urn:source";', '--source: attr(n|value number, missing)');
+  const other = document.createElement('style');
+  other.textContent = `@namespace n "urn:consumer"; #${f.element.id} {
+    --result:var(--source); --direct:attr(n|value number, missing);
+    --fallback:var(--missing, attr(n|value number, missing));
+  }`;
+  document.head.append(other);
+  t.add_cleanup(() => other.remove());
+  f.element.setAttributeNS('urn:source', 'a:value', '14');
+  f.element.setAttributeNS('urn:consumer', 'b:value', '99');
+  assert_equals(f.read('--result'), '14');
+  assert_equals(f.read('--direct'), '99');
+  assert_equals(f.read('--fallback'), '99');
+}, 'A custom property and its consumer keep distinct declaration namespace maps');
+
+test(t => {
+  const f = fixture(t, '@namespace n "urn:source";', '--source: attr(n|value number, missing)');
+  f.element.setAttributeNS('urn:source', 'a:value', '14');
+  const child = document.createElement('span');
+  child.setAttributeNS('urn:source', 'a:value', '99');
+  child.style.setProperty('--result', 'var(--source)');
+  f.element.append(child);
+  assert_equals(getComputedStyle(child).getPropertyValue('--result').trim(), '14');
+}, 'Inherited custom properties retain the parent attribute result');
+</script>

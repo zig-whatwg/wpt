@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed attr() primitive conversion and lazy fallbacks</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-5/#attr-notations">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+function readAttribute(type, value, fallback = 'fallback', name = 'data-value') {
+  target.style.cssText = '';
+  if (value === null) target.removeAttribute('data-value');
+  else target.setAttribute('data-value', value);
+  const tail = fallback === null ? '' : ',' + fallback;
+  target.style.setProperty('--result', `attr(${name} ${type}${tail})`);
+  return getComputedStyle(target).getPropertyValue('--result').trim();
+}
+
+for (const type of ['', 'raw-string', 'RAW-STRING']) {
+  test(() => {
+    assert_equals(readAttribute(type, '  var(--x) /* literal */  '),
+                  '"  var(--x) /* literal */  "');
+  }, `attr() ${type || 'omitted type'} preserves literal CSS-looking text`);
+}
+test(() => assert_equals(readAttribute('', ''), '""'),
+     'An existing empty attribute is a successful string conversion');
+test(() => assert_equals(readAttribute('', null, null), '""'),
+     'Missing attribute with omitted type and fallback produces an empty CSS string');
+test(() => assert_equals(readAttribute('raw-string', null, null), ''),
+     'Explicit raw-string with missing attribute and no fallback is invalid');
+test(() => assert_equals(readAttribute('', null, ''), ''),
+     'An explicit empty fallback differs from an omitted fallback');
+test(() => assert_equals(readAttribute('', 'literal', 'fallback', '|data-value'), '"literal"'),
+     'Explicit null namespace reads an unnamespaced attribute');
+test(() => assert_equals(readAttribute('', 'literal', 'fallback', 'DATA-VALUE'), '"literal"'),
+     'Attribute lookup on an HTML element is ASCII case-insensitive');
+
+for (const [type, input, expected] of [
+  ['NUMBER', ' \t+12.50\r\n', '12.5'],
+  ['number', '/**/12/**/', '12'],
+  ['PX', '1e2', '100px'],
+  ['%', '-.5', '-0.5%'],
+  ['ms', '0', '0ms'],
+  ['number', '-0', '0'],
+  ['number', '12 34', 'fallback'],
+  ['px', '12/**/34', 'fallback'],
+  ['number', '12px', 'fallback'],
+  ['px', 'calc(2)', 'fallback'],
+  ['number', 'var(--x)', 'fallback'],
+  ['dpi', '12', 'fallback'],
+  ['x', '12', 'fallback'],
+  ['future-unit', '12', 'fallback']
+]) {
+  test(() => assert_equals(readAttribute(type, input), expected),
+       `attr() ${type} converts ${JSON.stringify(input)} to ${expected}`);
+}
+
+for (const type of ['number', 'px']) {
+  test(() => {
+    const value = readAttribute(type, '1e999');
+    assert_not_equals(value, 'fallback');
+    assert_true(Number.isFinite(parseFloat(value)));
+    assert_greater_than(parseFloat(value), 1e30);
+  }, `attr() ${type} clamps finite numeric overflow`);
+}
+
+test(() => {
+  target.setAttribute('data-value', '7');
+  target.style.cssText = '--result: attr(data-value number, var(--result))';
+  assert_equals(getComputedStyle(target).getPropertyValue('--result').trim(), '7');
+}, 'A successful conversion leaves a cyclic fallback unevaluated');
+
+test(() => {
+  target.setAttribute('data-value', '7');
+  target.style.cssText = '--header: data-value number; --result: attr(var(--header))';
+  assert_equals(getComputedStyle(target).getPropertyValue('--result').trim(), '7');
+}, 'attr() substitutes its first argument before parsing the name and type');
+
+test(() => {
+  target.setAttribute('data-value', 'var(--nested)');
+  target.style.cssText = '--nested: 9; --result: attr(data-value type(<number>), fallback)';
+  assert_equals(getComputedStyle(target).getPropertyValue('--result').trim(), '9');
+}, 'type(<number>) invokes shared substitution on attribute contents');
+
+test(() => {
+  target.setAttribute('data-value', 'attr(data-value type(*))');
+  target.style.cssText = '--result: attr(data-value type(*), 11px)';
+  assert_equals(getComputedStyle(target).getPropertyValue('--result').trim(), '11px');
+}, 'An attribute cycle selects the outer fallback');
+</script>
