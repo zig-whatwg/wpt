@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image resolution EOF grammar and declaration preservation</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#the-image-resolution">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#resolution">
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-function">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// DRAFT / UNRUN. Supplement only; Q147 native7/Crane48 remains byte-identical.
+function target(t) {
+  assert_true(CSS.supports("image-resolution", "1dppx"), "supported-property control");
+  const element = document.createElement("div");
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+for (const [input, specified, computed] of [
+  ["calc(96dpi", "calc(1dppx)", "1dppx"],
+  ["4800dpcm", "4800dpcm", "127dppx"],
+]) test(t => {
+  const element = target(t);
+  element.style.setProperty("image-resolution", input);
+  assert_equals(element.style.getPropertyValue("image-resolution"), specified);
+  assert_equals(getComputedStyle(element).getPropertyValue("image-resolution"), computed);
+}, `image-resolution EOF or unit ${input}`);
+for (const input of ["calc(", "calc(1dppx +", "calc(1dppx]", "1dppx)", "1dppx extra", "from-image snap 2dppx", "2dppx snap from-image"]) {
+  test(t => {
+    const element = target(t);
+    element.style.setProperty("image-resolution", "2dppx", "important");
+    assert_false(CSS.supports("image-resolution", input));
+    element.style.setProperty("image-resolution", input);
+    assert_equals(element.style.getPropertyValue("image-resolution"), "2dppx");
+    assert_equals(element.style.getPropertyPriority("image-resolution"), "important");
+  }, `image-resolution malformed preserves declaration ${input}`);
+}
+</script>

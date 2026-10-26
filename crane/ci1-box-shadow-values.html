@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Q172 PART2: Backgrounds3 longhand only; Borders4 materials quarantined.
+Browser evidence: main/tmp/analysis/integrator-probes-1024c/ (q172 C/F/S). -->
+
+<title>Box shadow value recognition, grouped grammar and CSSOM ownership</title>
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#box-shadow">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#calc-range">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<!-- Q170 scratch draft: UNRUN; do not install before actual-parent RED. -->
+<script>
+'use strict';
+const valid = [
+  ['none', 'none'],
+  ['0 0', '0px 0px'],
+  ['1px -2px', '1px -2px'],
+  ['inset red 1px -2px', 'red 1px -2px inset'],
+  ['red inset 1px -2px', 'red 1px -2px inset'],
+  ['1px -2px inset red', 'red 1px -2px inset'],
+  ['1px -2px red inset', 'red 1px -2px inset'],
+  ['inset 1px -2px red', 'red 1px -2px inset'],
+  ['red 1px -2px inset', 'red 1px -2px inset'],
+  ['inset red 1px -2px 0 -4px', 'red 1px -2px 0px -4px inset'],
+  ['red 1px 2px, inset 3px 4px blue', 'red 1px 2px, blue 3px 4px inset'],
+  ['1px 2px calc(-3px)', '1px 2px calc(-3px)'],
+  ['1px 2px calc(1em - 3px)', '1px 2px calc(1em - 3px)'],
+  ['1px 2px rgb(255, 0, 0', 'rgb(255, 0, 0) 1px 2px'],
+  ['1px 2px calc(3px', '1px 2px calc(3px)'],
+];
+for (const [input, expected] of valid) test(() => {
+  const s = document.createElement('div').style;
+  assert_true(CSS.supports('box-shadow', input), 'grammar recognized');
+  s.setProperty('box-shadow', input);
+  assert_equals(s.getPropertyValue('box-shadow'), expected);
+  assert_equals(s.boxShadow, expected);
+  assert_equals(s.length, 1);
+  assert_equals(s.item(0), 'box-shadow');
+  s.boxShadow = s.boxShadow;
+  assert_equals(s.boxShadow, expected, 'specified serialization reparses');
+}, `box-shadow specified ${JSON.stringify(input)}`);
+const invalid = [
+  'red', 'inset', '1px', '1 2', '1% 2px', '1px 2%', '1px 2px 3%',
+  '1px 2px 3px 4%', '1px calc(1px + 0%)', '1px 2px -1px',
+  '1px 2px 3px 4px 5px', 'red 1px 2px blue', '1px red 2px',
+  '1px inset 2px', '1px 2px red 3px', '1px 2px 3px inset 4px',
+  'inset 1px 2px inset', 'none, 1px 2px', '1px 2px, none',
+  '1px 2px,', ', 1px 2px', 'red 1px 2px, blue 3px',
+  '1px 2px rgb(', '1px 2px calc(', '1px 2px rgb(1, 2, 3))',
+  '1px 2px inherit', 'initial, 1px 2px',
+  'red none', 'none 3px -4px inset', '1px 2px outset',
+];
+for (const input of invalid) test(() => {
+  const s = document.createElement('div').style;
+  s.boxShadow = 'red 7px 8px';
+  assert_equals(s.boxShadow, 'red 7px 8px', 'positive recognition control');
+  assert_false(CSS.supports('box-shadow', input));
+  s.setProperty('box-shadow', input);
+  assert_equals(s.boxShadow, 'red 7px 8px', 'invalid assignment preserves previous valid value');
+}, `box-shadow rejects complete declaration ${JSON.stringify(input)}`);
+test(() => {
+  const s = document.createElement('div').style;
+  s.setProperty('box-shadow', 'red 1px 2px', 'important');
+  s.setProperty('box-shadow', 'blue 3px 4px', 'important');
+  assert_equals(s.length, 1);
+  assert_equals(s.getPropertyPriority('box-shadow'), 'important');
+  assert_equals(s.removeProperty('box-shadow'), 'blue 3px 4px');
+  assert_equals(s.length, 0);
+  assert_equals(s.boxShadow, '');
+}, 'box-shadow replacement priority enumeration removal');
+test(() => {
+  const s = document.createElement('div').style;
+  s.boxShadow = 'red 1px 2px';
+  for (const [name, value] of [['background','none'], ['border','0 solid'], ['font','16px serif']]) {
+    s.setProperty(name, value);
+    assert_equals(s.boxShadow, 'red 1px 2px', `${name} preserves independent box-shadow`);
+  }
+}, 'unrelated shorthands preserve the box-shadow longhand');
+</script>

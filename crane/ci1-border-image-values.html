@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ci1 border-image complete pure value family</title>
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#border-images">
+<link rel="help" href="https://drafts.csswg.org/cssom/#serialize-a-css-value">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// UNRUN adapted Q170 draft. Golden rule2: main/tmp/analysis/integrator-probes-1024c/ (Q174).
+// Exact mode/URL expectations are in the new ruled supplement; no geometry.
+const names = ['border-image-source','border-image-slice','border-image-width','border-image-outset','border-image-repeat'];
+const initial = ['none','100%','1','0','stretch'];
+function node(t) { const e=document.createElement('div'); document.body.appendChild(e); t.add_cleanup(()=>e.remove()); return e; }
+const valid = [
+ ['border-image-slice','1 1 1 1','1'], ['border-image-slice','1 2% 1 2%','1 2%'],
+ ['border-image-slice','1 2% 3 2%','1 2% 3'], ['border-image-slice','fill 1 2% 3 4%','1 2% 3 4% fill'],
+ ['border-image-slice','125%','125%'], ['border-image-width','1 auto 10px 20%','1 auto 10px 20%'],
+ ['border-image-width','auto auto auto auto','auto'], ['border-image-width','0 0px 0 0px','0 0px'],
+ ['border-image-outset','1px 2 1px 2','1px 2'], ['border-image-outset','1px 2 3px 4','1px 2 3px 4'],
+ ['border-image-width','calc(10px','calc(10px)'], ['border-image-repeat','space space','space'], ['border-image-repeat','round stretch','round stretch']
+];
+for (const [p,v,expected] of valid) test(t=>{const e=node(t); e.style.setProperty(p,v); assert_equals(e.style.getPropertyValue(p),expected); assert_equals(e.style.length,1); assert_equals(e.style.item(0),p);},`specified ${p}: ${v}`);
+const invalid = [
+ ['border-image-slice',['fill','1% fill 2%','fill 1 fill','1 2 3 4 5','-1','-1%','1px','calc(1 + 2%)']],
+ ['border-image-width',['none','-1','-1px','-1%','1 2 3 4 5','calc(1 + 2px)']],
+ ['border-image-outset',['auto','1%','-1','-1px','1 2 3 4 5','calc(1% + 2px)']],
+ ['border-image-repeat',['auto','repeat-x','no-repeat','stretch repeat round']],
+ ['border-image',['auto','fill','none, url(a)','url(a) url(b)','/ 2','1 /','1 / /','1 / / auto','1 / / 1%','1 / 2 / 3 / 4','url(a) 1 / calc(2px) / 3 junk']]
+];
+for(const [p,values] of invalid) for(const v of values) test(t=>{const e=node(t);e.style.setProperty(p,'initial');const before=e.style.cssText;e.style.setProperty(p,v);assert_equals(e.style.cssText,before);},`reject and preserve ${p}: ${v}`);
+const shorthand = [
+ ['none',initial], ['repeat round',['none','100%','1','0','repeat round']],
+ ['fill 1 2% 3 4% / 5% / 6',['none','1 2% 3 4% fill','5%','6','stretch']],
+ ['round url(https://example.test/frame.svg) 20 / / 2px',['url("https://example.test/frame.svg")','20','1','2px','round']],
+ ['20 / 2 auto / 3 url(https://example.test/frame.svg) repeat space',['url("https://example.test/frame.svg")','20','2 auto','3','repeat space']]
+];
+for(const [v,expected] of shorthand) test(t=>{const e=node(t);e.style.setProperty('border-image',v,'important');assert_equals(e.style.length,5);names.forEach((p,i)=>{assert_equals(e.style.getPropertyValue(p),expected[i],p);assert_equals(e.style.getPropertyPriority(p),'important');});const listed=Array.from({length:e.style.length},(_,i)=>e.style.item(i));assert_array_equals(listed.slice().sort(),names.slice().sort());},`shorthand expands five values: ${v}`);
+const computed = [
+ ['border-image-slice','calc(20 - 30) calc(20% - 30%) 125% fill','0 0% 125% fill'],
+ ['border-image-width','calc(20% + 10px) calc(-.5em + 10px) auto 2','calc(20% + 10px) 0px auto 2'],
+ ['border-image-outset','0 calc(.5em + 10px) 3 calc(-.5em + 10px)','0 30px 3 0px'],
+ ['border-image-repeat','round space','round space'],
+ ['border-image-width','calc(max(-2px,-1px) + 3px)','2px'],
+ ['border-image-slice','calc(10 + 5)','15'], ['border-image-slice','calc(10% + 5%)','15%']
+];
+for(const [p,v,expected] of computed) test(t=>{const e=node(t);e.style.fontSize='40px';e.style.borderStyle='none';e.style.setProperty(p,v);assert_equals(getComputedStyle(e).getPropertyValue(p),expected);},`pure computed ${p}: ${v}`);
+const seed='url(https://example.test/frame.svg) 20 fill / 2px / 3 round space';
+for(const p of ['border-top','border-right','border-bottom','border-left','border-block','border-inline','border-width','border-style','border-color']) test(t=>{const e=node(t);e.style.setProperty('border-image',seed);const before=names.map(n=>e.style.getPropertyValue(n));e.style.setProperty(p,p==='border-width'?'2px':p==='border-style'?'solid':p==='border-color'?'red':'2px solid red');assert_array_equals(names.map(n=>e.style.getPropertyValue(n)),before);},`${p} preserves all image components`);
+test(t=>{const e=node(t);e.style.setProperty('border-image',seed);e.style.border='2px solid';names.forEach((p,i)=>assert_equals(e.style.getPropertyValue(p),initial[i],p));},'border resets every border-image component');
+for(const wide of ['initial','inherit','unset','revert','revert-layer']) test(t=>{const e=node(t);e.style.border=wide;names.forEach(p=>assert_equals(e.style.getPropertyValue(p),wide,p));},`border CSS-wide reset: ${wide}`);
+for(const [p,v] of [['border-image-slice','20'],['border-image-width','2'],['border-image-outset','3'],['border-image-repeat','round']]) test(t=>{const e=node(t);e.style.border='2px solid';e.style.setProperty(p,v);assert_equals(e.style.border,'');},`border cannot serialize noninitial reset-only ${p}`);
+test(t=>{const e=node(t);e.style.setProperty('border-image',seed);e.style.removeProperty('border-image');names.forEach(p=>assert_equals(e.style.getPropertyValue(p),''));},'removeProperty removes all five image components');
+test(t=>{const e=node(t);e.style.border='2px solid';e.style.setProperty('border-image',seed);e.style.removeProperty('border');names.forEach(p=>assert_equals(e.style.getPropertyValue(p),''));},'removeProperty border removes its reset set');
+test(t=>{const e=node(t);e.style.setProperty('border-image',seed);const text=e.style.getPropertyValue('border-image');assert_equals(text,'url("https://example.test/frame.svg") 20 fill / 2px / 3 round space');const other=node(t);other.style.setProperty('border-image',text);assert_array_equals(names.map(p=>other.style.getPropertyValue(p)),names.map(p=>e.style.getPropertyValue(p)));e.style.setProperty('border-image-width','4','important');assert_equals(e.style.getPropertyValue('border-image'),'');},'shorthand roundtrip and mixed-priority omission');
+test(t=>{const parent=node(t);const child=document.createElement('div');parent.appendChild(child);parent.style.cssText='font-size:20px;border-image:linear-gradient(red,blue) 20 fill / 1em / 2 round space';child.style.cssText='font-size:40px;border-image:inherit';assert_equals(getComputedStyle(child).getPropertyValue('border-image-width'),'20px');child.style.removeProperty('border-image');names.forEach((p,i)=>assert_equals(getComputedStyle(child).getPropertyValue(p),initial[i],p));},'explicit inheritance uses computed parent widths and ordinary child initials');
+test(t=>{const e=node(t);const s=getComputedStyle(e);const listed=Array.from({length:s.length},(_,i)=>s.item(i));names.forEach((p,i)=>{assert_true(listed.includes(p),p);assert_equals(s.getPropertyValue(p),initial[i],p);});e.style.borderImageWidth='2';assert_equals(e.style.getPropertyValue('border-image-width'),'2');},'computed enumeration includes five longhands and camelCase setter uses same value');
+test(t=>{const e=node(t);e.style.border='2px solid';e.style.setProperty('border-image-slice','100% 100% 100% 100%');assert_equals(e.style.border,'2px solid');},'typed parsed initial quad does not block border serialization');
+</script>

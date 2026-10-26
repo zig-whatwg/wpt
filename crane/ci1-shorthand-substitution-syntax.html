@@ -7,8 +7,8 @@
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <script>
-// Q211: declaration-value syntax is checked before the interim raw seam.
-// Argument grammar and substitution evaluation belong to the Variables owner.
+// Q211: declaration-value syntax is checked before shorthand substitution.
+// Substitution evaluation belongs to the Variables owner; Pending is real on main.
 function style(text) {
   const result = document.createElement("div").style;
   result.cssText = text;
@@ -52,27 +52,68 @@ test(() => {
   }
 }, "matched nested shorthand tokens retain original text");
 
+// Q251/Q252/Q254: CSS Values 5, "Substitution in Shorthand Properties", stores
+// a pending value in each mapped longhand. CSSOM length counts declarations;
+// removeProperty step 5 removes only the named property's mapped longhands.
+// Browser counts/readbacks: tmp/analysis/integrator-probes-1026a/RULINGS.md,
+// Chrome 155 / Firefox 158 / Safari 27, q252-{chrome,firefox,safari}.json.
+// Border has 17 in all three; font has 19 in Chrome/Firefox (Safari has 17).
+// Compare explicit sets and priorities, since cssText declaration order differs.
+const borderColors = ["top", "right", "bottom", "left"].map(side => `border-${side}-color`);
+const borderLonghands = ["top", "right", "bottom", "left"].flatMap(side =>
+  ["width", "style", "color"].map(part => `border-${side}-${part}`)
+).concat(["border-image-source", "border-image-slice", "border-image-width",
+          "border-image-outset", "border-image-repeat"]);
+const fontVariants = ["ligatures", "caps", "alternates", "numeric", "east-asian", "position", "emoji"]
+  .map(part => `font-variant-${part}`);
+const fontLonghands = fontVariants.concat([
+  "font-style", "font-weight", "font-width", "font-size", "line-height", "font-family",
+  "font-feature-settings", "font-kerning", "font-language-override", "font-optical-sizing",
+  "font-size-adjust", "font-variation-settings"
+]);
+function assertPendingDeclarations(s, names, priorityFor) {
+  assert_equals(s.length, names.length, "expanded declaration count");
+  assert_array_equals(Array.from({length:s.length}, (_, i) => s.item(i)).sort(), names.slice().sort(),
+                      "the exact mapped longhand set remains");
+  for (const name of names) {
+    assert_equals(s.getPropertyValue(name), "", `${name}: pending longhand serialization`);
+    assert_equals(s.getPropertyPriority(name), priorityFor(name), `${name}: priority`);
+  }
+}
+
 for (const [wide, narrow, typed, typedValue] of [
   ["border", "border-color", "margin-left", "7px"],
   ["font", "font-variant", "font-weight", "700"]
 ]) {
+  const wideNames = wide === "border" ? borderLonghands : fontLonghands;
+  const narrowNames = wide === "border" ? borderColors : fontVariants;
   test(() => {
     const s = style(`${wide}: var(--x) !important; ${narrow}: env(y)`);
     assert_equals(s.getPropertyValue(wide), "var(--x)");
     assert_equals(s.getPropertyValue(narrow), "");
     assert_equals(s.cssText, `${wide}: var(--x) !important;`);
-    assert_equals(s.length, 1);
+    assertPendingDeclarations(s, wideNames, () => "important");
   }, `fully covered parsed ${narrow} is dropped`);
   test(() => {
     const s = style(`${narrow}: var(--x) !important; ${wide}: env(y)`);
     assert_equals(s.getPropertyValue(narrow), "var(--x)");
     assert_equals(s.getPropertyValue(wide), "");
-    assert_equals(s.length, 2);
-    assert_equals(s.cssText, `${narrow}: var(--x) !important; ${wide}: env(y);`);
+    assertPendingDeclarations(s, wideNames, name => narrowNames.includes(name) ? "important" : "");
   }, `partly covered parsed ${wide} remains stored`);
   for (const removeWide of [false, true]) {
     test(() => {
       const s = style(`${wide}: var(--x) !important; ${narrow}: env(y)`);
+      if (!removeWide) {
+        assert_equals(s.removeProperty(narrow), "");
+        assert_equals(s.getPropertyValue(wide), "");
+        assert_equals(s.getPropertyValue(narrow), "");
+        assertPendingDeclarations(s, wideNames.filter(name => !narrowNames.includes(name)), () => "important");
+        for (const name of narrowNames) {
+          assert_equals(s.getPropertyValue(name), "", `${name}: removed value`);
+          assert_equals(s.getPropertyPriority(name), "", `${name}: removed priority`);
+        }
+        return;
+      }
       assert_equals(s.removeProperty(removeWide ? wide : narrow), removeWide ? "var(--x)" : "");
       assert_equals(s.getPropertyValue(wide), "");
       assert_equals(s.getPropertyValue(narrow), "");

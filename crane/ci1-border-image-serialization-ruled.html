@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ci1 ruled border-image specified and computed serialization</title>
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#border-image">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// UNRUN NEW supplement. Golden rule2: main/tmp/analysis/integrator-probes-1024c/.
+// Q174 PART2: shortest specified, C+S computed expansion/none, C+S fallback order.
+const family=['border-image-source','border-image-slice','border-image-width','border-image-outset','border-image-repeat'];
+function node(t){const e=document.createElement('div');document.body.appendChild(e);t.add_cleanup(()=>e.remove());return e;}
+const specified=[
+ ['none','none','border-image: none;'],
+ ['none 20','20','border-image: 20;'],
+ ['none repeat','repeat','border-image: repeat;'],
+ ['20 / / 2','20 / / 2','border-image: 20 / / 2;'],
+ ['100% / 2','100% / 2','border-image: 100% / 2;'],
+ ['100% / / 2','100% / / 2','border-image: 100% / / 2;'],
+ ['url(a) 100% / 2','url("a") 100% / 2','border-image: url("a") 100% / 2;'],
+ ['url(a)','url("a")','border-image: url("a");'],
+ ['100% / 1 / 0 stretch','none','border-image: none;']
+];
+for(const [input,value,text] of specified) test(t=>{const e=node(t);e.style.setProperty('border-image',input);assert_equals(e.style.length,5);assert_equals(e.style.getPropertyValue('border-image'),value);assert_equals(e.style.cssText,text);},`Q174 specified shortest: ${input}`);
+for(const [p,v] of [['border-image','none'],['border-image','none 20'],['border-image','none repeat'],['border-image','20 / / 2'],['border-image','100% / 2'],['border-image','100% / / 2'],['border-image-width','2'],['border-image-outset','2']]) test(t=>{const e=node(t);e.style.setProperty(p,v);assert_equals(getComputedStyle(e).getPropertyValue('border-image'),'none');assert_equals(getComputedStyle(e).getPropertyValue('border-image-source'),'none');},`Q174 computed none source: ${p}: ${v}`);
+for(const [input,specified,suffix] of [['url(a)','url("a")',' 100% / 1 / 0 stretch'],['url(a) 100% / 2','url("a") 100% / 2',' 100% / 2 / 0 stretch'],['url(a) 20 / 2 / 3 round','url("a") 20 / 2 / 3 round',' 20 / 2 / 3 round']]) test(t=>{const e=node(t);e.style.setProperty('border-image',input);assert_equals(e.style.getPropertyValue('border-image'),specified);const absolute=new URL('a',document.baseURI).href;const computed=getComputedStyle(e);assert_equals(computed.getPropertyValue('border-image-source'),`url("${absolute}")`);assert_equals(computed.getPropertyValue('border-image'),`url("${absolute}")${suffix}`);},`Q174 computed nonnone full expansion: ${input}`);
+test(t=>{const e=node(t);e.style.setProperty('border-image','none 20 / 2 / 3');e.style.setProperty('border-image-repeat','stretch','important');assert_equals(e.style.getPropertyValue('border-image'),'');assert_equals(e.style.cssText,'border-image-source: none; border-image-slice: 20; border-image-width: 2; border-image-outset: 3; border-image-repeat: stretch !important;');assert_array_equals(Array.from({length:e.style.length},(_,i)=>e.style.item(i)),family);assert_equals(getComputedStyle(e).getPropertyValue('border-image'),'none');},'Q174 mixed priority cssText source slice width outset repeat');
+test(t=>{const e=node(t);e.style.setProperty('border-image','url(a) 20 / 2 / 3 round');e.style.border='5px dotted blue';assert_equals(e.style.getPropertyValue('border-image'),'none');assert_equals(getComputedStyle(e).getPropertyValue('border-image'),'none');assert_array_equals(family.map(p=>e.style.getPropertyValue(p)),['none','100%','1','0','stretch']);assert_equals(e.style.border,'5px dotted blue');},'Q174 border resets specified and computed image shorthand to none');
+test(t=>{const e=node(t);e.style.setProperty('border-image-source','url(a)');assert_equals(e.style.getPropertyValue('border-image'),'');const absolute=new URL('a',document.baseURI).href;assert_equals(getComputedStyle(e).getPropertyValue('border-image'),`url("${absolute}") 100% / 1 / 0 stretch`);},'Q174 computed source longhand expands initial companions');
+// Q174 explicitly leaves generic removeProperty return values outside this batch.
+</script>

@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Backgrounds3 API shape only; see BORDERS4-DELTA.md for superseded assumptions. -->
+
+<title>Box shadow pure computed and receiver resolved values</title>
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#box-shadow">
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#resolving-other-colors">
+<link rel="help" href="https://drafts.csswg.org/cssom/#resolved-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<!-- Q170 scratch draft: UNRUN. No used box geometry or painting assertion. -->
+<div id="host"></div>
+<script>
+'use strict';
+function target(t) {
+  const e = document.createElement('div');
+  e.style.cssText = 'color:blue;font-size:20px';
+  host.appendChild(e);
+  t.add_cleanup(() => e.remove());
+  return e;
+}
+for (const [input, expected] of [
+  ['none', 'none'],
+  ['1px 2px', 'rgb(0, 0, 255) 1px 2px 0px 0px'],
+  ['currentcolor -1em -2em 3em -4em', 'rgb(0, 0, 255) -20px -40px 60px -80px'],
+  ['inset red 1px 2px calc(-3px) -4px', 'rgb(255, 0, 0) 1px 2px 0px -4px inset'],
+  ['red 1px 2px calc(min(-1px, 2px) + 3px)', 'rgb(255, 0, 0) 1px 2px 2px 0px'],
+  ['transparent 1in .5in, inset 1em 2em 3em -4em', 'rgba(0, 0, 0, 0) 96px 48px 0px 0px, rgb(0, 0, 255) 20px 40px 60px -80px inset'],
+  ['color(display-p3 1 0 0) 1px 2px', 'color(display-p3 1 0 0) 1px 2px 0px 0px'],
+]) test(t => {
+  const e = target(t);
+  e.style.boxShadow = input;
+  assert_not_equals(e.style.boxShadow, '', 'positive recognition control');
+  assert_equals(getComputedStyle(e).boxShadow, expected);
+}, `box-shadow resolved ${JSON.stringify(input)}`);
+for (const shadow of ['inset 1em 2px 0 -2em', 'currentcolor 1em 2px 0 -2em inset']) test(t => {
+  const parent = target(t);
+  const child = document.createElement('div');
+  parent.style.cssText = 'color:red;font-size:20px';
+  parent.style.boxShadow = shadow;
+  child.style.cssText = 'color:green;font-size:10px;box-shadow:inherit';
+  parent.appendChild(child);
+  const resolved = getComputedStyle(child);
+  assert_equals(resolved.boxShadow, 'rgb(0, 128, 0) 20px 2px 0px -40px inset');
+  child.style.color = 'blue';
+  assert_equals(resolved.boxShadow, 'rgb(0, 0, 255) 20px 2px 0px -40px inset');
+  parent.style.color = 'yellow';
+  assert_equals(resolved.boxShadow, 'rgb(0, 0, 255) 20px 2px 0px -40px inset');
+  parent.style.fontSize = '30px';
+  assert_equals(resolved.boxShadow, 'rgb(0, 0, 255) 30px 2px 0px -60px inset');
+}, `box-shadow inherits parent absolute lengths and receiver color ${shadow}`);
+for (const reset of ['', 'initial', 'unset', 'revert', 'revert-layer']) test(t => {
+  const parent = target(t);
+  const child = document.createElement('div');
+  parent.style.boxShadow = 'red 1px 2px';
+  child.style.boxShadow = reset;
+  parent.appendChild(child);
+  assert_equals(getComputedStyle(child).boxShadow, 'none');
+}, `box-shadow noninherited initial/reset ${reset}`);
+for (const keyword of ['initial', 'unset']) test(t => {
+  const e = target(t);
+  e.style.boxShadow = 'red 1px 2px';
+  e.style.setProperty('all', keyword);
+  assert_equals(getComputedStyle(e).boxShadow, 'none');
+}, `all:${keyword} resets box-shadow`);
+test(t => {
+  const e = target(t);
+  const input = Array.from({length:20}, (_, i) => i % 2 ? 'blue -3px 4px 5px -6px inset' : 'red 1px 2px').join(', ');
+  const expected = Array.from({length:20}, (_, i) => i % 2 ? 'rgb(0, 0, 255) -3px 4px 5px -6px inset' : 'rgb(255, 0, 0) 1px 2px 0px 0px').join(', ');
+  e.style.boxShadow = input;
+  assert_equals(getComputedStyle(e).boxShadow, expected);
+}, 'box-shadow supports twenty front-to-back layers');
+test(t => {
+  const e = target(t);
+  const s = getComputedStyle(e);
+  const names = Array.from({length:s.length}, (_, i) => s.item(i));
+  assert_equals(names.filter(n => n === 'box-shadow').length, 1);
+  const index = names.indexOf('box-shadow');
+  if (index > 0) assert_true(names[index-1] < 'box-shadow');
+  if (index+1 < names.length) assert_true('box-shadow' < names[index+1]);
+}, 'box-shadow appears once in computed lexicographic enumeration');
+for (const color of ['currentcolor', 'rgb(from currentcolor r g b)', 'color-mix(in srgb, currentcolor, currentcolor)', 'light-dark(currentcolor, red)']) test(t => {
+  const parent = target(t);
+  const child = document.createElement('div');
+  parent.style.cssText = 'color:red;color-scheme:light';
+  parent.style.boxShadow = color + ' 1px 2px';
+  parent.style.backgroundColor = color;
+  assert_not_equals(parent.style.boxShadow, '', 'nested color is recognized');
+  child.style.cssText = 'color:blue;color-scheme:dark;box-shadow:inherit;background-color:inherit';
+  parent.appendChild(child);
+  const s = getComputedStyle(child);
+  assert_equals(s.boxShadow, s.backgroundColor + ' 1px 2px 0px 0px');
+}, `box-shadow uses the Color owner's inherited receiver resolution for ${color}`);
+</script>

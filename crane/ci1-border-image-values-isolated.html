@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ci1 border-image omitted width isolated RED candidate</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// UNRUN Q170 draft. First RED candidate; whole family file follows after GREEN.
+test(()=>{const s=document.createElement('div').style;s.setProperty('border-image','20 / / 2 round');assert_equals(s.getPropertyValue('border-image-slice'),'20');assert_equals(s.getPropertyValue('border-image-width'),'1');assert_equals(s.getPropertyValue('border-image-outset'),'2');assert_equals(s.getPropertyValue('border-image-repeat'),'round');assert_equals(s.getPropertyValue('border-image-source'),'none');},'omitted slash width defaults to one without consuming outset');
+</script>

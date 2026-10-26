@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image resolution grammar, computation and inheritance</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#the-image-resolution">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#resolution">
+<link rel="help" href="https://drafts.csswg.org/cssom/#serialize-a-css-value">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+// Q146 (liaison, 2026-10-24): these spec-decided expectations intentionally
+// differ from css/css-images/parsing/image-resolution-valid.html:
+// lines 19,20,26,28,29 expect input order; CSSOM instead requires canonical
+// order from Images4's grammar. Line27 accepts a negative literal, forbidden
+// by Values4 §7.4. Keep those upstream tests unchanged and report the mismatch.
+// Q146 also defers snap ROUNDING: Images4 §6.1 says one image pixel maps to
+// integer device pixels, but its example instead rounds 300dpi to288dpi at
+// 96dpi (three image pixels per device pixel). Preserve the normalized value
+// and snap keyword until that reciprocal contradiction is resolved.
+
+function requireProperty() {
+  assert_true(CSS.supports("image-resolution", "1dppx"), "supported property control");
+}
+function target(t) {
+  requireProperty();
+  const element = document.createElement("div");
+  element.style.fontSize = "40px";
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+
+for (const [input, expected] of [
+  ["1dpi", "1dpi"],
+  ["2dpcm from-image", "from-image 2dpcm"],
+  ["3dppx from-image snap", "from-image 3dppx snap"],
+  ["4dpi snap", "4dpi snap"],
+  ["from-image", "from-image"],
+  ["from-image 5dpcm", "from-image 5dpcm"],
+  ["from-image 6dppx snap", "from-image 6dppx snap"],
+  ["from-image snap", "from-image snap"],
+  ["snap 7.5dpi", "7.5dpi snap"],
+  ["snap from-image", "from-image snap"],
+  ["snap from-image 0dppx", "from-image 0dppx snap"],
+  ["calc(1dppx + 96dpi)", "calc(2dppx)"],
+  ["calc(-1dppx)", "calc(-1dppx)"],
+  ["inherit", "inherit"],
+  ["initial", "initial"],
+  ["unset", "unset"],
+]) {
+  test(t => {
+    const element = target(t);
+    element.style.setProperty("image-resolution", input);
+    assert_equals(element.style.getPropertyValue("image-resolution"), expected);
+  }, `image-resolution specified ${input}`);
+}
+
+for (const input of [
+  "auto", "none", "snap", "100%", "0", "2", "1px", "-1dpi",
+  "snap -8dpcm from-image", "3dpi snap from-image", "from-image snap 4dppx",
+  "from-image from-image", "1dpi 2dppx", "snap snap 1dpi", "1dpi, 2dpi",
+  "from-image 1dpi unknown", "calc(1)", "calc(1dpi + 1deg)", "calc(1dppx + 1%)",
+]) {
+  test(t => {
+    const element = target(t);
+    assert_false(CSS.supports("image-resolution", input));
+    element.style.setProperty("image-resolution", input);
+    assert_equals(element.style.getPropertyValue("image-resolution"), "");
+  }, `image-resolution rejects ${input}`);
+}
+
+for (const [input, expected] of [
+  ["96dpi", "1dppx"],
+  ["1x", "1dppx"],
+  ["0dpcm", "0dppx"],
+  ["from-image", "from-image"],
+  ["snap from-image", "from-image snap"],
+  ["300dpi snap", "3.125dppx snap"],
+  ["snap 72dpi from-image", "from-image 0.75dppx snap"],
+  ["calc(1dppx + 96dpi)", "2dppx"],
+  ["calc(-1dppx)", "0dppx"],
+  ["from-image calc(1dppx * sign(1em - 10px)) snap", "from-image 1dppx snap"],
+]) {
+  test(t => {
+    const element = target(t);
+    element.style.setProperty("image-resolution", input);
+    assert_not_equals(element.style.getPropertyValue("image-resolution"), "");
+    assert_equals(getComputedStyle(element).getPropertyValue("image-resolution"), expected);
+  }, `image-resolution computed ${input}`);
+}
+
+for (const explicit of [false, true]) {
+  test(t => {
+    const parent = target(t);
+    parent.style.setProperty("image-resolution", "from-image calc(1dppx * sign(1em - 10px)) snap");
+    const child = document.createElement("div");
+    child.style.fontSize = "5px";
+    if (explicit) child.style.setProperty("image-resolution", "inherit");
+    parent.append(child);
+    assert_equals(getComputedStyle(child).getPropertyValue("image-resolution"), "from-image 1dppx snap");
+  }, `image-resolution ${explicit ? "explicit" : "implicit"} inheritance keeps computed resolution`);
+}
+
+test(t => {
+  const element = target(t);
+  assert_equals(getComputedStyle(element).getPropertyValue("image-resolution"), "1dppx");
+  element.style.setProperty("image-resolution", "96dpi", "important");
+  assert_equals(element.style.getPropertyPriority("image-resolution"), "important");
+  assert_true(Array.from({length: element.style.length}, (_, i) => element.style.item(i)).includes("image-resolution"));
+  assert_equals(element.style.removeProperty("image-resolution"), "96dpi");
+  assert_equals(element.style.getPropertyValue("image-resolution"), "");
+}, "image-resolution initial value enumeration priority and removal");
+</script>

@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>content image() keeps its non-color fallback grammar</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#image-notation">
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-function">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const value of ['image()', 'image(   )']) {
+  test(() => {
+    const style = document.createElement('div').style;
+    style.setProperty('content', '"previous"', 'important');
+    style.setProperty('content', value);
+    assert_equals(style.getPropertyValue('content'), '"previous"');
+    assert_equals(style.getPropertyPriority('content'), 'important');
+    assert_false(CSS.supports('content', value));
+  }, `content rejects empty image fallback ${value}`);
+}
+for (const [value, expected] of [
+  ['image("a.png"', 'image("a.png")'],
+  ['image(ltr "a.png"', 'image(ltr "a.png")'],
+]) {
+  test(() => {
+    const style = document.createElement('div').style;
+    style.setProperty('content', value);
+    assert_equals(style.getPropertyValue('content'), expected);
+    assert_true(CSS.supports('content', value));
+  }, `content closes raw image fallback at EOF ${value}`);
+}
+</script>

@@ -1,0 +1,199 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>UNRUN: Crane pure border-radius aliases, Q177 option A</title>
+<link rel="help" href="https://compat.spec.whatwg.org/#css-simple-aliases">
+<link rel="help" href="https://drafts.csswg.org/css-cascade-5/#legacy-name-alias">
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#border-radius">
+<!-- UNRUN revised draft, never an edit of existing accepted/upstream tests.
+     Q177 PART 2 (2026-10-24 15:25 UTC): pure aliases of all five names.
+     Golden rule 2 deciding evidence: main/tmp/analysis/integrator-probes-1024c/
+     RULINGS.md and results/q177-{chrome,firefox,safari}.json; full hashed
+     copies in this packet's evidence/. The two-token shorthand is alternating
+     circular corners. No legacy ellipse parser or Safari three-token getter.
+     Additional longhand setters/accessors test Compat/Cascade consequences;
+     the preserved probe directly logs longhand getters, not those setters. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script>
+"use strict";
+const corners = ["border-top-left-radius", "border-top-right-radius",
+                 "border-bottom-right-radius", "border-bottom-left-radius"];
+const names = ["border-radius", ...corners];
+const aliases = names.map(name => "-webkit-" + name);
+function target(t) {
+  const e = document.createElement("div");
+  document.body.appendChild(e);
+  t.add_cleanup(() => e.remove());
+  return e;
+}
+function state(style) { return corners.map(name => style.getPropertyValue(name)); }
+function both(style, i, expected) {
+  assert_equals(style.getPropertyValue(names[i]), expected, names[i]);
+  assert_equals(style.getPropertyValue(aliases[i]), expected, aliases[i]);
+}
+function canonical(style, i) {
+  assert_array_equals(Array.from(style), i === 0 ? corners : [names[i]], "canonical declaration names only");
+}
+function camel(alias, uppercase) {
+  const lower = alias.slice(1).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  return uppercase ? lower[0].toUpperCase() + lower.slice(1) : lower;
+}
+[
+  ["border-radius", "-webkit-border-radius"],
+  ["-webkit-border-radius", "border-radius"]
+].forEach(([from, through]) => test(t => {
+  const e = target(t);
+  e.style.setProperty(from, "1px 2px");
+  canonical(e.style, 0);
+  assert_array_equals(state(e.style), ["1px", "2px", "1px", "2px"], "pure alias setter interpretation");
+  both(e.style, 0, "1px 2px");
+  both(getComputedStyle(e), 0, "1px 2px");
+  const value = e.style.getPropertyValue(through);
+  assert_equals(value, "1px 2px", "exact pure alias getter");
+  e.style.cssText = "";
+  e.style.setProperty(through, value);
+  canonical(e.style, 0);
+  assert_array_equals(state(e.style), ["1px", "2px", "1px", "2px"]);
+}, "ci1-border-radius pure alias exact cycle: " + from + " setter -> " + through + " getter -> " + through + " setter"));
+
+[
+  ["0", "0px", ["0px", "0px", "0px", "0px"]],
+  ["1px", "1px", ["1px", "1px", "1px", "1px"]],
+  ["1px 2px", "1px 2px", ["1px", "2px", "1px", "2px"]],
+  ["1px 2px 3px", "1px 2px 3px", ["1px", "2px", "3px", "2px"]],
+  ["1px 2px 3px 4px", "1px 2px 3px 4px", ["1px", "2px", "3px", "4px"]],
+  ["1px / 2px", "1px / 2px", ["1px 2px", "1px 2px", "1px 2px", "1px 2px"]],
+  ["1px 2px / 3px 4px", "1px 2px / 3px 4px", ["1px 3px", "2px 4px", "1px 3px", "2px 4px"]]
+].forEach(([input, expected, values]) => test(t => {
+  const e = target(t);
+  assert_true(CSS.supports(aliases[0], input));
+  e.style.setProperty(aliases[0], input);
+  canonical(e.style, 0);
+  both(e.style, 0, expected);
+  both(getComputedStyle(e), 0, expected);
+  assert_array_equals(state(e.style), values);
+  corners.forEach((_, i) => both(e.style, i + 1, values[i]));
+}, "ci1-border-radius pure alias shorthand grammar: " + input));
+
+aliases.forEach((alias, i) => {
+  test(t => {
+    const e = target(t);
+    const input = i === 0 ? "1em 2em / 10% 20%" : "1em 10%";
+    const expected = i === 0 ? "20px 40px / 10% 20%" : "20px 10%";
+    assert_true(CSS.supports(alias, input), "recognized valid control");
+    e.style.setProperty(alias, input);
+    canonical(e.style, i);
+    both(e.style, i, input);
+    // Set the font after checking alias-only declaration enumeration.
+    e.style.fontSize = "20px";
+    both(getComputedStyle(e), i, expected);
+    const computedNames = Array.from(getComputedStyle(e));
+    aliases.forEach(name => assert_false(computedNames.includes(name), "computed item excludes " + name));
+    corners.forEach(name => assert_equals(computedNames.filter(item => item === name).length, 1, "computed item includes canonical " + name));
+    assert_false(computedNames.includes("border-radius"), "computed item excludes shorthand");
+    for (const upper of [false, true]) {
+      const attr = camel(alias, upper);
+      assert_equals(e.style[attr], input, attr + " getter");
+      assert_equals(getComputedStyle(e)[attr], expected, attr + " computed getter");
+      e.style[attr] = "3px";
+      both(e.style, i, "3px");
+      both(getComputedStyle(e), i, "3px");
+      e.style.setProperty(alias, input);
+    }
+    e.style.cssText = alias + ": " + input + ";";
+    canonical(e.style, i);
+    both(e.style, i, input);
+    assert_false(e.style.cssText.includes("-webkit-"), "cssText canonicalizes alias names");
+  }, "ci1-border-radius pure alias specified computed named getters setters and enumeration: " + alias);
+
+  test(t => {
+    const e = target(t);
+    const input = i === 0 ? "calc(10px + 10%) / 40%" : "calc(10px + 10%) 40%";
+    const expected = i === 0 ? "calc(10% + 10px) / 40%" : "calc(10% + 10px) 40%";
+    assert_true(CSS.supports(alias, input), "typed math recognized");
+    e.style.setProperty(alias, input);
+    canonical(e.style, i);
+    both(getComputedStyle(e), i, expected);
+    const replay = e.style.getPropertyValue(alias);
+    assert_not_equals(replay, "", "math getter expressible");
+    e.style.cssText = "";
+    e.style.setProperty(alias, replay);
+    both(getComputedStyle(e), i, expected);
+    const clamped = i === 0 ? "calc(-10px) / 40%" : "calc(-10px) 40%";
+    assert_true(CSS.supports(alias, clamped));
+    e.style.setProperty(alias, clamped);
+    both(getComputedStyle(e), i, i === 0 ? "0px / 40%" : "0px 40%");
+  }, "ci1-border-radius pure alias typed math and nonnegative range: " + alias);
+
+  test(t => {
+    const e = target(t);
+    e.style.setProperty(alias, "7px", "important");
+    const invalid = ["-1px", "auto", "1px /", "calc(1px + 2deg)", "calc(1em + 2px) rubbish"];
+    if (i !== 0) invalid.push("1px / 2px", "1px 2px 3px");
+    for (const value of invalid) {
+      assert_false(CSS.supports(alias, value), value + " is invalid");
+      e.style.setProperty(alias, value);
+      both(e.style, i, "7px");
+      assert_equals(e.style.getPropertyPriority(alias), "important");
+      assert_equals(e.style.getPropertyPriority(names[i]), "important");
+      canonical(e.style, i);
+    }
+    e.style.setProperty(names[i], "8px");
+    both(e.style, i, "8px");
+    assert_equals(e.style.getPropertyPriority(alias), "");
+    // Do not choose a generic shorthand removeProperty return-value policy.
+    e.style.removeProperty(alias);
+    assert_equals(e.style.length, 0, "alias removal removes canonical entries");
+    both(e.style, i, "");
+  }, "ci1-border-radius pure alias invalid values preserve priority and alias removal clears canonical entries: " + alias);
+
+  test(t => {
+    const e = target(t);
+    both(getComputedStyle(e), i, "0px");
+    assert_true(CSS.supports(alias, getComputedStyle(e).getPropertyValue(alias)), "own initial reparses");
+    for (const keyword of ["initial", "inherit", "unset", "revert", "revert-layer"]) {
+      e.style.setProperty(alias, keyword, "important");
+      both(e.style, i, keyword);
+      canonical(e.style, i);
+      assert_equals(e.style.getPropertyPriority(alias), "important");
+      assert_equals(e.style.getPropertyPriority(names[i]), "important");
+      both(getComputedStyle(e), i, "0px");
+    }
+    e.style.setProperty(alias, "7px");
+    e.style.setProperty(alias, "initial");
+    both(getComputedStyle(e), i, "0px");
+    e.style.removeProperty(alias);
+    both(getComputedStyle(e), i, "0px");
+  }, "ci1-border-radius pure alias all five CSS wide keywords and expressible zero initial: " + alias);
+
+  test(t => {
+    const parent = target(t);
+    parent.style.cssText = "font-size:20px; border-radius:1em 2em / 10% 20%";
+    const child = document.createElement("div");
+    parent.appendChild(child);
+    both(getComputedStyle(child), i, "0px");
+    child.style.setProperty(alias, "inherit");
+    canonical(child.style, i);
+    both(child.style, i, "inherit");
+    child.style.fontSize = "10px";
+    const expected = i === 0 ? "20px 40px / 10% 20%" : (i === 1 || i === 3 ? "20px 10%" : "40px 20%");
+    both(getComputedStyle(child), i, expected);
+    child.style.setProperty(alias, "unset");
+    both(getComputedStyle(child), i, "0px");
+    child.style.setProperty(alias, "initial");
+    both(getComputedStyle(child), i, "0px");
+  }, "ci1-border-radius pure alias inherits parent computed pairs and otherwise stays noninherited: " + alias);
+});
+
+test(t => {
+  const e = target(t);
+  e.style.setProperty(aliases[0], "1px 2px");
+  e.style.setProperty("all", "initial");
+  for (let i = 0; i < aliases.length; ++i) {
+    both(e.style, i, "initial");
+    both(getComputedStyle(e), i, "0px");
+  }
+  // all's entire declaration-list enumeration is deliberately not pinned.
+}, "ci1-border-radius pure aliases observe all initial through canonical storage");
+</script>

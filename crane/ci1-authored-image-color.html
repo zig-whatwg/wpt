@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Authored image colors compute through the shared Color path</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#image-notation">
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#resolving-other-colors">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// DRAFT / UNRUN. Q166 final image batch, after accepted f and the shared-hunk
+// liaison grant. Exact aligned C/F/S image-function-computed.html all pass
+// image(red), rgba and transparent: revision 0e1c0bce3defd59a76cf2f351c7da5c5a42b26fb.
+// Currentcolor and stricter legacy/fallback grammar live in separate packages.
+const properties = ["background-image", "list-style-image", "border-image-source", "mask-image", "mask-border-source", "content"];
+function target(t, property) {
+  assert_true(CSS.supports(property, "image(red)"), "positive authored-image support control");
+  const element = document.createElement("div");
+  element.style.color = "blue";
+  element.style.colorScheme = "light";
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return element;
+}
+for (const property of properties) {
+  for (const [input, expected] of [
+    ["image(red)", "image(red)"],
+    ["image(transparent)", "image(transparent)"],
+    ["image(rgb(0 128 255))", "image(rgb(0, 128, 255))"],
+    ["image(currentcolor)", "image(currentcolor)"],
+    ["image(light-dark(black, white))", "image(light-dark(black, white))"],
+  ]) test(t => {
+    const element = target(t, property);
+    element.style.setProperty(property, input);
+    assert_equals(element.style.getPropertyValue(property), expected);
+  }, `${property} authored specified ${input}`);
+  for (const [input, expected] of [
+    ["image(red)", "image(rgb(255, 0, 0))"],
+    ["image(transparent)", "image(rgba(0, 0, 0, 0))"],
+    ["image(rgba(0, 128, 255, 0.5))", "image(rgba(0, 128, 255, 0.5))"],
+    ["image(light-dark(black, white))", "image(rgb(0, 0, 0))"],
+  ]) test(t => {
+    const element = target(t, property);
+    element.style.setProperty(property, input);
+    assert_not_equals(element.style.getPropertyValue(property), "");
+    assert_equals(getComputedStyle(element).getPropertyValue(property), expected);
+  }, `${property} authored computed ${input}`);
+}
+for (const property of ["background-image", "content"]) {
+  for (const [input, expected] of [
+    ["image(transparent", "image(rgba(0, 0, 0, 0))"],
+    ["image(rgb(0 128 255", "image(rgb(0, 128, 255))"],
+  ]) test(t => {
+    const element = target(t, property);
+    element.style.setProperty(property, input);
+    assert_not_equals(element.style.getPropertyValue(property), "");
+    assert_equals(getComputedStyle(element).getPropertyValue(property), expected);
+  }, `${property} authored EOF ${input}`);
+}
+</script>

@@ -1,0 +1,137 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: pure border-radius values, CSSOM and computed ownership</title>
+<link rel="help" href="https://drafts.csswg.org/css-backgrounds-3/#border-radius">
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#serialize-a-css-value">
+<!-- UNRUN draft. New Crane fixture, never an edit to an upstream fixture.
+     No width/height measurement, painting or used-radius reduction. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script>
+"use strict";
+const corners = ["border-top-left-radius", "border-top-right-radius",
+                 "border-bottom-right-radius", "border-bottom-left-radius"];
+function element(t) {
+  const e = document.createElement("div");
+  document.body.appendChild(e);
+  t.add_cleanup(() => e.remove());
+  return e;
+}
+function cornerValues(style) {
+  return corners.map(name => style.getPropertyValue(name));
+}
+test(t => {
+  const e = element(t);
+  assert_true(CSS.supports("border-radius", "1px 2px / 3px 4px"));
+  e.style.setProperty("border-radius", "1px 2px / 3px 4px");
+  assert_equals(e.style.length, 4);
+  assert_array_equals(Array.from(e.style), corners);
+  assert_array_equals(cornerValues(e.style), ["1px 3px", "2px 4px", "1px 3px", "2px 4px"]);
+  assert_equals(e.style.borderRadius, "1px 2px / 3px 4px");
+  e.style.borderTopLeftRadius = "9px 8%";
+  assert_equals(e.style.getPropertyValue(corners[0]), "9px 8%");
+}, "ci1-border-radius recognized setter, camel access and canonical longhand enumeration");
+
+const hInputs = ["1px", "1px 2px", "1px 2px 3px", "1px 2px 3px 4px"];
+const vInputs = ["5%", "5% 6%", "5% 6% 7%", "5% 6% 7% 8%"];
+const hExpected = [[1,1,1,1], [1,2,1,2], [1,2,3,2], [1,2,3,4]];
+const vExpected = [[5,5,5,5], [5,6,5,6], [5,6,7,6], [5,6,7,8]];
+hInputs.forEach((h, hi) => vInputs.forEach((v, vi) => test(t => {
+  const e = element(t);
+  e.style.setProperty("border-radius", h + " / " + v);
+  assert_array_equals(cornerValues(e.style), hExpected[hi].map((x, i) => x + "px " + vExpected[vi][i] + "%"));
+}, "ci1-border-radius independently expands " + (hi + 1) + " horizontal and " + (vi + 1) + " vertical values")));
+
+[
+  ["1px 1px 1px 1px / 1px 1px", "1px"],
+  ["1px 2px 1px 2px / 1px 2px", "1px 2px"],
+  ["1px 2px 3px 2px / 1px 2px 3px", "1px 2px 3px"],
+  ["1px 2px 3px 4px / 1px 2px 3px 4px", "1px 2px 3px 4px"],
+  ["1px 2px 1px 2px / 5% 6% 7% 6%", "1px 2px / 5% 6% 7%"],
+  ["0", "0px"]
+].forEach(([input, expected]) => test(t => {
+  const e = element(t);
+  e.style.setProperty("border-radius", input);
+  assert_equals(e.style.getPropertyValue("border-radius"), expected);
+}, "ci1-border-radius shortest parse-preserving specified serialization: " + input));
+
+[
+  "-1px", "1px -2%", "auto", "none", "1px /", "/ 1px", "1px // 2px",
+  "1px 2px 3px 4px 5px", "1px / 1px 2px 3px 4px 5px", "1px, 2px",
+  "1px 2", "inherit 1px", "calc(1px + 1deg)"
+].forEach(bad => test(t => {
+  const e = element(t);
+  e.style.setProperty("border-radius", "7px 8% / 9px");
+  const before = cornerValues(e.style);
+  assert_array_equals(before, ["7px 9px", "8% 9px", "7px 9px", "8% 9px"], "recognized valid control");
+  assert_false(CSS.supports("border-radius", bad));
+  e.style.setProperty("border-radius", bad);
+  assert_array_equals(cornerValues(e.style), before, "invalid setter is atomic");
+}, "ci1-border-radius rejects invalid value without replacing valid corners: " + bad));
+
+corners.forEach(name => test(t => {
+  const e = element(t);
+  assert_true(CSS.supports(name, "3px 4%"));
+  e.style.setProperty(name, "3px 4%");
+  assert_equals(e.style.getPropertyValue(name), "3px 4%");
+  e.style.setProperty(name, "2em 2em");
+  assert_equals(e.style.getPropertyValue(name), "2em");
+  e.style.setProperty(name, "1px 2px 3px");
+  assert_equals(e.style.getPropertyValue(name), "2em");
+}, "ci1-border-radius corner pair grammar and compression: " + name));
+
+[
+  ["5em", "200px"],
+  ["1in / 50%", "96px 50%"],
+  ["calc(-0.5em + 10px)", "0px"],
+  ["calc(0.5em + 10px) / 40%", "30px 40%"],
+  ["calc(10px + 10%)", "calc(10% + 10px)"],
+  ["calc(20px + 0%)", "calc(0% + 20px)"],
+  ["9999px / 200%", "9999px 200%"],
+  ["0px / 10px", "0px 10px"],
+  ["0% / 0px", "0% 0px"]
+].forEach(([input, expected]) => test(t => {
+  const e = element(t);
+  e.style.fontSize = "40px";
+  assert_true(CSS.supports("border-radius", input));
+  e.style.setProperty("border-radius", input);
+  assert_array_equals(cornerValues(getComputedStyle(e)), Array(4).fill(expected));
+}, "ci1-border-radius computed lengths, percentages and range: " + input));
+
+test(t => {
+  const parent = element(t);
+  parent.style.cssText = "font-size:40px;border-radius:calc(1em + 2px) 5% / 25% calc(1em + 2px)";
+  const child = document.createElement("div");
+  parent.appendChild(child);
+  child.style.fontSize = "10px";
+  assert_array_equals(cornerValues(getComputedStyle(child)), Array(4).fill("0px"), "radius is not inherited by default");
+  child.style.setProperty("border-radius", "inherit");
+  assert_array_equals(cornerValues(getComputedStyle(child)), ["42px 25%", "5% 42px", "42px 25%", "5% 42px"]);
+  child.style.setProperty("border-radius", "unset");
+  assert_array_equals(cornerValues(getComputedStyle(child)), Array(4).fill("0px"));
+  child.style.setProperty("border-radius", "initial");
+  assert_array_equals(cornerValues(getComputedStyle(child)), Array(4).fill("0px"));
+}, "ci1-border-radius explicit inheritance uses parent computed lengths and initial/unset are zero");
+
+test(t => {
+  const e = element(t);
+  e.style.cssText = "border-radius:1px 2px / 3px 4px;border-image-source:url(old.png);border:solid red";
+  assert_equals(e.style.getPropertyValue("border-radius"), "1px 2px / 3px 4px");
+  assert_equals(e.style.getPropertyValue("border-image-source"), "none");
+  e.style.setProperty("all", "initial");
+  assert_array_equals(cornerValues(getComputedStyle(e)), Array(4).fill("0px"));
+}, "ci1-border-radius border reset excludes radii while all includes them");
+
+test(t => {
+  const e = element(t);
+  e.style.setProperty("border-radius", "3px", "important");
+  assert_equals(e.style.getPropertyPriority("border-radius"), "important");
+  corners.forEach(name => assert_equals(e.style.getPropertyPriority(name), "important"));
+  e.style.setProperty(corners[0], "4px");
+  assert_equals(e.style.getPropertyValue("border-radius"), "");
+  assert_equals(e.style.getPropertyPriority("border-radius"), "");
+  e.style.removeProperty(corners[1]);
+  assert_equals(e.style.getPropertyValue("border-radius"), "");
+}, "ci1-border-radius missing or mixed-priority corners cannot serialize a shorthand");
+</script>

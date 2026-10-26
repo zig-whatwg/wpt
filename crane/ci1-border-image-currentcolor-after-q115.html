@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ci1 border-image inheritance resolves currentcolor at the receiver</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#resolving-other-colors">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// UNRUN. Install only AFTER Q115 owner helper is implemented and accepted.
+// Existing gradient parsing/math and row117 URL absolutization are dependencies,
+// not production changes proposed by this border-image package.
+for(const spelling of ['longhand','shorthand']) test(t=>{
+  const p=document.createElement('div'),c=document.createElement('div');
+  document.body.appendChild(p);p.appendChild(c);t.add_cleanup(()=>p.remove());
+  p.style.cssText='color:red;border-image:linear-gradient(currentcolor,currentcolor) 20 fill / 1em / 2 round';
+  c.style.cssText='color:blue;font-size:40px;border-image:inherit';
+  const value=getComputedStyle(c).getPropertyValue(spelling==='longhand'?'border-image-source':'border-image');
+  assert_true(value.includes('rgb(0, 0, 255)'),value);
+  assert_false(value.includes('currentcolor'),value);
+  assert_false(value.includes('rgb(255, 0, 0)'),value);
+  assert_true(p.style.getPropertyValue('border-image-source').includes('currentcolor'));
+  c.style.color='green';
+  assert_true(getComputedStyle(c).getPropertyValue(spelling==='longhand'?'border-image-source':'border-image').includes('rgb(0, 128, 0)'));
+},`receiver currentcolor agrees in ${spelling}`);
+</script>

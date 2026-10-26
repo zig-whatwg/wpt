@@ -1,0 +1,24 @@
+<!-- Intentionally no doctype: Values4 Appendix C and Color4 Appendix B. -->
+<meta charset="utf-8">
+<!-- Backgrounds3 API shape only; see BORDERS4-DELTA.md for superseded assumptions. -->
+
+<title>Box shadow component parsing excludes quirks</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#deprecated-quirky-length">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<!-- Q170 scratch draft: UNRUN. -->
+<script>
+for (const input of ['1 2', 'abc 1px 2px', '123 1px 2px', '1px 2px 3', '1px 2px 0 4']) test(() => {
+  assert_equals(document.compatMode, 'BackCompat');
+  const s = document.createElement('div').style;
+  s.boxShadow = 'red 1px 2px';
+  assert_equals(s.boxShadow, 'red 1px 2px', 'recognition control');
+  s.boxShadow = input;
+  assert_equals(s.boxShadow, 'red 1px 2px');
+}, `quirks mode rejects ${input}`);
+test(() => {
+  const s = document.createElement('div').style;
+  s.boxShadow = '0 0 0 -0';
+  assert_equals(s.boxShadow, '0px 0px 0px 0px');
+}, 'unitless zero is still a length in quirks mode');
+</script>

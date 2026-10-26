@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Authored image currentcolor inherits symbolically and resolves for the receiver</title>
+<link rel="help" href="https://drafts.csswg.org/css-color-4/#resolving-other-colors">
+<link rel="help" href="https://drafts.csswg.org/cssom/#serialize-a-css-component-value">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// DRAFT / UNRUN. Run after accepted Q115 receiver-time CSSOM implementation
+// and Q166 typed authored color path. No browser currentcolor probe is claimed.
+for (const property of ["background-image", "list-style-image", "border-image-source", "mask-image", "mask-border-source", "content"]) {
+  for (const input of ["image(currentcolor)", "image(light-dark(currentcolor, red))"]) {
+    test(t => {
+      assert_true(CSS.supports(property, input), "positive authored-image support control");
+      const parent = document.createElement("div");
+      const child = document.createElement("div");
+      parent.style.color = "red";
+      parent.style.colorScheme = "light";
+      parent.style.setProperty(property, input);
+      child.style.color = "blue";
+      child.style.colorScheme = "dark";
+      child.style.setProperty(property, "inherit");
+      parent.append(child);
+      document.body.append(parent);
+      t.add_cleanup(() => parent.remove());
+      assert_equals(getComputedStyle(parent).getPropertyValue(property), "image(rgb(255, 0, 0))");
+      assert_equals(getComputedStyle(child).getPropertyValue(property), "image(rgb(0, 0, 255))");
+      assert_equals(getComputedStyle(parent).getPropertyValue(property), "image(rgb(255, 0, 0))", "child readback did not mutate inherited image");
+    }, `${property} receiver currentcolor ${input}`);
+  }
+}
+</script>
