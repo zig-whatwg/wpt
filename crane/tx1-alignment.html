@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Text alignment uses independent longhands and computes before inheritance</title>
+<link rel="help" href="https://drafts.csswg.org/css-text-4/#valdef-text-align-match-parent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const style = document.createElement('div').style;
+  style.textAlignLast = 'justify';
+  style.textAlign = 'center';
+  assert_equals(style.length, 2);
+  assert_equals(style.item(0), 'text-align-last');
+  assert_equals(style.item(1), 'text-align');
+  assert_equals(style.textAlignLast, 'justify');
+  assert_equals(style.removeProperty('text-align'), 'center');
+  assert_equals(style.length, 1);
+  assert_equals(style.textAlignLast, 'justify');
+}, 'text-align assignment and removal preserve text-align-last');
+
+for (const property of ['text-align', 'text-align-last']) {
+  test(t => {
+    const parent = document.createElement('div');
+    const child = document.createElement('div');
+    const grandchild = document.createElement('div');
+    parent.style.cssText = 'direction:rtl; --alignment:start';
+    parent.style.setProperty(property, 'var(--alignment)');
+    child.style.direction = 'ltr';
+    child.style.setProperty(property, 'match-parent');
+    grandchild.style.direction = 'rtl';
+    child.append(grandchild);
+    parent.append(child);
+    document.body.append(parent);
+    t.add_cleanup(() => parent.remove());
+    assert_equals(getComputedStyle(child).getPropertyValue(property), 'right');
+    assert_equals(getComputedStyle(grandchild).getPropertyValue(property), 'right');
+    parent.style.setProperty('--alignment', 'end');
+    assert_equals(getComputedStyle(child).getPropertyValue(property), 'left');
+    assert_equals(getComputedStyle(grandchild).getPropertyValue(property), 'left');
+  }, property + ' resolves match-parent using parent direction before inheritance');
+}
+</script>

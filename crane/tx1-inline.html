@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane CSS Inline shorthand membership and inheritance</title>
+<link rel="help" href="https://drafts.csswg.org/css-inline-3/#propdef-vertical-align">
+<link rel="help" href="https://drafts.csswg.org/css-inline-3/#text-box-trim">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const style = document.createElement('div').style;
+  style.verticalAlign = 'super middle first';
+  assert_equals(style.length, 3);
+  assert_array_equals(Array.from(style), ['alignment-baseline', 'baseline-shift', 'baseline-source']);
+  assert_equals(style.getPropertyValue('vertical-align'), 'first middle super');
+  style.verticalAlign = '0px';
+  assert_equals(style.getPropertyValue('alignment-baseline'), 'baseline');
+  assert_equals(style.getPropertyValue('baseline-shift'), '0px');
+  assert_equals(style.getPropertyValue('baseline-source'), 'auto');
+  assert_equals(style.removeProperty('vertical-align'), 'baseline');
+  assert_equals(style.length, 0);
+}, 'vertical-align expands, resets and removes its three shipped longhands');
+
+test(t => {
+  const parent = document.body.appendChild(document.createElement('div'));
+  const child = parent.appendChild(document.createElement('div'));
+  t.add_cleanup(() => parent.remove());
+  parent.style.cssText = 'font-size:20px;vertical-align:1em';
+  child.style.cssText = 'font-size:10px;vertical-align:inherit';
+  assert_equals(getComputedStyle(child).verticalAlign, '20px');
+  parent.style.fontSize = '30px';
+  assert_equals(getComputedStyle(child).verticalAlign, '30px');
+  child.style.removeProperty('vertical-align');
+  assert_equals(getComputedStyle(child).verticalAlign, 'baseline');
+}, 'vertical alignment computes relative lengths before explicit inheritance');
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.setProperty('text-box', 'cap alphabetic trim-start');
+  assert_equals(style.length, 2);
+  assert_array_equals(Array.from(style), ['text-box-trim', 'text-box-edge']);
+  assert_equals(style.getPropertyValue('text-box'), 'trim-start cap alphabetic');
+  style.setProperty('text-box', 'normal');
+  assert_equals(style.getPropertyValue('text-box-trim'), 'none');
+  assert_equals(style.getPropertyValue('text-box-edge'), 'auto');
+  assert_equals(style.removeProperty('text-box'), 'normal');
+  assert_equals(style.length, 0);
+}, 'text-box expands, resets and removes both constituents');
+
+test(t => {
+  const parent = document.body.appendChild(document.createElement('div'));
+  const child = parent.appendChild(document.createElement('div'));
+  t.add_cleanup(() => parent.remove());
+  parent.style.setProperty('text-box', 'trim-start cap alphabetic');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-box-edge'), 'cap alphabetic');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-box-trim'), 'none');
+  child.style.setProperty('text-box', 'inherit');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-box-trim'), 'trim-start');
+  child.style.setProperty('text-box', 'unset');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-box-edge'), 'cap alphabetic');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-box-trim'), 'none');
+}, 'text-box-edge inherits while text-box-trim defaults under absence and unset');
+</script>

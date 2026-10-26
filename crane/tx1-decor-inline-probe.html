@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Row 124 decoration and inline CSSOM probe</title>
+<body><pre id="result"></pre>
+<script>
+(() => {
+  const cases = [
+    ['vertical-align', 'baseline'], ['vertical-align', '0px'],
+    ['vertical-align', 'super middle first'], ['vertical-align', 'first'],
+    ['vertical-align', 'middle'], ['baseline-shift', 'baseline'],
+    ['baseline-shift', '0'], ['baseline-shift', 'top'],
+    ['alignment-baseline', 'text-top'], ['alignment-baseline', 'hanging'],
+    ['dominant-baseline', 'text-before-edge'],
+    ['text-decoration-thickness', 'thin'], ['text-decoration-thickness', 'medium'],
+    ['text-decoration-thickness', 'thick'], ['text-decoration-thickness', '-2px'],
+    ['text-shadow', '1px 2px 3px 4px'], ['text-shadow', 'inset 1px 2px'],
+    ['text-decoration', 'underline solid currentcolor'],
+    ['text-emphasis-style', 'filled'], ['text-emphasis-style', 'open'],
+    ['text-emphasis-style', 'filled circle'], ['text-emphasis-position', 'over right'],
+    ['text-emphasis-position', 'left'], ['text-decoration-skip-spaces', 'end start']
+  ];
+  window.tx1DecorInlineProbe = cases.map(([property, value]) => {
+    const parent = document.createElement('div');
+    parent.style.cssText = 'color:blue;font-size:20px';
+    const node = document.createElement('span');
+    node.style.setProperty(property, value);
+    parent.append(node);
+    document.body.append(parent);
+    const cs = getComputedStyle(node);
+    const result = {property, value, supports:CSS.supports(property,value), specified:node.style.getPropertyValue(property), length:node.style.length, names:Array.from(node.style), cssText:node.style.cssText, computed:cs.getPropertyValue(property)};
+    if (property === 'vertical-align') {
+      result.longhands = Object.fromEntries(['baseline-source','alignment-baseline','baseline-shift'].map(p=>[p,{specified:node.style.getPropertyValue(p),computed:cs.getPropertyValue(p)}]));
+    }
+    parent.remove();
+    return result;
+  });
+  document.querySelector('#result').textContent=JSON.stringify(window.tx1DecorInlineProbe,null,2);
+})();
+</script>

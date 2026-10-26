@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Row 124 emphasis position initial CSSOM probe</title>
+<body><pre id="result"></pre>
+<script>
+(() => {
+  const property = 'text-emphasis-position';
+  const rows = [];
+  for (const parentValue of ['', 'under left']) {
+    for (const value of ['', 'initial', 'unset', 'auto', 'inherit']) {
+      const parent = document.createElement('div');
+      const node = document.createElement('span');
+      parent.style.setProperty(property, parentValue);
+      node.style.setProperty(property, value);
+      parent.append(node);
+      document.body.append(parent);
+      rows.push({parentValue, value, supports: value ? CSS.supports(property,value) : null,
+        specified:node.style.getPropertyValue(property),
+        parentComputed:getComputedStyle(parent).getPropertyValue(property),
+        computed:getComputedStyle(node).getPropertyValue(property)});
+      parent.remove();
+    }
+  }
+  window.tx1EmphasisInitialProbe = rows;
+  document.querySelector('#result').textContent = JSON.stringify(rows,null,2);
+})();
+</script>

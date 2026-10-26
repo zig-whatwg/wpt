@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Decoration CSSOM resolves colors without changing inherited values</title>
+<link rel="help" href="https://drafts.csswg.org/css-text-decor-4/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const node = document.createElement('div');
+  node.style.cssText = 'color:rgb(10, 20, 30); text-decoration:underline solid currentcolor';
+  document.body.append(node);
+  t.add_cleanup(() => node.remove());
+  assert_equals(node.style.getPropertyValue('text-decoration'), 'underline');
+  assert_equals(getComputedStyle(node).getPropertyValue('text-decoration'), 'underline');
+  assert_equals(getComputedStyle(node).getPropertyValue('text-decoration-color'), 'rgb(10, 20, 30)');
+  node.style.setProperty('text-decoration-color', 'rgb(10, 20, 30)');
+  assert_equals(getComputedStyle(node).getPropertyValue('text-decoration'), 'underline rgb(10, 20, 30)');
+}, 'computed decoration omits symbolic currentcolor but retains an equal explicit color');
+
+test(t => {
+  const parent = document.createElement('div');
+  const child = document.createElement('div');
+  parent.style.cssText = 'color:red; font-size:20px; text-shadow:1em 2em; text-emphasis:open circle';
+  child.style.cssText = 'color:blue; font-size:10px';
+  parent.append(child);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  assert_equals(getComputedStyle(child).getPropertyValue('text-shadow'), 'rgb(0, 0, 255) 20px 40px 0px');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-emphasis'), 'open circle rgb(0, 0, 255)');
+  assert_equals(getComputedStyle(parent).getPropertyValue('text-shadow'), 'rgb(255, 0, 0) 20px 40px 0px');
+  child.style.color = 'green';
+  assert_equals(getComputedStyle(child).getPropertyValue('text-shadow'), 'rgb(0, 128, 0) 20px 40px 0px');
+  assert_equals(getComputedStyle(parent).getPropertyValue('text-emphasis'), 'open circle rgb(255, 0, 0)');
+}, 'shadow and emphasis inheritance retains symbolic currentcolor and computed lengths');
+
+test(t => {
+  const parent = document.createElement('div');
+  const child = document.createElement('div');
+  parent.style.cssText = 'writing-mode:vertical-rl; text-emphasis-style:open';
+  child.style.cssText = 'writing-mode:horizontal-tb; text-orientation:upright';
+  parent.append(child);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  assert_equals(getComputedStyle(parent).getPropertyValue('text-emphasis-style'), 'open sesame');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-emphasis-style'), 'open sesame');
+  parent.style.writingMode = 'sideways-rl';
+  assert_equals(getComputedStyle(parent).getPropertyValue('text-emphasis-style'), 'open circle');
+  assert_equals(getComputedStyle(child).getPropertyValue('text-emphasis-style'), 'open circle');
+}, 'emphasis chooses its shape by typographic mode before inheritance');
+
+test(() => {
+  const style = document.createElement('div').style;
+  style.setProperty('text-underline-offset', '2px');
+  style.setProperty('text-decoration', 'underline red from-font');
+  assert_equals(style.length, 5);
+  assert_equals(style.getPropertyValue('text-decoration-thickness'), 'from-font');
+  assert_equals(style.getPropertyValue('text-underline-offset'), '2px');
+  style.setProperty('text-decoration', 'dotted');
+  assert_equals(style.getPropertyValue('text-decoration-line'), 'none');
+  assert_equals(style.getPropertyValue('text-decoration-color'), 'currentcolor');
+  assert_equals(style.getPropertyValue('text-decoration-thickness'), 'auto');
+  assert_equals(style.removeProperty('text-decoration'), 'dotted');
+  assert_equals(style.length, 1);
+  assert_equals(style.getPropertyValue('text-underline-offset'), '2px');
+}, 'decoration resets and removes exactly its four constituents');
+</script>

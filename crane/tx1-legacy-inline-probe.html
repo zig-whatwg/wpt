@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inline legacy baselines and emphasis explicit right CSSOM probe</title>
+<body><pre id="result"></pre>
+<script>
+const data = [];
+for (const [property, value] of [
+  ['alignment-baseline', 'text-before-edge'],
+  ['alignment-baseline', 'text-after-edge'],
+  ['dominant-baseline', 'text-before-edge'],
+  ['dominant-baseline', 'text-after-edge'],
+  ['text-emphasis-position', 'over right'],
+  ['text-emphasis-position', 'right under'],
+]) {
+  const node = document.body.appendChild(document.createElement('div'));
+  node.style.setProperty(property, value);
+  data.push({property, value, supports:CSS.supports(property,value),
+    specified:node.style.getPropertyValue(property),
+    computed:getComputedStyle(node).getPropertyValue(property)});
+  node.remove();
+}
+window.tx1LegacyInlineProbe = {userAgent:navigator.userAgent,data};
+document.getElementById('result').textContent = JSON.stringify(window.tx1LegacyInlineProbe,null,2);
+</script>

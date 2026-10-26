@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS Text compound ordering and independent white-space trimming</title>
+<link rel="help" href="https://drafts.csswg.org/css-text-4/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const parent = document.createElement('div');
+  const child = parent.appendChild(document.createElement('span'));
+  parent.style.setProperty('hanging-punctuation', 'last first force-end');
+  document.body.append(parent);
+  try {
+    assert_equals(parent.style.getPropertyValue('hanging-punctuation'), 'last first force-end');
+    assert_equals(getComputedStyle(parent).getPropertyValue('hanging-punctuation'), 'first force-end last');
+    assert_equals(getComputedStyle(child).getPropertyValue('hanging-punctuation'), 'first force-end last');
+    assert_equals(parent.style.getPropertyValue('hanging-punctuation'), 'last first force-end');
+  } finally { parent.remove(); }
+}, 'hanging-punctuation preserves specified order and computes canonical order before inheritance');
+
+test(() => {
+  const parent = document.createElement('div');
+  const child = parent.appendChild(document.createElement('span'));
+  parent.style.setProperty('white-space-trim', 'discard-inner discard-before discard-after');
+  parent.style.whiteSpace = 'pre';
+  document.body.append(parent);
+  try {
+    assert_equals(parent.style.getPropertyValue('white-space-trim'), 'discard-before discard-after discard-inner');
+    assert_equals(parent.style.length, 3);
+    assert_equals(getComputedStyle(child).getPropertyValue('white-space-trim'), 'none');
+    parent.style.removeProperty('white-space');
+    assert_equals(parent.style.length, 1);
+    assert_equals(parent.style.item(0), 'white-space-trim');
+  } finally { parent.remove(); }
+}, 'white-space-trim neither inherits nor participates in the shipping white-space shorthand');
+
+test(() => {
+  const target = document.createElement('div');
+  target.style.setProperty('text-spacing', 'trim-start');
+  for (const invalid of ['trim-start punctuation punctuation', 'normal insert replace']) {
+    target.style.setProperty('text-spacing', invalid);
+    assert_equals(target.style.getPropertyValue('text-spacing'), 'trim-start');
+  }
+}, 'malformed optional autospace groups do not consume themselves into an accepted shorthand');
+
+test(() => {
+  const target = document.createElement('div');
+  target.style.setProperty('text-fit', 'grow 20%');
+  target.style.setProperty('text-fit', 'grow -20%');
+  assert_equals(target.style.getPropertyValue('text-fit'), 'grow 20%');
+  target.style.setProperty('text-fit', 'grow calc(-20%)');
+  document.body.append(target);
+  try { assert_equals(getComputedStyle(target).getPropertyValue('text-fit'), 'grow 0%'); }
+  finally { target.remove(); }
+}, 'text-fit rejects negative literals and clamps calculated negatives when computing');
+</script>

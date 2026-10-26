@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS Text typed values, inheritance and shorthand reset boundaries</title>
+<link rel="help" href="https://drafts.csswg.org/css-text-4/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fixture(t) {
+  const parent = document.createElement("div");
+  const child = document.createElement("span");
+  parent.append(child);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  return {parent, child};
+}
+test(t => {
+  const {parent, child} = fixture(t);
+  parent.style.cssText = "font-size:20px; --gap:2em; word-spacing:var(--gap); tab-size:2em";
+  child.style.fontSize = "10px";
+  assert_equals(getComputedStyle(parent).wordSpacing, "40px");
+  assert_equals(getComputedStyle(child).wordSpacing, "40px");
+  assert_equals(getComputedStyle(child).tabSize, "40px");
+  parent.style.wordSpacing = "25%";
+  assert_equals(getComputedStyle(child).wordSpacing, "25%");
+}, "Text lengths compute on the parent while percentages inherit intact through real variable substitution");
+
+test(t => {
+  const {parent, child} = fixture(t);
+  parent.style.cssText = "hyphenate-limit-chars:5 calc(2.1) 3; text-fit:grow consistent 150%";
+  assert_equals(getComputedStyle(child).getPropertyValue("hyphenate-limit-chars"), "5 2 3");
+  assert_equals(getComputedStyle(child).getPropertyValue("text-fit"), "grow 150%");
+  assert_equals(parent.style.getPropertyValue("text-fit"), "grow consistent 150%");
+}, "Text compound computation leaves the specified declaration unchanged");
+
+test(t => {
+  const {parent} = fixture(t);
+  parent.style.textWrap = "nowrap pretty";
+  parent.style.whiteSpace = "pre-wrap";
+  assert_equals(parent.style.textWrapMode, "wrap");
+  assert_equals(parent.style.textWrapStyle, "pretty");
+  assert_equals(parent.style.textWrap, "pretty");
+  parent.style.textWrap = "nowrap";
+  assert_equals(parent.style.textWrapStyle, "auto");
+  assert_equals(parent.style.whiteSpaceCollapse, "preserve");
+}, "white-space and text-wrap reset only their own constituent longhands");
+
+test(() => {
+  const style = document.createElement("div").style;
+  style.setProperty("word-wrap", "anywhere");
+  assert_equals(style.getPropertyValue("overflow-wrap"), "anywhere");
+  style.setProperty("overflow-wrap", "normal");
+  assert_equals(style.length, 1);
+  assert_equals(style.getPropertyValue("word-wrap"), "normal");
+}, "word-wrap and overflow-wrap share a declaration slot");
+
+test(() => {
+  const style = document.createElement("div").style;
+  style.setProperty("hyphenate-limit-chars", "5 2");
+  style.setProperty("hyphenate-limit-chars", "5 -1");
+  assert_equals(style.getPropertyValue("hyphenate-limit-chars"), "5 2");
+  style.tabSize = "2.5";
+  style.tabSize = "calc(5% + 2px)";
+  assert_equals(style.tabSize, "2.5");
+}, "Invalid range or numeric type preserves the previous text declaration");
+</script>

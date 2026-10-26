@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS Text properties obey the typographic pseudo-element applicability lists</title>
+<link rel="help" href="https://drafts.csswg.org/css-pseudo-4/#first-line-styling">
+<link rel="help" href="https://drafts.csswg.org/css-pseudo-4/#first-letter-styling">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target" style="font-size:20px;color:blue">First line and first letter</div>
+<script>
+test(t => {
+  const target = document.getElementById('target');
+  const sheet = document.head.appendChild(document.createElement('style'));
+  t.add_cleanup(() => sheet.remove());
+  const admitted = [
+    ['word-spacing', '12px', '12px'],
+    ['text-justify', 'inter-word', 'inter-word'],
+    ['hyphenate-character', '"X"', '"X"'],
+    ['hyphenate-limit-chars', '7 3 4', '7 3 4'],
+    ['hanging-punctuation', 'first', 'first'],
+    ['text-autospace', 'ideograph-alpha', 'ideograph-alpha'],
+    ['text-autospace', 'ideograph-numeric', 'ideograph-numeric'],
+    ['text-decoration-line', 'overline', 'overline'],
+    ['text-decoration-style', 'wavy', 'wavy'],
+    ['text-decoration-color', 'red', 'rgb(255, 0, 0)'],
+    ['text-decoration-thickness', '2em', '40px'],
+    ['text-decoration-inset', '2em 1em', '40px 20px'],
+    ['text-decoration-skip-ink', 'none', 'none'],
+    ['text-decoration-skip-spaces', 'none', 'none'],
+    ['text-underline-position', 'under', 'under'],
+    ['text-underline-offset', '2em', '40px'],
+    ['text-shadow', 'red 1em 2px 3px', 'rgb(255, 0, 0) 20px 2px 3px'],
+    ['alignment-baseline', 'middle', 'middle'],
+    ['baseline-shift', '1em', '20px'],
+    ['baseline-source', 'last', 'last'],
+    ['vertical-align', 'last middle 1em', 'last middle 20px']
+  ];
+  const filtered = [
+    ['hyphens', 'auto', 'manual'],
+    ['line-break', 'strict', 'auto'],
+    ['overflow-wrap', 'anywhere', 'normal'],
+    ['tab-size', '3', '8'],
+    ['text-align', 'right', 'start'],
+    ['text-align-last', 'right', 'auto'],
+    ['text-indent', '12px', '0px'],
+    ['text-wrap-mode', 'nowrap', 'wrap'],
+    ['text-wrap-style', 'balance', 'auto'],
+    ['white-space-collapse', 'preserve', 'collapse'],
+    ['word-break', 'break-all', 'normal'],
+    ['text-fit', 'grow', 'none'],
+    ['text-emphasis-style', 'open circle', 'none'],
+    ['text-emphasis-color', 'red', 'rgb(0, 0, 255)'],
+    ['text-emphasis-position', 'under left', 'over'],
+    ['dominant-baseline', 'middle', 'auto'],
+    ['text-box-edge', 'cap alphabetic', 'auto'],
+    ['text-box-trim', 'trim-both', 'none'],
+    ['hyphenate-limit-lines', '3', 'no-limit'],
+    ['text-group-align', 'center', 'none'],
+    ['text-spacing-trim', 'trim-all', 'normal'],
+    ['white-space-trim', 'discard-before', 'none'],
+    ['word-space-transform', 'ideographic-space', 'none']
+  ];
+  function check(pseudo, [property, input, expected]) {
+    sheet.textContent = '#target' + pseudo + ' {}';
+    sheet.sheet.cssRules[0].style.setProperty(property, input);
+    assert_equals(getComputedStyle(target, pseudo).getPropertyValue(property), expected,
+                  pseudo + ' ' + property + ': ' + input);
+  }
+  for (const pseudo of ['::first-line', '::first-letter']) {
+    for (const row of admitted) check(pseudo, row);
+    for (const row of filtered) check(pseudo, row);
+  }
+  check('::first-line', ['initial-letter', '3', 'normal']);
+  check('::first-letter', ['initial-letter', '3', '3']);
+}, 'Text, Decoration and Inline properties follow the typographic pseudo-element applicability rules');
+</script>

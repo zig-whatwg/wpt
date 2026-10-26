@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>tx1 CSS Text CSSOM evidence</title>
+<pre id="result"></pre>
+<script>
+const target = document.createElement("div");
+document.body.append(target);
+const cases = {
+  "text-align": ["center", "match-parent", "justify-all"],
+  "text-align-all": ["start", "center"],
+  "text-align-last": ["auto", "match-parent"],
+  "hanging-punctuation": ["last first force-end", "allow-end first", "last allow-end"],
+  "text-fit": ["grow -20%", "grow 0%", "grow calc(-20%)"],
+  "text-wrap-style": ["avoid-short-last-line"],
+  "text-justify": ["ruby", "no-compress", "inter-word no-compress"],
+  "hyphenate-limit-lines": ["no-limit", "0", "3"],
+  "word-space-transform": ["none", "space", "ideographic-space auto-phrase"],
+  "text-group-align": ["none", "start", "end", "center"],
+  "text-spacing": ["normal", "trim-start no-autospace"],
+  "text-decoration-skip-spaces": ["all", "start", "end", "start end"],
+  "text-autospace": ["normal", "punctuation", "insert", "replace", "ideograph-alpha insert", "ideograph-alpha replace"],
+  "white-space-trim": ["none", "discard-before", "discard-after", "discard-inner"]
+};
+const data = [];
+for (const [property, values] of Object.entries(cases)) {
+  for (const value of values) {
+    target.style.cssText = "";
+    target.style.setProperty(property, value);
+    const computed = getComputedStyle(target);
+    data.push({property, value, supports: CSS.supports(property, value),
+      specified: target.style.getPropertyValue(property), length: target.style.length,
+      names: Array.from(target.style), cssText: target.style.cssText,
+      computed: computed.getPropertyValue(property),
+      alignAll: computed.getPropertyValue("text-align-all"),
+      alignLast: computed.getPropertyValue("text-align-last")});
+  }
+}
+window.tx1TextProbe = {userAgent: navigator.userAgent, data};
+document.getElementById("result").textContent = JSON.stringify(window.tx1TextProbe, null, 2);
+target.remove();
+</script>
