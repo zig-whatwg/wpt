@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Key presses on a non-editing element, and typing into an editing host</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<div id="plain" tabindex="0">plain</div>
+<div id="host" contenteditable></div>
+<script>
+// Lane editing3's cost page. ED3_KEYDOWN_PLAIN_MS: 500 trusted key presses
+// on a focused element that is not editable - every keydown's default
+// action passes the editing-host check the typing path added (binding,
+// BASE vs TIP). ED3_TYPE_HOST_MS: 200 characters typed into an editing
+// host - beforeinput, insertText, input per key (TIP only: BASE types
+// nothing).
+promise_test(async () => {
+  const plain = document.getElementById('plain');
+  let keydowns = 0;
+  plain.addEventListener('keydown', () => keydowns++);
+  plain.focus();
+  const actions = new test_driver.Actions();
+  for (let press = 0; press < 500; ++press) actions.keyDown('a').keyUp('a');
+  const started = performance.now();
+  await actions.send();
+  const elapsed = performance.now() - started;
+  test(() => {
+    assert_equals(keydowns, 500);
+    assert_equals(plain.textContent, 'plain');
+  }, `ED3_KEYDOWN_PLAIN_MS=${elapsed.toFixed(3)}`);
+}, '500 key presses on a focused element that is not editable');
+
+promise_test(async () => {
+  const host = document.getElementById('host');
+  host.focus();
+  getSelection().collapse(host, 0);
+  const actions = new test_driver.Actions();
+  for (let press = 0; press < 200; ++press) actions.keyDown('x').keyUp('x');
+  const started = performance.now();
+  await actions.send();
+  const elapsed = performance.now() - started;
+  test(() => {
+    assert_true(host.textContent.length === 0 || host.textContent.length === 200);
+  }, `ED3_TYPE_HOST_MS=${elapsed.toFixed(3)} chars=${host.textContent.length}`);
+}, '200 characters typed into an editing host');
+</script>
