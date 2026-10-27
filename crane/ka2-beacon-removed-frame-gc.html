@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A beacon in flight from a removed frame reaches the server</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-fetch-group-terminate">
+<link rel="help" href="https://w3c.github.io/beacon/#sec-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+// Fetch 2.4 "when a fetch group is terminated", step 1: only records whose
+// request's keepalive is false are terminated. A beacon is keepalive: it is
+// meant to outlive its document. Here the frame sends one whose first hop
+// the server holds for a second; the parent removes the frame and asks for
+// collections while the beacon waits. The engines' network sides keep a
+// keepalive load whose renderer or global has gone (Chromium
+// KeepAliveURLLoader, WebKit NetworkResourceLoader::abort's m_isKeptAlive,
+// Gecko FetchService's non-forced cancel).
+//
+// Crane (lane keepalive2): a removed frame's realm is detached, not ended,
+// until the collector takes it or its page ends; when it retires, the agent
+// keeps the beacon (AsyncFetch.keep) where it used to terminate it. This
+// file passes on main-7cb783a35b too - there the collections below do not
+// take the detached realm while the beacon waits - so the retirement case
+// is pinned natively (tests/html/ka2_kept_fetch_test.zig, red 4 of 5 on
+// that base). It stays as the end-to-end check that a removed frame's
+// beacon reaches the server.
+
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+async function stashed(key) {
+  const response = await fetch(`/fetch/api/resources/stash-take.py?key=${key}`);
+  return response.json();
+}
+
+function slowBeaconUrl(key) {
+  const put = `/fetch/api/resources/stash-put.py?key=${key}&value=on`;
+  // 307 keeps the beacon's POST and its body; a 302 would make it a GET.
+  return `/fetch/api/resources/redirect.py?redirect_status=307&delay=1000&location=${encodeURIComponent(put)}`;
+}
+
+function frameSending(url) {
+  return new Promise(resolve => {
+    let frame = document.createElement("iframe");
+    frame.srcdoc = `<!doctype html><script>
+      parent.postMessage(navigator.sendBeacon(${JSON.stringify(url)}, "ka2") ? "sent" : "refused", "*");
+    <\/script>`;
+    self.addEventListener("message", function listener(e) {
+      self.removeEventListener("message", listener);
+      frame.remove();
+      frame = null;
+      resolve(e.data);
+    });
+    document.body.appendChild(frame);
+  });
+}
+
+promise_test(async t => {
+  const key = token();
+  assert_equals(await frameSending(slowBeaconUrl(key)), "sent", "sendBeacon accepted the beacon");
+  // The frame is gone and nothing holds it: its realm is collected while the
+  // beacon's first hop is still held by the server.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  await collect();
+  await collect();
+  // The hop is answered after a second; the redirect it answers with stashes.
+  await new Promise(resolve => t.step_timeout(resolve, 3000));
+  assert_equals(await stashed(key), "on", "the beacon reached the server");
+}, "a beacon in flight from a removed frame survives the collection of the frame's realm");
+</script>
