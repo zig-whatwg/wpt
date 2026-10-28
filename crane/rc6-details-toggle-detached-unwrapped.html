@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a queued details toggle task keeps an unwrapped details in a dropped tree</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#queue-a-details-toggle-event-task">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5d (lane refcount6): "queue a details toggle event task"
+// queues an element task given the details element, and the task keeps it:
+// WebKit's ToggleEventTask queues with queueTaskKeepingThisNodeAlive, Blink
+// posts WrapPersistent(this). Here the parser makes the details (script never
+// touches it) inside a tree whose only wrapper - its root's - script drops
+// before the task runs, and a collection runs. The toggle must still fire.
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  self.toggled = [];
+  (() => {
+    const host = document.createElement("div");
+    host.innerHTML = '<details open ontoggle="self.toggled.push(event.oldState + \'>\' + event.newState)"><summary>s</summary>x</details>';
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(self.toggled, ["closed>open"], "the queued toggle reached the details");
+}, "a parsed details nothing wrapped, in a tree script dropped, still gets its queued toggle");
+
+promise_test(async t => {
+  self.seen = [];
+  (() => {
+    const details = document.createElement("details");
+    details.rc = "kept";
+    details.addEventListener("toggle", function () { self.seen.push(this.rc); });
+    details.open = true;
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(self.seen, ["kept"], "the element's expando, after collections while its task waited");
+}, "a details script dropped keeps its expando until its toggle task ran");
+</script>

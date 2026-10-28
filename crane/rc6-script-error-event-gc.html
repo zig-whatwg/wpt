@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a removed script's queued error event survives a collection</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5d (lane refcount6): "prepare the script element" step 33.3
+// queues an element task to fire error at a script whose src is empty. The
+// queued task keeps its element: WebKit queues it with
+// queueTaskKeepingObjectAlive (ScriptElement::requestClassicScript), Blink's
+// element tasks hold their element. Here the script is removed at once and
+// nothing in script names it any more; a collection runs before the task
+// does. The event must still reach the element's handler.
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  self.fired = 0;
+  (() => {
+    const script = document.createElement("script");
+    script.setAttribute("onerror", "self.fired += 1");
+    script.setAttribute("src", "");
+    document.body.appendChild(script);
+    script.remove();
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(self.fired, 1, "the error event fired at the removed, collected-for script");
+}, "a removed script nothing names still gets the error event its preparation queued");
+
+promise_test(async t => {
+  self.fired_import = 0;
+  (() => {
+    const script = document.createElement("script");
+    script.type = "importmap";
+    script.setAttribute("onerror", "self.fired_import += 1");
+    script.setAttribute("src", "x.json");
+    document.body.appendChild(script);
+    script.remove();
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(self.fired_import, 1, "an external import map's error event (step 33.1)");
+}, "a removed external import map nothing names still gets its queued error event");
+</script>

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an img's pending load keeps its wrapper and expandos</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/images.html#update-the-image-data">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5d (lane refcount6): an img's update of the image data holds
+// its element until the task that fires load or error has run - WebKit's
+// ImageLoader keeps `RefPtr<Element> m_protectedElement` while an event is
+// pending. A script-made img nothing names any more, collected while its
+// load is pending, still gets load, with its expando.
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  self.seen = [];
+  (() => {
+    const img = new Image();
+    img.rc = "kept";
+    img.onload = function () { self.seen.push("load:" + this.rc); };
+    img.onerror = function () { self.seen.push("error:" + this.rc); };
+    img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  for (let i = 0; i < 50 && self.seen.length === 0; i++) {
+    await new Promise(resolve => t.step_timeout(resolve, 10));
+    TestUtils.gc();
+  }
+  assert_array_equals(self.seen, ["load:kept"], "load fired at the img, its expando intact");
+}, "a dropped img keeps its wrapper and expando while its load is pending");
+</script>
