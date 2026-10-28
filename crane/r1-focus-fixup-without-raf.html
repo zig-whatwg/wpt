@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The focus fixup gets its rendering opportunity without an animation frame request</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>#hidden-on-focus:focus { display: none }</style>
+<body>
+<script>
+// Crane test (lane rendering1): the SCHEDULING half of update the rendering
+// step 17. No case requests an animation frame. Each reads only the
+// designation (document.activeElement); whether the fixup fires blur is the
+// fixup's own half.
+promise_test(async t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  host.id = 'hidden-on-focus';
+  host.tabIndex = 0;
+  host.focus();
+  assert_equals(document.activeElement, host, 'focus is designated synchronously');
+  await t.step_wait(() => document.activeElement === document.body,
+    'the fixup designated the viewport', 3000, 10);
+}, 'a :focus rule that hides the focused element');
+
+promise_test(async t => {
+  const button = document.body.appendChild(document.createElement('button'));
+  t.add_cleanup(() => button.remove());
+  button.focus();
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+  assert_equals(document.activeElement, button, 'still focused after its frames');
+  button.disabled = true;
+  await t.step_wait(() => document.activeElement === document.body,
+    'the fixup designated the viewport', 3000, 10);
+}, 'disabling the focused element later');
+</script>

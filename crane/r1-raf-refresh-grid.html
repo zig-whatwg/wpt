@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Animation frame timestamps are refresh moments, relative to each document's time origin</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane test (lane rendering1): update the rendering step 14 passes "the
+// relative high resolution time given frameTimestamp and doc's relevant
+// global object"; frameTimestamp is the loop's last render opportunity time,
+// one instant per frame. Crane's emulated display refreshes at 60 Hz on a
+// fixed grid, so consecutive frames are whole refresh intervals apart.
+promise_test(async () => {
+  const stamps = [];
+  await new Promise(resolve => {
+    requestAnimationFrame(function tick(t) {
+      stamps.push([t, performance.now()]);
+      if (stamps.length < 6) requestAnimationFrame(tick); else resolve();
+    });
+  });
+  for (let i = 0; i < stamps.length; i++) {
+    const [t, now] = stamps[i];
+    assert_less_than_equal(t, now, `frame ${i}'s timestamp is not after its callback's now`);
+    if (i > 0) {
+      const gap = (t - stamps[i - 1][0]) / (1000 / 60);
+      assert_greater_than_equal(gap, 0.98, `frame ${i} follows the last by at least one refresh`);
+      assert_approx_equals(gap, Math.round(gap), 0.02, `frame ${i} is whole refreshes after the last`);
+    }
+  }
+}, 'consecutive animation frames are whole refresh intervals apart');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  frame.srcdoc = '<!doctype html><body>child';
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  const w = frame.contentWindow;
+  const [parentStamp, childStamp, childNow] = await new Promise(resolve => {
+    let parentStamp;
+    requestAnimationFrame(ts => { parentStamp = ts; });
+    w.requestAnimationFrame(ts => resolve([parentStamp, ts, w.performance.now()]));
+  });
+  assert_less_than_equal(childStamp, childNow, "the child's timestamp is not after its now");
+  const shift = w.performance.timeOrigin - performance.timeOrigin;
+  assert_approx_equals(parentStamp - childStamp, shift, 0.25,
+    "both callbacks see one frame instant, each relative to its own time origin");
+}, "one frame's instant, relative to each document's time origin");
+</script>

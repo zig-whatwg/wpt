@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A shown document is revealed without an animation frame request</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#reveal">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane test (lane rendering1): "reveal" runs at update the rendering step 6,
+// at the first rendering opportunity after the document is shown. Nothing in
+// the frame asks for an animation frame; pagereveal fires once anyway.
+promise_test(async t => {
+  let revealed = 0;
+  window.onRevealed = () => revealed++;
+  const frame = document.createElement('iframe');
+  frame.srcdoc = `<!doctype html><script>
+    addEventListener('pagereveal', e => parent.onRevealed(e));
+  <\/script>`;
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  await t.step_wait(() => revealed === 1, 'pagereveal fired', 3000, 10);
+  await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  assert_equals(revealed, 1, 'pagereveal fires once per activation');
+}, 'pagereveal fires without requestAnimationFrame, once');
+</script>
