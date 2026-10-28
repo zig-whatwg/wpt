@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an element waiting in a custom element reaction queue keeps its wrapper</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/custom-elements.html#custom-element-reactions">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5e (lane refcount5): a reaction queue's element is held for
+// script until its reactions run. WebKit keeps a disconnected element's
+// wrapper while isInCustomElementReactionQueue (JSNodeOwner::
+// isReachableFromOpaqueRoots) and its element with a Ref
+// (CustomElementQueue::m_elements); Blink's ElementQueue traces Member
+// elements. Here the first element's upgrade detaches the second, whose own
+// upgrade is still queued, drops every script reference to it and collects:
+// the second's constructor must still see its expando.
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const seen = [];
+  customElements.define("rc5-queued", class extends HTMLElement {
+    constructor() {
+      super();
+      seen.push(this.rc);
+      if (this.id === "first") {
+        const second = this.nextSibling;
+        second.rc = "kept";
+        second.remove();
+        TestUtils.gc();
+        TestUtils.gc();
+      }
+    }
+  });
+  (() => {
+    const host = document.createElement("div");
+    host.innerHTML = '<rc5-queued id="first"></rc5-queued><rc5-queued id="second"></rc5-queued>';
+  })();
+  assert_array_equals(seen, [undefined, "kept"], "the queued element's expando, after collections while it waited");
+}, "a detached element waiting for its upgrade keeps its expando through collections");
+
+</script>

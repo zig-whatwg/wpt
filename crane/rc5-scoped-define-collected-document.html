@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: define() on a scoped registry walks a document script dropped</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/custom-elements.html#dom-customelementregistry-define">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5e (lane refcount5), a STRESS test for a defensive fix.
+// A scoped registry's document set is weak (Blink's AssociatedDocumentSet),
+// so define()'s steps 17-18 can walk a document whose wrapper the collector
+// already took and whose teardown is still pending. Crane's walk keeps bare
+// tree nodes across the wraps that queue each upgrade; a collection at the
+// first of them could run that teardown under the walk - but only with more
+// than 100,000 collected nodes queued (the deferred teardown's high water),
+// so the document here is that large. The walk now holds the agent's
+// teardowns (engine.holdTeardowns). The window is not something script can
+// aim at: this page passes when define() either skips the document (gone) or
+// upgrades every candidate, and nothing crashes.
+
+promise_test(async t => {
+  const count = 101000;
+  for (let round = 0; round < 2; round++) {
+    const registry = new CustomElementRegistry();
+    let upgraded = 0;
+    (() => {
+      const doc = document.implementation.createHTMLDocument("");
+      doc.body.innerHTML = "<rc5-walked></rc5-walked>".repeat(count);
+      registry.initialize(doc);
+    })();
+    // Young garbage after the document went: collections the allocations
+    // start can take the document's wrapper and leave its teardown pending.
+    let junk = null;
+    for (let i = 0; i < 400000; i++) junk = { i, next: i % 64 ? junk : null };
+    junk = null;
+    registry.define("rc5-walked", class extends HTMLElement {
+      constructor() { super(); upgraded += 1; }
+    });
+    // The set is weak: a document already freed is not walked (0); one not
+    // yet freed is walked whole.
+    assert_true(upgraded === 0 || upgraded === count, "round " + round + ": upgraded " + upgraded);
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+  }
+}, "define() walks a large scoped document script dropped whole, or not at all");
+</script>

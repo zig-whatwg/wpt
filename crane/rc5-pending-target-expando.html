@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a queued MutationRecord's target keeps its wrapper until delivery</title>
+<link rel=help href="https://dom.spec.whatwg.org/#queueing-a-mutation-record">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Refcount step 5c (lane refcount5): a MutationObserver's pending targets.
+// WebKit keeps every queued record's target as a GCReachableRef until the
+// observer delivers (MutationObserver::m_pendingTargets), so a detached
+// target script let go keeps its wrapper - and its expandos - while its
+// record waits; Blink's record traces its target. Collections run between
+// the mutation and the delivery, which the observer's callback checks.
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const delivered = new Promise(resolve => {
+    const observer = new MutationObserver(records => resolve(records));
+    (() => {
+      const target = document.createElement("div");
+      target.rc = "kept";
+      observer.observe(target, { attributes: true });
+      target.setAttribute("a", "1");
+      target.setAttribute("a", "2");
+    })();
+    // Still in this job: the records are queued, and only they and the
+    // observer reach the target.
+    TestUtils.gc();
+    TestUtils.gc();
+  });
+  const records = await delivered;
+  assert_equals(records.length, 2);
+  assert_equals(records[0].target.rc, "kept", "the target's expando, after collections while queued");
+  assert_equals(records[0].target, records[1].target, "one target");
+}, "a detached target's expando survives collections while its records are queued");
+
+promise_test(async t => {
+  const observer = new MutationObserver(() => {});
+  (() => {
+    const target = document.createElement("p");
+    target.rc = "taken";
+    observer.observe(target, { childList: true });
+    target.appendChild(document.createElement("i"));
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1);
+  assert_equals(records[0].target.rc, "taken", "the target's expando, when taken");
+  observer.disconnect();
+}, "takeRecords() hands out a target that kept its expando while queued");
+
+promise_test(async t => {
+  const observer = new MutationObserver(t.unreached_func("disconnect() empties the queue"));
+  const weak = (() => {
+    const target = document.createElement("span");
+    observer.observe(target, { attributes: true });
+    target.setAttribute("b", "1");
+    return new WeakRef(target);
+  })();
+  observer.disconnect();
+  for (let i = 0; i < 3; i++) {
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+    TestUtils.gc();
+  }
+  assert_equals(weak.deref(), undefined, "disconnect() let the pending target go");
+}, "disconnect() lets a pending target go");
+</script>
