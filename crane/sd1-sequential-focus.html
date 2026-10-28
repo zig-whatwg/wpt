@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sequential focus navigation uses nested shadow and slot scopes</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#sequential-focus-navigation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<script>
+async function tab(backward = false) {
+  const actions = new test_driver.Actions();
+  if (backward) actions.keyDown('\uE008');
+  actions.keyDown('\uE004').keyUp('\uE004');
+  if (backward) actions.keyUp('\uE008');
+  await actions.send();
+}
+function active(roots) {
+  return roots.map(root => root.activeElement).filter(Boolean).at(-1);
+}
+for (const mode of ['open', 'closed']) {
+  for (const delegatesFocus of [false, true]) {
+    promise_test(async t => {
+      const fixture = document.body.appendChild(document.createElement('section'));
+      t.add_cleanup(() => fixture.remove());
+      fixture.innerHTML = '<input id="before"><div id="host" tabindex="0"><input id="assigned2" slot="named" tabindex="2"><input id="assigned1" slot="named" tabindex="1"><input id="unassigned"></div><input id="after">';
+      const host = fixture.querySelector('#host');
+      const root = host.attachShadow({mode, delegatesFocus});
+      root.innerHTML = '<input id="inner2" tabindex="2"><input id="inner1" tabindex="1"><slot name="named"></slot><slot name="empty"><input id="fallback"></slot>';
+      const roots = [document, root];
+      const ids = ['before', ...(delegatesFocus ? [] : ['host']), 'inner1', 'inner2', 'assigned1', 'assigned2', 'fallback', 'after'];
+      fixture.querySelector('#before').focus();
+      for (const id of ids.slice(1)) {
+        await tab();
+        assert_equals(active(roots).id, id, 'forward');
+      }
+      for (const id of ids.slice(0, -1).reverse()) {
+        await tab(true);
+        assert_equals(active(roots).id, id, 'backward');
+      }
+    }, `${mode}, delegatesFocus=${delegatesFocus}: sort and flatten host, assigned and fallback scopes`);
+  }
+}
+promise_test(async t => {
+  const fixture = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => fixture.remove());
+  fixture.innerHTML = '<input id="before"><div id="host" tabindex="-1"></div><input id="after">';
+  const root = fixture.querySelector('#host').attachShadow({mode:'open'});
+  root.innerHTML = '<input id="first"><input id="second">';
+  const roots = [document, root];
+  fixture.querySelector('#before').focus();
+  await tab();
+  assert_equals(active(roots).id, 'after', 'negative owner excludes its scope from entry');
+  root.getElementById('first').focus();
+  await tab();
+  assert_equals(active(roots).id, 'second', 'script focus can start inside the excluded scope');
+  await tab();
+  assert_equals(active(roots).id, 'after', 'exit forward');
+  root.getElementById('second').focus();
+  await tab(true);
+  assert_equals(active(roots).id, 'first', 'reverse within excluded scope');
+  await tab(true);
+  assert_equals(active(roots).id, 'before', 'exit backward');
+}, 'A negative host excludes entry, while focused descendants navigate within and out of its scope');
+</script>

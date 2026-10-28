@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tab navigation resumes at the position of a removed focused element</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#sequential-focus-navigation-starting-point">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+for (const backward of [false, true]) {
+  promise_test(async t => {
+    const box = document.body.appendChild(document.createElement('div'));
+    t.add_cleanup(() => box.remove());
+    box.innerHTML = '<button>before</button><button>remove</button><button>after</button>';
+    const [before, target, after] = box.children;
+    target.focus();
+    target.remove();
+    assert_equals(document.activeElement, document.body);
+    const actions = new test_driver.Actions();
+    if (backward) actions.keyDown('\uE008');
+    actions.keyDown('\uE004').keyUp('\uE004');
+    if (backward) actions.keyUp('\uE008');
+    await actions.send();
+    assert_equals(document.activeElement, backward ? before : after);
+  }, `A removed focus target preserves the ${backward ? 'backward' : 'forward'} Tab position`);
+}
+</script>

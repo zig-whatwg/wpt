@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Rendering-time focus fixup dispatches blur without changing selection</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focus-fixup-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>.sd1-hide:focus { display:none }</style>
+<body>
+<script>
+for (const delegatesFocus of [false, true]) {
+  promise_test(async t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    t.add_cleanup(() => host.remove());
+    host.className = 'sd1-hide';
+    host.tabIndex = 0;
+    const root = host.attachShadow({mode:'closed', delegatesFocus});
+    const input = root.appendChild(document.createElement('input'));
+    const target = delegatesFocus ? input : host;
+    let blurred = false;
+    target.addEventListener('blur', t.step_func(event => {
+      blurred = true;
+      assert_true(event.isTrusted);
+      assert_equals(event.relatedTarget, null);
+      assert_equals(document.activeElement, document.body);
+      assert_equals(root.activeElement, null);
+      assert_equals(getComputedStyle(host).display, 'block');
+    }), {once:true});
+    target.focus();
+    assert_equals(document.activeElement, host, 'focus is designated synchronously');
+    assert_equals(getComputedStyle(host).display, 'none');
+    await new Promise(resolve => t.step_timeout(resolve, 300));
+    assert_true(blurred, 'the existing rendering opportunity dispatches blur');
+  }, `Rendering fixup blurs a hidden closed-root focus target, delegatesFocus=${delegatesFocus}`);
+}
+promise_test(async t => {
+  const button = document.body.appendChild(document.createElement('button'));
+  const next = document.body.appendChild(document.createElement('button'));
+  t.add_cleanup(() => { button.remove(); next.remove(); });
+  button.focus();
+  button.addEventListener('blur', () => next.focus(), {once:true});
+  button.disabled = true;
+  await new Promise(resolve => t.step_timeout(resolve, 300));
+  assert_equals(document.activeElement, next, 'fixup preserves reentrant focus from blur');
+}, 'A blur listener may choose a new focus target during rendering fixup');
+</script>

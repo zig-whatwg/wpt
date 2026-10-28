@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Slot invoker contents precede slotted popover contents</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focus-navigation-scope">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<script>
+for (const sentinels of [false, true]) {
+  for (const backward of [false, true]) {
+    promise_test(async t => {
+      const fixture = document.body.appendChild(document.createElement('section'));
+      t.add_cleanup(() => fixture.remove());
+      fixture.innerHTML = '<div id="host"><button id="invokerButton" slot="invoker">Click me</button><button id="inner">Click me next</button></div>';
+      const host = fixture.querySelector('#host');
+      const root = host.attachShadow({mode:'open'});
+      root.innerHTML = '<div><slot id="invoker" name="invoker"></slot><slot id="popover" popover="manual"></slot></div>';
+      root.getElementById('popover').showPopover({source:root.getElementById('invoker')});
+      if (sentinels) {
+        const before = document.createElement('button'); before.id = 'before'; host.before(before);
+        const after = document.createElement('button'); after.id = 'after'; host.after(after);
+      }
+      const order = sentinels ? ['before', 'invokerButton', 'inner', 'after'] : ['invokerButton', 'inner'];
+      if (backward) order.reverse();
+      fixture.querySelector('#' + order[0]).focus();
+      for (const id of order.slice(1)) {
+        const actions = new test_driver.Actions();
+        if (backward) actions.keyDown('\uE008');
+        actions.keyDown('\uE004').keyUp('\uE004');
+        if (backward) actions.keyUp('\uE008');
+        await actions.send();
+        assert_equals(document.activeElement.id, id);
+      }
+    }, `${backward ? 'Backward' : 'Forward'} slot invoker and popover order ${sentinels ? 'with sentinels' : 'without sentinels'}`);
+  }
+}
+</script>

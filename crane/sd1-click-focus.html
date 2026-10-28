@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Trusted clicks find focus delegates and flat-tree ancestors</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#get-the-focusable-area">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+for (const mode of ['open', 'closed']) {
+  promise_test(async t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    host.style.cssText = 'display:block;width:100px;height:100px';
+    t.add_cleanup(() => host.remove());
+    const root = host.attachShadow({mode, delegatesFocus:true});
+    root.innerHTML = '<input tabindex="-1"><input tabindex="0">';
+    await test_driver.click(host);
+    assert_equals(document.activeElement, host);
+    assert_equals(root.activeElement, root.firstChild, 'click delegates in tree order, including negative tabindex');
+    host.click();
+    assert_equals(root.activeElement, root.firstChild, 'synthetic click does not change focus');
+  }, `${mode} host delegates a trusted click to its first focusable descendant`);
+}
+promise_test(async t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  const child = host.appendChild(document.createElement('span'));
+  child.textContent = 'slotted text';
+  const root = host.attachShadow({mode:'open'});
+  root.innerHTML = '<div tabindex="0"><slot></slot></div>';
+  await test_driver.click(child);
+  assert_equals(document.activeElement, host);
+  assert_equals(root.activeElement, root.firstChild, 'the focusable ancestor is in the flat tree');
+}, 'A click on slotted text focuses its flat-tree ancestor');
+</script>

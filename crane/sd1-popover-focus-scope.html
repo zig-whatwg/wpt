@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A showing popover is ordered in its invoker's focus scope</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focus-navigation-scope">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const fixture = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => fixture.remove());
+  fixture.innerHTML = '<button id="invoker">show</button><button id="after">after invoker</button><div id="popover" popover="manual"><button id="last" tabindex="2">last</button><button id="first" tabindex="1">first</button></div>';
+  const invoker = fixture.querySelector('#invoker');
+  const popover = fixture.querySelector('#popover');
+  popover.showPopover({source:invoker});
+  invoker.focus();
+  for (const id of ['first', 'last', 'after']) {
+    await new test_driver.Actions().keyDown('\uE004').keyUp('\uE004').send();
+    assert_equals(document.activeElement.id, id, 'forward');
+  }
+  for (const id of ['last', 'first', 'invoker']) {
+    await new test_driver.Actions().keyDown('\uE008').keyDown('\uE004').keyUp('\uE004').keyUp('\uE008').send();
+    assert_equals(document.activeElement.id, id, 'backward');
+  }
+}, 'A popover scope follows its invoker and sorts its own positive tabindex children');
+</script>

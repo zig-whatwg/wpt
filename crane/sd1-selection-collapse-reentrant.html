@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A collapse-triggered focus listener can replace the selection</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-collapse">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focusing-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const root = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => root.remove());
+  root.innerHTML = '<button>guard</button><div contenteditable></div><div contenteditable></div>';
+  const [guard, first, second] = root.children;
+  guard.focus();
+  first.addEventListener('focus', () => getSelection().collapse(second, 0), {once:true});
+  getSelection().collapse(first, 0);
+  assert_equals(document.activeElement, second);
+  assert_equals(getSelection().anchorNode, second);
+  assert_equals(getSelection().anchorOffset, 0);
+}, 'A focus listener replacing the selection keeps the replacement focus and Range');
+</script>

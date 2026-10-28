@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Trusted pointer clicks on a control and a non-focusable descendant</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<button id="direct">direct</button><button id="parent"><span id="nested">nested</span></button>
+<script>
+promise_test(async () => {
+  const direct = document.getElementById('direct');
+  const parent = document.getElementById('parent');
+  const nested = document.getElementById('nested');
+  let clicks = 0;
+  direct.addEventListener('click', () => ++clicks);
+  parent.addEventListener('click', () => ++clicks);
+  const actions = new test_driver.Actions();
+  for (let i=0; i<500; ++i)
+    actions.pointerMove(0, 0, {origin:i%2 ? nested : direct}).pointerDown().pointerUp();
+  const started = performance.now();
+  await actions.send();
+  const elapsed = performance.now() - started;
+  test(() => {
+    assert_equals(clicks, 500);
+    assert_equals(document.activeElement, parent);
+  }, `SD1_CLICK_MS=${elapsed.toFixed(3)}`);
+}, '500 trusted clicks alternate direct and flat-tree ancestor focus');
+</script>

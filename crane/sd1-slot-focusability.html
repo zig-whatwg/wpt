@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A slot is a focus target only when it generates a box</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#focusable-area">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const host = document.body.appendChild(document.createElement('div'));
+  t.add_cleanup(() => host.remove());
+  host.textContent = 'assigned content';
+  const root = host.attachShadow({mode:'open'});
+  root.innerHTML = '<slot tabindex="0"></slot>';
+  const slot = root.firstChild;
+  slot.focus();
+  assert_equals(root.activeElement, null, 'default display:contents slot is an owner only');
+  slot.style.display = 'inline-block';
+  slot.focus();
+  assert_equals(root.activeElement, slot, 'a slot generating a box can be focused');
+}, 'Slot focusability follows its own box generation');
+</script>

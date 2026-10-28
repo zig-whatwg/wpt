@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicit blur clears a still-designated element after tabindex removal</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#unfocusing-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const mode of [null, 'open', 'closed']) {
+  test(t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    t.add_cleanup(() => host.remove());
+    const root = mode ? host.attachShadow({mode, delegatesFocus:true}) : host;
+    const target = root.appendChild(document.createElement('div'));
+    target.tabIndex = 0;
+    let blurs = 0;
+    target.addEventListener('blur', () => ++blurs);
+    target.focus();
+    assert_equals(document.activeElement, mode ? host : target);
+    target.removeAttribute('tabindex');
+    (mode ? host : target).blur();
+    assert_equals(document.activeElement, document.body);
+    if (mode) assert_equals(root.activeElement, null);
+    assert_equals(blurs, 1, 'explicit blur fires once synchronously');
+  }, `Explicit blur after tabindex removal: ${mode || 'light DOM'}`);
+}
+</script>

@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Collapsing a selection focuses an editable sibling</title>
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-collapse">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const box = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => box.remove());
+  box.innerHTML = '<button>guard</button><div contenteditable></div><div contenteditable></div>';
+  const [guard, first, second] = box.children;
+  guard.focus();
+  getSelection().collapse(first);
+  assert_equals(document.activeElement, first);
+  assert_equals(getSelection().direction, 'none');
+  getSelection().collapse(second);
+  assert_equals(document.activeElement, second);
+  assert_equals(getSelection().anchorNode, second);
+  assert_equals(getSelection().focusOffset, 0);
+}, 'Selection collapse focuses empty sibling editing hosts and keeps its collapsed range');
+</script>

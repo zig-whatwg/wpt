@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selection word movement shares Hangul word segmentation</title>
+<link rel="help" href="https://unicode.org/reports/tr29/#Word_Boundaries">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const text of ['희진DJ', 'DJ희진']) {
+  test(t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    host.contentEditable = 'true';
+    host.textContent = text;
+    t.add_cleanup(() => host.remove());
+    const node = host.firstChild, selection = getSelection();
+    selection.collapse(node, 0);
+    selection.modify('move', 'forward', 'word');
+    assert_equals(selection.focusNode, node);
+    assert_equals(selection.focusOffset, 2);
+    selection.collapse(node, 4);
+    selection.modify('move', 'backward', 'word');
+    assert_equals(selection.focusNode, node);
+    assert_equals(selection.focusOffset, 2);
+  }, `Selection word movement stops at the script boundary in ${text}`);
+  test(() => {
+    const parts = Array.from(new Intl.Segmenter('ko', {granularity:'word'}).segment(text));
+    assert_array_equals(parts.map(part => part.segment), [text.slice(0,2), text.slice(2)]);
+    assert_true(parts.every(part => part.isWordLike));
+  }, `Intl.Segmenter keeps each Hangul/Latin run word-like in ${text}`);
+}
+</script>

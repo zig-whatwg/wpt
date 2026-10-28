@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Unicode spaces in word segmentation and selection movement</title>
+<link rel="help" href="https://unicode.org/reports/tr29/#Word_Boundaries">
+<link rel="help" href="https://w3c.github.io/selection-api/#dom-selection-modify">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Row129 Q30: Chrome 156, Firefox 158 and Safari 27, 2026-10-27.
+// Forward expectations use Crane's existing next-word-start convention.
+// NBSP is skipped; NNBSP belongs to the word; EM/IDEOGRAPHIC spaces are
+// stops on both sides in Chrome and Firefox (Safari skips them).
+const movementCases = [];
+for (const [label, space, expected] of [
+  ['NBSP', '\u00a0', [3, 3, 0, 3]],
+  ['EM SPACE', '\u2003', [2, 3, 2, 3]],
+  ['NARROW NBSP', '\u202f', [6, 6, 0, 0]],
+  ['IDEOGRAPHIC SPACE', '\u3000', [2, 3, 2, 3]]
+]) {
+  const starts = [[0, 'forward'], [2, 'forward'], [3, 'backward'], [5, 'backward']];
+  starts.forEach(([offset, direction], i) =>
+    movementCases.push([label, 'ab' + space + 'cd end', offset, direction, expected[i]]));
+}
+movementCases.push(['emoji NBSP', '😀\u00a0😀 ab', 0, 'forward', 3]);
+movementCases.push(['emoji NBSP', '😀\u00a0😀 ab', 3, 'backward', 0]);
+for (const [label, value, offset, direction, expected] of movementCases) {
+  test(t => {
+    const host = document.body.appendChild(document.createElement('div'));
+    host.contentEditable = 'true';
+    host.textContent = value;
+    t.add_cleanup(() => host.remove());
+    const text = host.firstChild, selection = getSelection();
+    selection.collapse(text, offset);
+    selection.modify('move', direction, 'word');
+    assert_equals(selection.focusNode, text);
+    assert_equals(selection.focusOffset, expected);
+  }, `${label}: ${direction} word from UTF-16 offset ${offset}`);
+}
+
+// Q31: all three browsers agree with UAX #29 WB3d/WB13a/WB13b and
+// WordBreakProperty-18.0.0.txt on these ten strings.
+for (const [label, value, expected] of [
+  ['NNBSP', 'ab\u202fcd', ['ab\u202fcd']],
+  ['NBSP', 'ab\u00a0cd', ['ab', '\u00a0', 'cd']],
+  ['figure space', 'ab\u2007cd', ['ab', '\u2007', 'cd']],
+  ['space NBSP', 'a \u00a0b', ['a', ' ', '\u00a0', 'b']],
+  ['space figure space', 'a \u2007b', ['a', ' ', '\u2007', 'b']],
+  ['space NNBSP', 'a \u202fb', ['a', ' ', '\u202fb']],
+  ['two spaces', 'a  b', ['a', '  ', 'b']],
+  ['two EM spaces', 'a\u2003\u2003b', ['a', '\u2003\u2003', 'b']],
+  ['two NBSPs', 'a\u00a0\u00a0b', ['a', '\u00a0', '\u00a0', 'b']],
+  ['space EM space', 'a \u2003b', ['a', ' \u2003', 'b']]
+]) {
+  test(() => {
+    const parts = Array.from(new Intl.Segmenter('en', {granularity: 'word'}).segment(value));
+    assert_array_equals(parts.map(part => part.segment), expected);
+  }, `Intl word segments: ${label}`);
+}
+</script>
