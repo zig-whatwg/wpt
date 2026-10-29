@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flexbox property registration, cascade and shorthand CSSOM</title>
+<link rel="help" href="https://drafts.csswg.org/css-flexbox-2/#flex-flow-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="target"></div></div>
+<script>
+function reset(t) {
+  host.style.cssText = "";
+  target.style.cssText = "";
+  t.add_cleanup(() => { host.style.cssText = ""; target.style.cssText = ""; });
+}
+const host = document.getElementById("parent");
+const target = document.getElementById("target");
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("flex-direction", "column-reverse"));
+  target.style.flexDirection = "column-reverse";
+  assert_equals(target.style.flexDirection, "column-reverse");
+  assert_equals(getComputedStyle(target).flexDirection, "column-reverse");
+}, "flex-direction has positive specified and computed recognition");
+
+test(t => {
+  reset(t);
+  target.style.flexFlow = "balance wrap-reverse column";
+  assert_equals(target.style.flexFlow, "column wrap-reverse balance");
+  assert_equals(target.style.flexDirection, "column");
+  assert_equals(target.style.flexWrap, "wrap-reverse balance");
+  assert_equals(target.style.length, 2);
+  target.style.flexFlow = "nowrap row nowrap";
+  assert_equals(target.style.flexFlow, "column wrap-reverse balance");
+  assert_equals(target.style.removeProperty("flex-flow"), "column wrap-reverse balance");
+  assert_equals(target.style.length, 0);
+}, "flex-flow expands, reconstructs, rejects atomically and removes its longhands");
+
+test(t => {
+  reset(t);
+  host.style.cssText = "flex-direction: column; flex-wrap: wrap-reverse balance; flex-line-count: 5; order: -3";
+  const initial = getComputedStyle(target);
+  assert_equals(initial.flexDirection, "row");
+  assert_equals(initial.flexWrap, "nowrap");
+  assert_equals(initial.getPropertyValue("flex-line-count"), "1");
+  assert_equals(initial.order, "0");
+  target.style.cssText = "flex-flow: inherit; flex-line-count: inherit; order: inherit";
+  const inherited = getComputedStyle(target);
+  assert_equals(inherited.flexDirection, "column");
+  assert_equals(inherited.flexWrap, "wrap-reverse balance");
+  assert_equals(inherited.getPropertyValue("flex-line-count"), "5");
+  assert_equals(inherited.order, "-3");
+}, "Flexbox longhands are not inherited except through the explicit inherit keyword");
+
+test(t => {
+  reset(t);
+  target.style.cssText = "--flow: column wrap-reverse; flex-flow: var(--flow); --count: 2.5; flex-line-count: calc(var(--count)); order: calc(-1.5)";
+  assert_equals(target.style.flexFlow, "var(--flow)");
+  const computed = getComputedStyle(target);
+  assert_equals(computed.flexDirection, "column");
+  assert_equals(computed.flexWrap, "wrap-reverse");
+  assert_equals(computed.getPropertyValue("flex-line-count"), "3");
+  assert_equals(computed.order, "-1");
+}, "Flexbox values use ordinary custom-property substitution and integer computation");
+
+test(t => {
+  reset(t);
+  target.style.cssText = "--bad: nowrap nowrap; flex-flow: var(--bad); flex-line-count: calc(NaN)";
+  const computed = getComputedStyle(target);
+  assert_equals(computed.flexDirection, "row");
+  assert_equals(computed.flexWrap, "nowrap");
+  assert_equals(computed.getPropertyValue("flex-line-count"), "1");
+}, "An invalid substituted flex-flow defaults both components and NaN clamps the line count");
+
+test(t => {
+  reset(t);
+  target.style.setProperty("-webkit-flex-flow", "wrap column");
+  assert_equals(target.style.flexFlow, "column wrap");
+  assert_equals(target.style.getPropertyValue("-webkit-flex-flow"), "column wrap");
+  assert_equals(target.style.length, 2);
+  assert_equals(getComputedStyle(target).getPropertyValue("-webkit-flex-direction"), "column");
+  target.style.setProperty("-webkit-order", "calc(2 + 3)");
+  assert_equals(getComputedStyle(target).order, "5");
+}, "Legacy WebKit aliases share the canonical declarations and computed longhands");
+test(t => {
+  reset(t);
+  for (const [input, expected] of [["row nowrap", "row"], ["row wrap", "wrap"], ["column nowrap", "column"], ["column wrap", "column wrap"], ["row balance", "balance"], ["wrap-reverse balance", "wrap-reverse balance"], ["balance wrap-reverse column", "column wrap-reverse balance"]]) {
+    target.style.flexFlow = input;
+    assert_equals(target.style.flexFlow, expected, input + " specified");
+    assert_equals(getComputedStyle(target).flexFlow, expected, input + " computed");
+  }
+}, "flex-flow uses the shortest specified and computed shorthand (Firefox and Safari majority)");
+
+test(t => {
+  reset(t);
+  target.style.flexFlow = "column wrap";
+  for (const input of ["wrap column balance", "balance column wrap", "wrap-reverse column balance"]) {
+    assert_false(CSS.supports("flex-flow", input), input);
+    target.style.flexFlow = input;
+    assert_equals(target.style.flexFlow, "column wrap", input + " leaves the declaration intact");
+  }
+}, "A flex direction cannot split the adjacent wrap and balance keywords");
+</script>

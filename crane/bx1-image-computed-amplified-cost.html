@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Q103 proposed image computed style resolution diagnostic, 20x</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="fixture"></div>
+<script>
+test(() => {
+  const fixture = document.getElementById('fixture');
+  const elements = [];
+  const rules = [];
+  for (let i = 0; i < 20000; ++i) {
+    const element = document.createElement('span');
+    element.className = 'image-font-' + i;
+    fixture.appendChild(element);
+    elements.push(element);
+    rules.push('.image-font-' + i + '{background-image:none;background-color:rgb(1, 2, 3);font-family:serif;font-size:16px;font-weight:400}');
+  }
+  const sheet = new CSSStyleSheet();
+  const start = performance.now();
+  sheet.replaceSync(rules.join('\n'));
+  const parsed = performance.now();
+  document.adoptedStyleSheets = [sheet];
+  let matched = 0;
+  for (const element of elements) {
+    const computed = getComputedStyle(element);
+    if (computed.backgroundImage === 'none' && computed.fontSize === '16px' && computed.backgroundColor === 'rgb(1, 2, 3)') ++matched;
+  }
+  const finished = performance.now();
+  console.log('CI1_Q103_PARSE_MS=' + (parsed - start).toFixed(3));
+  console.log('CI1_Q103_COMPUTED_MS=' + (finished - parsed).toFixed(3));
+  assert_equals(sheet.cssRules.length, 20000);
+  assert_equals(matched, 20000);
+  document.adoptedStyleSheets = [];
+  fixture.remove();
+}, 'Q103: parse 100,000 image/background/font declarations and read 20,000 fresh computed styles');
+</script>

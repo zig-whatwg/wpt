@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Multicol shorthand resets, color resolution and pending substitution</title>
+<link rel="help" href="https://drafts.csswg.org/css-multicol-2/#columns">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+const target = document.getElementById("target");
+function reset(t) {
+  target.style.cssText = "";
+  t.add_cleanup(() => { target.style.cssText = ""; });
+}
+
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("columns", "2em 3 / 4em"));
+  target.style.setProperty("columns", "2em 3 / 4em", "important");
+  assert_equals(target.style.length, 3);
+  for (const name of ["column-width", "column-count", "column-height"])
+    assert_equals(target.style.getPropertyPriority(name), "important");
+  target.style.setProperty("columns", "2");
+  assert_equals(target.style.getPropertyValue("column-width"), "auto");
+  assert_equals(target.style.getPropertyValue("column-count"), "2");
+  assert_equals(target.style.getPropertyValue("column-height"), "auto");
+  assert_equals(target.style.removeProperty("columns"), "2");
+  assert_equals(target.style.length, 0);
+}, "columns resets and removes width, count and height as one shorthand");
+
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("column-rule", "7px currentcolor"));
+  target.style.cssText = "color:rgb(1, 2, 3);column-rule:7px currentcolor";
+  let computed = getComputedStyle(target);
+  assert_equals(computed.getPropertyValue("column-rule-width"), "7px");
+  assert_equals(computed.getPropertyValue("column-rule-style"), "none");
+  assert_equals(computed.getPropertyValue("column-rule-color"), "rgb(1, 2, 3)");
+  assert_equals(computed.getPropertyValue("column-rule"), "7px rgb(1, 2, 3)");
+  target.style.color = "rgb(4, 5, 6)";
+  target.style.setProperty("column-rule-style", "hidden");
+  computed = getComputedStyle(target);
+  assert_equals(computed.getPropertyValue("column-rule-width"), "7px");
+  assert_equals(computed.getPropertyValue("column-rule"), "7px hidden rgb(4, 5, 6)");
+}, "An undrawn column rule retains its computed width and resolves currentcolor on readback");
+
+test(t => {
+  reset(t);
+  target.style.cssText = "font-size:16px;--columns:2em 3 / 4em;columns:var(--columns)";
+  assert_equals(target.style.getPropertyValue("columns"), "var(--columns)");
+  assert_equals(getComputedStyle(target).getPropertyValue("columns"), "32px 3 / 64px");
+  target.style.setProperty("--columns", "2em 3 / invalid");
+  for (const name of ["column-width", "column-count", "column-height"])
+    assert_equals(getComputedStyle(target).getPropertyValue(name), "auto");
+}, "A pending columns shorthand substitutes normally and defaults all constituents when invalid");
+
+// Q28/Q44, probe28: Chrome + Safari share canonical declaration storage.
+for (const [name, value] of [
+  ["column-count", "3"], ["column-width", "20px"], ["column-span", "all"],
+  ["column-gap", "10px"], ["column-rule-color", "red"],
+  ["column-rule-style", "dotted"], ["column-rule-width", "2px"],
+  ["columns", "20px 3"], ["column-rule", "2px dotted red"]
+]) test(t => {
+  reset(t);
+  const alias = "-webkit-" + name;
+  assert_true(CSS.supports(alias, value));
+  target.style.setProperty(alias, value);
+  assert_equals(target.style.getPropertyValue(name), value);
+  assert_equals(target.style.getPropertyValue(alias), value);
+  assert_equals(target.style.cssText, name + ": " + value + ";");
+  target.style.setProperty(name, value, "important");
+  assert_equals(target.style.getPropertyPriority(alias), "important");
+  assert_equals(getComputedStyle(target).getPropertyValue(alias), getComputedStyle(target).getPropertyValue(name));
+  target.style.removeProperty(alias);
+  assert_equals(target.style.length, 0);
+}, "Legacy multicol names share canonical storage: " + name);
+
+for (const [name, value] of [["column-count", "3"], ["columns", "20px 3"], ["column-rule", "2px dotted red"]]) test(t => {
+  reset(t);
+  const alias = "-webkit-" + name;
+  target.style.setProperty(alias, "var(--value)");
+  assert_equals(target.style.cssText, name + ": var(--value);");
+  assert_equals(target.style.getPropertyValue(alias), "var(--value)");
+  assert_equals(target.style.getPropertyValue(name), "var(--value)");
+  target.style.setProperty("--value", value);
+  assert_equals(getComputedStyle(target).getPropertyValue(alias), getComputedStyle(target).getPropertyValue(name));
+  if (name === "columns") {
+    assert_equals(getComputedStyle(target).getPropertyValue("column-width"), "20px");
+    assert_equals(getComputedStyle(target).getPropertyValue("column-count"), "3");
+  } else if (name === "column-count") {
+    assert_equals(getComputedStyle(target).getPropertyValue(name), "3");
+  } else {
+    assert_equals(getComputedStyle(target).getPropertyValue("column-rule-width"), "2px");
+    assert_equals(getComputedStyle(target).getPropertyValue("column-rule-style"), "dotted");
+  }
+}, "Legacy multicol names use real canonical pending substitution: " + name);
+
+test(() => {
+  assert_false(CSS.supports("-webkit-column-fill", "auto"));
+  assert_false(CSS.supports("-webkit-column-height", "40px"));
+}, "Unruled multicol aliases remain unsupported");
+</script>

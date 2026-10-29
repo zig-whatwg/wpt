@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scroll property shorthand substitution and logical declaration order</title>
+<link rel="help" href="https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+const target = document.getElementById("target");
+function reset(t) {
+  target.style.cssText = "";
+  t.add_cleanup(() => { target.style.cssText = ""; });
+}
+
+for (const group of ["scroll-margin", "scroll-padding"]) {
+  test(t => {
+    reset(t);
+    assert_true(CSS.supports(group, "1px 2px 3px"));
+    target.style.setProperty(group, "1px 2px 3px", "important");
+    assert_equals(target.style.length, 4);
+    assert_equals(target.style.getPropertyValue(group + "-left"), "2px");
+    assert_equals(target.style.getPropertyValue(group + "-bottom"), "3px");
+    assert_equals(target.style.getPropertyPriority(group + "-left"), "important");
+    target.style.setProperty(group + "-left", "4px");
+    assert_equals(target.style.getPropertyValue(group), "");
+    assert_equals(target.style.removeProperty(group), "");
+    assert_equals(target.style.length, 0);
+  }, group + " expands, tracks constituent priorities and removes the whole shorthand");
+
+  for (const mode of ["horizontal-tb", "vertical-rl", "vertical-lr", "sideways-rl", "sideways-lr"]) {
+    for (const direction of ["ltr", "rtl"]) {
+      const side = mode === "horizontal-tb" ? (direction === "rtl" ? "right" : "left") :
+        mode === "sideways-lr" ? (direction === "rtl" ? "top" : "bottom") :
+        (direction === "rtl" ? "bottom" : "top");
+      test(t => {
+        reset(t);
+        const physical = group + "-" + side;
+        const logical = group + "-inline-start";
+        assert_true(CSS.supports(logical, "9px"));
+        target.style.cssText = `writing-mode:${mode};direction:${direction};${physical}:5px;${logical}:9px`;
+        assert_equals(getComputedStyle(target).getPropertyValue(physical), "9px");
+        target.style.setProperty(physical, "5px");
+        assert_equals(target.style.item(target.style.length - 1), physical);
+        assert_equals(getComputedStyle(target).getPropertyValue(physical), "5px");
+        assert_equals(getComputedStyle(target).getPropertyValue(logical), "5px");
+      }, `${group} moves an unchanged physical value after its logical competitor in ${mode} ${direction}`);
+    }
+  }
+}
+
+test(t => {
+  reset(t);
+  target.style.cssText = "font-size:16px;--edges:1em 2em;scroll-margin:var(--edges);scroll-padding-inline:var(--edges)";
+  assert_equals(target.style.getPropertyValue("scroll-margin"), "var(--edges)");
+  assert_equals(getComputedStyle(target).getPropertyValue("scroll-margin-top"), "16px");
+  assert_equals(getComputedStyle(target).getPropertyValue("scroll-padding-inline-end"), "32px");
+  target.style.setProperty("--edges", "3em");
+  assert_equals(getComputedStyle(target).getPropertyValue("scroll-margin-right"), "48px");
+  assert_equals(getComputedStyle(target).getPropertyValue("scroll-padding-inline-start"), "48px");
+}, "Scroll shorthands consume real pending custom-property values and recompute after mutation");
+</script>

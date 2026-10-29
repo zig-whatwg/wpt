@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Origin zero percentages resolve only with a generated box</title>
+<link rel="help" href="https://drafts.csswg.org/css-transforms-1/#transform-origin-property">
+<link rel="help" href="https://drafts.csswg.org/css-transforms-2/#perspective-origin-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><span id="target">origin</span></div>
+<script>
+const host = document.getElementById("parent");
+const target = document.getElementById("target");
+function reset(t) {
+  host.style.cssText = target.style.cssText = "";
+  t.add_cleanup(() => { host.style.cssText = target.style.cssText = ""; });
+}
+
+for (const name of ["transform-origin", "perspective-origin"])
+  for (const mode of ["block", "inline", "none", "contents", "suppressed"])
+    test(t => {
+      reset(t);
+      host.style.display = mode === "suppressed" ? "none" : "block";
+      target.style.display = mode === "suppressed" ? "block" : mode;
+      const hasBox = mode === "block" || mode === "inline";
+      for (const [input, withBox, withoutBox] of [
+        ["left 10px", "0px 10px", "0% 10px"],
+        ["40px top", "40px 0px", "40px 0%"],
+        ["0% 0%", "0px 0px", "0% 0%"],
+        ["calc(0% + 10px) 0%", "10px 0px", "calc(0% + 10px) 0%"]
+      ]) {
+        target.style.setProperty(name, input);
+        assert_equals(getComputedStyle(target).getPropertyValue(name), hasBox ? withBox : withoutBox);
+      }
+      if (!hasBox) {
+        target.style.setProperty(name, "0% 50%");
+        assert_equals(getComputedStyle(target).getPropertyValue(name), "0% 50%");
+      }
+    }, "Origin zero percentage resolution: " + name + ", " + mode);
+</script>

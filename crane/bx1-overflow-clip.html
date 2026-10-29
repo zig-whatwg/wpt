@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Overflow clip preserves its computed value beside a scrolling axis</title>
+<link rel="help" href="https://drafts.csswg.org/css-overflow-3/#overflow-properties">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target" style="overflow-x:clip;overflow-y:auto"></div>
+<script>
+test(() => {
+  const computed = getComputedStyle(document.getElementById("target"));
+  assert_equals(computed.overflowX, "clip");
+  assert_equals(computed.overflowY, "auto");
+}, "An overflowing orthogonal axis does not compute clip to hidden");
+</script>

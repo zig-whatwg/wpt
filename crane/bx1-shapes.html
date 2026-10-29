@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shape outside uses the shared shape and image grammars</title>
+<link rel="help" href="https://drafts.csswg.org/css-shapes-1/#shape-outside-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="target"></div></div>
+<script>
+const host = document.getElementById("parent");
+const target = document.getElementById("target");
+function reset(t) {
+  host.style.cssText = target.style.cssText = "";
+  t.add_cleanup(() => { host.style.cssText = target.style.cssText = ""; });
+}
+
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("shape-outside", "margin-box circle()"));
+  target.style.cssText = "shape-outside:margin-box circle();clip-path:margin-box circle()";
+  assert_equals(target.style.getPropertyValue("shape-outside"), "circle()");
+  assert_equals(target.style.getPropertyValue("clip-path"), "circle() margin-box");
+  target.style.cssText = "shape-outside:border-box circle();clip-path:border-box circle()";
+  assert_equals(target.style.getPropertyValue("shape-outside"), "circle() border-box");
+  assert_equals(target.style.getPropertyValue("clip-path"), "circle()");
+}, "Shape outside and clip path serialize their own default reference box");
+
+test(t => {
+  reset(t);
+  target.style.cssText = "font-size:16px;--shape:circle(2em) border-box;shape-outside:var(--shape)";
+  assert_equals(target.style.getPropertyValue("shape-outside"), "var(--shape)");
+  assert_equals(getComputedStyle(target).getPropertyValue("shape-outside"), "circle(32px) border-box");
+  target.style.setProperty("--shape", "circle(3em) margin-box");
+  assert_equals(getComputedStyle(target).getPropertyValue("shape-outside"), "circle(48px)");
+  target.style.setProperty("--shape", "circle(3em) fill-box");
+  assert_equals(getComputedStyle(target).getPropertyValue("shape-outside"), "none");
+}, "Real custom-property substitution computes shape lengths and enforces the owning property grammar");
+
+test(t => {
+  reset(t);
+  target.style.cssText = "color:rgb(1, 2, 3);shape-outside:linear-gradient(currentcolor, blue)";
+  assert_equals(getComputedStyle(target).getPropertyValue("shape-outside"), "linear-gradient(rgb(1, 2, 3), rgb(0, 0, 255))");
+  target.style.color = "rgb(4, 5, 6)";
+  assert_equals(getComputedStyle(target).getPropertyValue("shape-outside"), "linear-gradient(rgb(4, 5, 6), rgb(0, 0, 255))");
+}, "Shape outside images resolve currentcolor through the shared image machinery");
+
+test(t => {
+  reset(t);
+  host.style.cssText = "font-size:16px;shape-outside:circle(2em);shape-margin:1em;shape-image-threshold:0.5";
+  target.style.fontSize = "8px";
+  let computed = getComputedStyle(target);
+  assert_equals(computed.getPropertyValue("shape-outside"), "none");
+  assert_equals(computed.getPropertyValue("shape-margin"), "0px");
+  assert_equals(computed.getPropertyValue("shape-image-threshold"), "0");
+  target.style.setProperty("shape-outside", "inherit");
+  target.style.setProperty("shape-margin", "inherit");
+  computed = getComputedStyle(target);
+  assert_equals(computed.getPropertyValue("shape-outside"), "circle(32px)");
+  assert_equals(computed.getPropertyValue("shape-margin"), "16px");
+}, "Explicit shape inheritance retains the parent's computed lengths");
+
+// Q30: Firefox + Safari apply all three on first-letter; first-line filters.
+for (const variant of ["float:none;initial-letter:normal", "float:left;initial-letter:normal", "float:none;initial-letter:3"]) test(t => {
+  reset(t);
+  target.textContent = "Shape pseudo allowlist";
+  const sheet = document.createElement("style");
+  sheet.textContent = "#target::first-letter,#target::first-line {" + variant +
+    ";shape-outside:circle(7px);shape-margin:7px;shape-image-threshold:.5}";
+  document.head.appendChild(sheet);
+  t.add_cleanup(() => { sheet.remove(); target.textContent = ""; });
+  for (const [name, value, initial] of [["shape-outside", "circle(7px)", "none"], ["shape-margin", "7px", "0px"], ["shape-image-threshold", "0.5", "0"]]) {
+    assert_equals(getComputedStyle(target, "::first-letter").getPropertyValue(name), value);
+    assert_equals(getComputedStyle(target, "::first-line").getPropertyValue(name), initial);
+  }
+}, "Shape pseudo allowlist: " + variant);
+
+test(t => {
+  reset(t);
+  const input = "path('M10,10h80v80h-80z')";
+  const relative = 'path("M 10 10 h 80 v 80 h -80 Z")';
+  target.style.setProperty("shape-outside", input);
+  target.style.setProperty("clip-path", input);
+  assert_equals(target.style.getPropertyValue("shape-outside"), relative);
+  assert_equals(target.style.getPropertyValue("clip-path"), relative);
+  assert_equals(getComputedStyle(target).getPropertyValue("shape-outside"), 'path("M 10 10 H 90 V 90 H 10 Z")');
+  assert_equals(getComputedStyle(target).getPropertyValue("clip-path"), relative);
+}, "Only resolved shape-outside paths use absolute commands");
+
+for (const name of ["shape-outside", "background-image", "list-style-image"]) test(t => {
+  reset(t);
+  target.style.fontSize = "40px";
+  for (const [input, specified, computed] of [
+    ["linear-gradient(red 0% 20%, blue)", "linear-gradient(red 0%, red 20%, blue)", "linear-gradient(rgb(255, 0, 0) 0%, rgb(255, 0, 0) 20%, rgb(0, 0, 255))"],
+    ["conic-gradient(red 0deg 90deg, blue)", "conic-gradient(red 0deg, red 90deg, blue)", "conic-gradient(rgb(255, 0, 0) 0deg, rgb(255, 0, 0) 90deg, rgb(0, 0, 255))"],
+    ["radial-gradient(black 0% 0.5em, 25%, white)", "radial-gradient(black 0%, black 0.5em, 25%, white)", "radial-gradient(rgb(0, 0, 0) 0%, rgb(0, 0, 0) 20px, 25%, rgb(255, 255, 255))"]
+  ]) {
+    target.style.setProperty(name, input);
+    assert_equals(target.style.getPropertyValue(name), specified);
+    assert_equals(getComputedStyle(target).getPropertyValue(name), computed);
+  }
+}, "Two-position gradient stops expand for every image consumer: " + name);
+</script>

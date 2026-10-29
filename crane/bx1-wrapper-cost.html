@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Existing computed shorthand read costs</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+for (const [name, declaration, expected, metric] of [
+  ['-webkit-text-orientation', 'text-orientation:mixed', 'vertical-right', 'BX1_WRAPPER_EXISTING_MS'],
+  ['margin', 'margin:1px 2px', '1px 2px', 'BX1_WRAPPER_MULTI_MS'],
+]) {
+  test(t => {
+    const element = document.createElement('div');
+    element.style.cssText = 'display:block;' + declaration;
+    document.body.append(element);
+    t.add_cleanup(() => { element.remove(); });
+    const computed = getComputedStyle(element);
+    assert_equals(computed.getPropertyValue(name), expected);
+    const rounds = 10000;
+    let matches = 0;
+    const start = performance.now();
+    for (let i = 0; i < rounds; ++i)
+      if (computed.getPropertyValue(name) === expected) ++matches;
+    const elapsed = performance.now() - start;
+    console.log(metric + '=' + elapsed.toFixed(3));
+    assert_equals(matches, rounds);
+  }, 'Existing computed shorthand read: ' + name);
+}
+</script>

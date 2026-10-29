@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Overflow axis computation and legacy line clamp CSSOM</title>
+<link rel="help" href="https://drafts.csswg.org/css-overflow-3/#overflow-properties">
+<link rel="help" href="https://drafts.csswg.org/css-overflow-4/#continue-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="target"></div></div>
+<script>
+const host = document.getElementById("parent");
+const target = document.getElementById("target");
+function reset(t) {
+  host.style.cssText = target.style.cssText = "";
+  t.add_cleanup(() => { host.style.cssText = target.style.cssText = ""; });
+}
+
+// Keep the Q13 isolated clip regression covered in the complete family fixture.
+test(t => {
+  reset(t);
+  target.style.cssText = "overflow-x:clip;overflow-y:auto";
+  assert_equals(getComputedStyle(target).overflowX, "clip");
+  assert_equals(getComputedStyle(target).overflowY, "auto");
+}, "An overflowing orthogonal axis does not compute clip to hidden");
+
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("overflow-inline", "clip"));
+  target.style.cssText = "writing-mode:vertical-rl;overflow-y:scroll;overflow-inline:clip";
+  assert_equals(getComputedStyle(target).overflowY, "clip");
+  target.style.overflowY = "scroll";
+  assert_equals(target.style.item(target.style.length - 1), "overflow-y");
+  assert_equals(getComputedStyle(target).overflowY, "scroll");
+  assert_equals(getComputedStyle(target).getPropertyValue("overflow-inline"), "scroll");
+}, "Logical overflow aliases obey declaration order even when the physical value is unchanged");
+
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("line-clamp", "3"));
+  target.style.setProperty("line-clamp", "3");
+  assert_equals(target.style.length, 3);
+  assert_equals(target.style.getPropertyValue("max-lines"), "3");
+  assert_equals(target.style.getPropertyValue("continue"), "collapse");
+  assert_equals(target.style.getPropertyValue("block-ellipsis"), "ellipsis");
+  target.style.setProperty("line-clamp", "none");
+  assert_equals(target.style.getPropertyValue("max-lines"), "auto");
+  assert_equals(target.style.getPropertyValue("continue"), "normal");
+  assert_equals(target.style.getPropertyValue("block-ellipsis"), "no-ellipsis");
+  target.style.setProperty("-webkit-line-clamp", "none");
+  assert_equals(target.style.getPropertyValue("block-ellipsis"), "no-ellipsis");
+  assert_equals(target.style.getPropertyValue("max-lines"), "auto");
+  assert_equals(target.style.getPropertyValue("continue"), "normal");
+  assert_equals(target.style.getPropertyValue("-webkit-line-clamp"), "none");
+  assert_equals(getComputedStyle(target).getPropertyValue("-webkit-line-clamp"), "none");
+  target.style.setProperty("-webkit-line-clamp", "3");
+  assert_equals(target.style.getPropertyValue("max-lines"), "3");
+  assert_equals(target.style.getPropertyValue("block-ellipsis"), "ellipsis");
+  assert_equals(target.style.getPropertyValue("continue"), "-webkit-legacy");
+  assert_equals(target.style.getPropertyValue("-webkit-line-clamp"), "3");
+  assert_equals(getComputedStyle(target).getPropertyValue("-webkit-line-clamp"), "3");
+}, "The standard and legacy line-clamp shorthands have distinct reset expansions");
+
+test(t => {
+  reset(t);
+  target.style.cssText = "display:-webkit-inline-box;-webkit-box-orient:block-axis;--limit:3;-webkit-line-clamp:var(--limit)";
+  assert_equals(target.style.getPropertyValue("-webkit-line-clamp"), "var(--limit)");
+  assert_equals(target.style.getPropertyValue("-webkit-box-orient"), "block-axis");
+  assert_equals(getComputedStyle(target).getPropertyValue("-webkit-box-orient"), "vertical");
+  assert_equals(getComputedStyle(target).display, "inline-block");
+  target.style.cssFloat = "left";
+  assert_equals(getComputedStyle(target).display, "flow-root");
+  target.style.display = "inline-flex";
+  assert_equals(getComputedStyle(target).display, "flex");
+  target.style.cssFloat = "none";
+  assert_equals(getComputedStyle(target).display, "inline-flex");
+}, "Legacy vertical clamping follows blockification and does not change real flex display");
+
+test(t => {
+  reset(t);
+  host.style.setProperty("line-clamp", '4 "more"');
+  const computed = getComputedStyle(target);
+  assert_equals(computed.getPropertyValue("block-ellipsis"), '"more"');
+  assert_equals(computed.getPropertyValue("max-lines"), "auto");
+  assert_equals(computed.getPropertyValue("continue"), "normal");
+}, "Only block-ellipsis inherits from a parent's line-clamp declaration");
+
+// Q31 PART2: specified overlay is retained; computed values use auto.
+for (const name of ["overflow-x", "overflow-y", "overflow-block", "overflow-inline", "overflow"]) test(t => {
+  reset(t);
+  target.style.setProperty(name, "OVERLAY");
+  assert_equals(target.style.getPropertyValue(name), "overlay");
+  assert_equals(getComputedStyle(target).getPropertyValue(name), "auto");
+  assert_false(CSS.supports(name, "overlay nonsense"));
+}, "Specified overlay spelling and computed auto: " + name);
+
+test(t => {
+  reset(t);
+  for (const value of ["overlay clip", "overlay hidden"]) {
+    assert_true(CSS.supports("overflow", value));
+    target.style.setProperty("overflow", value);
+    assert_equals(target.style.getPropertyValue("overflow"), value);
+    for (const axis of ["overflow-x", "overflow-y", "overflow-block", "overflow-inline"])
+      assert_false(CSS.supports(axis, value));
+  }
+}, "Two overlay axis values are accepted only by the overflow shorthand");
+
+test(t => {
+  reset(t);
+  const style = getComputedStyle(target);
+  const names = Array.from({length: style.length}, (_, i) => style.item(i));
+  assert_equals(names[0], "accent-color");
+  const split = names.findIndex(name => name.startsWith("-"));
+  assert_greater_than(split, 0);
+  assert_equals(names[split - 1], "z-index");
+  for (let i = 1; i < names.length; ++i) {
+    if (i === split) continue;
+    assert_true(names[i - 1] < names[i], names[i - 1] + " before " + names[i]);
+  }
+  assert_true(names.slice(split).every(name => name.startsWith("-")));
+}, "Computed CSSOM enumerates standard names before bytewise sorted prefixed names");
+</script>

@@ -1,0 +1,122 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Transform alias grammar, pending CSSOM and matrix composition</title>
+<link rel="help" href="https://drafts.csswg.org/css-transforms-1/#transform-property">
+<link rel="help" href="https://compat.spec.whatwg.org/#css-aliases">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+const target = document.getElementById("target");
+function reset(t) {
+  target.style.cssText = "";
+  t.add_cleanup(() => { target.style.cssText = ""; });
+}
+
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("transform", "translate(10px, 20px) scale(2, 3)"));
+  target.style.cssText = "transform:translate(10px, 20px) scale(2, 3);transform-origin:10px 20px 30px;translate:5px;rotate:90deg;scale:2";
+  assert_equals(getComputedStyle(target).transform, "matrix(2, 0, 0, 3, 10, 20)");
+  target.style.transform = "scale(2, 3) translate(10px, 20px)";
+  assert_equals(getComputedStyle(target).transform, "matrix(2, 0, 0, 3, 20, 60)");
+}, "The resolved transform multiplies its list in order, independently of individual transforms and origin");
+
+test(t => {
+  reset(t);
+  assert_true(CSS.supports("-webkit-transform", "perspective(calc(25))"));
+  assert_false(CSS.supports("transform", "perspective(calc(25))"));
+  assert_true(CSS.supports("-webkit-perspective", "calc(25)"));
+  assert_false(CSS.supports("perspective", "calc(25)"));
+  assert_false(CSS.supports("-webkit-transform", "translateX(25)"));
+  target.style.setProperty("-webkit-perspective", "calc(-1)");
+  assert_equals(target.style.getPropertyValue("perspective"), "0px");
+  assert_equals(target.style.getPropertyValue("-webkit-perspective"), "0px");
+  assert_equals(target.style.item(0), "perspective");
+  assert_equals(target.style.cssText, "perspective: 0px;");
+}, "Legacy unitless perspective grammar is alias-only and serializes ordinary values canonically");
+
+for (const canonical of ["transform", "perspective"]) {
+  for (const viaAlias of [false, true]) {
+    const alias = "-webkit-" + canonical;
+    const authored = viaAlias ? alias : canonical;
+    test(t => {
+      reset(t);
+      const transforms = canonical === "transform";
+      const input = transforms ? "perspective(25)" : "25";
+      target.style.setProperty("--bx-depth", input);
+      target.style.setProperty(authored, "var(--bx-depth)", "important");
+      assert_equals(target.style.length, 2);
+      assert_equals(target.style.item(1), canonical);
+      assert_equals(target.style.getPropertyValue(canonical), transforms || !viaAlias ? "var(--bx-depth)" : "");
+      assert_equals(target.style.getPropertyValue(alias), transforms || viaAlias ? "var(--bx-depth)" : "");
+      assert_equals(target.style.getPropertyPriority(canonical), "important");
+      assert_equals(target.style.getPropertyPriority(alias), "important");
+      const serialized = !transforms && viaAlias ? alias : canonical;
+      assert_equals(target.style.cssText, `--bx-depth: ${input}; ${serialized}: var(--bx-depth) !important;`);
+      const expected = !viaAlias ? "none" : transforms ?
+        "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, -0.04, 0, 0, 0, 1)" : "25px";
+      assert_equals(getComputedStyle(target).getPropertyValue(canonical), expected);
+      assert_equals(getComputedStyle(target).getPropertyValue(alias), expected);
+    }, authored + " pending values retain their grammar and pair-specific CSSOM readbacks");
+  }
+}
+
+test(t => {
+  reset(t);
+  target.style.cssText = "font-size:16px;--origin:1em 2em 3em;transform-origin:var(--origin)";
+  assert_equals(getComputedStyle(target).transformOrigin, "16px 32px 48px");
+  target.style.setProperty("--origin", "1em 2em 0px");
+  assert_equals(getComputedStyle(target).transformOrigin, "16px 32px");
+  target.style.setProperty("perspective-origin", "bottom 10% right 20%");
+  assert_equals(target.style.getPropertyValue("perspective-origin"), "right 20% bottom 10%");
+  assert_false(CSS.supports("transform-origin", "bottom 10% right 20%"));
+}, "Transform origins compute relative lengths and keep their own position grammar");
+
+test(t => {
+  reset(t);
+  for (const fontSize of ["16px", "32px"]) {
+    for (const [input, expected] of [["calc(25)", "25px"], ["calc(-1)", "0px"],
+      ["calc(NaN)", "0px"], ["calc(sign(1px) * 25)", "25px"]]) {
+      target.style.cssText = "font-size:" + fontSize;
+      assert_true(CSS.supports("-webkit-perspective", input));
+      target.style.setProperty("-webkit-perspective", input);
+      assert_equals(target.style.getPropertyValue("-webkit-perspective"), expected);
+      assert_equals(getComputedStyle(target).getPropertyValue("perspective"), expected);
+      target.style.setProperty("-webkit-transform", "perspective(" + input + ")");
+      assert_equals(target.style.getPropertyValue("transform"), "perspective(" + expected + ")");
+    }
+    for (const input of ["calc(sign(1em - 20px) * 25)", "calc(1em / 1px)"]) {
+      assert_false(CSS.supports("-webkit-perspective", input));
+      assert_false(CSS.supports("-webkit-transform", "perspective(" + input + ")"));
+    }
+  }
+}, "Legacy perspective converts only parse-time-known numbers and clamps NaN without a font context");
+
+for (const [canonical, input, specified] of [
+  ["transform-origin", "left center", "left center"],
+  ["perspective-origin", "top left", "left top"],
+  ["transform-style", "preserve-3d", "preserve-3d"],
+  ["backface-visibility", "hidden", "hidden"]
+]) {
+  test(t => {
+    reset(t);
+    const alias = "-webkit-" + canonical;
+    assert_true(CSS.supports(alias, input));
+    for (const authored of [canonical, alias]) {
+      target.style.cssText = "";
+      target.style.setProperty(authored, input, "important");
+      assert_equals(target.style.item(0), canonical);
+      assert_equals(target.style.getPropertyValue(canonical), specified);
+      assert_equals(target.style.getPropertyValue(alias), specified);
+      target.style.setProperty("--bx-origin", input);
+      target.style.setProperty(authored, "var(--bx-origin)", "important");
+      assert_equals(target.style.getPropertyValue(canonical), "var(--bx-origin)");
+      assert_equals(target.style.getPropertyValue(alias), "var(--bx-origin)");
+      assert_equals(target.style.getPropertyPriority(alias), "important");
+      const computed = getComputedStyle(target);
+      assert_equals(computed.getPropertyValue(alias), computed.getPropertyValue(canonical));
+    }
+  }, canonical + " unchanged-grammar legacy alias shares canonical and pending storage");
+}
+</script>

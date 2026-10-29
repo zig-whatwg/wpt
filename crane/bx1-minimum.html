@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Automatic minimum sizes without a generated box</title>
+<link rel="help" href="https://drafts.csswg.org/css-sizing-3/#valdef-width-auto">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="middle"><div id="target"></div></div></div>
+<script>
+const host = document.getElementById("parent");
+const middle = document.getElementById("middle");
+const target = document.getElementById("target");
+function reset(t) {
+  host.style.cssText = middle.style.cssText = target.style.cssText = "";
+  t.add_cleanup(() => { host.style.cssText = middle.style.cssText = target.style.cssText = ""; });
+}
+
+for (const mode of ["none", "contents", "suppressed"]) test(t => {
+  reset(t);
+  host.style.display = mode === "suppressed" ? "none" : "flex";
+  middle.style.display = "contents";
+  target.style.cssText = "min-width:auto;min-height:auto;display:" + (mode === "suppressed" ? "block" : mode);
+  for (const name of ["min-width", "min-height"]) {
+    assert_equals(target.style.getPropertyValue(name), "auto");
+    assert_equals(getComputedStyle(target).getPropertyValue(name), "0px");
+    assert_equals(target.style.getPropertyValue(name), "auto");
+  }
+}, "Automatic minimum sizes resolve to zero without a box: " + mode);
+
+for (const display of ["flex", "grid"]) test(t => {
+  reset(t);
+  host.style.display = display;
+  middle.style.display = "contents";
+  target.style.cssText = "display:block;min-width:auto;min-height:auto";
+  assert_equals(getComputedStyle(target).minWidth, "auto");
+  assert_equals(getComputedStyle(target).minHeight, "auto");
+}, "Contents forwards an ordinary item's automatic minimum: " + display);
+
+for (const display of ["none", "contents"]) test(t => {
+  reset(t);
+  target.style.cssText = "display:" + display + ";min-width:7px;min-height:25%;width:auto;height:auto";
+  const style = getComputedStyle(target);
+  assert_equals(style.minWidth, "7px");
+  assert_equals(style.minHeight, "25%");
+  assert_equals(style.width, "auto");
+  assert_equals(style.height, "auto");
+}, "Explicit minimums and other auto sizes survive without a box: " + display);
+</script>
