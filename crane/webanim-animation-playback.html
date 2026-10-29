@@ -1,0 +1,127 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Animation playback: pending tasks, ready and finished, events</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#animations">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target"></div>
+<script>
+// Crane test (lane rendering2): the timing model of Web Animations 4.5.
+const target = document.getElementById('target');
+
+promise_test(async t => {
+  const animation = target.animate(null, 100000);
+  t.add_cleanup(() => animation.cancel());
+  assert_true(animation instanceof Animation);
+  assert_true(animation.pending, 'a pending play task');
+  assert_equals(animation.playState, 'running');
+  assert_equals(animation.startTime, null);
+  assert_equals(animation.currentTime, 0, 'the hold time');
+  assert_equals(animation.timeline, document.timeline);
+  const ready = await animation.ready;
+  assert_equals(ready, animation, 'ready resolves with the animation');
+  assert_false(animation.pending);
+  assert_equals(animation.startTime, document.timeline.currentTime, 'started at the frame it became ready');
+  const stamp = await new Promise(resolve => requestAnimationFrame(resolve));
+  assert_approx_equals(animation.currentTime, stamp - animation.startTime, 0.0001);
+}, 'animate() plays: pending until the next frame, then running');
+
+promise_test(async t => {
+  const log = [];
+  const animation = target.animate(null, 0);
+  animation.ready.then(() => log.push('ready'));
+  animation.finished.then(() => log.push('finished'));
+  animation.onfinish = t.step_func(event => {
+    log.push('finish event');
+    assert_true(event instanceof AnimationPlaybackEvent);
+    assert_equals(event.currentTime, 0);
+    // The timeline's time when the event was queued.
+    assert_less_than_equal(event.timelineTime, document.timeline.currentTime);
+  });
+  assert_equals(animation.playState, 'finished', 'finished while play-pending');
+  assert_true(animation.pending);
+  await animation.finished;
+  await animation.ready;
+  await t.step_wait(() => log.length === 3, 'all three', 2000, 5);
+  assert_less_than(log.indexOf('finished'), log.indexOf('finish event'), 'the promise before the event');
+  assert_equals(animation.playState, 'finished');
+}, 'a zero-duration animation: ready, finished and the finish event');
+
+promise_test(async t => {
+  const animation = target.animate(null, 100000);
+  const finished = animation.finished;
+  let cancelEvent = null;
+  animation.oncancel = event => { cancelEvent = event; };
+  const readyRejected = promise_rejects_dom(t, 'AbortError', animation.ready);
+  animation.cancel();
+  await readyRejected;
+  await promise_rejects_dom(t, 'AbortError', finished);
+  assert_not_equals(animation.finished, finished, 'a new finished promise');
+  assert_equals(animation.playState, 'idle');
+  assert_equals(animation.currentTime, null);
+  await t.step_wait(() => cancelEvent !== null, 'the cancel event', 2000, 5);
+  assert_equals(cancelEvent.currentTime, null);
+}, 'cancel() rejects ready and finished and fires cancel');
+
+promise_test(async t => {
+  const animation = target.animate(null, 100000);
+  t.add_cleanup(() => animation.cancel());
+  await animation.ready;
+  animation.pause();
+  assert_true(animation.pending, 'a pending pause task');
+  assert_equals(animation.playState, 'paused');
+  await animation.ready;
+  const held = animation.currentTime;
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  assert_equals(animation.currentTime, held, 'paused');
+  animation.currentTime = 500;
+  assert_equals(animation.currentTime, 500, 'seeked');
+  animation.play();
+  await animation.ready;
+  assert_equals(animation.playState, 'running');
+}, 'pause() holds the current time; play() resumes');
+
+promise_test(async t => {
+  const animation = target.animate(null, 1000);
+  t.add_cleanup(() => animation.cancel());
+  let finishEvents = 0;
+  animation.onfinish = () => finishEvents++;
+  animation.finish();
+  assert_equals(animation.playState, 'finished');
+  assert_equals(animation.currentTime, 1000);
+  await animation.finished;
+  await t.step_wait(() => finishEvents === 1, 'one finish event', 2000, 5);
+  animation.reverse();
+  assert_equals(animation.playbackRate, 1, 'pending until ready');
+  assert_true(animation.pending);
+  await animation.ready;
+  assert_equals(animation.playbackRate, -1, 'inverted once ready');
+  assert_equals(animation.playState, 'running');
+  assert_less_than_equal(animation.currentTime, 1000);
+}, 'finish() then reverse()');
+
+test(t => {
+  const animation = new Animation(new KeyframeEffect(target, null, 1000), document.timeline);
+  assert_equals(animation.playState, 'idle');
+  assert_false(animation.pending);
+  animation.updatePlaybackRate(2);
+  assert_equals(animation.playbackRate, 2, 'applied at once while idle');
+  assert_throws_dom('InvalidStateError', () => {
+    const endless = new Animation(new KeyframeEffect(target, null, { duration: 1000, iterations: Infinity }));
+    endless.finish();
+  });
+  const noTimeline = new Animation(null, null);
+  assert_throws_dom('InvalidStateError', () => noTimeline.reverse());
+}, 'the Animation constructor, updatePlaybackRate and the InvalidStateErrors');
+
+promise_test(async t => {
+  let done = false;
+  (() => {
+    target.animate(null, 50).finished.then(() => { done = true; });
+  })();
+  if (self.TestUtils && TestUtils.gc) { TestUtils.gc(); TestUtils.gc(); }
+  await t.step_wait(() => done, 'an unreferenced running animation still finishes', 3000, 10);
+}, 'a running animation keeps itself alive until it finishes');
+</script>

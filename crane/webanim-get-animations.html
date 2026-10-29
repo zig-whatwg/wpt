@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>getAnimations() and removing replaced animations</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations">
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#removing-replaced-animations">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="parent"><div id="child"></div></div>
+<script>
+// Crane test (lane rendering2): the relevant animations and their composite order.
+const parent = document.getElementById('parent');
+const child = document.getElementById('child');
+
+test(t => {
+  const a = parent.animate(null, 100000);
+  const b = child.animate(null, 100000);
+  const c = parent.animate(null, 100000);
+  t.add_cleanup(() => { a.cancel(); b.cancel(); c.cancel(); });
+  assert_array_equals(parent.getAnimations(), [a, c]);
+  assert_array_equals(parent.getAnimations({ subtree: true }), [a, b, c], 'composite order');
+  assert_array_equals(child.getAnimations(), [b]);
+  assert_array_equals(document.getAnimations(), [a, b, c]);
+  b.cancel();
+  assert_array_equals(child.getAnimations(), [], 'an idle animation is not relevant');
+}, 'getAnimations on elements and the document');
+
+promise_test(async t => {
+  const animation = child.animate(null, 1);
+  await animation.finished;
+  assert_array_equals(child.getAnimations(), [], 'finished without a fill');
+  const filling = child.animate(null, { duration: 1, fill: 'forwards' });
+  t.add_cleanup(() => filling.cancel());
+  await filling.finished;
+  assert_array_equals(child.getAnimations(), [filling], 'in effect while filling');
+}, 'a finished animation is relevant only while it fills');
+
+promise_test(async t => {
+  const first = child.animate({ opacity: 0.5 }, { duration: 1, fill: 'forwards' });
+  const second = child.animate({ opacity: 0.6 }, { duration: 1, fill: 'forwards' });
+  t.add_cleanup(() => { first.cancel(); second.cancel(); });
+  let removeEvent = null;
+  first.onremove = event => { removeEvent = event; };
+  await second.finished;
+  await t.step_wait(() => removeEvent !== null, 'the remove event', 2000, 5);
+  assert_equals(first.replaceState, 'removed');
+  assert_equals(second.replaceState, 'active');
+  assert_array_equals(child.getAnimations(), [second], 'a removed animation is not relevant');
+  assert_true(removeEvent instanceof AnimationPlaybackEvent);
+}, 'a fully replaced filling animation is removed');
+
+promise_test(async t => {
+  const first = child.animate({ opacity: 0.5 }, { duration: 1, fill: 'forwards' });
+  first.persist();
+  const second = child.animate({ opacity: 0.6 }, { duration: 1, fill: 'forwards' });
+  t.add_cleanup(() => { first.cancel(); second.cancel(); });
+  await second.finished;
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  assert_equals(first.replaceState, 'persisted');
+}, 'a persisted animation is never removed');
+</script>

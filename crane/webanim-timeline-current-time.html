@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document timelines follow the frame's timestamp</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#document-timelines">
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane test (lane rendering2): document.timeline and DocumentTimeline.
+test(() => {
+  assert_true(document.timeline instanceof DocumentTimeline);
+  assert_equals(document.timeline, document.timeline, 'the same object');
+  assert_equals(typeof document.timeline.currentTime, 'number');
+  const a = document.timeline.currentTime;
+  for (let i = 0; i < 100000; i++) {}
+  assert_equals(document.timeline.currentTime, a, 'constant within a task');
+}, 'document.timeline is the default document timeline');
+
+promise_test(async () => {
+  const custom = new DocumentTimeline({ originTime: 100 });
+  for (let i = 0; i < 3; i++) {
+    const stamp = await new Promise(resolve => requestAnimationFrame(resolve));
+    assert_equals(document.timeline.currentTime, stamp, 'the rAF timestamp');
+    assert_approx_equals(custom.currentTime, stamp - 100, 0.0001, 'less the origin time');
+  }
+}, 'a frame updates every timeline of the document with its timestamp');
+
+test(() => {
+  const inactive = document.implementation.createHTMLDocument('');
+  assert_true(inactive.timeline instanceof DocumentTimeline);
+  assert_equals(inactive.timeline.currentTime, null);
+}, 'the timeline of a document without a browsing context is inactive');
+</script>

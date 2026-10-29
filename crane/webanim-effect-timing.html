@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Animation effect timing: getTiming, updateTiming, getComputedTiming</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#the-animationeffect-interface">
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#calculating-progress">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target"></div>
+<script>
+// Crane test (lane rendering2): Web Animations 4.6-4.7 and 6.5.
+const target = document.getElementById('target');
+
+test(() => {
+  const effect = new KeyframeEffect(target, null);
+  const timing = effect.getTiming();
+  assert_equals(timing.delay, 0);
+  assert_equals(timing.endDelay, 0);
+  assert_equals(timing.fill, 'auto');
+  assert_equals(timing.iterationStart, 0);
+  assert_equals(timing.iterations, 1);
+  assert_equals(timing.duration, 'auto');
+  assert_equals(timing.direction, 'normal');
+  assert_equals(timing.easing, 'linear');
+  const computed = effect.getComputedTiming();
+  assert_equals(computed.duration, 0, 'auto is zero');
+  assert_equals(computed.fill, 'none', 'auto is none');
+  assert_equals(computed.endTime, 0);
+  assert_equals(computed.activeDuration, 0);
+  // == null: the binding cannot yet write a present null member of a
+  // returned dictionary (rendering2's handoff); the spec's value is null.
+  assert_true(computed.localTime == null);
+  assert_true(computed.progress == null);
+  assert_true(computed.currentIteration == null);
+}, 'the default timing');
+
+test(() => {
+  const effect = new KeyframeEffect(target, null, { duration: 1000, iterations: 2.5, delay: 100, endDelay: 50, easing: 'steps(2, end)' });
+  assert_equals(effect.getTiming().easing, 'steps(2)');
+  assert_equals(effect.getComputedTiming().activeDuration, 2500);
+  assert_equals(effect.getComputedTiming().endTime, 2650);
+  for (const bad of [{ iterationStart: -1 }, { iterations: -1 }, { iterations: NaN }, { duration: -1 },
+                     { duration: 'abc' }, { easing: 'nonsense' }, { easing: '' }]) {
+    assert_throws_js(TypeError, () => effect.updateTiming(bad), JSON.stringify(bad));
+  }
+  assert_throws_js(TypeError, () => effect.updateTiming({ delay: Infinity }), 'a restricted double');
+  effect.updateTiming({ duration: 'auto' });
+  assert_equals(effect.getTiming().duration, 'auto');
+  effect.updateTiming({ iterations: Infinity, duration: 10 });
+  assert_equals(effect.getComputedTiming().activeDuration, Infinity);
+}, 'updateTiming validates and assigns');
+
+test(() => {
+  const animation = target.animate(null, { duration: 1000, iterations: 2, direction: 'alternate', fill: 'forwards' });
+  animation.pause();
+  const at = time => { animation.currentTime = time; return animation.effect.getComputedTiming(); };
+  let c = at(250);
+  assert_equals(c.localTime, 250);
+  assert_equals(c.progress, 0.25);
+  assert_equals(c.currentIteration, 0);
+  c = at(1250);
+  assert_equals(c.progress, 0.75, 'the second iteration plays backwards');
+  assert_equals(c.currentIteration, 1);
+  c = at(5000);
+  assert_equals(c.progress, 0, 'filling at the end of the reversed iteration');
+  assert_equals(c.currentIteration, 1);
+  animation.effect.updateTiming({ fill: 'none' });
+  assert_true(at(5000).progress == null, 'no fill');
+  animation.cancel();
+}, 'progress repeats, alternates and fills');
+
+test(() => {
+  const animation = target.animate(null, { duration: 1000, easing: 'steps(4)' });
+  animation.pause();
+  animation.currentTime = 600;
+  assert_equals(animation.effect.getComputedTiming().progress, 0.5);
+  animation.effect.updateTiming({ easing: 'cubic-bezier(0, 0, 1, 1)' });
+  assert_approx_equals(animation.effect.getComputedTiming().progress, 0.6, 1e-6);
+  animation.cancel();
+}, 'the effect easing transforms the progress');
+</script>

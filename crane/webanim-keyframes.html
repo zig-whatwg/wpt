@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Processing a keyframes argument and getKeyframes()</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#processing-a-keyframes-argument">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target"></div>
+<script>
+// Crane test (lane rendering2): Web Animations 6.6.3 and getKeyframes().
+const target = document.getElementById('target');
+
+test(() => {
+  const effect = new KeyframeEffect(target, [{ opacity: '0' }, { opacity: '0.5', offset: 0.75, easing: 'ease-in' }, { opacity: '1' }]);
+  const frames = effect.getKeyframes();
+  assert_equals(frames.length, 3);
+  assert_equals(frames[0].offset, null);
+  assert_equals(frames[0].computedOffset, 0);
+  assert_equals(frames[1].offset, 0.75);
+  assert_equals(frames[1].easing, 'ease-in');
+  assert_equals(frames[1].composite, 'auto');
+  assert_equals(frames[2].computedOffset, 1);
+  assert_equals(frames[1].opacity, '0.5');
+}, 'the array form');
+
+test(() => {
+  const effect = new KeyframeEffect(target, { left: ['0px', '10px', '20px'], top: ['0px', '30px'], easing: 'ease-out' });
+  const frames = effect.getKeyframes();
+  assert_equals(frames.length, 3);
+  assert_array_equals(frames.map(f => f.computedOffset), [0, 0.5, 1]);
+  assert_equals(frames[0].left, '0px');
+  assert_equals(frames[0].top, '0px');
+  assert_equals(frames[1].left, '10px');
+  assert_false('top' in frames[1]);
+  assert_equals(frames[2].top, '30px');
+  assert_array_equals(frames.map(f => f.easing), ['ease-out', 'ease-out', 'ease-out']);
+}, 'the property-indexed form');
+
+test(() => {
+  const effect = new KeyframeEffect(target, [{ left: 'nonsense', '--custom': ' blue ', animationName: 'x', 'background-color': 'red', cssFloat: 'left' }]);
+  const frame = effect.getKeyframes()[0];
+  assert_false('left' in frame, 'an invalid value is discarded');
+  assert_false('animationName' in frame, 'not animatable');
+  assert_false('background-color' in frame, 'not an IDL name');
+  assert_true('--custom' in frame, 'a custom property');
+  assert_equals(frame.cssFloat, 'left');
+}, 'which properties are kept');
+
+test(() => {
+  assert_throws_js(TypeError, () => new KeyframeEffect(target, [{ offset: 0.6 }, { offset: 0.4 }]), 'not loosely sorted');
+  assert_throws_js(TypeError, () => new KeyframeEffect(target, [{ offset: 2 }]), 'out of range');
+  assert_throws_js(TypeError, () => new KeyframeEffect(target, [1]), 'not an object');
+  assert_throws_js(TypeError, () => new KeyframeEffect(target, { opacity: [0, 1], easing: ['linear', 'linear', 'bad'] }), 'an unused easing');
+  const log = [];
+  const keyframe = {};
+  Object.defineProperty(keyframe, 'easing', { get() { log.push('easing'); return 'bad'; }, enumerable: true });
+  Object.defineProperty(keyframe, 'opacity', { get() { log.push('opacity'); return '1'; }, enumerable: true });
+  assert_throws_js(TypeError, () => new KeyframeEffect(target, [keyframe]));
+  assert_array_equals(log, ['easing', 'opacity'], 'the easing TypeError comes after every read');
+}, 'the TypeErrors');
+
+test(() => {
+  const effect = new KeyframeEffect(target, [{ opacity: 0 }]);
+  const frames = effect.getKeyframes();
+  effect.setKeyframes({ opacity: [1, 0] });
+  assert_equals(effect.getKeyframes().length, 2);
+  assert_throws_js(TypeError, () => effect.setKeyframes([{ offset: -1 }]));
+  assert_equals(effect.getKeyframes().length, 2, 'unchanged after a throw');
+  effect.setKeyframes(null);
+  assert_equals(effect.getKeyframes().length, 0);
+  assert_equals(frames.length, 1);
+}, 'setKeyframes');
+</script>
