@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A cross-origin fragment navigation's iframe load task holds its element until it runs</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#process-the-iframe-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// "Process the iframe attributes": a fragment navigation of a document of
+// another origin queues an element task to run the iframe load event steps.
+// The task fires at its element, so it keeps it until it runs (WebKit's
+// queueTaskKeepingThisNodeAlive, Blink's WrapPersistent) - even when script
+// removed the iframe and dropped every reference meanwhile.
+promise_test(async t => {
+  assert_true(!!self.TestUtils && typeof TestUtils.gc === 'function');
+  const url = get_host_info().HTTP_REMOTE_ORIGIN + '/common/blank.html';
+  const weak = await (async () => {
+    const iframe = document.createElement('iframe');
+    iframe.id = 'rc8-frame';
+    const loaded = new Promise(resolve => iframe.addEventListener('load', resolve, { once: true }));
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    await loaded;
+    return new WeakRef(iframe);
+  })();
+  t.add_cleanup(() => document.getElementById('rc8-frame')?.remove());
+  // WeakRef construction keeps its target alive until that job ends. Leave
+  // it while the tree still owns the element, before testing the hold.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  globalThis.rc8Fired = 0;
+  (() => {
+    const iframe = document.getElementById('rc8-frame');
+    iframe.onload = () => { globalThis.rc8Fired += 1; };
+    iframe.src = url + '#rc8';
+    iframe.remove();
+  })();
+  // Do not deref before collection: that would itself keep the element alive.
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(globalThis.rc8Fired, 0, 'The load task has not run yet');
+  assert_not_equals(weak.deref(), undefined, 'The queued load task holds the removed iframe');
+  // Leave the task's and the deref's jobs before testing the release.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(weak.deref(), undefined, 'The task ended and let the removed iframe go');
+}, 'The iframe load event task of a cross-origin fragment navigation holds its removed element until it ends');
+</script>
