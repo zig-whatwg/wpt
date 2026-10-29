@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Existing CSS division computed-style cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const count = 5000;
+  // These are the same rules as fx1-math-division-cost.html. The third
+  // denominator stays unresolved until the computed font inputs exist.
+  const rules = Array.from({length: count}, (_, i) => {
+    const width = i + 1;
+    const expression = i % 3 === 0 ? 'calc(' + (width * 2) + 'px / 2)' :
+      i % 3 === 1 ? 'calc(' + (width * 6) + 'px / (2 + 4))' :
+      'calc(' + (width * 32) + 'px / ((1em + 16px) / 1px))';
+    return '.fx1-division-' + i + '{width:' + expression + '}';
+  }).join('\n');
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(rules);
+  assert_equals(sheet.cssRules.length, count);
+  document.adoptedStyleSheets = [sheet];
+  const host = document.createElement('div');
+  host.style.fontSize = '16px';
+  document.body.append(host);
+  const elements = Array.from({length: count}, (_, i) => {
+    const element = document.createElement('div');
+    element.className = 'fx1-division-' + i;
+    host.append(element);
+    return element;
+  });
+  // Flush the parent and stylesheet outside timing; the child widths have
+  // not been queried, and parsing/DOM construction are already complete.
+  assert_equals(getComputedStyle(host).fontSize, '16px');
+  const results = new Array(count);
+  const start = performance.now();
+  for (let i = 0; i < count; i++) results[i] = getComputedStyle(elements[i]).width;
+  const elapsed = performance.now() - start;
+  for (const index of [0, 1, 2, 2498, 2499, 4999]) {
+    assert_equals(results[index], (index + 1) + 'px');
+  }
+  host.remove();
+  document.adoptedStyleSheets = [];
+  console.log('FX1_MATH_DIVISION_COMPUTE_MS=' + elapsed.toFixed(3));
+}, 'existing CSS division computation preserves finite results');
+</script>

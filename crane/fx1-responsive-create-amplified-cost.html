@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Amplified responsive image creation cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q73/Q74: retain ld1's exact operation and timing endpoints, at 20x count.
+// Fetching starts after the timed loop. No batching, yields or forced GC.
+const images = [];
+const started = performance.now();
+for (let i = 0; i < 20000; ++i) {
+  const img = new Image();
+  img.src = '/images/green.png';
+  img.srcset = '/images/green.png 1x, /images/blue.png 2x';
+  images.push(img);
+}
+const elapsed = performance.now() - started;
+console.log('FX1_RESPONSIVE_CREATE_AMPLIFIED_MS=' + elapsed);
+test(() => assert_equals(images.length, 20000),
+     'Amplified responsive creation retains 20000 images');
+test(() => {
+  for (const img of [images[0], images[images.length - 1]]) {
+    assert_equals(img.getAttribute('src'), '/images/green.png');
+    assert_equals(img.getAttribute('srcset'),
+                  '/images/green.png 1x, /images/blue.png 2x');
+  }
+}, 'Amplified responsive creation preserves first and last source attributes');
+</script>

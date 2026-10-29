@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image sizes rejects zero division while normalizing numeric overflow</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#parse-a-sizes-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Integrator Q41, 2026-10-27: C156/S27 reject division by zero;
+// C156/F158 saturate overflow and normalize overflow cancellation to zero.
+// Division by zero invalidates even a branch whose final result is finite.
+const cases = [
+  ['calc(1px / 0)', 'middle'],
+  ['calc(-1px / 0)', 'middle'],
+  ['calc(0px / 0)', 'middle'],
+  ['calc(1e308px * 1e308)', 'last'],
+  ['calc(1e308in - 1e308in)', 'first'],
+  ['min(30px, 1px / 0)', 'middle'],
+];
+const runId = Date.now() + '-' + Math.random();
+for (const useSource of [false, true]) {
+  for (const [size, expected] of cases) {
+    promise_test(async t => {
+      const picture = document.createElement('picture');
+      const source = document.createElement('source');
+      const img = document.createElement('img');
+      picture.append(source, img);
+      document.body.append(picture);
+      t.add_cleanup(() => picture.remove());
+      const stem = new URL('/images/green.png?fx1-arithmetic=' + runId + '-' +
+        encodeURIComponent(size) + '-' + useSource, location.href).href;
+      const urls = {first: stem + '-first', middle: stem + '-middle', last: stem + '-last'};
+      const scale = Math.ceil(devicePixelRatio);
+      const owner = useSource ? source : img;
+      const loaded = new Promise((resolve, reject) => {
+        const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+        img.onload = () => { clearTimeout(timer); resolve(); };
+        img.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+      });
+      owner.sizes = size + ', 100px';
+      owner.srcset = urls.first + ' ' + (30 * scale) + 'w, ' +
+        urls.middle + ' ' + (100 * scale) + 'w, ' + urls.last + ' ' + (1000 * scale) + 'w';
+      await loaded;
+      assert_equals(img.currentSrc, urls[expected]);
+    }, (useSource ? 'source' : 'img') + ' sizes ' + size + ' selects the ' + expected + ' candidate');
+  }
+}
+</script>

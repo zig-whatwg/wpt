@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image sizes distinguishes finite branches and nonfinite results</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#parse-a-sizes-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Integrator probe Q40, 2026-10-27: use each row's C156/F158/S27 majority.
+// Finite keyword branches are valid; a nonfinite result with a keyword
+// skips to the fallback. Numeric-literal overflow without keywords saturates.
+const cases = [
+  ['min(infinity * 1px, 30px)', 'first'],
+  ['max(min(infinity * 1px, 30px), 1e308in)', 'middle'],
+  ['calc(1e309px)', 'last'],
+  ['min(1e308in, 30px)', 'first'],
+];
+const runId = Date.now() + '-' + Math.random();
+for (const useSource of [false, true]) {
+  for (const [size, expected] of cases) {
+    promise_test(async t => {
+      const picture = document.createElement('picture');
+      const source = document.createElement('source');
+      const img = document.createElement('img');
+      picture.append(source, img);
+      document.body.append(picture);
+      t.add_cleanup(() => picture.remove());
+      const stem = new URL('/images/green.png?fx1-nonfinite-branch=' + runId + '-' +
+        encodeURIComponent(size) + '-' + useSource, location.href).href;
+      const urls = {first: stem + '-first', middle: stem + '-middle', last: stem + '-last'};
+      const scale = Math.ceil(devicePixelRatio);
+      const owner = useSource ? source : img;
+      const loaded = new Promise((resolve, reject) => {
+        const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+        img.onload = () => { clearTimeout(timer); resolve(); };
+        img.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+      });
+      owner.sizes = size + ', 100px';
+      owner.srcset = urls.first + ' ' + (30 * scale) + 'w, ' +
+        urls.middle + ' ' + (100 * scale) + 'w, ' + urls.last + ' ' + (1000 * scale) + 'w';
+      await loaded;
+      assert_equals(img.currentSrc, urls[expected]);
+    }, (useSource ? 'source' : 'img') + ' sizes ' + size + ' selects the ' + expected + ' candidate');
+  }
+}
+</script>

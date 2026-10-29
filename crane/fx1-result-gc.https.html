@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deferred fetch result survives collection and activation</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-window-fetchlater">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+promise_test(async t => {
+  const result = (() => {
+    const request = new Request('/common/blank.html');
+    return fetchLater(request, {activateAfter: 0});
+  })();
+  assert_false(result.activated, 'activation is asynchronous');
+  TestUtils.gc();
+  for (let attempts = 0; attempts < 100 && !result.activated; ++attempts) {
+    await new Promise(resolve => t.step_timeout(resolve, 20));
+  }
+  assert_true(result.activated, 'the result remains readable after its request is collected');
+  TestUtils.gc();
+  assert_true(result.activated, 'activation remains observable after the pending record completes');
+}, 'fetchLater result survives GC before and after activation');
+</script>

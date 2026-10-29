@@ -1,0 +1,1 @@
+Permissions-Policy-Report-Only: deferred-fetch=();report-to=fx1-observe

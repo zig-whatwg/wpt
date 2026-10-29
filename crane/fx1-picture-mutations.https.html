@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Picture mutations use HTML element names and namespaces</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#relevant-mutations">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function loaded(t, img, change) {
+  return new Promise((resolve, reject) => {
+    const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+    img.onload = () => { clearTimeout(timer); resolve(); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+    change();
+  });
+}
+
+promise_test(async t => {
+  const host = document.createElement('div');
+  host.innerHTML = '<picture><source><img></picture>';
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  const source = host.querySelector('source');
+  const img = host.querySelector('img');
+  const wanted = new URL('/images/green.png?fx1-parser-mutation', location.href).href;
+  await loaded(t, img, () => source.srcset = wanted);
+  assert_equals(img.currentSrc, wanted);
+  const second = wanted + '-changed';
+  await loaded(t, img, () => source.srcset = second);
+  assert_equals(img.currentSrc, second);
+}, 'parser-made source and img use the picture mutation steps');
+
+promise_test(async t => {
+  const ns = 'http://www.w3.org/2000/svg';
+  const picture = document.createElement('picture');
+  const svgSource = document.createElementNS(ns, 'source');
+  const svgImg = document.createElementNS(ns, 'img');
+  const source = document.createElement('source');
+  const img = document.createElement('img');
+  const wanted = new URL('/images/green.png?fx1-namespaced-mutation', location.href).href;
+  const forbidden = wanted + '-svg';
+  svgSource.setAttribute('srcset', forbidden);
+  svgImg.setAttribute('src', forbidden);
+  picture.append(svgSource, document.createTextNode('text'), source, svgImg, img);
+  document.body.append(picture);
+  t.add_cleanup(() => picture.remove());
+  await loaded(t, img, () => source.srcset = wanted);
+  assert_equals(img.currentSrc, wanted);
+  assert_equals(performance.getEntriesByName(forbidden).length, 0);
+  let loads = 0;
+  img.onload = () => ++loads;
+  picture.insertBefore(document.createTextNode('more text'), img);
+  svgSource.setAttribute('srcset', forbidden + '-changed');
+  svgImg.remove();
+  await new Promise(resolve => t.step_timeout(resolve, 50));
+  assert_equals(loads, 0, 'non-HTML and text mutations do not restart the image');
+  assert_equals(performance.getEntriesByName(forbidden).length, 0);
+}, 'createElement candidates work, while SVG img/source and text mutations are ignored');
+</script>

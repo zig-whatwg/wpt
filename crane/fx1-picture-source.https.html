@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Picture source selection and relevant mutations</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#updating-the-source-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const url = tag => new URL('/images/green.png?fx1=' + tag, location.href).href;
+function picture(t) {
+  const parent = document.createElement('picture');
+  const source = document.createElement('source');
+  const img = document.createElement('img');
+  parent.append(source, img);
+  document.body.append(parent);
+  t.add_cleanup(() => parent.remove());
+  return {parent, source, img};
+}
+function load(t, img, change) {
+  return new Promise((resolve, reject) => {
+    const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+    img.onload = () => { clearTimeout(timer); resolve(); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+    change();
+  });
+}
+
+promise_test(async t => {
+  const {source, img} = picture(t);
+  await load(t, img, () => { source.srcset = url('source-only'); });
+  assert_equals(img.currentSrc, url('source-only'));
+}, 'Setting a preceding source srcset starts the image request');
+
+promise_test(async t => {
+  const {parent, source, img} = picture(t);
+  source.srcset = url('first');
+  const later = document.createElement('source');
+  later.srcset = url('later');
+  parent.append(later);
+  await load(t, img, () => { img.src = url('fallback'); });
+  assert_equals(img.currentSrc, url('first'));
+  await load(t, img, () => { source.media = 'not all'; });
+  assert_equals(img.currentSrc, url('fallback'));
+}, 'Only matching sources preceding this img participate');
+
+promise_test(async t => {
+  const {source, img} = picture(t);
+  source.srcset = url('typed');
+  source.type = 'application/x-fx1-unsupported';
+  await load(t, img, () => { img.src = url('type-fallback'); });
+  assert_equals(img.currentSrc, url('type-fallback'));
+  await load(t, img, () => { source.type = 'image/png'; });
+  assert_equals(img.currentSrc, url('typed'));
+}, 'A source type change reselects only supported image formats');
+
+promise_test(async t => {
+  const {source, img} = picture(t);
+  const width = Math.ceil(100 * devicePixelRatio);
+  source.sizes = '100px';
+  source.srcset = url('width-small') + ' ' + width + 'w, ' +
+                  url('width-large') + ' ' + (width * 2) + 'w';
+  await load(t, img, () => { img.src = url('width-fallback'); });
+  assert_equals(img.currentSrc, url('width-small'));
+  await load(t, img, () => { source.sizes = '200px'; });
+  assert_equals(img.currentSrc, url('width-large'));
+}, 'Source sizes controls width descriptors and changes reselect the image');
+
+promise_test(async t => {
+  const {parent, source, img} = picture(t);
+  source.srcset = url('removed');
+  await load(t, img, () => { img.src = url('removed-fallback'); });
+  assert_equals(img.currentSrc, url('removed'));
+  await load(t, img, () => { source.remove(); });
+  assert_equals(img.currentSrc, url('removed-fallback'));
+  await load(t, img, () => { parent.insertBefore(source, img); });
+  assert_equals(img.currentSrc, url('removed'));
+}, 'Removing and reinserting a preceding source are relevant mutations');
+
+promise_test(async t => {
+  const {parent, source, img} = picture(t);
+  source.srcset = url('empty-set') + ' 0w';
+  const second = document.createElement('source');
+  second.srcset = url('valid-set');
+  parent.insertBefore(second, img);
+  await load(t, img, () => { img.src = url('invalid-fallback'); });
+  assert_equals(img.currentSrc, url('valid-set'));
+}, 'An invalid source set is skipped in favor of the next source');
+</script>

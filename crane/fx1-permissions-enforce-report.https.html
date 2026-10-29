@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fetchLater's enforced permissions policy denial queues no violation report</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Chrome, the only browser that ships fetchLater, checks deferred-fetch
+// without reporting (Chromium fetch_later_util.cc IsFeatureEnabled, whose
+// ReportOptions defaults to kDoNotReport); Crane follows it (golden rule 2).
+promise_test(async t => {
+  const reports = [];
+  const observer = new ReportingObserver(list => reports.push(...list), {types: ['permissions-policy-violation']});
+  observer.observe();
+  t.add_cleanup(() => observer.disconnect());
+  assert_throws_quotaexceedederror(() => fetchLater('/common/blank.html', {method: 'POST', body: 'x'}), requested => Number.isInteger(requested) && requested > 0, 0);
+  assert_array_equals(observer.takeRecords(), [], 'no report is queued synchronously');
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(observer.takeRecords(), [], 'no report is queued within a task');
+  assert_array_equals(reports, [], 'the observer is not called within a task');
+}, 'Enforced deferred-fetch policy denies the request without reporting a violation');
+</script>

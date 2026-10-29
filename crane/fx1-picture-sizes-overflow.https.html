@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image sizes saturates oversized numeric lengths</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#parse-a-sizes-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Integrator probe Q39, 2026-10-27, cache-busted in Chrome 156,
+// Firefox 158 and Safari 27. Literal overflow saturates in all three;
+// calc(1e308in) saturates in Chrome/Firefox. Q31's keyword cases are separate.
+const cases = [
+  ['1e308px', 'last'],
+  ['1e308in', 'last'],
+  ['1e308cm', 'last'],
+  ['1e308vw', 'last'],
+  ['1e309px', 'last'],
+  ['calc(1e308in)', 'last'],
+  ['100px', 'middle'],
+];
+const runId = Date.now() + '-' + Math.random();
+for (const useSource of [false, true]) {
+  for (const [size, expected] of cases) {
+    promise_test(async t => {
+      const picture = document.createElement('picture');
+      const source = document.createElement('source');
+      const img = document.createElement('img');
+      picture.append(source, img);
+      document.body.append(picture);
+      t.add_cleanup(() => picture.remove());
+      // Every candidate has a new URL: cache reuse of a larger image must
+      // not hide which source size this declaration actually selected.
+      const stem = new URL('/images/green.png?fx1-overflow=' + runId + '-' +
+        encodeURIComponent(size) + '-' + useSource, location.href).href;
+      const urls = {first: stem + '-first', middle: stem + '-middle', last: stem + '-last'};
+      const scale = Math.ceil(devicePixelRatio);
+      const owner = useSource ? source : img;
+      const loaded = new Promise((resolve, reject) => {
+        const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+        img.onload = () => { clearTimeout(timer); resolve(); };
+        img.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+      });
+      owner.sizes = size + ', 100px';
+      owner.srcset = urls.first + ' ' + (30 * scale) + 'w, ' +
+        urls.middle + ' ' + (100 * scale) + 'w, ' + urls.last + ' ' + (1000 * scale) + 'w';
+      await loaded;
+      assert_equals(img.currentSrc, urls[expected]);
+    }, (useSource ? 'source' : 'img') + ' sizes ' + size + ' selects the ' + expected + ' candidate');
+  }
+}
+</script>

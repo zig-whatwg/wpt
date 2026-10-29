@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fetch metadata for a picture source request</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#updating-the-source-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/fetch/metadata/resources/helper.sub.js"></script>
+<body>
+<script>
+// Isolates the first failing source[srcset] case in metadata/generated/element-picture.
+promise_test(async t => {
+  const key = '{{uuid()}}';
+  const picture = document.createElement('picture');
+  const source = document.createElement('source');
+  const img = document.createElement('img');
+  picture.append(source, img);
+  document.body.append(picture);
+  t.add_cleanup(() => picture.remove());
+  await new Promise(resolve => {
+    img.onload = img.onerror = resolve;
+    source.srcset = makeRequestURL(key, ['httpsOrigin']);
+  });
+  const headers = await retrieve(key);
+  assert_array_equals(headers['sec-fetch-site'], ['same-origin']);
+  assert_array_equals(headers['sec-fetch-dest'], ['image']);
+  assert_array_equals(headers['sec-fetch-mode'], ['no-cors']);
+}, 'A picture source starts an image request with the correct Fetch Metadata');
+</script>

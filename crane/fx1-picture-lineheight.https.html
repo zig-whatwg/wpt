@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image sizes skips math requiring unavailable line-height metrics</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#parse-a-sizes-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+for (const skipped of ['calc(1lh)', 'min(1rlh, 10px)']) {
+  for (const useSource of [false, true]) {
+    promise_test(async t => {
+      const picture = document.createElement('picture');
+      const source = document.createElement('source');
+      const img = document.createElement('img');
+      picture.append(source, img);
+      document.body.append(picture);
+      t.add_cleanup(() => picture.remove());
+      const scale = Math.ceil(devicePixelRatio);
+      const stem = new URL('/images/green.png?fx1-lineheight=' + encodeURIComponent(skipped) + useSource, location.href).href;
+      const selected = stem + '-100';
+      const owner = useSource ? source : img;
+      const loaded = new Promise((resolve, reject) => {
+        const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+        img.onload = () => { clearTimeout(timer); resolve(); };
+        img.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+      });
+      owner.sizes = skipped + ', 100px';
+      owner.srcset = stem + '-30 ' + (30 * scale) + 'w, ' + selected + ' ' + (100 * scale) + 'w, ' + stem + '-large ' + (1000 * scale) + 'w';
+      img.src = stem + '-fallback';
+      await loaded;
+      assert_equals(img.currentSrc, selected);
+    }, (useSource ? 'source' : 'img') + ' skips ' + skipped + ' and uses the next size');
+  }
+}
+</script>

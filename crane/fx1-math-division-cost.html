@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Existing CSS division parsing cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const count = 5000;
+  const rules = Array.from({length: count}, (_, i) => {
+    const width = i + 1;
+    const expression = i % 3 === 0 ? 'calc(' + (width * 2) + 'px / 2)' :
+      i % 3 === 1 ? 'calc(' + (width * 6) + 'px / (2 + 4))' :
+      'calc(' + (width * 32) + 'px / ((1em + 16px) / 1px))';
+    return '.fx1-division-' + i + '{width:' + expression + '}';
+  }).join('\n');
+  const sheet = new CSSStyleSheet();
+  // Warm creation and accessors outside this page's measured parse.
+  sheet.replaceSync('.fx1-division-control{width:calc(20px / 2)}');
+  assert_equals(sheet.cssRules[0].style.width, 'calc(10px)');
+  const start = performance.now();
+  sheet.replaceSync(rules);
+  const elapsed = performance.now() - start;
+  assert_equals(sheet.cssRules.length, count);
+  const host = document.createElement('div');
+  host.style.fontSize = '16px';
+  document.body.append(host);
+  document.adoptedStyleSheets = [sheet];
+  const roundTrip = new CSSStyleSheet();
+  for (const index of [0, 1, 2, 2498, 2499, 4999]) {
+    const serialized = sheet.cssRules[index].style.width;
+    if (index % 3 !== 2) {
+      assert_equals(serialized, 'calc(' + (index + 1) + 'px)');
+    } else {
+      assert_true(serialized.startsWith('calc('));
+      assert_true(serialized.includes('em'));
+      roundTrip.replaceSync('.probe{width:' + serialized + '}');
+      assert_equals(roundTrip.cssRules[0].style.width, serialized);
+    }
+    const element = document.createElement('div');
+    element.className = 'fx1-division-' + index;
+    host.append(element);
+    assert_equals(getComputedStyle(element).width, (index + 1) + 'px');
+  }
+  host.remove();
+  document.adoptedStyleSheets = [];
+  console.log('FX1_MATH_DIVISION_PARSE_MS=' + elapsed.toFixed(3));
+}, 'existing CSS division parsing preserves finite results');
+</script>

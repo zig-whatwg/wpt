@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fetchLater under a report-only permissions policy queues no violation report</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Chrome, the only browser that ships fetchLater, checks deferred-fetch
+// without reporting (Chromium fetch_later_util.cc IsFeatureEnabled, whose
+// ReportOptions defaults to kDoNotReport); Crane follows it (golden rule 2).
+promise_test(async t => {
+  const reports = [];
+  const observer = new ReportingObserver(list => reports.push(...list), {types: ['permissions-policy-violation']});
+  observer.observe();
+  t.add_cleanup(() => observer.disconnect());
+  const controller = new AbortController();
+  t.add_cleanup(() => controller.abort());
+  const result = fetchLater('/common/blank.html', {method: 'POST', body: 'x', signal: controller.signal, activateAfter: 60000});
+  assert_false(result.activated);
+  assert_array_equals(observer.takeRecords(), [], 'no report is queued synchronously');
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_array_equals(observer.takeRecords(), [], 'no report is queued within a task');
+  assert_array_equals(reports, [], 'the observer is not called within a task');
+}, 'Report-only deferred-fetch policy allows the request without reporting a violation');
+</script>

@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Image sizes range checks math results before selecting a candidate</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/images.html#parse-a-sizes-attribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Integrator probe Q31, 2026-10-27: finite negatives clamp in C/F/S;
+// nonfinite sizes are invalid in Chrome 156 and Safari 27 (Firefox differs).
+const cases = [
+  ['calc(-1px)', 'first'],
+  ['-1px', 'middle'],
+  ['calc(infinity * 1px)', 'middle'],
+  ['calc(-infinity * 1px)', 'middle'],
+  ['calc(NaN * 1px)', 'middle'],
+  ['min(infinity * 1px, 100px)', 'middle'],
+  ['0px', 'first'],
+  ['100px', 'middle'],
+  ['1000000px', 'last'],
+];
+for (const useSource of [false, true]) {
+  for (const [size, expected] of cases) {
+    promise_test(async t => {
+      const picture = document.createElement('picture');
+      const source = document.createElement('source');
+      const img = document.createElement('img');
+      picture.append(source, img);
+      document.body.append(picture);
+      t.add_cleanup(() => picture.remove());
+      const stem = new URL('/images/green.png?fx1-math=' + encodeURIComponent(size) + useSource, location.href).href;
+      const urls = {first: stem + '-first', middle: stem + '-middle', last: stem + '-last'};
+      const scale = Math.ceil(devicePixelRatio);
+      const owner = useSource ? source : img;
+      const loaded = new Promise((resolve, reject) => {
+        const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+        img.onload = () => { clearTimeout(timer); resolve(); };
+        img.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+      });
+      owner.sizes = size + ', 100px';
+      owner.srcset = urls.first + ' ' + (30 * scale) + 'w, ' +
+        urls.middle + ' ' + (100 * scale) + 'w, ' + urls.last + ' ' + (1000 * scale) + 'w';
+      await loaded;
+      assert_equals(img.currentSrc, urls[expected]);
+    }, (useSource ? 'source' : 'img') + ' sizes ' + size + ' selects the ' + expected + ' candidate');
+  }
+}
+</script>

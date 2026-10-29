@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deferred fetch survives collection of its result</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#deferred-fetching">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<script src="/fetch/fetch-later/resources/fetch-later-helper.js"></script>
+<script>
+'use strict';
+promise_test(async t => {
+  const uuid = token();
+  (() => {
+    fetchLater(generateSetBeaconURL(uuid), {activateAfter: 100});
+  })();
+  TestUtils.gc();
+  await expectBeacon(uuid, {count: 1});
+  TestUtils.gc();
+}, 'The pending deferred fetch survives GC after its result is discarded');
+</script>

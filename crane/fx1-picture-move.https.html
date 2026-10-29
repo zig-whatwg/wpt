@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Picture image selection after state-preserving moves</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/embedded-content.html#the-picture-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function pictureURL(suffix) {
+  return new URL('/images/green.png?fx1-move-' + suffix, location.href).href;
+}
+
+function imageLoaded(t, image, change) {
+  return new Promise((resolve, reject) => {
+    const timer = t.step_timeout(() => reject(new Error('image did not load')), 2500);
+    image.onload = () => { clearTimeout(timer); resolve(); };
+    image.onerror = () => { clearTimeout(timer); reject(new Error('image failed')); };
+    change();
+  });
+}
+
+promise_test(async t => {
+  const host = document.createElement('div');
+  const picture = document.createElement('picture');
+  const source = document.createElement('source');
+  const image = document.createElement('img');
+  source.srcset = pictureURL('img-into-picture-source');
+  picture.append(source);
+  host.append(image, picture);
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  await imageLoaded(t, image, () => image.src = pictureURL('img-into-picture-fallback'));
+  await imageLoaded(t, image, () => picture.moveBefore(image, null));
+  assert_equals(image.currentSrc, source.srcset);
+}, 'moving an img from a div into a picture selects the picture source');
+
+promise_test(async t => {
+  const host = document.createElement('div');
+  const oldPicture = document.createElement('picture');
+  const newPicture = document.createElement('picture');
+  const source = document.createElement('source');
+  const oldImage = document.createElement('img');
+  const newImage = document.createElement('img');
+  const chosen = pictureURL('source-between-pictures');
+  const oldFallback = pictureURL('old-picture-fallback');
+  const newFallback = pictureURL('new-picture-fallback');
+  oldPicture.append(source, oldImage);
+  newPicture.append(newImage);
+  host.append(oldPicture, newPicture);
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  await Promise.all([
+    imageLoaded(t, oldImage, () => { oldImage.src = oldFallback; source.srcset = chosen; }),
+    imageLoaded(t, newImage, () => newImage.src = newFallback)
+  ]);
+  assert_equals(oldImage.currentSrc, chosen);
+  const oldChanged = imageLoaded(t, oldImage, () => {});
+  const newChanged = imageLoaded(t, newImage, () => {});
+  newPicture.moveBefore(source, newImage);
+  await Promise.all([oldChanged, newChanged]);
+  assert_equals(oldImage.currentSrc, oldFallback);
+  assert_equals(newImage.currentSrc, chosen);
+}, 'moving a source between pictures updates images in both pictures');
+
+promise_test(async t => {
+  const picture = document.createElement('picture');
+  const source = document.createElement('source');
+  const image = document.createElement('img');
+  picture.append(source, image);
+  document.body.append(picture);
+  t.add_cleanup(() => picture.remove());
+  const fallback = pictureURL('same-picture-fallback');
+  await imageLoaded(t, image, () => {
+    image.src = fallback;
+    source.srcset = pictureURL('same-picture-source');
+  });
+  await imageLoaded(t, image, () => picture.moveBefore(source, null));
+  assert_equals(image.currentSrc, fallback);
+}, 'moving a source after its img in the same picture selects the fallback');
+</script>
