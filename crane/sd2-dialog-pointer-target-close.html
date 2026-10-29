@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A closed dialog remains the remembered pointerdown target</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#light-dismiss-open-dialogs">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-actions.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<body>
+<script>
+for (const [label, close] of [['close()', dialog => dialog.close()],
+                              ['open=false', dialog => dialog.open = false]]) {
+  promise_test(async t => {
+    const other = document.body.appendChild(document.createElement('dialog'));
+    const clicked = document.body.appendChild(document.createElement('dialog'));
+    const outside = document.body.appendChild(document.createElement('button'));
+    outside.textContent = 'Outside';
+    clicked.innerHTML = '<button>Inside</button>';
+    other.closedBy = clicked.closedBy = 'any';
+    t.add_cleanup(() => { other.remove(); clicked.remove(); outside.remove(); });
+    other.show();
+    clicked.show();
+    await new test_driver.Actions().pointerMove(0, 0, {origin: clicked.firstElementChild})
+      .pointerDown().send();
+    close(clicked);
+    await new test_driver.Actions().pointerMove(0, 0, {origin: outside}).pointerUp().send();
+    assert_true(other.open, 'a different down target prevents dismissing the remaining dialog');
+    await new test_driver.Actions().pointerMove(0, 0, {origin: outside})
+      .pointerDown().pointerUp().send();
+    assert_false(other.open, 'pointerup cleared the remembered target for a fresh gesture');
+  }, 'pointerup after ' + label + ' preserves the other open dialog');
+}
+</script>

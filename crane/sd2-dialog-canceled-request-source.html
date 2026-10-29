@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A canceled dialog request does not supply a later light-dismiss source</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#light-dismiss-open-dialogs">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<script src=/resources/testdriver-actions.js></script>
+<body>
+<script>
+promise_test(async t => {
+  const outside = document.body.appendChild(document.createElement('button'));
+  const dialog = document.body.appendChild(document.createElement('dialog'));
+  t.add_cleanup(() => { dialog.remove(); outside.remove(); });
+  dialog.id = 'canceled-request-dialog';
+  dialog.closedBy = 'any';
+  const invoker = dialog.appendChild(document.createElement('button'));
+  invoker.setAttribute('command', 'request-close');
+  invoker.setAttribute('commandfor', dialog.id);
+  invoker.value = 'canceled result';
+  dialog.returnValue = 'preserved';
+  dialog.show();
+  await new Promise(resolve => dialog.addEventListener('toggle', resolve, {once: true}));
+  dialog.addEventListener('cancel', event => event.preventDefault(), {once: true});
+  invoker.click();
+  assert_true(dialog.open, 'request was canceled');
+  const closed = new Promise(resolve => dialog.addEventListener('toggle', resolve, {once: true}));
+  await new test_driver.Actions().pointerMove(0, 0, {origin: outside}).pointerDown().pointerUp().send();
+  assert_false(dialog.open, 'light dismiss closes the dialog');
+  const event = await closed;
+  assert_equals(event.source, null, 'light dismiss has no command source');
+  assert_equals(dialog.returnValue, 'preserved', 'canceled result is not reused');
+}, 'A canceled command request leaves no payload for a later light dismiss');
+test(() => {
+  const dialog = document.body.appendChild(document.createElement('dialog'));
+  try {
+    dialog.show();
+    dialog.addEventListener('cancel', () => dialog.requestClose('inner'), {once: true});
+    dialog.requestClose('outer');
+    assert_false(dialog.open);
+    assert_equals(dialog.returnValue, 'outer', 'ignored reentrant request preserves the outer payload');
+  } finally { dialog.remove(); }
+}, 'A requestClose during cancel does not overwrite the active request result');
+promise_test(async t => {
+  const outside = document.body.appendChild(document.createElement('button'));
+  const dialog = document.body.appendChild(document.createElement('dialog'));
+  t.add_cleanup(() => { dialog.remove(); outside.remove(); });
+  dialog.closedBy = 'any';
+  dialog.returnValue = 'preserved';
+  dialog.show();
+  await new Promise(resolve => dialog.addEventListener('toggle', resolve, {once: true}));
+  dialog.addEventListener('cancel', event => event.preventDefault(), {once: true});
+  dialog.requestClose('canceled');
+  assert_true(dialog.open);
+  await new test_driver.Actions().pointerMove(0, 0, {origin: outside}).pointerDown().pointerUp().send();
+  assert_false(dialog.open);
+  assert_equals(dialog.returnValue, 'preserved');
+}, 'A canceled requestClose result is not reused by light dismiss');
+</script>

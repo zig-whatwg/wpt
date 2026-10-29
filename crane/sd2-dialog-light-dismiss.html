@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Dialog light dismiss with element-origin pointer actions</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#light-dismiss-open-dialogs">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-actions.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<body>
+<script>
+function fixture(t, closedby = 'any') {
+  const dialog = document.body.appendChild(document.createElement('dialog'));
+  const outside = document.body.appendChild(document.createElement('button'));
+  outside.textContent = 'Outside';
+  dialog.innerHTML = '<button>Inside</button>';
+  dialog.closedBy = closedby;
+  t.add_cleanup(() => { dialog.remove(); outside.remove(); });
+  dialog.show();
+  return {dialog, outside, inside: dialog.firstElementChild};
+}
+async function gesture(down, up = down) {
+  await new test_driver.Actions().pointerMove(0, 0, {origin: down}).pointerDown()
+    .pointerMove(0, 0, {origin: up}).pointerUp().send();
+}
+promise_test(async t => {
+  const {dialog, outside} = fixture(t);
+  const events = [];
+  dialog.addEventListener('cancel', event => events.push(['cancel', event.cancelable]));
+  dialog.addEventListener('beforetoggle', event => events.push(['beforetoggle', event.source]));
+  await gesture(outside);
+  assert_false(dialog.open);
+  assert_array_equals(events.map(event => event[0]), ['cancel', 'beforetoggle']);
+  assert_true(events[0][1]);
+  assert_equals(events[1][1], null);
+}, 'an outside click requests close with a cancelable cancel event and null source');
+
+promise_test(async t => {
+  const {dialog, outside, inside} = fixture(t);
+  await gesture(inside, outside);
+  assert_true(dialog.open, 'down and up have different nearest dialogs');
+  await gesture(outside, inside);
+  assert_true(dialog.open, 'the opposite mismatch also does not dismiss');
+  await gesture(outside);
+  assert_false(dialog.open, 'a fresh matching gesture dismisses');
+}, 'dialog pointerdown state is paired with pointerup and then cleared');
+
+promise_test(async t => {
+  const {dialog, outside} = fixture(t);
+  dialog.addEventListener('cancel', event => event.preventDefault(), {once: true});
+  await gesture(outside);
+  assert_true(dialog.open, 'canceling the close request keeps it open');
+  outside.addEventListener('pointerdown', event => event.preventDefault(), {once: true});
+  await gesture(outside);
+  assert_false(dialog.open, 'canceling pointerdown does not cancel light dismiss');
+}, 'cancel and pointerdown cancellation have different effects on light dismiss');
+
+for (const closedby of ['none', 'closerequest']) {
+  promise_test(async t => {
+    const {dialog, outside} = fixture(t, closedby);
+    await gesture(outside);
+    assert_true(dialog.open);
+  }, closedby + ' does not allow pointer light dismiss');
+}
+
+promise_test(async t => {
+  const first = fixture(t);
+  const second = fixture(t);
+  await gesture(first.inside);
+  assert_true(first.dialog.open);
+  assert_false(second.dialog.open, 'only the last open dialog is requested closed');
+  await gesture(first.outside);
+  assert_false(first.dialog.open);
+}, 'light dismiss follows open order for nonmodal dialogs');
+</script>

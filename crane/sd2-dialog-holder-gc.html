@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Dialog open and pointer state survives collection and ends on removal</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#light-dismiss-open-dialogs">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-actions.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<body>
+<script>
+const nextTurn = t => new Promise(resolve => t.step_timeout(resolve, 0));
+function fixture(t) {
+  const root = document.body.appendChild(document.createElement('section'));
+  root.innerHTML = '<button>Outside</button><dialog closedby=any><button>Inside</button></dialog>';
+  t.add_cleanup(() => root.remove());
+  root.lastElementChild.show();
+  return {root, weak: new WeakRef(root.lastElementChild)};
+}
+async function click(target) {
+  await new test_driver.Actions().pointerMove(0, 0, {origin: target}).pointerDown().pointerUp().send();
+}
+promise_test(async t => {
+  const {root, weak} = fixture(t);
+  await nextTurn(t); // End the WeakRef creation job before collection.
+  TestUtils.gc();
+  assert_not_equals(weak.deref(), undefined, 'the registered dialog survives');
+  assert_true(weak.deref().open);
+  await click(root.firstElementChild);
+  assert_false(weak.deref().open, 'the open-dialog list remains usable after collection');
+}, 'An open dialog with no strong script reference survives GC and light dismiss');
+
+promise_test(async t => {
+  const {root, weak} = fixture(t);
+  await new test_driver.Actions().pointerMove(0, 0, {origin: root.lastElementChild.firstElementChild})
+    .pointerDown().send();
+  await nextTurn(t);
+  TestUtils.gc();
+  assert_not_equals(weak.deref(), undefined, 'the pending dialog survives');
+  await new test_driver.Actions().pointerMove(0, 0, {origin: root.firstElementChild})
+    .pointerUp().send();
+  assert_true(weak.deref().open, 'mismatched down and up do not dismiss');
+  await click(root.firstElementChild);
+  assert_false(weak.deref().open, 'a fresh matching gesture dismisses');
+}, 'A pending dialog pointerdown target remains usable after GC');
+
+promise_test(async t => {
+  const {root, weak} = fixture(t);
+  await new Promise(resolve => root.lastElementChild.addEventListener('toggle', resolve, {once: true}));
+  root.lastElementChild.remove();
+  await nextTurn(t);
+  TestUtils.gc();
+  assert_equals(weak.deref(), undefined, 'removal releases the open-dialog registration');
+}, 'Removing an open dialog releases it after its queued toggle task');
+
+promise_test(async t => {
+  const root = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => root.remove());
+  root.innerHTML = '<button command=request-close commandfor=sd2-gc-dialog>Request</button><dialog id=sd2-gc-dialog></dialog>';
+  const weak = new WeakRef(root.firstElementChild);
+  root.lastElementChild.show();
+  await new Promise(resolve => root.lastElementChild.addEventListener('toggle', resolve, {once: true}));
+  root.lastElementChild.addEventListener('cancel', event => {
+    root.firstElementChild.remove();
+    event.target.requestClose('ignored inner result');
+    TestUtils.gc();
+  }, {once: true});
+  const closed = new Promise(resolve => root.lastElementChild.addEventListener('toggle', resolve, {once: true}));
+  root.firstElementChild.click();
+  assert_false(root.lastElementChild.open, 'the outer request closes despite reentrancy');
+  const event = await closed;
+  assert_equals(event.source, weak.deref());
+  assert_not_equals(event.source, undefined);
+  assert_equals(event.source.textContent, 'Request');
+  assert_equals(root.lastElementChild.returnValue, '', 'the inner request did not replace the outer result');
+}, 'A reentrant request retains its detached command source through GC');
+</script>
