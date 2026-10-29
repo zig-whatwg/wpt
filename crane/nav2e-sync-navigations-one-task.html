@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: synchronous same-document navigations in one task keep every entry</title>
+<!--
+  Lane nav2 E. HTML's "finalize a same-document navigation" step 2 ("If
+  targetNavigable's active session history entry is not targetEntry, then
+  return"), taken literally, drops the first of two synchronous navigations
+  made in one task, and a replace of it then finds nothing to replace
+  (whatwg/html#10232). Every browser keeps every entry (wpt.fyi 07ce6e987a:
+  combination_history_003/004, history_back, current-basic, all PASS in
+  Chrome 156, Firefox 159 and Safari 27). No upstream test covers
+  replaceState() twice in one task; this one does, with push, push, replace.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  // After the load event, so that the pushes are not made replaces.
+  await new Promise(resolve => window.onload = () => t.step_timeout(resolve, 0));
+  const start = history.length;
+
+  history.replaceState("r1", "", "#r1");
+  history.replaceState("r2", "", "#r2");
+  assert_equals(history.length, start, "two replaces add no entry");
+  assert_equals(history.state, "r2");
+
+  history.pushState("p1", "", "#p1");
+  history.pushState("p2", "", "#p2");
+  history.replaceState("p2b", "", "#p2b");
+  assert_equals(history.length, start + 2, "two pushes add two entries at once");
+  assert_equals(history.state, "p2b");
+  assert_equals(location.hash, "#p2b");
+
+  // Once their finalize steps have run on the traversal queue.
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(history.length, start + 2, "still two entries once finalized");
+  assert_equals(navigation.currentEntry.url.split("#")[1], "p2b");
+
+  const back = () => new Promise(resolve => window.addEventListener("popstate", e => resolve(e.state), { once: true }));
+  let popped = back();
+  history.back();
+  assert_equals(await popped, "p1", "back lands on the first push");
+  popped = back();
+  history.back();
+  assert_equals(await popped, "r2", "and then on the twice-replaced entry");
+  assert_equals(location.hash, "#r2");
+  assert_equals(history.length, start + 2);
+}, "replace, replace, push, push, replace in one task: every entry kept, in order");
+</script>
