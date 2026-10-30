@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Animated values: the effect stack, composite, the animation origin, commitStyles</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#combining-effects">
+<link rel="help" href="https://drafts.csswg.org/css-cascade-5/#cascade-origin-animation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target"><span id="child"></span></div>
+<p id="other"></p>
+<script>
+// Crane test (lane rendering3): Web Animations 5.3-5.4 values in computed style.
+const target = document.getElementById('target');
+const child = document.getElementById('child');
+const other = document.getElementById('other');
+const cs = (e, p) => getComputedStyle(e).getPropertyValue(p);
+const at = (animation, time) => { animation.pause(); animation.currentTime = time; return animation; };
+
+test(t => {
+  const a = at(target.animate([{ opacity: 0, marginLeft: '0px', color: 'rgb(0, 0, 0)' },
+                               { opacity: 1, marginLeft: '100px', color: 'rgb(200, 100, 0)' }], 1000), 250);
+  t.add_cleanup(() => a.cancel());
+  assert_equals(cs(target, 'opacity'), '0.25');
+  assert_equals(cs(target, 'margin-left'), '25px');
+  assert_equals(cs(target, 'color'), 'rgb(50, 25, 0)');
+  assert_equals(cs(child, 'color'), 'rgb(50, 25, 0)', 'inherited');
+  a.currentTime = 500;
+  assert_equals(cs(target, 'margin-left'), '50px', 'a seek moves the value at once');
+  assert_equals(cs(child, 'color'), 'rgb(100, 50, 0)');
+  a.cancel();
+  assert_equals(cs(target, 'margin-left'), '0px', 'cancel restores the base value');
+}, 'interpolated values reach computed style, descendants and seeks');
+
+test(t => {
+  target.style.setProperty('margin-left', '7px', 'important');
+  target.style.marginRight = '7px';
+  t.add_cleanup(() => { target.style.marginLeft = ''; target.style.marginRight = ''; });
+  const a = at(target.animate({ marginLeft: ['0px', '100px'], marginRight: ['0px', '100px'] }, 1000), 500);
+  t.add_cleanup(() => a.cancel());
+  assert_equals(cs(target, 'margin-left'), '7px', 'important beats the animation origin');
+  assert_equals(cs(target, 'margin-right'), '50px', 'the animation origin beats normal declarations');
+}, 'the animation origin sits between normal and important declarations');
+
+test(t => {
+  target.style.marginLeft = '10px';
+  t.add_cleanup(() => { target.style.marginLeft = ''; });
+  const a = at(target.animate({ marginLeft: ['0px', '100px'] }, { duration: 1000, composite: 'add' }), 500);
+  const b = at(target.animate({ marginLeft: ['0px', '20px'] }, { duration: 1000, composite: 'accumulate' }), 500);
+  t.add_cleanup(() => { a.cancel(); b.cancel(); });
+  assert_equals(cs(target, 'margin-left'), '70px');
+}, 'add and accumulate stack onto the underlying value');
+
+test(t => {
+  target.style.fontSize = '10px';
+  target.style.setProperty('--w', '40px');
+  t.add_cleanup(() => { target.style.fontSize = ''; target.style.removeProperty('--w'); });
+  const c = at(target.animate({ width: ['2em', 'var(--w)'] }, 1000), 500);
+  t.add_cleanup(() => c.cancel());
+  assert_equals(cs(target, 'width'), '30px', 'em and var() compute in the element context');
+  const d = at(target.animate({ fontSize: '30px' }, 1000), 500);
+  t.add_cleanup(() => d.cancel());
+  assert_equals(cs(target, 'font-size'), '20px', 'an implicit from-keyframe takes the underlying value');
+  assert_equals(cs(target, 'width'), '40px', 'em keyframes see the animated font-size');
+}, 'keyframes compute against the element, animated font-size first');
+
+test(t => {
+  const a = at(target.animate({ opacity: [0, 1] }, 1000), 100);
+  t.add_cleanup(() => a.cancel());
+  assert_equals(cs(other, 'opacity'), '1');
+  assert_equals(cs(target, 'opacity'), '0.1');
+  a.currentTime = 900;
+  assert_equals(cs(target, 'opacity'), '0.9');
+  assert_equals(cs(other, 'opacity'), '1');
+}, 'an animation moves only its target');
+
+test(t => {
+  target.style.marginLeft = '10px';
+  t.add_cleanup(() => { target.style.marginLeft = ''; target.style.opacity = ''; });
+  const a = at(target.animate({ marginLeft: ['0px', '100px'], opacity: [0, 1] }, 1000), 500);
+  const b = at(target.animate({ marginLeft: ['0px', '20px'] }, { duration: 1000, composite: 'add' }), 500);
+  a.commitStyles();
+  a.cancel(); b.cancel();
+  assert_equals(target.style.marginLeft, '50px', 'the partial stack stops at the committing animation');
+  assert_equals(target.style.opacity, '0.5');
+  const c = target.animate({ marginLeft: ['0px', '30px'] }, 1000);
+  c.finish();
+  c.commitStyles();
+  assert_equals(target.style.marginLeft, '30px', 'endpoint-inclusive: a finished animation commits its end');
+}, 'commitStyles writes the effect values into the style attribute');
+</script>
