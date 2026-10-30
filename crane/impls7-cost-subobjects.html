@@ -1,0 +1,152 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Cost of the objects one object makes for another: token lists, attribute maps, child lists, Headers, Files, doctypes</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-element-classlist">
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-element-attributes">
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-node-childnodes">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dom.html#dom-dataset">
+<link rel="help" href="https://fetch.spec.whatwg.org/#dom-response-headers">
+<link rel="help" href="https://w3c.github.io/FileAPI/#file-constructor">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Each case makes many objects through the steps impls batch 7 moved onto
+// interfaces, construction arguments and src/dom hooks. Identical inputs
+// before and after; the times are in the result names, so the journal's
+// subtest stream keeps them, and the file's duration is the cost metric.
+function timed(label, count, body, check) {
+  const start = performance.now();
+  const result = body(count);
+  const elapsed = performance.now() - start;
+  test(() => check(result), label + ": " + count + " in " + elapsed.toFixed(3) + " ms");
+}
+
+timed("classList, part, attributes, dataset and childNodes of new elements", 20000, n => {
+  let tokens = 0;
+  for (let i = 0; i < n; i++) {
+    const element = document.createElement("div");
+    element.setAttribute("class", "a b");
+    element.setAttribute("part", "p");
+    element.dataset.k = "v";
+    tokens += element.classList.length + element.part.length + element.attributes.length;
+    element.classList.add("c");
+    tokens += element.childNodes.length;
+  }
+  return tokens;
+}, tokens => assert_equals(tokens, 20000 * (2 + 1 + 3)));
+
+timed("relList of new a and area elements", 20000, n => {
+  let tokens = 0;
+  for (let i = 0; i < n; i++) {
+    const a = document.createElement("a");
+    a.rel = "noopener noreferrer";
+    const area = document.createElement("area");
+    area.rel = "next";
+    tokens += a.relList.length + area.relList.length;
+  }
+  return tokens;
+}, tokens => assert_equals(tokens, 20000 * 3));
+
+timed("createAttribute, createAttributeNS and createDocumentFragment", 30000, n => {
+  let made = 0;
+  for (let i = 0; i < n; i++) {
+    const attr = document.createAttribute("data-x");
+    const ns = document.createAttributeNS("urn:x", "p:y");
+    const fragment = document.createDocumentFragment();
+    if (attr.ownerDocument === document && ns.ownerDocument === document && fragment.ownerDocument === document) made++;
+  }
+  return made;
+}, made => assert_equals(made, 30000));
+
+timed("script elements, HTML and SVG", 20000, n => {
+  let named = 0;
+  for (let i = 0; i < n; i++) {
+    const html = document.createElement("script");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "script");
+    if (html.nodeName === "SCRIPT" && svg.nodeName === "script") named++;
+  }
+  return named;
+}, named => assert_equals(named, 20000));
+
+timed("isConnected inside a shadow tree", 200000, n => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const leaf = host.attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
+  let connected = 0;
+  for (let i = 0; i < n; i++) if (leaf.isConnected) connected++;
+  host.remove();
+  return connected;
+}, connected => assert_equals(connected, 200000));
+
+timed("doctypes and documents from DOMImplementation", 5000, n => {
+  let made = 0;
+  for (let i = 0; i < n; i++) {
+    const doctype = document.implementation.createDocumentType("html", "-//W3C//DTD HTML 4.01//EN", "http://www.w3.org/TR/html4/strict.dtd");
+    if (doctype.publicId.length > 0 && doctype.name === "html") made++;
+    if (i % 10 === 0) {
+      const doc = document.implementation.createHTMLDocument("t");
+      if (doc.doctype.name === "html") made++;
+    }
+  }
+  return made;
+}, made => assert_equals(made, 5000 + 500));
+
+timed("DOMParser", 2000, n => {
+  let parsed = 0;
+  const parser = new DOMParser();
+  for (let i = 0; i < n; i++) {
+    const doc = parser.parseFromString("<!doctype html><p id=x>t</p>", "text/html");
+    if (doc.getElementById("x")) parsed++;
+  }
+  return parsed;
+}, parsed => assert_equals(parsed, 2000));
+
+timed("Request and Response headers", 20000, n => {
+  let found = 0;
+  for (let i = 0; i < n; i++) {
+    const response = new Response("x", { headers: { "x-a": "1" } });
+    const request = new Request("https://example.com/", { headers: { "x-b": "2" } });
+    if (response.headers.get("x-a") === "1" && request.headers.get("x-b") === "2") found++;
+  }
+  return found;
+}, found => assert_equals(found, 20000));
+
+timed("Files, Blobs and blob URLs", 20000, n => {
+  let bytes = 0;
+  for (let i = 0; i < n; i++) {
+    const file = new File(["ab", new Uint8Array([1, 2])], "f.txt", { type: "text/plain" });
+    const blob = new Blob([file, "c"]);
+    const url = URL.createObjectURL(blob);
+    URL.revokeObjectURL(url);
+    bytes += file.size + blob.size;
+  }
+  return bytes;
+}, bytes => assert_equals(bytes, 20000 * (4 + 5)));
+
+timed("AbortController.abort", 50000, n => {
+  let aborted = 0;
+  for (let i = 0; i < n; i++) {
+    const controller = new AbortController();
+    controller.abort();
+    if (controller.signal.aborted) aborted++;
+  }
+  return aborted;
+}, aborted => assert_equals(aborted, 50000));
+
+promise_test(async () => {
+  const start = performance.now();
+  let entries = 0;
+  for (let i = 0; i < 2000; i++) {
+    const form = new FormData();
+    form.append("k", "v" + i);
+    const parsed = await new Response(form).formData();
+    entries += [...parsed.keys()].length;
+  }
+  const elapsed = performance.now() - start;
+  assert_equals(entries, 2000);
+  assert_greater_than_equal(elapsed, 0, "FormData round trips: 2000 in " + elapsed.toFixed(3) + " ms");
+}, "FormData from a Response body: 2000 round trips");
+</script>
