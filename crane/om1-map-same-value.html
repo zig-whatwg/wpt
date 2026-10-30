@@ -1,0 +1,292 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM equal-value sets update the style attribute and mutation records</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#dom-stylepropertymap-set">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q178, Chrome156/Safari27 (3/3 each), 2026-10-29: successful equal sets
+// serialize and queue one record; throws and zero-argument appends do neither.
+// Same-value shorthands split; use Chrome's uniform mechanism as ruled in
+// tmp/probes/q178/RESULT.md. Typed OM §3 set step 10.
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "--foo:";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('--foo', new CSSUnparsedValue([]));
+  assert_equals(el.getAttribute('style'), "--foo: ;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: empty after raw declaration");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "--foo:";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('--foo', new CSSUnparsedValue(['']));
+  assert_equals(el.getAttribute('style'), "--foo: ;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: empty string segment after raw declaration");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "--foo: ;";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('--foo', new CSSUnparsedValue([]));
+  assert_equals(el.getAttribute('style'), "--foo: ;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: empty after canonical declaration");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "--foo:one";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('--foo', new CSSUnparsedValue(['one']));
+  assert_equals(el.getAttribute('style'), "--foo: one;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: nonempty custom same object");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "--foo:one";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('--foo', 'one');
+  assert_equals(el.getAttribute('style'), "--foo: one;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: nonempty custom same string");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "width:1px";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('width', CSS.px(1));
+  assert_equals(el.getAttribute('style'), "width: 1px;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: unit same object");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "width:1px";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('width', '1px');
+  assert_equals(el.getAttribute('style'), "width: 1px;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: unit same string");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "display:block";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('display', new CSSKeywordValue('block'));
+  assert_equals(el.getAttribute('style'), "display: block;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: keyword same");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "transition-duration:1s,2s";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('transition-duration', CSS.s(1), CSS.s(2));
+  assert_equals(el.getAttribute('style'), "transition-duration: 1s, 2s;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: list same");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "width:inherit";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('width', new CSSKeywordValue('inherit'));
+  assert_equals(el.getAttribute('style'), "width: inherit;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: wide same");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "margin:1px";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.set('margin', '1px');
+  assert_equals(el.getAttribute('style'), "margin: 1px;", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 1, 'mutation count');
+  assert_equals(records[0].type, 'attributes');
+  assert_equals(records[0].attributeName, 'style');
+  assert_equals(records[0].attributeNamespace, null);
+  assert_equals(records[0].target, el);
+  assert_equals(records[0].oldValue, initial);
+}, "Typed OM equal-value update: shorthand same");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "transition-duration:1s";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  m.append('transition-duration');
+  assert_equals(el.getAttribute('style'), "transition-duration:1s", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 0, 'mutation count');
+}, "Typed OM equal-value update: zero append");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "--foo:";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  assert_throws_js(TypeError, () => m.set('--foo', ''));
+  assert_equals(el.getAttribute('style'), "--foo:", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 0, 'mutation count');
+}, "Typed OM equal-value update: invalid custom string");
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.append(el);
+  t.add_cleanup(() => el.remove());
+  const initial = "width:1px";
+  el.setAttribute('style', initial);
+  const m = el.attributeStyleMap;
+  const observer = new MutationObserver(() => {});
+  observer.observe(el, {attributes: true, attributeOldValue: true});
+  t.add_cleanup(() => observer.disconnect());
+  assert_throws_js(TypeError, () => m.set('width', CSS.s(1)));
+  assert_equals(el.getAttribute('style'), "width:1px", 'attribute text');
+  const records = observer.takeRecords();
+  assert_equals(records.length, 0, 'mutation count');
+}, "Typed OM equal-value update: invalid unit");
+
+</script>

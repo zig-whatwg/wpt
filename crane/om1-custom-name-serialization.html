@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS declaration serialization escapes decoded custom property names</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#serialize-an-identifier">
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#stylepropertymap">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Q104, 2026-10-27: css/cssom/variable-names.html pins decoded getters and escaped cssText.
+for (const name of ['--plain', '--x y', '-- ', '--colon:', '--semi;', '--\\name']) {
+  test(() => {
+    const element = document.createElement('div');
+    element.style.setProperty(name, 'var(--value, 2px)', 'important');
+    assert_equals(element.style.getPropertyValue(name), 'var(--value, 2px)');
+    assert_equals(element.style.item(0), name);
+    assert_equals(element.style[0], name);
+    assert_equals(element.style.cssText, CSS.escape(name) + ': var(--value, 2px) !important;');
+    const copy = document.createElement('div');
+    copy.style.cssText = element.style.cssText;
+    assert_equals(copy.style.getPropertyValue(name), 'var(--value, 2px)');
+    assert_equals(copy.style.getPropertyPriority(name), 'important');
+  }, 'CSSOM serializes and reparses the decoded name ' + JSON.stringify(name));
+
+  test(() => {
+    const element = document.createElement('div');
+    const value = new CSSUnparsedValue(['2px']);
+    element.attributeStyleMap.set(name, value);
+    const held = element.attributeStyleMap.get(name);
+    assert_true(held instanceof CSSUnparsedValue);
+    assert_equals(element.style[0], name);
+    assert_equals(element.style.getPropertyValue(name), '2px');
+    assert_equals(element.style.cssText, CSS.escape(name) + ': 2px;');
+    assert_equals(String(held), '2px');
+    element.style.removeProperty(name);
+    assert_equals(String(held), '2px');
+    const copy = document.createElement('div');
+    copy.attributeStyleMap.set(name, held);
+    assert_equals(copy.style.getPropertyValue(name), '2px');
+    assert_equals(copy.style.cssText, CSS.escape(name) + ': 2px;');
+  }, 'Typed OM retains the value while serializing the decoded name ' + JSON.stringify(name));
+}
+</script>

@@ -1,0 +1,158 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM native image classes and assignment</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#cssimagevalue">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+// Q87,2026-10-27: URL images alone; spec resolves mask/content's 1-1 split.
+const check = (condition, message) => assert_true(condition, message);
+const typeError = (f, label) => assert_throws_js(TypeError, f, label);
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const source = "url(a.png)";
+  el.style.setProperty('color-scheme', 'light');
+  el.style.setProperty('background-image', source);
+  const specified = el.style.getPropertyValue('background-image');
+  check(specified !== '', 'ordinary parser supports the image');
+  const parsed = CSSStyleValue.parse('background-image', source);
+  const read = el.attributeStyleMap.get('background-image');
+  check(parsed.constructor === CSSImageValue && read.constructor === CSSImageValue, 'specified class');
+  check(String(parsed) === specified && String(read) === specified, 'normalized owner serialization');
+  const resolved = el.computedStyleMap().get('background-image');
+  check(resolved.constructor === CSSImageValue, 'computed class');
+  check(String(resolved) === getComputedStyle(el).getPropertyValue('background-image'), 'computed owner serialization');
+}, "Q87 image classes url(a.png)");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const source = "linear-gradient(red,blue)";
+  el.style.setProperty('color-scheme', 'light');
+  el.style.setProperty('background-image', source);
+  const specified = el.style.getPropertyValue('background-image');
+  check(specified !== '', 'ordinary parser supports the image');
+  const parsed = CSSStyleValue.parse('background-image', source);
+  const read = el.attributeStyleMap.get('background-image');
+  check(parsed.constructor === CSSStyleValue && read.constructor === CSSStyleValue, 'specified class');
+  check(String(parsed) === specified && String(read) === specified, 'normalized owner serialization');
+  const resolved = el.computedStyleMap().get('background-image');
+  check(resolved.constructor === CSSStyleValue, 'computed class');
+  check(String(resolved) === getComputedStyle(el).getPropertyValue('background-image'), 'computed owner serialization');
+}, "Q87 image classes linear-gradient(red,blue)");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const source = "image-set(url(a.png) 1x)";
+  el.style.setProperty('color-scheme', 'light');
+  el.style.setProperty('background-image', source);
+  const specified = el.style.getPropertyValue('background-image');
+  check(specified !== '', 'ordinary parser supports the image');
+  const parsed = CSSStyleValue.parse('background-image', source);
+  const read = el.attributeStyleMap.get('background-image');
+  check(parsed.constructor === CSSStyleValue && read.constructor === CSSStyleValue, 'specified class');
+  check(String(parsed) === specified && String(read) === specified, 'normalized owner serialization');
+  const resolved = el.computedStyleMap().get('background-image');
+  check(resolved.constructor === CSSStyleValue, 'computed class');
+  check(String(resolved) === getComputedStyle(el).getPropertyValue('background-image'), 'computed owner serialization');
+}, "Q87 image classes image-set(url(a.png) 1x)");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const source = "light-dark(url(a.png),url(b.png))";
+  el.style.setProperty('color-scheme', 'light');
+  el.style.setProperty('background-image', source);
+  const specified = el.style.getPropertyValue('background-image');
+  check(specified !== '', 'ordinary parser supports the image');
+  const parsed = CSSStyleValue.parse('background-image', source);
+  const read = el.attributeStyleMap.get('background-image');
+  check(parsed.constructor === CSSStyleValue && read.constructor === CSSStyleValue, 'specified class');
+  check(String(parsed) === specified && String(read) === specified, 'normalized owner serialization');
+  const resolved = el.computedStyleMap().get('background-image');
+  check(resolved.constructor === CSSImageValue, 'computed class');
+  check(String(resolved) === getComputedStyle(el).getPropertyValue('background-image'), 'computed owner serialization');
+}, "Q87 image classes light-dark(url(a.png),url(b.png))");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const source = "none";
+  el.style.setProperty('color-scheme', 'light');
+  el.style.setProperty('background-image', source);
+  const specified = el.style.getPropertyValue('background-image');
+  check(specified !== '', 'ordinary parser supports the image');
+  const parsed = CSSStyleValue.parse('background-image', source);
+  const read = el.attributeStyleMap.get('background-image');
+  check(parsed.constructor === CSSKeywordValue && read.constructor === CSSKeywordValue, 'specified class');
+  check(String(parsed) === specified && String(read) === specified, 'normalized owner serialization');
+  const resolved = el.computedStyleMap().get('background-image');
+  check(resolved.constructor === CSSKeywordValue, 'computed class');
+  check(String(resolved) === getComputedStyle(el).getPropertyValue('background-image'), 'computed owner serialization');
+}, "Q87 image classes none");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const value = CSSStyleValue.parse('background-image', 'url(a.png)');
+  check(value instanceof CSSImageValue, 'URL image');
+  el.style.cssText = 'width: 5px !important';
+  const before = el.style.cssText;
+  el.attributeStyleMap.set("background-image", value);
+  check(el.style.getPropertyValue("background-image") === 'url("a.png")', 'specified URL');
+  const read = el.attributeStyleMap.get("background-image");
+  check(read instanceof CSSImageValue && String(read) === 'url("a.png")', 'reified URL');
+}, "Q87 URL image assignment to background-image");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const value = CSSStyleValue.parse('background-image', 'url(a.png)');
+  check(value instanceof CSSImageValue, 'URL image');
+  el.style.cssText = 'width: 5px !important';
+  const before = el.style.cssText;
+  el.attributeStyleMap.set("list-style-image", value);
+  check(el.style.getPropertyValue("list-style-image") === 'url("a.png")', 'specified URL');
+  const read = el.attributeStyleMap.get("list-style-image");
+  check(read instanceof CSSImageValue && String(read) === 'url("a.png")', 'reified URL');
+}, "Q87 URL image assignment to list-style-image");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const value = CSSStyleValue.parse('background-image', 'url(a.png)');
+  check(value instanceof CSSImageValue, 'URL image');
+  el.style.cssText = 'width: 5px !important';
+  const before = el.style.cssText;
+  el.attributeStyleMap.set("border-image-source", value);
+  check(el.style.getPropertyValue("border-image-source") === 'url("a.png")', 'specified URL');
+  const read = el.attributeStyleMap.get("border-image-source");
+  check(read instanceof CSSImageValue && String(read) === 'url("a.png")', 'reified URL');
+}, "Q87 URL image assignment to border-image-source");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const value = CSSStyleValue.parse('background-image', 'url(a.png)');
+  check(value instanceof CSSImageValue, 'URL image');
+  el.style.cssText = 'width: 5px !important';
+  const before = el.style.cssText;
+  el.attributeStyleMap.set("mask-image", value);
+  check(el.style.getPropertyValue("mask-image") === 'url("a.png")', 'specified URL');
+  const read = el.attributeStyleMap.get("mask-image");
+  check(read instanceof CSSImageValue && String(read) === 'url("a.png")', 'reified URL');
+}, "Q87 URL image assignment to mask-image");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const value = CSSStyleValue.parse('background-image', 'url(a.png)');
+  check(value instanceof CSSImageValue, 'URL image');
+  el.style.cssText = 'width: 5px !important';
+  const before = el.style.cssText;
+  el.attributeStyleMap.set("content", value);
+  check(el.style.getPropertyValue("content") === 'url("a.png")', 'specified URL');
+  const read = el.attributeStyleMap.get("content");
+  check(read instanceof CSSImageValue && String(read) === 'url("a.png")', 'reified URL');
+}, "Q87 URL image assignment to content");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const value = CSSStyleValue.parse('background-image', 'url(a.png)');
+  check(value instanceof CSSImageValue, 'URL image');
+  el.style.cssText = 'width: 5px !important';
+  const before = el.style.cssText;
+  typeError(() => el.attributeStyleMap.set('cursor', value), 'cursor fallback required');
+  check(el.style.cssText === before, 'rollback');
+}, "Q87 URL image assignment to cursor");
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  el.attributeStyleMap.set('content', CSSStyleValue.parse('background-image', 'url(a.png)'));
+  const value = el.attributeStyleMap.get('content');
+  el.style.removeProperty('content');
+  el.attributeStyleMap.set('border-image-source', value);
+  check(el.style.getPropertyValue('border-image-source') === 'url("a.png")', 'retained native image');
+}, "Q87 content URL image can be assigned back to an image property");
+</script>

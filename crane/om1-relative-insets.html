@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Relative auto inset resolved values without containing-block geometry</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#resolved-values">
+<link rel="help" href="https://drafts.csswg.org/css-position-3/#relpos-insets">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function styled(t, css) {
+  const element = document.createElement('div');
+  element.style.cssText = 'display:block; position:relative; ' + css;
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  return getComputedStyle(element);
+}
+
+test(t => {
+  const style = styled(t, '');
+  for (const name of ['top', 'right', 'bottom', 'left',
+                      'inset-block-start', 'inset-block-end',
+                      'inset-inline-start', 'inset-inline-end'])
+    assert_equals(style.getPropertyValue(name), '0px', name);
+  assert_equals(style.inset, '0px');
+  assert_equals(style.insetBlock, '0px');
+  assert_equals(style.insetInline, '0px');
+}, 'Both auto sides resolve to zero consistently in longhands and shorthands');
+
+test(t => {
+  const style = styled(t, 'bottom:3px; left:calc(2px + 3px)');
+  assert_equals(style.top, '-3px');
+  assert_equals(style.right, '-5px');
+  assert_equals(style.bottom, '3px');
+  assert_equals(style.left, '5px');
+  assert_equals(style.inset, '-3px -5px 3px 5px');
+  assert_equals(style.insetBlock, '-3px 3px');
+  assert_equals(style.insetInline, '5px -5px');
+}, 'An auto side negates the opposite computed absolute length, including calc');
+
+test(t => {
+  const style = styled(t, 'top:1px; right:2px; bottom:3px; left:4px');
+  assert_equals(style.inset, '1px 2px 3px 4px');
+  assert_equals(style.top, '1px');
+  assert_equals(style.right, '2px');
+  assert_equals(style.bottom, '3px');
+  assert_equals(style.left, '4px');
+}, 'Two non-auto sides retain their computed values under the CSSOM over-constraint rule');
+
+for (const mode of ['horizontal-tb', 'vertical-rl', 'vertical-lr',
+                    'sideways-rl', 'sideways-lr']) {
+  for (const direction of ['ltr', 'rtl']) {
+    test(t => {
+      const style = styled(t, `writing-mode:${mode}; direction:${direction};
+          font-size:10px; inset-inline-start:auto; inset-inline-end:2em;
+          inset-block-start:3px; inset-block-end:auto`);
+      assert_equals(style.insetInlineStart, '-20px');
+      assert_equals(style.insetInlineEnd, '20px');
+      assert_equals(style.insetBlockStart, '3px');
+      assert_equals(style.insetBlockEnd, '-3px');
+      assert_equals(style.insetInline, '-20px 20px');
+      assert_equals(style.insetBlock, '3px -3px');
+    }, `Logical auto sides and shorthands follow ${mode}, ${direction}`);
+  }
+}
+
+for (const display of ['none', 'contents', 'table-column', 'table-column-group']) {
+  test(t => {
+    const style = styled(t, `display:${display}; bottom:3px; right:4px`);
+    assert_equals(style.top, 'auto');
+    assert_equals(style.left, 'auto');
+  }, `Non-applicable display ${display} preserves computed auto`);
+}
+
+test(t => {
+  const style = styled(t, 'top:10%; bottom:20%; left:calc(10% + 2px); right:30%');
+  assert_equals(style.top, '10%');
+  assert_equals(style.bottom, '20%');
+  assert_equals(style.left, 'calc(10% + 2px)');
+  assert_equals(style.right, '30%');
+}, 'Over-constrained percentage insets stay computed and require no geometry');
+</script>

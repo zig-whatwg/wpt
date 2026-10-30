@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM retains valid math without a numeric subclass</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#unrepresentable-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+// Q95, 2026-10-27: Chrome/Safari probe; Firefox does not ship Typed OM.
+// Retain the native value and use Crane's existing specified serialization.
+const d = document;
+const el = d.createElement('div');
+d.body.appendChild(el);
+const check = assert_true;
+const typeError = (f, label) => assert_throws_js(TypeError, f, label);
+function checkWidth(source, opaque, number) {
+  check(CSS.supports('width', source), 'valid CSS');
+  el.style.width = source;
+  const expected = el.style.width;
+  check(expected !== '', 'specified value stored');
+  const parsed = CSSStyleValue.parse('width', source);
+  const got = el.attributeStyleMap.get('width');
+  const all = CSSStyleValue.parseAll('width', source);
+  check(all.length === 1, 'one parsed value');
+  for (const value of [parsed, got, all[0]]) {
+    check(value.constructor === (opaque ? CSSStyleValue : CSSUnitValue), 'concrete class');
+    if (opaque) check(String(value) === expected, 'CSSOM serialization: ' + String(value) + ' != ' + expected);
+    else check(value.value === number && value.unit === 'px' && String(value) === number + 'px', 'simplified numeric');
+    const target = d.createElement('div');
+    target.attributeStyleMap.set('width', value);
+    check(target.style.width === (opaque ? expected : number + 'px'), 'same-property set');
+    if (opaque) {
+      target.style.height = '3px';
+      typeError(() => target.attributeStyleMap.set('height', value), 'associated property');
+      check(target.style.height === '3px', 'failed cross-property set is atomic');
+    }
+  }
+  el.style.removeProperty('width');
+  check(String(got) === (opaque ? expected : number + 'px'), 'value outlives source declaration');
+}
+test(() => checkWidth("round(1em, 1px)", true, null), "Q95 round(1em, 1px) remains associated and opaque");
+test(() => checkWidth("calc(round(1em, 1px) + 2px)", true, null), "Q95 calc(round(1em, 1px) + 2px) remains associated and opaque");
+test(() => checkWidth("mod(1em, 1px)", true, null), "Q95 mod(1em, 1px) remains associated and opaque");
+test(() => checkWidth("hypot(1em, 1px)", true, null), "Q95 hypot(1em, 1px) remains associated and opaque");
+test(() => checkWidth("round(2px, 1px)", false, 2), "Q95 round(2px, 1px) simplifies to a unit value");
+test(() => checkWidth("calc(sin(90deg) * 1px)", false, 1), "Q95 calc(sin(90deg) * 1px) simplifies to a unit value");
+test(() => assert_throws_dom('SyntaxError', () => CSSNumericValue.parse('calc(round(1em, 1px) + 2px)')), 'Q95 numeric parse rejects a residual newer function');
+</script>

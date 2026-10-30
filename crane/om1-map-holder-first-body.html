@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM map identity and owner reachability</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#the-stylepropertymap">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const element = document.createElement("div");
+  element.style.width = "21px";
+  document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  const weak = (() => {
+    const map = element.computedStyleMap();
+    map.marker = 31;
+    return new WeakRef(map);
+  })();
+  await nextTask(t);
+  TestUtils.gc(); TestUtils.gc();
+  const map = weak.deref();
+  assert_not_equals(map, undefined);
+  assert_equals(element.computedStyleMap(), map);
+  assert_equals(map.marker, 31);
+  assert_equals(map.get("width").value, 21);
+}, "An element keeps its computedStyleMap wrapper and its expando across collection");
+
+</script>

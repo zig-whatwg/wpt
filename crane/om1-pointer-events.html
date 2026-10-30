@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>pointer-events uses one inherited grammar on HTML elements</title>
+<link rel="help" href="https://drafts.csswg.org/css-ui-4/#pointer-events-control">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const value of ['auto', 'none', 'bounding-box', 'visiblePainted', 'visibleFill', 'visibleStroke', 'visible', 'painted', 'fill', 'stroke', 'all']) {
+  test(t => {
+    const parent = document.createElement('div');
+    const child = parent.appendChild(document.createElement('span'));
+    document.documentElement.append(parent);
+    t.add_cleanup(() => parent.remove());
+    parent.style.pointerEvents = value;
+    assert_equals(parent.style.pointerEvents, value.toLowerCase(), 'specified value');
+    assert_equals(getComputedStyle(parent).pointerEvents, value.toLowerCase(), 'computed value');
+    assert_equals(getComputedStyle(child).pointerEvents, value.toLowerCase(), 'inherited value');
+    parent.style.pointerEvents = 'invalid';
+    assert_equals(parent.style.pointerEvents, value.toLowerCase(), 'invalid assignment preserves value');
+  }, value + ' is valid, serializes canonically, and inherits on HTML');
+}
+</script>

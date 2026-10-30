@@ -1,0 +1,110 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM retains whole native math lists and reifies numeric controls</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#unrepresentable-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+// Q124/Q126,2026-10-28. Native list shape comes from the browser/spec ruling.
+const d = document;
+const check = assert_true;
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = "animation-range-start";
+const source = "cover round(1em, 1px), 10px";
+check(CSS.supports(property, source), 'valid CSS');
+el.style.setProperty(property, source);
+const expected = el.style.getPropertyValue(property);
+check(expected !== '', 'declaration stored');
+const parsed = CSSStyleValue.parse(property, source);
+const got = el.attributeStyleMap.get(property);
+const parsedAll = CSSStyleValue.parseAll(property, source);
+const gotAll = el.attributeStyleMap.getAll(property);
+check(parsedAll.length === 1, 'parseAll retains whole property');
+check(gotAll.length === 1, 'getAll retains whole property');
+for (const value of [parsed, got, parsedAll[0], gotAll[0]]) {
+  check(value.constructor === CSSStyleValue, 'opaque class');
+  check(String(value) === expected, 'existing CSSOM serialization');
+  const target = d.createElement('div');
+  target.attributeStyleMap.set(property, value);
+  check(target.style.getPropertyValue(property) === expected, 'same property round trip');
+}
+el.style.removeProperty(property);
+TestUtils.gc();
+check(String(got) === expected, 'retained native value after removal');
+el.attributeStyleMap.set(property, got);
+check(el.style.getPropertyValue(property) === expected, 'set after source removal');
+return 'ok';
+})();
+}, "Q126 named range with unsupported math retains the whole specified list");
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = '--om1-math-list-1';
+const source = 'round(10%, 1px), 2px';
+CSS.registerProperty({name: property, syntax: '<length-percentage>#', inherits: false, initialValue: '0px'});
+el.style.setProperty(property, source);
+check(CSSStyleValue.parse(property, source).constructor === CSSUnparsedValue, 'specified parse remains unparsed');
+check(el.attributeStyleMap.get(property).constructor === CSSUnparsedValue, 'specified get remains unparsed');
+const expected = getComputedStyle(el).getPropertyValue(property);
+check(expected === source, 'computed unresolved list serialization');
+const got = el.computedStyleMap().get(property);
+const all = el.computedStyleMap().getAll(property);
+check(all.length === 1, 'whole registered list is one value');
+for (const value of [got, all[0]]) {
+  check(value.constructor === CSSStyleValue, 'opaque registered list class');
+  check(String(value) === expected, 'whole registered list serialization');
+}
+el.style.removeProperty(property);
+TestUtils.gc();
+check(String(got) === expected, 'whole list outlives declaration');
+// Q126: neither browser gives valid set evidence; Typed OM §5.2 decides.
+el.attributeStyleMap.set(property, got);
+check(el.style.getPropertyValue(property) === expected, 'same-property set restores entire list');
+return 'ok';
+})();
+}, "Q126 registered residual math retains the whole computed list");
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = '--om1-math-list-2';
+CSS.registerProperty({name: property, syntax: '<length-percentage>#', inherits: false, initialValue: '0px'});
+el.style.fontSize = '16px';
+el.style.setProperty(property, "3px, 2px");
+check(el.attributeStyleMap.get(property).constructor === CSSUnparsedValue, 'specified control remains unparsed');
+const got = el.computedStyleMap().get(property);
+const all = el.computedStyleMap().getAll(property);
+check(got.constructor === CSSUnitValue && got.unit === 'px' && got.value === 3, 'first computed unit');
+check(all.length === 2, 'reifiable list keeps both items');
+check(all[0].constructor === CSSUnitValue && all[0].value === 3 && all[0].unit === 'px', 'first list unit');
+check(all[1].constructor === CSSUnitValue && all[1].value === 2 && all[1].unit === 'px', 'second list unit');
+return 'ok';
+})();
+}, "Q126 registered reifiable control 3px, 2px keeps two units");
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = '--om1-math-list-3';
+CSS.registerProperty({name: property, syntax: '<length-percentage>#', inherits: false, initialValue: '0px'});
+el.style.fontSize = '16px';
+el.style.setProperty(property, "round(1em, 1px), 2px");
+check(el.attributeStyleMap.get(property).constructor === CSSUnparsedValue, 'specified control remains unparsed');
+const got = el.computedStyleMap().get(property);
+const all = el.computedStyleMap().getAll(property);
+check(got.constructor === CSSUnitValue && got.unit === 'px' && got.value === 16, 'first computed unit');
+check(all.length === 2, 'reifiable list keeps both items');
+check(all[0].constructor === CSSUnitValue && all[0].value === 16 && all[0].unit === 'px', 'first list unit');
+check(all[1].constructor === CSSUnitValue && all[1].value === 2 && all[1].unit === 'px', 'second list unit');
+return 'ok';
+})();
+}, "Q126 registered reifiable control round(1em, 1px), 2px keeps two units");
+</script>

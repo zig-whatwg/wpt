@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM numeric holders retain their operands</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#numeric-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+
+test(() => {
+  const outer = (() => {
+    const child = CSS.px(2);
+    child.marker = 71;
+    return new CSSMathSum(child, CSS.em(3));
+  })();
+  TestUtils.gc();
+  assert_equals(outer.values[0].marker, 71);
+  assert_equals(String(outer), "calc(2px + 3em)");
+  outer.values[0].value = 7;
+  TestUtils.gc();
+  assert_equals(String(outer), "calc(7px + 3em)");
+}, "A numeric holder keeps child identity and reads mutable unit values live");
+
+test(() => {
+  const values = (() => {
+    const child = CSS.px(4);
+    child.marker = 72;
+    return new CSSMathProduct(child, 2).values;
+  })();
+  TestUtils.gc();
+  assert_equals(values.length, 2);
+  assert_equals(values[0].marker, 72);
+  assert_equals(values[0].value, 4);
+  assert_equals(values[1].unit, "number");
+}, "A numeric array alone keeps every operand alive");
+
+for (const [constructor, name] of [[CSSMathNegate, "negate"], [CSSMathInvert, "invert"]]) {
+  test(() => {
+    const holder = (() => {
+      const child = CSS.px(6);
+      child.marker = 73;
+      return new constructor(child);
+    })();
+    TestUtils.gc();
+    assert_equals(holder.value.marker, 73);
+    assert_equals(holder.value.value, 6);
+  }, `A ${name} holder keeps its operand alive`);
+}
+
+test(() => {
+  const holder = (() => {
+    const lower = CSS.px(1), value = CSS.px(2), upper = CSS.px(3);
+    lower.marker = 1; value.marker = 2; upper.marker = 3;
+    return new CSSMathClamp(lower, value, upper);
+  })();
+  TestUtils.gc();
+  assert_array_equals([holder.lower.marker, holder.value.marker, holder.upper.marker], [1, 2, 3]);
+  assert_equals(holder.to("px").value, 2);
+}, "A clamp holder keeps all three operands alive");
+
+test(() => {
+  const holder = (() => {
+    const child = CSS.px(5);
+    child.marker = 74;
+    return new CSSMathSum(child, child);
+  })();
+  TestUtils.gc();
+  assert_equals(holder.values[0], holder.values[1]);
+  assert_equals(holder.values[1].marker, 74);
+  assert_equals(holder.to("px").value, 10);
+}, "Repeated numeric operands preserve identity and both traced edges");
+
+test(() => {
+  const outer = (() => {
+    let child = CSS.px(3);
+    child.marker = 75;
+    for (let i = 0; i < 1200; i++) child = new CSSMathNegate(child);
+    return child;
+  })();
+  TestUtils.gc();
+  assert_equals(outer.to("px").value, 3);
+  let leaf = outer;
+  for (let i = 0; i < 1200; i++) leaf = leaf.value;
+  assert_equals(leaf.marker, 75);
+}, "A deeply nested numeric graph remains reachable without recursive algebra");
+</script>

@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM unparsed serialization and cycles</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#unparsedvalue-serialization">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+// Liaison Q16, Chrome 156 / Safari 27 (2026-10-27): the raw forms split
+// 1–1 and follow unchanged §6.1; both browsers omit fallback comma space.
+test(() => {
+  assert_equals(String(new CSSUnparsedValue(["lem", "on", "ade"])), "lemonade");
+}, "String segments concatenate directly");
+test(() => {
+  assert_equals(String(new CSSUnparsedValue([
+    new CSSVariableReferenceValue("--a b", new CSSUnparsedValue([
+      new CSSVariableReferenceValue("--C")
+    ]))
+  ])), "var(--a b,var(--C))");
+}, "Variable names remain raw and fallback commas add no space");
+test(() => {
+  const value = new CSSUnparsedValue([]);
+  value[0] = new CSSVariableReferenceValue("--A", value);
+  assert_equals(String(value), "");
+  value[0] = "recovered";
+  assert_equals(String(value), "recovered");
+}, "A cyclic fallback serializes to the empty string and can be repaired");
+test(() => {
+  const inner = new CSSUnparsedValue(["x"]);
+  const reference = new CSSVariableReferenceValue("--A", inner);
+  assert_equals(String(new CSSUnparsedValue([reference, reference])), "var(--A,x)var(--A,x)");
+}, "Repeated acyclic fallback objects serialize each time");
+test(() => {
+  let value = new CSSUnparsedValue(["leaf"]);
+  for (let i = 0; i < 1200; ++i)
+    value = new CSSUnparsedValue([new CSSVariableReferenceValue("--A", value)]);
+  assert_equals(String(value), "var(--A,".repeat(1200) + "leaf" + ")".repeat(1200));
+}, "Deep acyclic fallback graphs serialize without recursive native calls");
+</script>

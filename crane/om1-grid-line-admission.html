@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM grid-line numeric admission</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#create-an-internal-representation">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+for (const property of ["grid-row-start", "grid-row-end", "grid-column-start", "grid-column-end"]) {
+  for (const [label, create] of [
+    ["negative fractional number", () => CSS.number(-3.14)],
+    ["zero", () => CSS.number(0)],
+    ["positive fractional number", () => CSS.number(3.14)],
+    ["numeric sum", () => new CSSMathSum(2, 3)]
+  ]) {
+    test(() => {
+      const element = document.createElement("div");
+      element.style.setProperty(property, "2", "important");
+      const before = element.style.cssText;
+      assert_throws_js(TypeError, () => element.attributeStyleMap.set(property, create()));
+      assert_equals(element.style.cssText, before);
+    }, `${property} rejects ${label} without changing the declaration`);
+  }
+}
+</script>

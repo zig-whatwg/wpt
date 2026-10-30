@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Counter rule descriptors use canonical CSSOM order</title>
+<link rel="help" href="https://drafts.csswg.org/css-counter-styles-3/#the-csscounterstylerule-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+// Q90 (2026-10-27): Blink and WebKit use this fixed order; Gecko uses a
+// different fixed order. Upstream CSSCounterStyleRule.html calls it undefined.
+function rule(t, text) {
+  const style = document.createElement('style');
+  style.textContent = text;
+  document.head.appendChild(style);
+  t.add_cleanup(() => style.remove());
+  return style.sheet.cssRules[0];
+}
+const scrambled = `@counter-style Foo { suffix:'.'; symbols:a b; system:cyclic; prefix:'['; range:1 5; negative:'-'; pad:2 '0'; fallback:decimal; speak-as:words; additive-symbols:2 a,1 b }`;
+const canonical = '@counter-style Foo { system: cyclic; symbols: a b; additive-symbols: 2 a, 1 b; negative: "-"; prefix: "["; suffix: "."; pad: 2 "0"; range: 1 5; fallback: decimal; speak-as: words; }';
+test(t => {
+  assert_equals(rule(t, scrambled).cssText, canonical);
+}, 'Scrambled author descriptor order serializes in the majority canonical order');
+test(t => {
+  const r = rule(t, scrambled);
+  r.symbols = 'x y';
+  assert_equals(r.cssText, canonical.replace('symbols: a b;', 'symbols: x y;'));
+}, 'Replacing an existing descriptor preserves its canonical slot');
+test(t => {
+  const r = rule(t, '@counter-style Bar { symbols: a; system: cyclic; }');
+  r.prefix = "'['";
+  assert_equals(r.cssText, '@counter-style Bar { system: cyclic; symbols: a; prefix: "["; }');
+}, 'Adding a previously absent descriptor uses its canonical slot');
+test(t => {
+  assert_equals(rule(t, '@counter-style Empty {}').cssText, '@counter-style Empty { }');
+}, 'Empty counter rule has the shared one-space serialization');
+</script>

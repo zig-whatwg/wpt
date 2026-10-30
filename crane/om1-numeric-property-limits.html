@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM native property calculation limits</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#calc-syntax">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+// Q85,2026-10-27: shared parser128 depth,4096 functions; only property input.
+for (const depth of [32, 128, 129, 5000]) test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+  el.style.cssText = 'width: 5px !important; z-index: 7';
+  const before = el.style.cssText;
+  let value = CSS.em(1);
+  for (let i = 0; i < depth; ++i)
+    value = i % 2 ? new CSSMathMax(value, CSS.vw(1)) : new CSSMathMin(value, CSS.vw(1));
+  if (depth <= 128) {
+    el.attributeStyleMap.set('width', value);
+    assert_true(el.style.getPropertyValue('width').startsWith('max('), 'native graph assigned');
+    assert_equals(el.style.getPropertyPriority('width'), '', 'priority reset');
+    assert_equals(el.style.getPropertyValue('z-index'), '7', 'unrelated property');
+  } else {
+    assert_throws_js(TypeError, () => el.attributeStyleMap.set('width', value));
+    assert_equals(el.style.cssText, before, 'atomic declaration rollback');
+    const read = el.attributeStyleMap.get('width');
+    assert_true(read instanceof CSSUnitValue);
+    assert_equals(read.value, 5);
+    assert_equals(read.unit, 'px');
+    assert_equals(el.style.getPropertyPriority('width'), 'important');
+  }
+}, `Q85 ${depth <= 128 ? 'accepts' : 'rejects'} ${depth} unresolved calculation levels`);
+</script>

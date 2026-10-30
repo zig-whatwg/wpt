@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Page property native values and Typed OM</title>
+<link rel="help" href="https://drafts.csswg.org/css-page-3/#using-named-pages">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+// Q86,2026-10-27: Chrome + Firefox compute; Safari votes only on specified/Typed OM.
+const inheritance = [["", "auto"], ["auto", "auto"], ["inherit", "Foo"], ["unset", "auto"], ["initial", "auto"], ["Bar", "Bar"]];
+for (const [source, expected] of inheritance) test(t => {
+  const parent = document.createElement('div'), el = document.createElement('div');
+  document.body.appendChild(parent); parent.appendChild(el); t.add_cleanup(() => parent.remove());
+  parent.style.setProperty('page', 'Foo'); el.style.setProperty('page', source);
+  assert_equals(getComputedStyle(el).getPropertyValue('page'), expected);
+  const read = el.computedStyleMap().get('page');
+  assert_true(read instanceof CSSKeywordValue); assert_equals(read.value, expected);
+}, `Page child ${source || 'absent'} computes ${expected}`);
+const names = [["auto", "auto", "auto"], ["AUTO", "auto", "auto"], ["Foo", "Foo", "Foo"], ["FOO", "FOO", "FOO"], ["f\\6f o", "foo", "foo"], ["\\31 23", "\\31 23", "123"], ["a\\ b", "a\\ b", "a b"]];
+for (const [source, specified, value] of names) test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const parsed = CSSStyleValue.parse('page', source);
+  assert_true(parsed instanceof CSSKeywordValue); assert_equals(parsed.value, value); assert_equals(String(parsed), specified);
+  el.attributeStyleMap.set('page', parsed);
+  assert_equals(el.style.getPropertyValue('page'), specified);
+  for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')]) {
+    assert_true(read instanceof CSSKeywordValue); assert_equals(read.value, value); assert_equals(String(read), specified);
+  }
+  assert_equals(getComputedStyle(el).getPropertyValue('page'), specified);
+}, `Page keyword parse and maps ${source}`);
+</script>

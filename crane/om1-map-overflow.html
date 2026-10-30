@@ -1,0 +1,175 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Non-finite Typed OM property assignment</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#numeric-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+// Q81: spec wins Chrome/Safari 1-1 set splits; existing computation owns ranges.
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.px(1e308).mul(2);
+  el.attributeStyleMap.set('width', v);
+  assert_true(el.style.getPropertyValue('width') === 'calc(infinity * 1px)', 'specified: ' + el.style.getPropertyValue('width'));
+  const read = el.attributeStyleMap.get('width');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinitypx)', 'math reification: ' + String(read));
+  const control = document.createElement('div'); document.body.appendChild(control);
+  control.style.width = 'calc(infinity * 1px)';
+  assert_true(getComputedStyle(el).width === getComputedStyle(control).width, 'existing CSS computation');
+  const a = el.computedStyleMap().get('width'), b = control.computedStyleMap().get('width');
+  assert_true(a.constructor === b.constructor && String(a) === String(b), 'existing computed reification');
+  control.remove();
+}, 'Q81 px multiplication overflow sets width');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(1e308).add(1e308);
+  el.attributeStyleMap.set('z-index', v);
+  assert_true(el.style.getPropertyValue('z-index') === 'calc(infinity)', 'specified: ' + el.style.getPropertyValue('z-index'));
+  const read = el.attributeStyleMap.get('z-index');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('z-index');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 2147483647, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('z-index') === '2147483647', 'computed CSSOM');
+}, 'Q81 number addition overflow sets z-index');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(1e308).add(1e308);
+  el.attributeStyleMap.set('opacity', v);
+  assert_true(el.style.getPropertyValue('opacity') === 'calc(infinity)', 'specified: ' + el.style.getPropertyValue('opacity'));
+  const read = el.attributeStyleMap.get('opacity');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('opacity');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 1, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('opacity') === '1', 'computed CSSOM');
+}, 'Q81 number addition overflow sets opacity');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(1e308).mul(2);
+  el.attributeStyleMap.set('z-index', v);
+  assert_true(el.style.getPropertyValue('z-index') === 'calc(infinity)', 'specified: ' + el.style.getPropertyValue('z-index'));
+  const read = el.attributeStyleMap.get('z-index');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('z-index');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 2147483647, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('z-index') === '2147483647', 'computed CSSOM');
+}, 'Q81 number multiplication overflow sets z-index');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(1e308).mul(2);
+  el.attributeStyleMap.set('opacity', v);
+  assert_true(el.style.getPropertyValue('opacity') === 'calc(infinity)', 'specified: ' + el.style.getPropertyValue('opacity'));
+  const read = el.attributeStyleMap.get('opacity');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('opacity');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 1, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('opacity') === '1', 'computed CSSOM');
+}, 'Q81 number multiplication overflow sets opacity');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(0).mul(CSS.number(1e308).mul(2));
+  el.attributeStyleMap.set('z-index', v);
+  assert_true(el.style.getPropertyValue('z-index') === 'calc(NaN)', 'specified: ' + el.style.getPropertyValue('z-index'));
+  const read = el.attributeStyleMap.get('z-index');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(NaN)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('z-index');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 0, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('z-index') === '0', 'computed CSSOM');
+}, 'Q81 zero times overflow sets z-index');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(0).mul(CSS.number(1e308).mul(2));
+  el.attributeStyleMap.set('opacity', v);
+  assert_true(el.style.getPropertyValue('opacity') === 'calc(NaN)', 'specified: ' + el.style.getPropertyValue('opacity'));
+  const read = el.attributeStyleMap.get('opacity');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(NaN)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('opacity');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 0, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('opacity') === '0', 'computed CSSOM');
+}, 'Q81 zero times overflow sets opacity');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.cm(1e308).to('px');
+  el.attributeStyleMap.set('width', v);
+  assert_true(el.style.getPropertyValue('width') === 'calc(infinity * 1px)', 'specified: ' + el.style.getPropertyValue('width'));
+  const read = el.attributeStyleMap.get('width');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinitypx)', 'math reification: ' + String(read));
+  const control = document.createElement('div'); document.body.appendChild(control);
+  control.style.width = 'calc(infinity * 1px)';
+  assert_true(getComputedStyle(el).width === getComputedStyle(control).width, 'existing CSS computation');
+  const a = el.computedStyleMap().get('width'), b = control.computedStyleMap().get('width');
+  assert_true(a.constructor === b.constructor && String(a) === String(b), 'existing computed reification');
+  control.remove();
+}, 'Q81 absolute conversion overflow sets width');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = new CSSMathInvert(CSS.number(0)).to('number');
+  el.attributeStyleMap.set('z-index', v);
+  assert_true(el.style.getPropertyValue('z-index') === 'calc(infinity)', 'specified: ' + el.style.getPropertyValue('z-index'));
+  const read = el.attributeStyleMap.get('z-index');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('z-index');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 2147483647, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('z-index') === '2147483647', 'computed CSSOM');
+}, 'Q81 invert zero to unit sets z-index');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = new CSSMathInvert(CSS.number(0)).to('number');
+  el.attributeStyleMap.set('opacity', v);
+  assert_true(el.style.getPropertyValue('opacity') === 'calc(infinity)', 'specified: ' + el.style.getPropertyValue('opacity'));
+  const read = el.attributeStyleMap.get('opacity');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('opacity');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 1, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('opacity') === '1', 'computed CSSOM');
+}, 'Q81 invert zero to unit sets opacity');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.px(-1e308).mul(2);
+  el.attributeStyleMap.set('width', v);
+  assert_true(el.style.getPropertyValue('width') === 'calc(-infinity * 1px)', 'specified: ' + el.style.getPropertyValue('width'));
+  const read = el.attributeStyleMap.get('width');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(-infinitypx)', 'math reification: ' + String(read));
+  const control = document.createElement('div'); document.body.appendChild(control);
+  control.style.width = 'calc(-infinity * 1px)';
+  assert_true(getComputedStyle(el).width === getComputedStyle(control).width, 'existing CSS computation');
+  const a = el.computedStyleMap().get('width'), b = control.computedStyleMap().get('width');
+  assert_true(a.constructor === b.constructor && String(a) === String(b), 'existing computed reification');
+  control.remove();
+}, 'Q81 negative dimension overflow sets width');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(-1e308).mul(2);
+  el.attributeStyleMap.set('z-index', v);
+  assert_true(el.style.getPropertyValue('z-index') === 'calc(-infinity)', 'specified: ' + el.style.getPropertyValue('z-index'));
+  const read = el.attributeStyleMap.get('z-index');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(-infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('z-index');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === -2147483648, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('z-index') === '-2147483648', 'computed CSSOM');
+}, 'Q81 negative number overflow sets z-index');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.number(-1e308).mul(2);
+  el.attributeStyleMap.set('opacity', v);
+  assert_true(el.style.getPropertyValue('opacity') === 'calc(-infinity)', 'specified: ' + el.style.getPropertyValue('opacity'));
+  const read = el.attributeStyleMap.get('opacity');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(-infinity)', 'math reification: ' + String(read));
+  const computed = el.computedStyleMap().get('opacity');
+  assert_true(computed instanceof CSSUnitValue && computed.unit === 'number' && computed.value === 0, 'computed unit');
+  assert_true(getComputedStyle(el).getPropertyValue('opacity') === '0', 'computed CSSOM');
+}, 'Q81 negative number overflow sets opacity');
+test(t => {
+  const el = document.createElement('div'); document.body.appendChild(el); t.add_cleanup(() => el.remove());
+  const v = CSS.px(0).mul(CSS.number(1e308).mul(2));
+  el.attributeStyleMap.set('width', v);
+  assert_true(el.style.getPropertyValue('width') === 'calc(NaN * 1px)', 'specified: ' + el.style.getPropertyValue('width'));
+  const read = el.attributeStyleMap.get('width');
+  assert_true(read instanceof CSSMathSum && String(read) === 'calc(NaNpx)', 'math reification: ' + String(read));
+  const control = document.createElement('div'); document.body.appendChild(control);
+  control.style.width = 'calc(NaN * 1px)';
+  assert_true(getComputedStyle(el).width === getComputedStyle(control).width, 'existing CSS computation');
+  const a = el.computedStyleMap().get('width'), b = control.computedStyleMap().get('width');
+  assert_true(a.constructor === b.constructor && String(a) === String(b), 'existing computed reification');
+  control.remove();
+}, 'Q83 NaN dimension sets width');
+</script>

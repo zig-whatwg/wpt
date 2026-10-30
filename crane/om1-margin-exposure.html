@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSSMarginRule exposure and brand</title>
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#the-cssmarginrule-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_equals(typeof CSSMarginRule, "function");
+}, "CSSMarginRule is exposed on Window");
+
+test(() => {
+  assert_equals(Object.getPrototypeOf(CSSMarginRule.prototype), CSSRule.prototype);
+  assert_equals(Object.getPrototypeOf(CSSRule.prototype), Object.prototype);
+}, "CSSMarginRule's prototype inherits CSSRule, then Object");
+
+test(() => {
+  assert_throws_js(TypeError, () => new CSSMarginRule());
+}, "CSSMarginRule has no public constructor");
+
+test(t => {
+  const style = document.createElement("style");
+  style.textContent = "@page { @top-left { color: red; } }";
+  document.head.append(style);
+  t.add_cleanup(() => style.remove());
+  const margin = style.sheet.cssRules[0].cssRules[0];
+  assert_true(margin instanceof CSSMarginRule);
+}, "A margin rule inside @page is a CSSMarginRule");
+</script>

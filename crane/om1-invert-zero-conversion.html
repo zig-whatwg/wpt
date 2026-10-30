@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inverted zero converts and serializes without crashing</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-to">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Q135: a harness-bearing reproduction of cssInvertValue-convert-crash.html.
+// Q81 already pins this result in om1-numeric-overflow.html and
+// tests/v8/om1_nonfinite_numeric_objects_test.zig. It is not an upstream pass.
+test(() => {
+  const inverted = new CSSMathInvert(CSS.number(0));
+  const converted = inverted.to('number');
+  assert_true(converted instanceof CSSUnitValue);
+  assert_equals(converted.value, Infinity);
+  assert_equals(converted.unit, 'number');
+  assert_equals(converted.toString(), 'infinity');
+  assert_equals(String(converted), 'infinity');
+}, 'Q135 invert zero to number and serialize the derived infinity');
+</script>

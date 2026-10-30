@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS-wide keyword and shared name comparison escapes</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-name">
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#common-keywords">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+for (const [input, expected] of [
+  [String.raw`\69 nitial`, 'initial'],
+  [String.raw`\69 nherit`, 'inherit'],
+  [String.raw`\75 nset`, 'unset'],
+  [String.raw`\72 evert`, 'revert'],
+  [String.raw`\72 evert-layer`, 'revert-layer'],
+  [String.raw`\72 evert-rule`, 'revert-rule'],
+]) {
+  test(() => {
+    const style = document.createElement('div').style;
+    for (const property of ['width', 'color', 'margin']) {
+      assert_true(CSS.supports(property, input), property);
+      style.setProperty(property, input);
+      assert_equals(style.getPropertyValue(property), expected, property);
+    }
+  }, 'escaped CSS-wide keyword: ' + expected);
+}
+test(() => {
+  const style = document.createElement('div').style;
+  style.width = String.raw`\49 NHERIT`;
+  assert_equals(style.width, 'inherit');
+  style.width = String.raw`r\65 vert-layer`;
+  assert_equals(style.width, 'revert-layer');
+}, 'escaped CSS-wide names are ASCII case-insensitive');
+test(() => {
+  const style = document.createElement('div').style;
+  for (const input of [String.raw`\69 nherit 2px`, String.raw`r\65 vert-layer auto`,
+                       '\\\ninherit', 'inhe\\\nrit', 'inheri\\']) {
+    style.width = '3px';
+    style.width = input;
+    assert_equals(style.width, '3px', JSON.stringify(input));
+    assert_false(CSS.supports('width', input), JSON.stringify(input));
+  }
+}, 'trailing tokens and malformed escapes stay invalid');
+test(() => {
+  const style = document.createElement('div').style;
+  style.animationName = String.raw`F\6f o`;
+  assert_equals(style.animationName, 'Foo');
+}, 'an escaped non-wide custom identifier keeps its value and case');
+function hexName(name, terminator) {
+  return Array.from(name, char => '\\' + char.codePointAt(0).toString(16).padStart(6, '0') + terminator).join('');
+}
+for (const [label, terminator] of [['space', ' '], ['tab', '\t'], ['CRLF', '\r\n']]) {
+  test(() => {
+    const input = hexName('revert-layer', terminator);
+    assert_greater_than(input.length, 64);
+    const style = document.createElement('div').style;
+    assert_true(CSS.supports('width', input));
+    style.width = input;
+    assert_equals(style.width, 'revert-layer');
+  }, 'fully escaped keyword with ' + label + ' terminators');
+}
+test(() => {
+  const input = hexName('linear-gradient', ' ') + '(red, blue)';
+  const style = document.createElement('div').style;
+  assert_true(CSS.supports('background-image', input));
+  style.backgroundImage = input;
+  assert_equals(style.backgroundImage, 'linear-gradient(red, blue)');
+}, 'a long escaped function name uses the existing gradient parser');
+test(() => {
+  const style = document.createElement('div').style;
+  for (const input of [hexName('revert-layer-extra', ' '), String.raw`\000000nherit`,
+                       String.raw`\00d800nherit`, String.raw`\110000nherit`, 'inheri\\']) {
+    style.width = '4px';
+    style.width = input;
+    assert_equals(style.width, '4px', JSON.stringify(input));
+    assert_false(CSS.supports('width', input), JSON.stringify(input));
+  }
+}, 'longer names, replacement code points and escape EOF do not match a keyword');
+</script>

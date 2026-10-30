@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Imported sheets share their import rule's live MediaList</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#dom-cssimportrule-media">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="ruleFirst">@import url("data:text/css,") screen;</style>
+<style id="sheetFirst">@import url("data:text/css,") print;</style>
+<script>
+"use strict";
+setup({explicit_done: true});
+window.addEventListener("load", () => {
+  test(() => {
+    const rule = ruleFirst.sheet.cssRules[0];
+    const media = rule.media;
+    assert_equals(media, rule.styleSheet.media);
+    assert_equals(media, rule.media);
+    assert_equals(media.mediaText, "screen");
+  }, "Reading the import rule first shares the MediaList with its sheet");
+
+  test(() => {
+    const rule = sheetFirst.sheet.cssRules[0];
+    const media = rule.styleSheet.media;
+    assert_equals(media, rule.media);
+    assert_equals(media, rule.styleSheet.media);
+    assert_equals(media.mediaText, "print");
+  }, "Reading the imported sheet first shares the MediaList with its rule");
+
+  test(() => {
+    const rule = ruleFirst.sheet.cssRules[0];
+    rule.styleSheet.media.mediaText = "print";
+    assert_equals(rule.media.mediaText, "print");
+    assert_equals(rule.cssText, '@import url("data:text/css,") print;');
+    rule.media.mediaText = "screen";
+    assert_equals(rule.styleSheet.media.mediaText, "screen");
+  }, "Both access paths mutate the import's one media collection");
+
+  test(() => {
+    let style = sheetFirst;
+    let rule = style.sheet.cssRules[0];
+    const media = rule.styleSheet.media;
+    style.sheet.deleteRule(0);
+    style.remove();
+    style = null;
+    rule = null;
+    TestUtils.gc();
+    assert_equals(media.mediaText, "print");
+    media.appendMedium("screen");
+    assert_equals(media.mediaText, "print, screen");
+  }, "A retained MediaList remains readable after removal and collection");
+  done();
+});
+</script>

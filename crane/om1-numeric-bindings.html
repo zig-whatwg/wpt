@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM restricted doubles and large finite values</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-double">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+// Liaison Q48: Chrome 156 and Safari 27, 2026-10-27.
+const factories = ["number", "percent", "cap", "ch", "em", "ex", "ic", "lh", "rcap", "rch", "rem", "rex", "ric", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh", "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw", "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax", "cm", "mm", "Q", "in", "pt", "pc", "px", "deg", "grad", "rad", "turn", "s", "ms", "Hz", "kHz", "dpi", "dpcm", "dppx", "fr"];
+const badNumbers = [NaN, Infinity, -Infinity];
+function rejected(operation) {
+  try { operation(); } catch (error) { return error instanceof TypeError; }
+  return false;
+}
+
+for (const name of factories) {
+  test(() => {
+    for (const value of badNumbers) assert_true(rejected(() => CSS[name](value)), String(value));
+    const value = CSS[name](1e40);
+    assert_true(value instanceof CSSUnitValue);
+    assert_equals(value.value, 1e40);
+  }, `CSS.${name} converts restricted doubles and preserves large finite values`);
+}
+test(() => {
+  for (const value of badNumbers) assert_true(rejected(() => new CSSUnitValue(value, "px")), String(value));
+  assert_equals(new CSSUnitValue(1e40, "px").value, 1e40);
+}, "CSSUnitValue constructor converts a restricted double");
+test(() => {
+  const unit = new CSSUnitValue(2, "px");
+  for (const value of badNumbers) {
+    assert_true(rejected(() => { unit.value = value; }), String(value));
+    assert_equals(unit.value, 2, "a rejected assignment leaves the previous value");
+  }
+  unit.value = 1e40;
+  assert_equals(unit.value, 1e40);
+}, "CSSUnitValue.value rejects non-finite assignments before mutation");
+</script>

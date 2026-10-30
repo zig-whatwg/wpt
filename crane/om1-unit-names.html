@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM unit names follow CSS units and exact special names</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#cssnumericvalue-create-a-type">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+// Integrator probe, Chrome 156 / Safari 27, 2026-10-27: dimensions agree;
+// number/percent case and % split, so Typed OM's create-a-type decides.
+for (const [input, unit, text] of [
+  ["number", "number", "2"], ["percent", "percent", "2%"],
+  ["x", "x", "2x"], ["X", "x", "2x"],
+  ["PX", "px", "2px"], ["Hz", "hz", "2hz"]
+]) {
+  test(() => {
+    const value = new CSSUnitValue(2, input);
+    assert_equals(value.unit, unit);
+    assert_equals(String(value), text);
+  }, `Unit ${input} is stored as ${unit} and serializes as ${text}`);
+}
+for (const input of ["NUMBER", "PERCENT", "%", "\\70 x"]) {
+  test(() => assert_throws_js(TypeError, () => new CSSUnitValue(2, input)),
+       `Unit ${input} is rejected by create-a-type`);
+}
+</script>

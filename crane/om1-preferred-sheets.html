@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Preferred stylesheet sets are established on addition</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#add-a-css-style-sheet">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+async function freshDocument(t) {
+  const frame = document.createElement('iframe');
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = '<!doctype html><body>target';
+  document.documentElement.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await loaded;
+  return frame.contentDocument;
+}
+function addSheet(doc, title, color, before = null) {
+  const style = doc.createElement('style');
+  style.title = title;
+  style.textContent = `body { color: ${color} }`;
+  doc.head.insertBefore(style, before);
+  return style;
+}
+function color(doc) { return doc.defaultView.getComputedStyle(doc.body).color; }
+
+promise_test(async t => {
+  const doc = await freshDocument(t);
+  const first = addSheet(doc, 'first', 'green');
+  const second = addSheet(doc, 'second', 'red', first);
+  assert_equals(color(doc), 'rgb(0, 128, 0)', 'addition order establishes the preferred set');
+  assert_false(first.sheet.disabled);
+  assert_true(second.sheet.disabled);
+}, 'Reversed tree order preserves preferred addition order and exposes actual flags');
+
+promise_test(async t => {
+  const doc = await freshDocument(t);
+  const first = addSheet(doc, 'first', 'green');
+  const second = addSheet(doc, 'second', 'red');
+  first.remove();
+  assert_equals(color(doc), 'rgb(0, 0, 0)', 'removal does not select a new preferred set');
+  assert_true(second.sheet.disabled);
+  addSheet(doc, 'first', 'blue');
+  assert_equals(color(doc), 'rgb(0, 0, 255)', 'a later sheet with the established title is enabled');
+}, 'Removing the establishing sheet does not discard the preferred set name');
+
+promise_test(async t => {
+  const doc = await freshDocument(t);
+  const first = addSheet(doc, 'first', 'green');
+  first.sheet.disabled = true;
+  const second = addSheet(doc, 'second', 'red');
+  assert_equals(color(doc), 'rgb(0, 0, 0)');
+  assert_true(second.sheet.disabled);
+  second.sheet.disabled = false;
+  assert_equals(color(doc), 'rgb(255, 0, 0)', 'explicit enabling is respected independently of the preferred name');
+}, 'Disabling the preferred sheet preserves its name and script may enable another sheet');
+
+promise_test(async t => {
+  const doc = await freshDocument(t);
+  const meta = doc.createElement('meta');
+  meta.httpEquiv = 'default-style';
+  meta.content = 'second';
+  doc.head.append(meta);
+  const first = addSheet(doc, 'first', 'red');
+  const second = addSheet(doc, 'second', 'green');
+  assert_true(first.sheet.disabled);
+  assert_false(second.sheet.disabled);
+  assert_equals(color(doc), 'rgb(0, 128, 0)');
+  meta.content = 'first';
+  assert_false(first.sheet.disabled);
+  assert_true(second.sheet.disabled);
+  assert_equals(color(doc), 'rgb(255, 0, 0)');
+}, 'The default-style pragma updates actual disabled flags on existing titled sheets');
+
+promise_test(async t => {
+  const doc = await freshDocument(t);
+  const alternate = doc.createElement('link');
+  alternate.rel = 'alternate stylesheet';
+  alternate.title = 'alternate';
+  alternate.href = 'data:text/css,body%7Bcolor:red%7D';
+  const loaded = new Promise((resolve, reject) => {
+    alternate.onload = resolve;
+    alternate.onerror = () => reject(new Error('alternate sheet failed to load'));
+  });
+  doc.head.append(alternate);
+  await loaded;
+  const preferred = addSheet(doc, 'preferred', 'green');
+  assert_true(alternate.sheet.disabled);
+  assert_false(preferred.sheet.disabled);
+  assert_equals(color(doc), 'rgb(0, 128, 0)');
+}, 'An alternate sheet added first does not establish the preferred name');
+</script>

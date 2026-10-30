@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM unparsed values retain their segments and fallbacks</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#cssunparsedvalue">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+
+test(() => {
+  const value = (() => {
+    const fallback = new CSSUnparsedValue(["fallback"]);
+    fallback.marker = 41;
+    const reference = new CSSVariableReferenceValue("--held", fallback);
+    reference.marker = 42;
+    return new CSSUnparsedValue([reference]);
+  })();
+  TestUtils.gc();
+  assert_equals(value.length, 1);
+  assert_equals(value[0].variable, "--held");
+  assert_equals(value[0].marker, 42);
+  assert_equals(value[0].fallback.marker, 41);
+  assert_equals(value[0].fallback[0], "fallback");
+}, "An unparsed value keeps its variable reference and nested fallback alive");
+
+test(() => {
+  const reference = (() => {
+    const fallback = new CSSUnparsedValue(["kept"]);
+    fallback.marker = 43;
+    return new CSSVariableReferenceValue("--held", fallback);
+  })();
+  TestUtils.gc();
+  assert_equals(reference.fallback[0], "kept");
+  assert_equals(reference.fallback.marker, 43);
+  reference.fallback[1] = " appended";
+  assert_equals(reference.fallback.length, 2);
+}, "A variable reference keeps its fallback alive independently");
+
+test(() => {
+  const value = (() => {
+    const reference = new CSSVariableReferenceValue("--shared");
+    reference.marker = 44;
+    return new CSSUnparsedValue([reference, reference]);
+  })();
+  value[0] = "replacement";
+  TestUtils.gc();
+  assert_equals(value[0], "replacement");
+  assert_equals(value[1].variable, "--shared");
+  assert_equals(value[1].marker, 44);
+  assert_throws_js(RangeError, () => { value[3] = "gap"; });
+  assert_equals(value.length, 2);
+}, "Replacing one repeated segment preserves the other segment's object");
+
+test(() => {
+  const log = [];
+  const value = new CSSUnparsedValue({
+    *[Symbol.iterator]() {
+      yield {toString() { log.push("first conversion"); return "first"; }};
+      log.push("second next");
+      let reference = new CSSVariableReferenceValue("--iterator");
+      reference.marker = 45;
+      yield reference;
+      reference = null;
+      TestUtils.gc();
+      yield "last";
+    }
+  });
+  assert_array_equals(log, ["first conversion", "second next"]);
+  TestUtils.gc();
+  assert_equals(value[0], "first");
+  assert_equals(value[1].variable, "--iterator");
+  assert_equals(value[1].marker, 45);
+  assert_equals(value[2], "last");
+}, "Sequence conversion happens item by item and retains earlier object items");
+
+test(() => {
+  const value = (() => {
+    const result = new CSSUnparsedValue([]);
+    result[0] = new CSSVariableReferenceValue("--cycle", result);
+    return result;
+  })();
+  TestUtils.gc();
+  assert_equals(value[0].fallback, value);
+  value[0] = "cycle removed";
+  TestUtils.gc();
+  assert_equals(value[0], "cycle removed");
+}, "A cyclic unparsed graph survives collection and can be mutated");
+</script>

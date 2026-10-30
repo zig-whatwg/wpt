@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM map identity and owner reachability</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#the-stylepropertymap">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+const nextTask = t => new Promise(resolve => t.step_timeout(resolve, 0));
+
+promise_test(async t => {
+  const element = document.createElement("div");
+  element.style.width = "21px";
+  document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  const weak = (() => {
+    const map = element.computedStyleMap();
+    map.marker = 31;
+    return new WeakRef(map);
+  })();
+  await nextTask(t);
+  TestUtils.gc(); TestUtils.gc();
+  const map = weak.deref();
+  assert_not_equals(map, undefined);
+  assert_equals(element.computedStyleMap(), map);
+  assert_equals(map.marker, 31);
+  assert_equals(map.get("width").value, 21);
+}, "An element keeps its computedStyleMap wrapper and its expando across collection");
+
+for (const computed of [false, true]) {
+  promise_test(async t => {
+    const held = (() => {
+      const element = document.createElement("div");
+      element.style.width = "23px";
+      element.marker = 37;
+      return {map: computed ? element.computedStyleMap() : element.attributeStyleMap,
+              weak: new WeakRef(element)};
+    })();
+    await nextTask(t);
+    TestUtils.gc(); TestUtils.gc();
+    const element = held.weak.deref();
+    assert_not_equals(element, undefined);
+    assert_equals(element.marker, 37);
+    document.body.appendChild(element);
+    t.add_cleanup(() => element.remove());
+    assert_equals(held.map.get("width").value, 23);
+    if (computed) {
+      assert_equals(element.computedStyleMap(), held.map);
+      element.style.width = "29px";
+      assert_equals(held.map.get("width").value, 29);
+    } else {
+      held.map.set("width", CSS.px(29));
+      assert_equals(element.style.width, "29px");
+    }
+  }, `Only an ${computed ? "computed" : "inline"} map keeps its detached element reachable`);
+}
+
+promise_test(async t => {
+  const held = (() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(".om1 { width: 31px; }");
+    const rule = sheet.cssRules[0];
+    const map = rule.styleMap;
+    rule.marker = 41;
+    sheet.deleteRule(0);
+    return {map, weak: new WeakRef(rule)};
+  })();
+  await nextTask(t);
+  TestUtils.gc(); TestUtils.gc();
+  const rule = held.weak.deref();
+  assert_not_equals(rule, undefined);
+  assert_equals(rule.marker, 41);
+  assert_equals(rule.styleMap, held.map);
+  assert_equals(held.map.get("width").value, 31);
+  held.map.set("width", CSS.px(37));
+  assert_equals(rule.style.width, "37px");
+}, "Only a rule styleMap keeps its deleted rule and declaration block reachable");
+
+promise_test(async t => {
+  const {value, declared, before} = (() => {
+    const element = document.createElement("div");
+    element.style.fontFamily = '"om1 native family", serif';
+    const value = element.attributeStyleMap.get("font-family");
+    const declared = element.style.fontFamily;
+    const before = String(value);
+    element.style.cssText = "";
+    return {value, declared, before};
+  })();
+  await nextTask(t);
+  TestUtils.gc(); TestUtils.gc();
+  assert_equals(String(value), before);
+  assert_equals(before, declared);
+  const target = document.createElement("div");
+  target.attributeStyleMap.set("font-family", value);
+  assert_equals(target.style.fontFamily, before);
+}, "An opaque style value owns its native value after its source element is gone");
+</script>

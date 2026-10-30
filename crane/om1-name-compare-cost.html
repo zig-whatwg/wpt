@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Existing plain and escaped CSS function-name comparison cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function measureName(name, metric) {
+  const rules = Array.from({length: 200}, (_, i) =>
+    '.om1-name-' + i + '{width:10px;color:red;display:block;background-image:' +
+    name + '(red, blue)}').join('\n');
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(rules);
+  assert_equals(sheet.cssRules.length, 200);
+  assert_not_equals(sheet.cssRules[0].style.backgroundImage, '');
+  const expected = sheet.cssRules[0].style.backgroundImage;
+  const start = performance.now();
+  for (let i = 0; i < 100; i++) sheet.replaceSync(rules);
+  const elapsed = performance.now() - start;
+  assert_equals(sheet.cssRules.length, 200);
+  for (let i = 0; i < sheet.cssRules.length; i++) {
+    const style = sheet.cssRules[i].style;
+    assert_equals(style.width, '10px');
+    assert_equals(style.color, 'red');
+    assert_equals(style.display, 'block');
+    assert_equals(style.backgroundImage, expected);
+  }
+  console.log(metric + '=' + elapsed.toFixed(3));
+}
+test(() => measureName('linear-gradient', 'OM1_NAME_PLAIN_MS'),
+  'ordinary function names retain their existing parser path');
+test(() => measureName('linear-gr\\61 dient', 'OM1_NAME_ESCAPED_MS'),
+  'previously supported escaped function names retain their parser path');
+</script>

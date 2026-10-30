@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Derived non-finite CSS numeric values</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#numeric-objects">
+<script src="/resources/testharness.js">test(() => {
+  const v = CSS.px(1e308).mul(2);
+  assert_equals(String(new CSSMathSum(v)), 'calc(infinitypx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(infinitypx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(infinitypx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(-infinitypx)');
+}, 'Q83 positive infinity math String follows literal unit serialization');
+test(() => {
+  const v = CSS.px(-1e308).mul(2);
+  assert_equals(String(new CSSMathSum(v)), 'calc(-infinitypx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(-infinitypx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(-infinitypx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(--infinitypx)');
+}, 'Q83 negative infinity math String follows literal unit serialization');
+test(() => {
+  const v = CSS.px(0).mul(CSS.number(1e308).mul(2));
+  assert_equals(String(new CSSMathSum(v)), 'calc(NaNpx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(NaNpx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(NaNpx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(-NaNpx)');
+}, 'Q83 NaN dimension math String follows literal unit serialization');
+</script>
+<script src="/resources/testharnessreport.js">test(() => {
+  const v = CSS.px(1e308).mul(2);
+  assert_equals(String(new CSSMathSum(v)), 'calc(infinitypx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(infinitypx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(infinitypx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(-infinitypx)');
+}, 'Q83 positive infinity math String follows literal unit serialization');
+test(() => {
+  const v = CSS.px(-1e308).mul(2);
+  assert_equals(String(new CSSMathSum(v)), 'calc(-infinitypx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(-infinitypx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(-infinitypx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(--infinitypx)');
+}, 'Q83 negative infinity math String follows literal unit serialization');
+test(() => {
+  const v = CSS.px(0).mul(CSS.number(1e308).mul(2));
+  assert_equals(String(new CSSMathSum(v)), 'calc(NaNpx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(NaNpx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(NaNpx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(-NaNpx)');
+}, 'Q83 NaN dimension math String follows literal unit serialization');
+</script>
+<body><script>
+// Q81: Chrome156/Safari27,2026-10-27; split cases follow the complete spec.
+test(() => { const v = CSS.px(1e308).mul(2); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, Infinity); assert_equals(v.unit, 'px'); assert_equals(String(v), 'infinitypx'); }, 'Q81 px multiplication overflow');
+test(() => { const v = CSS.number(1e308).add(1e308); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, Infinity); assert_equals(v.unit, 'number'); assert_equals(String(v), 'infinity'); }, 'Q81 number addition overflow');
+test(() => { const v = CSS.number(1e308).mul(2); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, Infinity); assert_equals(v.unit, 'number'); assert_equals(String(v), 'infinity'); }, 'Q81 number multiplication overflow');
+test(() => { const v = CSS.number(0).mul(CSS.number(1e308).mul(2)); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, NaN); assert_equals(v.unit, 'number'); assert_equals(String(v), 'NaN'); }, 'Q81 zero times overflow');
+test(() => { const v = CSS.cm(1e308).to('px'); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, Infinity); assert_equals(v.unit, 'px'); assert_equals(String(v), 'infinitypx'); }, 'Q81 absolute conversion overflow');
+test(() => { const v = new CSSMathInvert(CSS.number(0)).to('number'); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, Infinity); assert_equals(v.unit, 'number'); assert_equals(String(v), 'infinity'); }, 'Q81 invert zero to unit');
+test(() => { const v = CSS.px(-1e308).mul(2); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, -Infinity); assert_equals(v.unit, 'px'); assert_equals(String(v), '-infinitypx'); }, 'Q81 negative dimension overflow');
+test(() => { const v = CSS.number(-1e308).mul(2); assert_true(v instanceof CSSUnitValue); assert_equals(v.value, -Infinity); assert_equals(v.unit, 'number'); assert_equals(String(v), '-infinity'); }, 'Q81 negative number overflow');
+test(() => { assert_throws_js(RangeError, () => CSS.number(1).div(0)); }, 'Q81 div zero throws RangeError');
+test(() => {
+  const v = CSS.px(1e308).mul(2);
+  assert_equals(String(new CSSMathSum(v)), 'calc(infinitypx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(infinitypx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(infinitypx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(-infinitypx)');
+}, 'Q83 positive infinity math String follows literal unit serialization');
+test(() => {
+  const v = CSS.px(-1e308).mul(2);
+  assert_equals(String(new CSSMathSum(v)), 'calc(-infinitypx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(-infinitypx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(-infinitypx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(--infinitypx)');
+}, 'Q83 negative infinity math String follows literal unit serialization');
+test(() => {
+  const v = CSS.px(0).mul(CSS.number(1e308).mul(2));
+  assert_equals(String(new CSSMathSum(v)), 'calc(NaNpx)');
+  assert_equals(String(new CSSMathSum(v, CSS.px(1))), 'calc(NaNpx + 1px)');
+  assert_equals(String(new CSSMathProduct(v, 2)), 'calc(NaNpx * 2)');
+  assert_equals(String(new CSSMathNegate(v)), 'calc(-NaNpx)');
+}, 'Q83 NaN dimension math String follows literal unit serialization');
+</script>

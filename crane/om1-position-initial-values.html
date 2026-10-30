@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM initial positions retain their property association</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#reification">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+for (const [property, text] of [["mask-position", "0% 0%"], ["object-position", "50% 50%"]]) {
+  test(t => {
+    const element = document.createElement("div"); document.body.appendChild(element);
+    t.add_cleanup(() => element.remove());
+    const initial = element.computedStyleMap().get(property);
+    const parsed = CSSStyleValue.parse(property, text);
+    assert_equals(initial.constructor, CSSStyleValue);
+    assert_equals(parsed.constructor, CSSStyleValue);
+    assert_equals(String(initial), text);
+    assert_equals(String(parsed), String(initial));
+    const target = document.createElement("div");
+    assert_throws_js(TypeError, () => target.attributeStyleMap.append("background-size", initial));
+    target.attributeStyleMap.set(property, initial);
+    assert_equals(target.style.getPropertyValue(property), String(initial));
+    assert_true(CSSStyleValue.parse(property, "var(--position)") instanceof CSSUnparsedValue);
+  }, `${property} initial and parsed positions have the same class, text and association`);
+}
+test(t => {
+  const element = document.createElement("div"); document.body.appendChild(element);
+  t.add_cleanup(() => element.remove());
+  const value = element.computedStyleMap().get("margin-left");
+  assert_true(value instanceof CSSUnitValue);
+  assert_equals(value.value, 0);
+  assert_equals(value.unit, "px");
+}, "A numeric initial stays a CSSUnitValue");
+</script>

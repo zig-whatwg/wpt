@@ -1,0 +1,143 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM retains unsupported native math for the whole property</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#unrepresentable-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+// Q124 Chrome156/Safari27 probe and §5.2, 2026-10-28. Firefox has no Typed OM.
+const d = document;
+const check = assert_true;
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = "text-indent";
+const source = "round(1em, 1px)";
+check(CSS.supports(property, source), 'valid CSS');
+el.style.setProperty(property, source);
+const expected = el.style.getPropertyValue(property);
+check(expected !== '', 'declaration stored');
+const parsed = CSSStyleValue.parse(property, source);
+const got = el.attributeStyleMap.get(property);
+const parsedAll = CSSStyleValue.parseAll(property, source);
+const gotAll = el.attributeStyleMap.getAll(property);
+check(parsedAll.length === 1, 'parseAll retains whole property');
+check(gotAll.length === 1, 'getAll retains whole property');
+for (const value of [parsed, got, parsedAll[0], gotAll[0]]) {
+  check(value.constructor === CSSStyleValue, 'opaque class');
+  check(String(value) === expected, 'existing CSSOM serialization');
+  const target = d.createElement('div');
+  target.attributeStyleMap.set(property, value);
+  check(target.style.getPropertyValue(property) === expected, 'same property round trip');
+}
+el.style.removeProperty(property);
+TestUtils.gc();
+check(String(got) === expected, 'retained native value after removal');
+el.attributeStyleMap.set(property, got);
+check(el.style.getPropertyValue(property) === expected, 'set after source removal');
+return 'ok';
+})();
+}, "Q124 text-indent retains the whole specified property");
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = "grid-template-columns";
+const source = "round(1em, 1px)";
+check(CSS.supports(property, source), 'valid CSS');
+el.style.setProperty(property, source);
+const expected = el.style.getPropertyValue(property);
+check(expected !== '', 'declaration stored');
+const parsed = CSSStyleValue.parse(property, source);
+const got = el.attributeStyleMap.get(property);
+const parsedAll = CSSStyleValue.parseAll(property, source);
+const gotAll = el.attributeStyleMap.getAll(property);
+check(parsedAll.length === 1, 'parseAll retains whole property');
+check(gotAll.length === 1, 'getAll retains whole property');
+for (const value of [parsed, got, parsedAll[0], gotAll[0]]) {
+  check(value.constructor === CSSStyleValue, 'opaque class');
+  check(String(value) === expected, 'existing CSSOM serialization');
+  const target = d.createElement('div');
+  target.attributeStyleMap.set(property, value);
+  check(target.style.getPropertyValue(property) === expected, 'same property round trip');
+}
+el.style.removeProperty(property);
+TestUtils.gc();
+check(String(got) === expected, 'retained native value after removal');
+el.attributeStyleMap.set(property, got);
+check(el.style.getPropertyValue(property) === expected, 'set after source removal');
+return 'ok';
+})();
+}, "Q124 grid-template-columns retains the whole specified property");
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = "animation-range-start";
+const source = "round(1em, 1px), 10px";
+check(CSS.supports(property, source), 'valid CSS');
+el.style.setProperty(property, source);
+const expected = el.style.getPropertyValue(property);
+check(expected !== '', 'declaration stored');
+const parsed = CSSStyleValue.parse(property, source);
+const got = el.attributeStyleMap.get(property);
+const parsedAll = CSSStyleValue.parseAll(property, source);
+const gotAll = el.attributeStyleMap.getAll(property);
+check(parsedAll.length === 1, 'parseAll retains whole property');
+check(gotAll.length === 1, 'getAll retains whole property');
+for (const value of [parsed, got, parsedAll[0], gotAll[0]]) {
+  check(value.constructor === CSSStyleValue, 'opaque class');
+  check(String(value) === expected, 'existing CSSOM serialization');
+  const target = d.createElement('div');
+  target.attributeStyleMap.set(property, value);
+  check(target.style.getPropertyValue(property) === expected, 'same property round trip');
+}
+el.style.removeProperty(property);
+TestUtils.gc();
+check(String(got) === expected, 'retained native value after removal');
+el.attributeStyleMap.set(property, got);
+check(el.style.getPropertyValue(property) === expected, 'set after source removal');
+return 'ok';
+})();
+}, "Q124 animation-range-start retains the whole specified property");
+test(t => {
+  const el = d.createElement("div");
+  d.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+(() => {
+const property = '--om1-math-value';
+const source = 'round(10%, 1px)';
+CSS.registerProperty({name: property, syntax: '<length-percentage>', inherits: false, initialValue: '0px'});
+check(CSS.supports(property, source), 'valid custom property');
+el.style.setProperty(property, source);
+const expectedSpecified = el.style.getPropertyValue(property);
+const parsed = CSSStyleValue.parse(property, source);
+const specified = el.attributeStyleMap.get(property);
+check(parsed.constructor === CSSUnparsedValue, 'specified parse remains unparsed');
+check(specified.constructor === CSSUnparsedValue, 'specified map remains unparsed');
+check(String(parsed) === expectedSpecified && String(specified) === expectedSpecified, 'specified serialization');
+const expected = getComputedStyle(el).getPropertyValue(property);
+check(expected === 'round(10%, 1px)', 'unresolved percentage retained');
+const got = el.computedStyleMap().get(property);
+const gotAll = el.computedStyleMap().getAll(property);
+check(gotAll.length === 1, 'one registered component');
+for (const value of [got, gotAll[0]]) {
+  check(value.constructor === CSSStyleValue, 'computed opaque class');
+  check(String(value) === expected, 'computed native serialization');
+  const target = d.createElement('div');
+  target.attributeStyleMap.set(property, value);
+  check(target.style.getPropertyValue(property) === expected, 'registered same-property round trip');
+}
+el.style.removeProperty(property);
+TestUtils.gc();
+check(String(got) === expected, 'computed value outlives declaration');
+el.attributeStyleMap.set(property, got);
+check(el.style.getPropertyValue(property) === expected, 'registered set after removal');
+return 'ok';
+})();
+}, "Q124 registered residual math is unparsed specified and opaque computed");
+</script>

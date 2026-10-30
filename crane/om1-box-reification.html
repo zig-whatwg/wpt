@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM reification of box-property native values</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#reification">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q179, 2026-10-29, tmp/probes/q179/RESULT.md: Chrome 156 is the sole
+// shipper of scroll-marker-group and overflow-clip-margin (3/3 captures).
+// Q60 step 1 wins: overflow-clip-margin is always opaque. No browser ships
+// max-lines, so its native integer/keyword uses the singleton principle.
+// This family preserves Crane's owning CSSOM serialization. The separate
+// Chrome calc() parsing difference is a follow-up for the parser owner.
+const cases = [
+  {p: 'scroll-marker-group', v: 'none', kind: 'CSSKeywordValue', text: 'none'},
+  {p: 'scroll-marker-group', v: 'before', kind: 'CSSKeywordValue', text: 'before',
+    computedKind: 'CSSStyleValue', computedText: 'before links'},
+  {p: 'scroll-marker-group', v: 'after', kind: 'CSSKeywordValue', text: 'after',
+    computedKind: 'CSSStyleValue', computedText: 'after links'},
+  {p: 'scroll-marker-group', v: 'before links', kind: 'CSSStyleValue', text: 'before links'},
+  {p: 'overflow-clip-margin', v: '5px', kind: 'CSSStyleValue', text: '5px'},
+  {p: 'overflow-clip-margin', v: 'padding-box 5px', kind: 'CSSStyleValue', text: '5px'},
+  {p: 'overflow-clip-margin', v: 'content-box 0px', kind: 'CSSStyleValue', text: 'content-box'},
+  {p: 'overflow-clip-margin', v: 'border-box 0px', kind: 'CSSStyleValue', text: 'border-box'},
+  {p: 'overflow-clip-margin', v: 'content-box 5px', kind: 'CSSStyleValue', text: 'content-box 5px'},
+  {p: 'overflow-clip-margin', v: 'calc(1px + 2px)', kind: 'CSSStyleValue'},
+  {p: 'max-lines', v: '3', kind: 'CSSUnitValue', text: '3', unit: 'number', value: 3},
+  {p: 'max-lines', v: 'auto', kind: 'CSSKeywordValue', text: 'auto'},
+  {p: 'max-lines', v: '3 auto', kind: 'CSSStyleValue', text: '3 auto'},
+];
+
+function element(t, c) {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+  el.style.setProperty(c.p, c.v);
+  assert_not_equals(el.style.getPropertyValue(c.p), '', 'existing parser accepted input');
+  if (c.text !== undefined)
+    assert_equals(el.style.getPropertyValue(c.p), c.text, 'specified CSSOM');
+  return el;
+}
+
+function check(value, kind, text, c) {
+  assert_not_equals(value, undefined, 'reified value exists');
+  assert_equals(value.constructor.name, kind, 'class');
+  assert_equals(String(value), text, 'owning CSSOM serialization');
+  if (kind === 'CSSKeywordValue') assert_equals(value.value, text, 'keyword');
+  if (kind === 'CSSUnitValue') {
+    assert_equals(value.unit, c.unit, 'unit');
+    assert_equals(value.value, c.value, 'numeric value');
+  }
+}
+
+for (const c of cases) {
+  test(t => {
+    const el = element(t, c);
+    check(CSSStyleValue.parse(c.p, c.v), c.kind, el.style.getPropertyValue(c.p), c);
+  }, `Q179 parse ${c.p}: ${c.v}`);
+
+  test(t => {
+    const el = element(t, c);
+    check(el.attributeStyleMap.get(c.p), c.kind, el.style.getPropertyValue(c.p), c);
+  }, `Q179 inline ${c.p}: ${c.v}`);
+
+  test(t => {
+    const el = element(t, c);
+    const cssom = getComputedStyle(el).getPropertyValue(c.p);
+    assert_not_equals(cssom, '', 'computed CSSOM');
+    if (c.computedText !== undefined)
+      assert_equals(cssom, c.computedText, 'owner supplies computed marker mode');
+    check(el.computedStyleMap().get(c.p), c.computedKind || c.kind, cssom, c);
+  }, `Q179 computed ${c.p}: ${c.v}`);
+}
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+  assert_equals(el.style.getPropertyValue('overflow-clip-margin'), '', 'no authored value');
+  assert_equals(getComputedStyle(el).getPropertyValue('overflow-clip-margin'), '0px');
+  check(el.computedStyleMap().get('overflow-clip-margin'), 'CSSStyleValue', '0px', {});
+}, 'Q180 initial overflow-clip-margin keeps the opaque computed class');
+
+test(t => {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  t.add_cleanup(() => el.remove());
+  el.style.setProperty('--gap', '5px');
+  el.style.setProperty('overflow-clip-margin', 'var(--gap)');
+  const specified = el.style.getPropertyValue('overflow-clip-margin');
+  assert_equals(specified, 'var(--gap)', 'real pending declaration');
+  for (const value of [CSSStyleValue.parse('overflow-clip-margin', 'var(--gap)'),
+                       el.attributeStyleMap.get('overflow-clip-margin')]) {
+    check(value, 'CSSUnparsedValue', specified, {});
+  }
+  const computed = getComputedStyle(el).getPropertyValue('overflow-clip-margin');
+  assert_equals(computed, '5px', 'existing substitution and computation');
+  check(el.computedStyleMap().get('overflow-clip-margin'), 'CSSStyleValue', computed, {});
+}, 'Q180 pending overflow-clip-margin reifies unparsed before ordinary computed opacity');
+</script>

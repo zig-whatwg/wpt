@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow stylesheet adoption preserves only its template document relation</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#appropriate-template-contents-owner-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+function make(t) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  const root = host.attachShadow({mode: "open"});
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(":host { color: rgb(1, 2, 3) }");
+  root.adoptedStyleSheets = [sheet];
+  return {host, root, sheet, array: root.adoptedStyleSheets};
+}
+
+test(t => {
+  const {host, root, sheet, array} = make(t);
+  const destination = document.createElement("section");
+  document.body.append(destination);
+  t.add_cleanup(() => destination.remove());
+  destination.append(host);
+  assert_equals(root.adoptedStyleSheets, array);
+  assert_array_equals(array, [sheet]);
+  document.adoptNode(host);
+  assert_array_equals(array, [sheet]);
+}, "Same-document moves and adoptNode retain the existing array and sheets");
+
+test(t => {
+  const {host, root, sheet, array} = make(t);
+  const template = document.createElement("template");
+  template.innerHTML = "<template></template>";
+  template.content.append(host);
+  assert_not_equals(host.ownerDocument, document);
+  assert_equals(root.adoptedStyleSheets, array);
+  assert_array_equals(array, [sheet]);
+  template.content.firstChild.content.append(host);
+  assert_equals(root.adoptedStyleSheets, array);
+  assert_array_equals(array, [sheet]);
+  document.body.append(host);
+  assert_equals(host.ownerDocument, document);
+  assert_array_equals(array, [sheet]);
+}, "Moves to and from the associated inert document, including nested templates, retain sheets");
+
+test(t => {
+  const {host, root, array} = make(t);
+  const destination = document.implementation.createHTMLDocument("");
+  destination.body.append(host);
+  assert_equals(root.ownerDocument, destination);
+  assert_equals(root.adoptedStyleSheets, array);
+  assert_equals(array.length, 0);
+}, "Adoption into an unrelated document empties the same observable array");
+
+test(t => {
+  const {host, root, array} = make(t);
+  const template = document.createElement("template");
+  template.content.append(host);
+  const frame = document.createElement("iframe");
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  frame.contentDocument.body.append(host);
+  assert_equals(root.ownerDocument, frame.contentDocument);
+  assert_equals(root.adoptedStyleSheets, array);
+  assert_equals(array.length, 0);
+  document.body.append(host);
+  assert_equals(array.length, 0);
+}, "Moving from a template to another browsing document clears sheets without reviving them later");
+
+promise_test(async t => {
+  let {host, root, sheet, array} = make(t);
+  const weak = new WeakRef(sheet);
+  const destination = document.implementation.createHTMLDocument("");
+  destination.body.append(host);
+  assert_equals(root.adoptedStyleSheets, array);
+  assert_equals(array.length, 0);
+  // Keep the cleared root/array alive; the removed native sheet must not be
+  // needed to read or mutate either after a collection boundary.
+  sheet = null;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(array.length, 0);
+  assert_equals(root.adoptedStyleSheets, array);
+  const restored = weak.deref();
+  if (restored) assert_equals(restored.cssRules.length, 1);
+  array.length = 0;
+  assert_equals(root.adoptedStyleSheets.length, 0);
+}, "A retained cleared array and root survive collection after losing their sheet");
+</script>

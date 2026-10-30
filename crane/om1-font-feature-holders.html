@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Font feature maps preserve identity and their owning rule</title>
+<link rel="help" href="https://drafts.csswg.org/css-fonts-4/#om-fontfeaturevalues">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+const names = ["annotation", "ornaments", "stylistic", "swash", "characterVariant", "styleset"];
+function sheetWithRule() {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@font-feature-values Foo { @styleset { a: 1; } }');
+  return sheet;
+}
+function nextTask(t) { return new Promise(resolve => t.step_timeout(resolve, 0)); }
+
+test(() => {
+  const sheet = sheetWithRule();
+  const rule = sheet.cssRules[0];
+  for (const name of names) assert_equals(rule[name], rule[name], name);
+  assert_equals(sheet.cssRules[0].styleset, sheet.cssRules[0].styleset);
+}, "Each of the six feature maps has stable identity");
+
+promise_test(async t => {
+  const rule = (() => {
+    const sheet = sheetWithRule();
+    const rule = sheet.cssRules[0];
+    rule.styleset.marker = 42;
+    return rule;
+  })();
+  await nextTask(t);
+  TestUtils.gc();
+  TestUtils.gc();
+  assert_equals(rule.styleset.marker, 42);
+}, "Keeping only a rule retains its feature-map wrapper and expando");
+
+test(() => {
+  const sheet = sheetWithRule();
+  const rule = sheet.cssRules[0];
+  const map = rule.styleset;
+  sheet.deleteRule(0);
+  TestUtils.gc();
+  map.set("kept", [3, 4]);
+  assert_equals(map, rule.styleset);
+  assert_true(rule.cssText.includes("kept: 3 4;"), rule.cssText);
+}, "A kept map remains live and identical after its rule is deleted");
+
+promise_test(async t => {
+  const held = (() => {
+    const sheet = sheetWithRule();
+    const rule = sheet.cssRules[0];
+    const map = rule.styleset;
+    const weak = new WeakRef(rule);
+    sheet.deleteRule(0);
+    return {map, weak};
+  })();
+  // A fresh task ends WeakRef's keep-during-job protection. Only the map
+  // may keep the rule strongly reachable across the following collection.
+  await nextTask(t);
+  TestUtils.gc();
+  TestUtils.gc();
+  held.map.set("afterGC", [5]);
+  const rule = held.weak.deref();
+  assert_not_equals(rule, undefined);
+  assert_equals(rule.styleset, held.map);
+  assert_true(rule.cssText.includes("afterGC: 5;"), rule.cssText);
+}, "Keeping only a map retains its deleted rule and native data");
+</script>

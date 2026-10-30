@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Custom declaration serialization cost on existing CSSOM paths</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q128: ordinary custom names have identical semantics on BASE and TIP.
+// Setup, warmup and exact correctness checks stay outside both timers.
+function prepare() {
+  const element = document.body.appendChild(document.createElement('div'));
+  for (let i = 0; i < 32; ++i)
+    element.style.setProperty('--om1-c' + i, i + 'px');
+  return element;
+}
+function expected(first = '0px') {
+  return Array.from({length: 32}, (_, i) =>
+    '--om1-c' + i + ': ' + (i === 0 ? first : i + 'px') + ';').join(' ');
+}
+
+test(() => {
+  const element = prepare();
+  const style = element.style;
+  const want = expected();
+  assert_equals(style.length, 32);
+  assert_equals(style.cssText, want);
+  for (let i = 0; i < 100; ++i) void style.cssText;
+  let checksum = 0;
+  let last = '';
+  const rounds = 5000;
+  const start = performance.now();
+  for (let i = 0; i < rounds; ++i) {
+    last = style.cssText;
+    checksum += last.length;
+  }
+  const elapsed = performance.now() - start;
+  assert_equals(last, want);
+  assert_equals(checksum, rounds * want.length);
+  assert_equals(style.length, 32);
+  console.log('OM1_CUSTOM_CSS_TEXT_MS=' + elapsed.toFixed(3));
+  element.remove();
+}, 'Read cssText 5,000 times from a 32-custom-property block');
+
+test(() => {
+  const element = prepare();
+  const style = element.style;
+  assert_equals(style.cssText, expected());
+  for (let i = 0; i < 100; ++i)
+    style.setProperty('--om1-c0', i % 2 ? '2px' : '1px');
+  const rounds = 5000;
+  const start = performance.now();
+  for (let i = 0; i < rounds; ++i)
+    style.setProperty('--om1-c0', i % 2 ? '2px' : '1px');
+  const elapsed = performance.now() - start;
+  assert_equals(style.length, 32);
+  assert_equals(style.cssText, expected('2px'));
+  for (let i = 0; i < 32; ++i)
+    assert_equals(style.getPropertyValue('--om1-c' + i), i === 0 ? '2px' : i + 'px');
+  console.log('OM1_CUSTOM_INLINE_WRITE_MS=' + elapsed.toFixed(3));
+  element.remove();
+}, 'Change one connected inline value 5,000 times among 32 custom names');
+</script>

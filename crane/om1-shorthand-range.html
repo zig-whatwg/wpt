@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Typed OM rejects out-of-range units on logical border shorthands</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q198: Chrome 156 and Safari 27 both reject these negative border widths.
+for (const property of [
+  'border-block', 'border-block-start', 'border-block-end',
+  'border-inline', 'border-inline-start', 'border-inline-end'
+]) {
+  test(() => {
+    const element = document.createElement('div');
+    element.style.cssText = 'color: red;';
+    const before = element.style.cssText;
+    assert_throws_js(TypeError, () => element.attributeStyleMap.set(property, CSS.em(-3.14)));
+    assert_equals(element.style.cssText, before, 'A rejected set leaves the declaration unchanged');
+  }, property + ' rejects a negative length without mutation');
+}
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Existing CSS math parser cost without Typed OM</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const rules = Array.from({length: 200}, (_, i) =>
+    '.om1-' + i + '{width:calc(1px + 1in);height:max(1px, 2px);' +
+    'margin-left:min(1px, 2px);padding-left:clamp(1px, 9px, 3px)}').join('\n');
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(rules);
+  assert_equals(sheet.cssRules.length, 200);
+  const start = performance.now();
+  for (let i = 0; i < 100; i++) sheet.replaceSync(rules);
+  const elapsed = performance.now() - start;
+  assert_equals(sheet.cssRules.length, 200);
+  for (let i = 0; i < sheet.cssRules.length; i++) {
+    const rule = sheet.cssRules[i];
+    assert_equals(rule.style.width, 'calc(97px)');
+    assert_equals(rule.style.height, 'calc(2px)');
+    assert_equals(rule.style.marginLeft, 'calc(1px)');
+    assert_equals(rule.style.paddingLeft, 'calc(3px)');
+  }
+  console.log('OM1_EXISTING_MATH_PARSE_MS=' + elapsed.toFixed(3));
+}, 'existing calc/min/max/clamp declaration parsing remains valid');
+</script>

@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Page and margin declaration views retain their owning rule</title>
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#the-csspagerule-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+function nextTask(t) { return new Promise(resolve => t.step_timeout(resolve, 0)); }
+for (const margin of [false, true]) {
+  promise_test(async t => {
+    const held = (() => {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync('@page { size: a4; @top-left { color: blue; } }');
+      const page = sheet.cssRules[0];
+      const rule = margin ? page.cssRules[0] : page;
+      const style = rule.style;
+      assert_equals(rule.style, style);
+      rule.marker = 42;
+      const weak = new WeakRef(rule);
+      if (margin) page.deleteRule(0); else sheet.deleteRule(0);
+      return {style, weak};
+    })();
+    // End WeakRef's keep-during-job protection before collection.
+    await nextTask(t);
+    TestUtils.gc();
+    TestUtils.gc();
+    const rule = held.weak.deref();
+    assert_not_equals(rule, undefined);
+    assert_equals(rule.marker, 42);
+    assert_equals(held.style.parentRule, rule);
+    assert_equals(rule.style, held.style);
+    assert_equals(rule.parentRule, null);
+    held.style.setProperty(margin ? "color" : "size", margin ? "red" : "a3");
+    assert_true(rule.cssText.includes(margin ? "color: red;" : "size: a3;"), rule.cssText);
+  }, `Only the ${margin ? "margin" : "page"} declaration view keeps its deleted rule reachable`);
+}
+</script>

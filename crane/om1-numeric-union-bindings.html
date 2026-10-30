@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSSNumberish union member restricted double conversion</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-union">
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-double">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+// Q78: union conversion steps 13/17 select double; double step 2 rejects.
+const cases = [
+ ['sum', x => new CSSMathSum(3, x), 5],
+ ['product', x => new CSSMathProduct(3, x), 6],
+ ['min', x => new CSSMathMin(3, x), 2],
+ ['max', x => new CSSMathMax(3, x), 3],
+ ['clamp-lower', x => new CSSMathClamp(x, 3, 4), 3],
+ ['clamp-value', x => new CSSMathClamp(1, x, 3), 2],
+ ['clamp-upper', x => new CSSMathClamp(0, 1, x), 1],
+ ['negate', x => new CSSMathNegate(x), -2],
+ ['invert', x => new CSSMathInvert(x), 0.5],
+ ['add', x => CSS.number(8).add(3, x), 13],
+ ['sub', x => CSS.number(8).sub(3, x), 3],
+ ['mul', x => CSS.number(8).mul(3, x), 48],
+ ['div', x => CSS.number(8).div(4, x), 1],
+ ['method-min', x => CSS.number(8).min(3, x), 2],
+ ['method-max', x => CSS.number(8).max(3, x), 8],
+ ['equals', x => CSS.number(8).equals(8, x), false]
+];
+
+for (const [name, invoke, expected] of cases) {
+  for (const bad of [NaN, Infinity, -Infinity]) for (const boxed of [false, true]) {
+    test(() => {
+      let hits = 0;
+      const input = boxed ? {valueOf() { hits++; return bad; }} : bad;
+      assert_throws_js(TypeError, () => invoke(input));
+      if (boxed) assert_equals(hits, 1, 'convert once');
+    }, `${name} rejects ${String(bad)} as ${boxed ? 'an object' : 'a number'}`);
+  }
+  for (const boxed of [false, true]) {
+    test(() => {
+      let hits = 0;
+      const input = boxed ? {valueOf() { hits++; return 2; }} : 2;
+      const result = invoke(input);
+      assert_equals(name === 'equals' ? result : result.to('number').value, expected);
+      if (boxed) assert_equals(hits, 1, 'convert once');
+    }, `${name} accepts a finite ${boxed ? 'coercible object' : 'number'}`);
+  }
+}
+</script>
