@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Empty conditional group has one interior newline</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#serialize-a-css-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="sheet">@media all {}</style>
+<script>
+test(() => {
+  assert_equals(document.getElementById('sheet').sheet.cssRules[0].cssText,
+                '@media all {\n}');
+}, 'Empty CSSMediaRule follows all three browsers with one interior newline');
+</script>

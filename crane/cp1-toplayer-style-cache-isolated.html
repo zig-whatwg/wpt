@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Top-layer membership changes invalidate an ancestor's focus-within style</title>
+<link rel="help" href="https://drafts.csswg.org/selectors/#the-focus-within-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+  #container { color: rgb(255, 0, 0); }
+  #container:focus-within { color: rgb(0, 128, 0); }
+  [popover] { display: block; }
+</style>
+<div id="container"><div id="popover" popover="manual"><input id="target"></div></div>
+<script>
+promise_test(async t => {
+  const container = document.getElementById('container');
+  const popover = document.getElementById('popover');
+  const target = document.getElementById('target');
+  t.add_cleanup(() => {
+    if (popover.matches(':popover-open')) popover.hidePopover();
+  });
+  target.focus();
+  assert_true(target.matches(':focus'), 'initial focus');
+  assert_equals(getComputedStyle(container).color, 'rgb(0, 128, 0)', 'before entering the top layer');
+  popover.showPopover();
+  assert_true(target.matches(':focus'), 'focus designation is unchanged on show');
+  assert_false(container.matches(':focus-within'), 'ancestor cutoff on show');
+  assert_equals(getComputedStyle(container).color, 'rgb(255, 0, 0)', 'cached ancestor style changes on show');
+  popover.hidePopover();
+  await new Promise(requestAnimationFrame);
+  assert_true(target.matches(':focus'), 'focus designation is unchanged on hide');
+  assert_true(container.matches(':focus-within'), 'ancestor matches again on hide');
+  assert_equals(getComputedStyle(container).color, 'rgb(0, 128, 0)', 'cached ancestor style changes on hide');
+}, 'An unchanged focus designation does not preserve a stale style across top-layer transitions');
+</script>

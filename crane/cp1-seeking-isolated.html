@@ -1,0 +1,21 @@
+<!doctype html>
+<title>Seeking state at the seeking event</title>
+<link rel="help" href="https://html.spec.whatwg.org/#seeking">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/media.js"></script>
+<video muted></video>
+<script>
+promise_test(async t => {
+  const video = document.querySelector('video');
+  t.add_cleanup(() => { video.src = ''; });
+  const ready = new Promise(resolve => video.addEventListener('canplay', resolve, {once:true}));
+  video.src = getVideoURI('/media/counting');
+  await ready;
+  const seeking = new Promise(resolve => video.addEventListener('seeking', resolve, {once:true}));
+  video.currentTime = 10;
+  await seeking;
+  assert_true(video.seeking, 'native seeking state is still true at the seeking event');
+  assert_true(video.matches(':seeking'), 'the selector reads the same state');
+}, ':seeking agrees with the media state during the seeking event');
+</script>

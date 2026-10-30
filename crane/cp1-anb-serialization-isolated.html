@@ -1,0 +1,12 @@
+<!doctype html>
+<title>An+B clamping is reflected in selector serialization</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#anb-syntax">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.insertRule('p:nth-child(100000000000n - 100000000000) {}');
+  assert_equals(sheet.cssRules[0].selectorText, 'p:nth-child(2147483647n-2147483647)');
+}, 'The serialized An+B integers use the supported clamped range');
+</script>

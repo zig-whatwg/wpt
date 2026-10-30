@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS selectorText preprocesses NUL before serialization</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#input-preprocessing">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>original-ident { color: green; }</style>
+<script>
+test(() => {
+  const rule = document.styleSheets[0].cssRules[0];
+  rule.selectorText = 'foo\0';
+  assert_equals(rule.selectorText, 'foo\ufffd');
+}, 'CSSStyleRule.selectorText serializes the preprocessed identifier');
+</script>

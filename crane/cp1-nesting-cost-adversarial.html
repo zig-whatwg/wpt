@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>CSS nesting: cold style-flush cost for repeated ampersands at depth ten</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+"use strict";
+// Q80/Q82: a reported style-flush / matching-path control, not a pure matcher
+// clock. This is the exact Q75 depth-10 sheet. Every subject is fresh; parsing
+// and setup are outside the timed span. Depth 20 is deliberately not measured.
+const depth = 10;
+const sheetText = ".a { color: red;" + "&& { color: red;".repeat(depth) + "}".repeat(depth + 1);
+const style = document.createElement("style");
+style.textContent = sheetText;
+document.head.appendChild(style);
+const rules = style.sheet.cssRules; // Force parsing before constructing subjects.
+test(() => {
+  assert_equals(rules.length, 1);
+  let current = rules[0];
+  let count = 1;
+  for (let level = 0; level < depth; ++level) {
+    assert_equals(current.cssRules.length, 1);
+    current = current.cssRules[0];
+    ++count;
+  }
+  assert_equals(current.cssRules.length, 0);
+  assert_equals(count, 11);
+}, "adversarial nesting setup retains exactly ten nested levels");
+
+const subjects = [];
+const fragment = document.createDocumentFragment();
+for (let i = 0; i < 1000; ++i) {
+  const element = document.createElement("div");
+  element.className = "a";
+  fragment.appendChild(element);
+  subjects.push(element);
+}
+document.body.appendChild(fragment);
+const colors = new Array(subjects.length);
+const started = performance.now();
+for (let i = 0; i < subjects.length; ++i) {
+  colors[i] = getComputedStyle(subjects[i]).color;
+}
+const elapsed = performance.now() - started;
+test(() => {
+  assert_true(elapsed > 0);
+  assert_equals(subjects.length, 1000);
+  for (const color of colors) assert_equals(color, "rgb(255, 0, 0)");
+}, `CP1_NESTED_DOUBLE_10_FLUSH_MS=${elapsed.toFixed(3)}; 1000 fresh subjects, 11 rules`);
+</script>

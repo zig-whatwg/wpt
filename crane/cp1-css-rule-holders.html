@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS rule holders retain parent wrappers and live declarations</title>
+<link rel="help" href="https://drafts.csswg.org/css-nesting-1/#the-cssnesteddeclarations-interface">
+<link rel="help" href="https://drafts.csswg.org/cssom/#dom-cssstyledeclaration-parentrule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function makeSheet(text) {
+  const doc = document.implementation.createHTMLDocument('cp1');
+  const owner = doc.createElement('style');
+  owner.textContent = text;
+  doc.head.appendChild(owner);
+  const sheet = owner.sheet;
+  assert_not_equals(sheet, null, 'sheet exists');
+  void sheet.cssRules.length;
+  sheet.cp1Marker = 'sheet';
+  owner.remove();
+  return sheet;
+}
+
+async function collect() {
+  await TestUtils.gc();
+  await TestUtils.gc();
+}
+
+promise_test(async () => {
+  const style = (() => {
+    const sheet = makeSheet('.outer { & .child {} color: red; }');
+    const outer = sheet.cssRules[0];
+    assert_equals(outer.cssRules.length, 2, 'nested declaration exists');
+    const declaration = outer.cssRules[1];
+    outer.cp1Marker = 'outer';
+    declaration.cp1Marker = 'declaration';
+    return declaration.style;
+  })();
+  await collect();
+  assert_true(style.parentRule instanceof CSSNestedDeclarations);
+  assert_equals(style.parentRule.cp1Marker, 'declaration', 'original parent wrapper');
+  assert_equals(style.parentRule.style, style, 'SameObject declaration');
+  assert_equals(style.parentRule.parentRule.cp1Marker, 'outer', 'original outer wrapper');
+  assert_equals(style.parentRule.parentStyleSheet.cp1Marker, 'sheet', 'original sheet wrapper');
+  style.color = 'purple';
+  assert_equals(style.parentRule.cssText, 'color: purple;', 'live declaration');
+  style.parentRule.parentRule.deleteRule(1);
+  await collect();
+  assert_equals(style.parentRule.cp1Marker, 'declaration', 'detached original wrapper');
+  assert_equals(style.parentRule.parentRule, null);
+  assert_equals(style.parentRule.parentStyleSheet, null);
+  assert_equals(style.color, 'purple');
+  style.width = '12px';
+  assert_equals(style.parentRule.cssText, 'color: purple; width: 12px;');
+}, 'Only a nested declaration style survives GC and rule detachment');
+
+for (const [kind, source] of [
+  ['container', '@container (width > 0px) { .child { color: red } }'],
+  ['scope', '@scope (.root) { .child { color: red } }']
+]) {
+  promise_test(async () => {
+    const child = (() => {
+      const sheet = makeSheet(source);
+      const parent = sheet.cssRules[0];
+      assert_not_equals(parent, undefined, 'group rule exists');
+      parent.cp1Marker = 'group';
+      return parent.cssRules[0];
+    })();
+    await collect();
+    assert_equals(child.parentRule.cp1Marker, 'group', 'original group wrapper');
+    assert_equals(child.parentStyleSheet.cp1Marker, 'sheet', 'original sheet wrapper');
+    assert_equals(child.parentRule.cssRules[0], child, 'original child wrapper');
+    assert_equals(child.style.color, 'red');
+    child.parentStyleSheet.deleteRule(0);
+    await collect();
+    assert_equals(child.parentRule.cp1Marker, 'group', 'detached original group');
+    assert_equals(child.parentRule.parentRule, null);
+    assert_equals(child.parentStyleSheet, null);
+    assert_equals(child.parentRule.parentStyleSheet, null);
+    assert_equals(child.style.color, 'red');
+  }, 'Only a ' + kind + ' child survives GC and group detachment');
+}
+
+promise_test(async () => {
+  const conditions = (() => {
+    const sheet = makeSheet('@container wide (width>10px), style(--flag) {}');
+    const rule = sheet.cssRules[0];
+    assert_not_equals(rule, undefined, 'container rule exists');
+    const result = rule.conditions;
+    assert_equals(rule.containerName, '');
+    assert_equals(rule.containerQuery, '');
+    sheet.deleteRule(0);
+    return result;
+  })();
+  await collect();
+  assert_true(Object.isFrozen(conditions));
+  assert_equals(conditions.length, 2);
+  assert_equals(conditions[0].name, 'wide');
+  assert_equals(conditions[0].query, '(width > 10px)');
+  assert_equals(conditions[1].name, '');
+  assert_equals(conditions[1].query, 'style(--flag)');
+}, 'Container condition dictionaries own strings after the sheet and rules are collected');
+</script>

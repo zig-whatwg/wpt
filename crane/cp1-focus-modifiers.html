@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Modifier shortcuts preserve pointer focus modality</title>
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#the-focus-visible-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>
+button { color: rgb(255, 0, 0); }
+button:focus-visible { color: rgb(0, 128, 0); }
+</style>
+<body>
+<script>
+const cases = [
+  ['Control', '\uE009', false],
+  ['Alt', '\uE00A', false],
+  ['Meta', '\uE03D', false],
+  ['ordinary key', 'k', true],
+  ['Shift', '\uE008', true],
+];
+for (const [name, key, visible] of cases) {
+  promise_test(async t => {
+    const target = document.createElement('button');
+    target.textContent = name;
+    document.body.append(target);
+    t.add_cleanup(() => target.remove());
+    const events = [];
+    target.addEventListener('keydown', () => events.push('down'));
+    target.addEventListener('keyup', () => events.push('up'));
+    await new test_driver.Actions()
+      .pointerMove(0, 0, {origin: target})
+      .pointerDown().pointerUp().send();
+    assert_equals(document.activeElement, target);
+    assert_false(target.matches(':focus-visible'));
+    assert_equals(getComputedStyle(target).color, 'rgb(255, 0, 0)', 'warm pointer style');
+    await new test_driver.Actions().keyDown(key).keyUp(key).send();
+    assert_equals(document.activeElement, target, 'focus is retained');
+    assert_array_equals(events, ['down', 'up']);
+    assert_equals(target.matches(':focus-visible'), visible);
+    assert_equals(getComputedStyle(target).color, visible ? 'rgb(0, 128, 0)' : 'rgb(255, 0, 0)');
+  }, `${name} after pointer focus`);
+}
+</script>

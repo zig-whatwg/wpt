@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Discarded CSS rules preserve declaration runs</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-block-contents">
+<link rel="help" href="https://drafts.csswg.org/css-nesting-1/#nested-declarations-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function parse(source) {
+  const document = window.document.implementation.createHTMLDocument('cp1');
+  const style = document.createElement('style');
+  style.textContent = source;
+  document.head.append(style);
+  return {document, style, rule: style.sheet.cssRules[0]};
+}
+
+for (const discarded of ['@unknown {}', '@unknown prelude;', '@unknown; @another {}']) {
+  test(() => {
+    const fixture = parse(`.x { color: red; ${discarded} color: green; }`);
+    assert_equals(fixture.rule.style.color, 'green');
+    assert_equals(fixture.rule.cssRules.length, 0);
+  }, `Leading declarations remain on the parent after ${discarded}`);
+}
+
+for (const invalid of ['var(--x) { }', '{ } var(--x)', '{ var(--x) } A', 'A { var(--x) }']) {
+  for (const afterChild of [false, true]) {
+    test(() => {
+      const fixture = parse(`.x { ${afterChild ? '& {}' : ''}
+        color: rgb(2, 2, 2); color: ${invalid}; background-color: rgb(1, 1, 1); }`);
+      assert_equals(fixture.rule.cssRules.length, afterChild ? 2 : 0);
+      const declarations = afterChild ? fixture.rule.cssRules[1].style : fixture.rule.style;
+      assert_equals(declarations.color, 'rgb(2, 2, 2)');
+      assert_equals(declarations.backgroundColor, 'rgb(1, 1, 1)');
+    }, `Discarded qualified rule ${invalid}, after retained child: ${afterChild}`);
+  }
+}
+
+test(() => {
+  const fixture = parse(`.x { color: red; & {} color: green; @unknown {}
+    background-color: blue; @another; width: 1px; @media all {} color: black; }`);
+  const rule = fixture.rule;
+  assert_equals(rule.style.color, 'red');
+  assert_equals(rule.cssRules.length, 4);
+  assert_equals(rule.cssRules[0].cssRules.length, 0);
+  assert_true(rule.cssRules[1] instanceof CSSNestedDeclarations);
+  assert_equals(rule.cssRules[1].style.color, 'green');
+  assert_equals(rule.cssRules[1].style.backgroundColor, 'blue');
+  assert_equals(rule.cssRules[1].style.width, '1px');
+  assert_true(rule.cssRules[2] instanceof CSSMediaRule);
+  assert_equals(rule.cssRules[2].cssRules.length, 0);
+  assert_equals(rule.cssRules[3].style.color, 'black');
+  for (const child of rule.cssRules) assert_equals(child.parentRule, rule);
+}, 'Empty retained rules separate trailing declaration runs');
+
+test(() => {
+  const fixture = parse(`.x { color: red !important; --token: first !important;
+    @unknown {} color: green; --token: second;
+    & {} color: blue; --token: third; @unknown;
+    color: black !important; --token: fourth !important; }`);
+  const parent = fixture.rule;
+  assert_equals(parent.style.color, 'red');
+  assert_equals(parent.style.getPropertyValue('--token'), 'first');
+  assert_equals(parent.style.getPropertyPriority('color'), 'important');
+  assert_equals(parent.style.getPropertyPriority('--token'), 'important');
+  assert_equals(parent.cssRules.length, 2);
+  const trailing = parent.cssRules[1].style;
+  assert_equals(trailing.color, 'black');
+  assert_equals(trailing.getPropertyValue('--token'), 'fourth');
+  assert_equals(trailing.getPropertyPriority('color'), 'important');
+  assert_equals(trailing.getPropertyPriority('--token'), 'important');
+}, 'Recovered declarations retain importance and custom-property order');
+
+for (const group of ['@media all', '@supports (color: red)', '@layer named', '@container (width > 0px)']) {
+  test(() => {
+    const fixture = parse(`.x { ${group} { @unknown {} color: red; @another; color: green;
+      & {} width: 1px; @unknown; height: 2px; } }`);
+    const parent = fixture.rule.cssRules[0];
+    assert_equals(parent.cssRules.length, 3);
+    assert_true(parent.cssRules[0] instanceof CSSNestedDeclarations);
+    assert_equals(parent.cssRules[0].style.color, 'green');
+    assert_equals(parent.cssRules[1].cssRules.length, 0);
+    assert_equals(parent.cssRules[2].style.width, '1px');
+    assert_equals(parent.cssRules[2].style.height, '2px');
+    for (const child of parent.cssRules) assert_equals(child.parentRule, parent);
+  }, `${group} retains its leading declaration wrapper`);
+}
+</script>

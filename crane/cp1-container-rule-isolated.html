@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Container rule conditions and children serialize through CSSOM</title>
+<link rel="help" href="https://drafts.csswg.org/css-conditional-5/#the-csscontainerrule-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync('@container Name (width>=10px), style(--FOO: bar   baz) { div { color: red } }');
+  assert_equals(sheet.cssRules.length, 1);
+  const rule = sheet.cssRules[0];
+  assert_true(rule instanceof CSSContainerRule);
+  assert_equals(rule.conditionText, 'Name (width >= 10px), style(--FOO: bar   baz)');
+  assert_equals(rule.containerName, '');
+  assert_equals(rule.containerQuery, '');
+  assert_true(Object.isFrozen(rule.conditions));
+  assert_equals(rule.conditions.length, 2);
+  assert_equals(rule.conditions[0].name, 'Name');
+  assert_equals(rule.conditions[0].query, '(width >= 10px)');
+  assert_equals(rule.conditions[1].query, 'style(--FOO: bar   baz)');
+  assert_equals(rule.cssRules[0].selectorText, 'div');
+  rule.insertRule('span { color: green }', 1);
+  assert_equals(rule.cssRules.length, 2);
+  rule.deleteRule(0);
+  assert_equals(rule.cssRules[0].selectorText, 'span');
+}, 'Container CSSOM preserves conditions, custom-property text and grouping operations');
+</script>

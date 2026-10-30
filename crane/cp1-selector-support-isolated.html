@@ -1,0 +1,10 @@
+<!doctype html>
+<title>Selector support checks are not forgiving</title>
+<link rel="help" href="https://drafts.csswg.org/css-conditional-4/#supports-selector-fn">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_false(CSS.supports('selector(:has(:is(.a, 123)))'));
+}, 'selector() rejects a selector whose inner forgiving list would discard an invalid branch');
+</script>

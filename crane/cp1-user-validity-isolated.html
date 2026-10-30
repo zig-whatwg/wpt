@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>User validity changes at submission attempts and resets</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#concept-form-submit">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<form id="form">
+  <input id="input" required>
+  <textarea id="textarea" required></textarea>
+  <select id="select" required><option value="">Choose</option><option value="x">x</option></select>
+  <fieldset id="fieldset"></fieldset>
+</form>
+<script>
+test(() => {
+  const form = document.getElementById('form');
+  const controls = ['input', 'textarea', 'select'].map(id => document.getElementById(id));
+  form.addEventListener('submit', event => event.preventDefault());
+  controls.forEach(control => assert_false(control.matches(':user-valid, :user-invalid'), control.id + ' initially'));
+  form.checkValidity();
+  controls.forEach(control => assert_false(control.matches(':user-valid, :user-invalid'), control.id + ' checkValidity is not a submission'));
+  form.requestSubmit();
+  controls.forEach(control => assert_true(control.matches(':user-invalid'), control.id + ' submission attempt'));
+  assert_false(form.matches(':user-valid, :user-invalid'), 'form never has user validity');
+  assert_false(document.getElementById('fieldset').matches(':user-valid, :user-invalid'), 'fieldset never has user validity');
+  controls.forEach(control => { control.value = 'x'; });
+  controls.forEach(control => assert_true(control.matches(':user-valid'), control.id + ' constraints stay live after the attempt'));
+  form.reset();
+  controls.forEach(control => assert_false(control.matches(':user-valid, :user-invalid'), control.id + ' reset'));
+}, 'A submission attempt marks every native control; reset clears the flag');
+</script>

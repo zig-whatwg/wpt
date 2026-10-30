@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>CSS stylesheet byte decoding: UTF-16 BOM overrides transport</title>
+<link rel=help href="https://drafts.csswg.org/css-syntax-3/#input-byte-stream">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+promise_test(async t => {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'data:text/css;charset=windows-1251,%FF%FE.%00%E9%00%7B%00c%00o%00l%00o%00r%00:%00r%00e%00d%00%7D%00';
+  t.add_cleanup(() => link.remove());
+  const loaded = new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = reject;
+  });
+  document.head.append(link);
+  await loaded;
+  assert_equals(link.sheet.cssRules.length, 1);
+  assert_equals(link.sheet.cssRules[0].selectorText, '.é');
+}, 'UTF-16LE BOM overrides an HTTP-equivalent windows-1251 charset');
+</script>

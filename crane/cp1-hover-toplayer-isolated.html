@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hover state stops at a top-layer element</title>
+<link rel="help" href="https://drafts.csswg.org/selectors/#the-hover-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<div id="outer"><dialog id="dialog"><button id="button">Target</button></dialog></div>
+<script>
+promise_test(async t => {
+  const dialog = document.getElementById('dialog');
+  const button = document.getElementById('button');
+  dialog.showModal();
+  t.add_cleanup(() => dialog.close());
+  await new test_driver.Actions().pointerMove(1, 1, {origin: button}).send();
+  assert_true(button.matches(':hover'));
+  assert_true(dialog.matches(':hover'));
+  assert_false(document.getElementById('outer').matches(':hover'));
+}, 'A modal dialog bounds the hover ancestor chain');
+</script>

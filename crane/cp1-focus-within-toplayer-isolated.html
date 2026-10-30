@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Focus within stops at the innermost top-layer element</title>
+<link rel="help" href="https://drafts.csswg.org/selectors/#the-focus-within-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="outer"><dialog id="dialog"><div id="popover" popover><input id="input"></div></dialog></div>
+<script>
+test(t => {
+  const dialog = document.getElementById('dialog');
+  const popover = document.getElementById('popover');
+  const input = document.getElementById('input');
+  dialog.showModal();
+  t.add_cleanup(() => dialog.close());
+  popover.showPopover();
+  t.add_cleanup(() => popover.hidePopover());
+  input.focus();
+  assert_true(input.matches(':focus'));
+  assert_true(popover.matches(':focus-within'));
+  assert_false(dialog.matches(':focus-within'));
+  assert_false(document.getElementById('outer').matches(':focus-within'));
+}, 'Nested top-layer elements stop focus-within at the inner boundary');
+</script>

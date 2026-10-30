@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Active state stops at a top-layer element</title>
+<link rel="help" href="https://drafts.csswg.org/selectors/#the-active-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<div id="outer"><dialog id="dialog"><button id="button">Target</button></dialog></div>
+<script>
+promise_test(async t => {
+  const dialog = document.getElementById('dialog');
+  const button = document.getElementById('button');
+  const outer = document.getElementById('outer');
+  dialog.showModal();
+  t.add_cleanup(() => dialog.close());
+  const observed = new Promise(resolve => button.addEventListener('mousedown', () => {
+    resolve([button.matches(':active'), dialog.matches(':active'), outer.matches(':active')]);
+  }, {once: true}));
+  await new test_driver.Actions().pointerMove(1, 1, {origin: button}).pointerDown().pointerUp().send();
+  assert_array_equals(await observed, [true, true, false]);
+}, 'A modal dialog bounds the active ancestor chain');
+</script>

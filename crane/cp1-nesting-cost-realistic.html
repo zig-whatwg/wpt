@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>CSS nesting: cold style-flush cost for the realistic 200-rule sheet</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+"use strict";
+// Q80/Q82: a style-flush / matching-path control, not a pure matcher clock.
+// Exact Q59 nested_200 source: 50 components, four rules each. All subjects
+// are fresh and un-hovered; &:hover is evaluated and rejected. No pointer
+// setup, parsing, DOM construction, or assertions are inside the timed span.
+const sheetText = Array.from({length: 50}, (_, i) =>
+  `.card-${i} {color:red; & .body {color:green; &:hover {color:blue; & > .icon {color:black;}}}}\n`
+).join("");
+const style = document.createElement("style");
+style.textContent = sheetText;
+document.head.appendChild(style);
+const rules = style.sheet.cssRules; // Force parsing before constructing subjects.
+let ruleCount = 0;
+function countRules(list) {
+  for (const rule of list) {
+    ++ruleCount;
+    if (rule.cssRules) countRules(rule.cssRules);
+  }
+}
+countRules(rules);
+test(() => {
+  assert_equals(rules.length, 50);
+  assert_equals(ruleCount, 200);
+}, "realistic nesting setup retains exactly 200 style rules");
+
+const subjects = [];
+const expected = [];
+const fragment = document.createDocumentFragment();
+// 5,000 card/body/icon trees = 15,000 subjects, each read exactly once.
+for (let repetition = 0; repetition < 100; ++repetition) {
+  for (let i = 0; i < 50; ++i) {
+    const card = document.createElement("div");
+    card.className = `card-${i}`;
+    const body = document.createElement("div");
+    body.className = "body";
+    const icon = document.createElement("span");
+    icon.className = "icon";
+    body.appendChild(icon);
+    card.appendChild(body);
+    fragment.appendChild(card);
+    subjects.push(card, body, icon);
+    expected.push("rgb(255, 0, 0)", "rgb(0, 128, 0)", "rgb(0, 128, 0)");
+  }
+}
+document.body.appendChild(fragment);
+test(() => {
+  assert_equals(subjects.length, 15000);
+  assert_equals(document.querySelectorAll(".body:hover").length, 0);
+}, "realistic nesting subjects are fresh and un-hovered");
+
+const colors = new Array(subjects.length);
+const started = performance.now();
+for (let i = 0; i < subjects.length; ++i) {
+  colors[i] = getComputedStyle(subjects[i]).color;
+}
+const elapsed = performance.now() - started;
+test(() => {
+  assert_true(elapsed > 0);
+  assert_array_equals(colors, expected);
+}, `CP1_NESTED_200_FLUSH_MS=${elapsed.toFixed(3)}; 15000 fresh subjects, 200 rules, no hover`);
+</script>

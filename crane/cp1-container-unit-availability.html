@@ -1,0 +1,220 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane container unit eligibility without host geometry</title>
+<link rel="help" href="https://drafts.csswg.org/css-conditional-5/#container-lengths">
+<link rel="help" href="https://drafts.csswg.org/css-contain-2/#containment-size">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Q94–104: an eligible container has unavailable geometry in Crane. Ordinary
+// geometry lengths remain unresolved; scalar and registered consumers select
+// the next declaration before storage. Unregistered tokens use the consumer.
+const axes = [['cqw', 'svw'], ['cqh', 'svh'], ['cqi', 'svi'],
+              ['cqb', 'svb'], ['cqmin', 'svmin'], ['cqmax', 'svmax']];
+let registration = 0;
+function fixture(t) {
+  const outer = document.createElement('section');
+  const inner = document.createElement('section');
+  const target = document.createElement('div');
+  const sheet = document.createElement('style');
+  target.id = 'cp1-container-target';
+  outer.append(inner); inner.append(target);
+  document.body.append(outer); document.head.append(sheet);
+  t.add_cleanup(() => { outer.remove(); sheet.remove(); });
+  return {outer, inner, target, sheet};
+}
+function retained(target, unit) {
+  target.style.left = '2' + unit;
+  assert_equals(target.style.left, '2' + unit, 'specified length');
+  assert_equals(getComputedStyle(target).left, '2' + unit, 'unavailable geometry retained');
+}
+function fallback(target, unit, viewport) {
+  target.style.left = '2' + viewport;
+  const expected = getComputedStyle(target).left;
+  target.style.left = '2' + unit;
+  assert_equals(getComputedStyle(target).left, expected, 'small viewport fallback');
+}
+function register(syntax, initialValue, inherits = false) {
+  const name = '--cp1-container-' + registration++;
+  CSS.registerProperty({name, syntax, initialValue, inherits});
+  return name;
+}
+
+for (const [unit, viewport] of axes) {
+  test(t => {
+    const {target} = fixture(t);
+    fallback(target, unit, viewport);
+    target.style.containerType = 'size';
+    assert_equals(target.style.containerType, 'size');
+    fallback(target, unit, viewport);
+  }, unit + ': no ancestor and the consumer itself use the viewport');
+  test(t => {
+    const {inner, target} = fixture(t);
+    inner.style.containerType = 'size';
+    retained(target, unit);
+  }, unit + ': a size ancestor retains unavailable geometry');
+}
+
+test(t => {
+  const {inner, target} = fixture(t);
+  inner.style.containerType = 'inline-size';
+  target.style.writingMode = 'vertical-rl';
+  for (const unit of ['cqw', 'cqb', 'cqmin', 'cqmax']) retained(target, unit);
+  fallback(target, 'cqh', 'svh'); fallback(target, 'cqi', 'svi');
+}, 'Logical container units use the consumer writing mode');
+
+test(t => {
+  const {outer, inner, target} = fixture(t);
+  outer.style.containerType = 'inline-size';
+  inner.style.cssText = 'container-type:inline-size;writing-mode:vertical-rl';
+  target.style.writingMode = 'horizontal-tb';
+  for (const [unit] of axes) retained(target, unit);
+}, 'Different physical axes select different supporting ancestors');
+
+for (const display of ['none', 'contents']) {
+  test(t => {
+    const {outer, inner, target} = fixture(t);
+    for (const type of ['size', 'inline-size']) {
+      outer.style.containerType = 'normal';
+      inner.style.cssText = `container-type:${type};display:${display}`;
+      for (const [unit, viewport] of axes) fallback(target, unit, viewport);
+      outer.style.containerType = 'size';
+      for (const [unit] of axes) retained(target, unit);
+    }
+  }, 'A ' + display + ' container is skipped to the next boxed ancestor');
+}
+
+for (const [display, eligible] of [['inline', false], ['inline-block', true],
+                                 ['table', false], ['table-cell', false]]) {
+  test(t => {
+    const {inner, target} = fixture(t);
+    for (const type of ['size', 'inline-size']) {
+      inner.style.cssText = `container-type:${type};display:${display}`;
+      if (eligible) retained(target, 'cqw'); else fallback(target, 'cqw', 'svw');
+    }
+  }, display + ': size containment applicability');
+}
+
+test(t => {
+  const {outer, inner, target} = fixture(t);
+  inner.style.containerType = 'size'; outer.style.display = 'none';
+  for (const [unit, viewport] of axes) fallback(target, unit, viewport);
+  outer.style.display = 'block'; target.style.display = 'none';
+  for (const [unit] of axes) retained(target, unit);
+}, 'A hidden container differs from a hidden consumer');
+
+test(t => {
+  const {inner, target} = fixture(t);
+  inner.attachShadow({mode: 'open'}).innerHTML = '<section style="container-type:size"><slot></slot></section>';
+  retained(target, 'cqw');
+}, 'A slotted consumer selects flat-tree ancestors');
+
+test(t => {
+  const {target, sheet} = fixture(t);
+  target.style.containerType = 'size';
+  sheet.textContent = '#cp1-container-target::before { content:""; left:2cqh }';
+  assert_equals(getComputedStyle(target, '::before').left, '2cqh');
+}, 'A generated pseudo includes its originating element as a container');
+
+test(t => {
+  const {inner, target} = fixture(t);
+  inner.style.containerType = 'scroll-state';
+  for (const [unit, viewport] of axes) fallback(target, unit, viewport);
+  inner.style.containerType = 'size scroll-state';
+  for (const [unit] of axes) retained(target, unit);
+}, 'Scroll-state alone has no size axes');
+
+test(t => {
+  const {inner, target, sheet} = fixture(t);
+  inner.style.containerType = 'size';
+  sheet.textContent = '#cp1-container-target { tab-size:7; color:rgb(9,8,7); font-size:14px }';
+  target.style.cssText = '--scalar:sign(2cqw - 10px); tab-size:var(--scalar); color:rgb(sign(2cqw - 10px) 0 0); font-size:10cqw; width:10cqw';
+  const computed = getComputedStyle(target);
+  assert_equals(computed.tabSize, '7');
+  assert_equals(computed.color, 'rgb(9, 8, 7)');
+  assert_equals(computed.fontSize, '14px');
+  assert_equals(computed.width, '10cqw');
+  target.style.tabSize = 'calc(2cqw / 1cqw)';
+  assert_equals(getComputedStyle(target).tabSize, '2');
+}, 'Scalar and font consumers skip unavailable input; geometry and canceled dependencies remain');
+
+for (const [syntax, initial, low, high, expected] of [
+  ['<number>', '4', '7', 'sign(2cqw - 10px)', '7'],
+  ['<length>', '4px', '7px', '10cqw', '7px'],
+  ['<number>#', '4,5', '7,8', '9,sign(2cqw - 10px)', '7, 8'],
+  ['<length>#', '4px,5px', '7px,8px', '9px,10cqw', '7px, 8px'],
+  ['<number> | <length>', '4', '7px', 'sign(2cqw - 10px)', '7px']
+]) {
+  test(t => {
+    const {inner, target, sheet} = fixture(t);
+    inner.style.containerType = 'size';
+    const name = register(syntax, initial);
+    sheet.textContent = `#cp1-container-target { ${name}:${low} }`;
+    target.style.setProperty(name, high);
+    assert_equals(getComputedStyle(target).getPropertyValue(name).trim(), expected);
+  }, 'Registered ' + syntax + ': availability is decided before custom storage');
+}
+
+test(t => {
+  const {inner, target, sheet} = fixture(t);
+  inner.style.containerType = 'inline-size';
+  const name = register('<length>', '4px', true);
+  sheet.textContent = `#cp1-container-target { ${name}:7px }`;
+  target.style.cssText = `${name}:2cqi; writing-mode:horizontal-tb`;
+  const child = document.createElement('div'); target.append(child);
+  child.style.cssText = `writing-mode:vertical-rl; width:var(${name})`;
+  assert_equals(getComputedStyle(child).width, '7px');
+  assert_equals(getComputedStyle(target).getPropertyValue(name).trim(), '7px');
+  sheet.textContent = '';
+  assert_equals(getComputedStyle(child).width, '4px');
+}, 'An inherited registered length cannot acquire the child container axis');
+
+test(t => {
+  const {inner, target} = fixture(t);
+  inner.style.containerType = 'inline-size';
+  target.style.cssText = '--cq:2cqi; writing-mode:horizontal-tb';
+  const child = document.createElement('div'); target.append(child);
+  child.style.cssText = 'writing-mode:vertical-rl; width:2svi';
+  const expected = getComputedStyle(child).width;
+  child.style.width = 'var(--cq)';
+  assert_equals(getComputedStyle(child).width, expected);
+  assert_equals(getComputedStyle(target).getPropertyValue('--cq').trim(), '2cqi');
+}, 'Unregistered inherited token text uses the child container axis');
+
+test(t => {
+  const {inner, target, sheet} = fixture(t);
+  inner.style.containerType = 'size';
+  sheet.textContent = '#cp1-container-target { margin:1px 2px 3px 4px; width:9px }';
+  target.style.margin = 'random-item(fixed sign(2cqw - 10px), 11px, 12px)';
+  const computed = getComputedStyle(target);
+  for (const [side, value] of [['Top','1px'], ['Right','2px'], ['Bottom','3px'], ['Left','4px']])
+    assert_equals(computed['margin' + side], value);
+  assert_equals(computed.width, '9px');
+  target.style.margin = 'random-item(fixed 0, 2cqw, 3px)';
+  for (const side of ['Top', 'Right', 'Bottom', 'Left'])
+    assert_equals(getComputedStyle(target)['margin' + side], '2cqw');
+}, 'A cached shorthand never preserves an unavailable control placeholder');
+
+test(t => {
+  const {inner, target, sheet} = fixture(t);
+  inner.style.containerType = 'size';
+  sheet.textContent = '#cp1-container-target { --cq:7px; font-size:14px }';
+  target.style.cssText = '--cq:random-item(fixed sign(2cqw - 10px), 11px, 12px); width:var(--cq); font-size:var(--cq)';
+  assert_equals(getComputedStyle(target).getPropertyValue('--cq').trim(), '7px');
+  assert_equals(getComputedStyle(target).width, '7px');
+  assert_equals(getComputedStyle(target).fontSize, '7px');
+  target.style.setProperty('--cq', 'random-item(fixed 0, 2cqw, 3px)');
+  assert_equals(getComputedStyle(target).width, '2cqw');
+  assert_equals(getComputedStyle(target).fontSize, '14px');
+}, 'Unregistered custom control input cannot choose stored text from a placeholder');
+
+test(t => {
+  const {inner, target, sheet} = fixture(t);
+  inner.style.containerType = 'size';
+  sheet.textContent = '@layer cp1low,cp1high; @layer cp1low { #cp1-container-target {tab-size:7} ' +
+    '#cp1-container-target {tab-size:sign(2cqw - 10px)}'.repeat(20) +
+    ' } @layer cp1high { #cp1-container-target {tab-size:revert-layer} }';
+  assert_equals(getComputedStyle(target).tabSize, '7');
+}, 'Exact candidate retries preserve revert-layer and exceed fixed small depths');
+</script>

@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>CSS Syntax stylesheet encoding precedence and imported environments</title>
+<link rel=help href="https://drafts.csswg.org/css-syntax-3/#input-byte-stream">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+function bytes(text) { return Uint8Array.from(text, c => c.charCodeAt(0)); }
+function resource(t, content, type = 'text/css') {
+  const url = URL.createObjectURL(new Blob([content], {type}));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  return url;
+}
+async function sheet(t, content, type, charset) {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  if (charset !== undefined) link.charset = charset;
+  link.href = resource(t, content, type);
+  t.add_cleanup(() => link.remove());
+  const loaded = new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = () => reject(new Error('stylesheet load failed'));
+  });
+  document.head.append(link);
+  await loaded;
+  return link.sheet;
+}
+for (const [name, source, type, charset, expected] of [
+  ['HTTP charset precedes @charset and link charset', '@charset "windows-1250";.\xe0{color:red}', 'text/css;charset=windows-1251', 'windows-1252', '.а'],
+  ['invalid HTTP charset falls through to @charset', '@charset "windows-1250";.\xe0{color:red}', 'text/css;charset=bogus', 'windows-1251', '.ŕ'],
+  ['link charset supplies the environment', '.\xe0{color:red}', 'text/css', 'windows-1251', '.а'],
+  ['UTF-16 @charset is treated as UTF-8', '@charset "utf-16";.\xc3\xa9{color:red}', 'text/css', 'windows-1251', '.é'],
+  ['uppercase CHARSET is not an encoding signature', '@CHARSET "windows-1250";.\xe0{color:red}', 'text/css', 'windows-1251', '.а'],
+  ['invalid link charset falls through to UTF-8 document', '.\xc3\xa9{color:red}', 'text/css', 'bogus', '.é'],
+  ['UTF-8 BOM overrides transport', '\xef\xbb\xbf.\xc3\xa9{color:red}', 'text/css;charset=windows-1251', 'windows-1250', '.é'],
+]) {
+  promise_test(async t => {
+    const result = await sheet(t, bytes(source), type, charset);
+    assert_equals(result.cssRules.length, 1);
+    assert_equals(result.cssRules[0].selectorText, expected);
+  }, name);
+}
+promise_test(async t => {
+  const child = resource(t, bytes('.\xe0{color:red}'));
+  const parent = await sheet(t, bytes('@charset "windows-1251";@import "' + child + '";'), 'text/css');
+  assert_equals(parent.cssRules[0].styleSheet.cssRules[0].selectorText, '.а');
+}, 'imported stylesheet inherits the decoded parent encoding');
+promise_test(async t => {
+  const child = resource(t, bytes('.child{color:red}'), 'text/css;charset=utf-8');
+  const text = '@import "' + child + '";.é{color:red}';
+  const encoded = Uint8Array.from([0xff, 0xfe, ...Array.from(text).flatMap(c => [c.charCodeAt(0) & 255, c.charCodeAt(0) >> 8])]);
+  const parent = await sheet(t, encoded, 'text/css');
+  assert_equals(parent.cssRules.length, 2);
+  assert_equals(parent.cssRules[0].styleSheet.cssRules[0].selectorText, '.child');
+  assert_equals(parent.cssRules[1].selectorText, '.é');
+}, 'UTF-16 imports are discovered from decoded stylesheet text');
+promise_test(async t => {
+  const result = await sheet(t, bytes('\xef\xbb\xbf\xef\xbb\xbffoo{color:red}'), 'text/css');
+  assert_equals(result.cssRules[0].selectorText, '\ufefffoo');
+}, 'only the leading BOM is removed and decoded text is not decoded twice');
+</script>

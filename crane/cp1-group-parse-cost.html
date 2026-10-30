@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>CSS group parsing scales with the number of ident-led rules</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body><script>
+"use strict";
+// Review M1: one observation per tree, an untimed scaling diagnostic.
+// Construct source and elements outside the measured assignment/CSSOM read.
+function source(n) {
+  const selectors = ["div", "li a", "a:hover"];
+  return "@media all {" + Array.from({length: n}, (_, i) =>
+    `${selectors[i % selectors.length]}{color:red}`).join("") + "}";
+}
+const inputs = [1000, 2000].map(n => ({n, text: source(n), style: document.createElement("style")}));
+for (const input of inputs) document.head.appendChild(input.style);
+const results = inputs.map(({n, text, style}) => {
+  const start = performance.now();
+  style.textContent = text;
+  const count = style.sheet.cssRules[0].cssRules.length;
+  const ms = performance.now() - start;
+  return {n, count, ms};
+});
+test(() => {
+  for (const result of results) {
+    assert_equals(result.count, result.n);
+    assert_greater_than(result.ms, 0);
+  }
+}, `CP1_GROUP_PARSE_N1000_MS=${results[0].ms.toFixed(3)}; N2000_MS=${results[1].ms.toFixed(3)}; RATIO=${(results[1].ms / results[0].ms).toFixed(6)}`);
+</script>

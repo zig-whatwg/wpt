@@ -107,9 +107,9 @@ promise_test(async t => {
 
 promise_test(async t => {
   await assert_command_rejects(
-      new test_driver.Actions().pointerMove(10, 10).pointerDown().pointerUp().send(),
-      "unsupported operation", "a viewport-coordinate move needs layout");
-}, "A coordinate-only pointer move is rejected as unsupported");
+      new test_driver.Actions().pointerMove(10, 10, {origin: "pointer"}).pointerDown().pointerUp().send(),
+      "unsupported operation", "a relative pointer-origin offset is unsupported");
+}, "A relative pointer-origin offset is rejected as unsupported");
 
 promise_test(async t => {
   const target = document.getElementById("target");

@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: will-change preserves custom identifiers through computation</title>
+<link rel="help" href="https://drafts.csswg.org/css-will-change-1/#will-change">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  target.style.willChange = 'TRANSFORM, Not-A-Property, transform';
+  assert_equals(target.style.willChange, 'TRANSFORM, Not-A-Property, transform');
+  assert_equals(getComputedStyle(target).willChange, 'TRANSFORM, Not-A-Property, transform');
+}, 'will-change preserves custom-ident case, ordering, and computed values');
+</script>

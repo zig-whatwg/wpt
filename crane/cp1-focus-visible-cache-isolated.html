@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Keyboard modality changes focus-visible without moving focus</title>
+<link rel="help" href="https://drafts.csswg.org/selectors/#the-focus-visible-pseudo">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>
+#target { color: rgb(255, 0, 0) }
+#target:focus-visible { color: rgb(0, 128, 0) }
+</style>
+<div id="target" tabindex="0">Keyboard target</div>
+<script>
+promise_test(async () => {
+  const target = document.getElementById('target');
+  target.addEventListener('keydown', e => e.preventDefault());
+  await test_driver.click(target);
+  assert_equals(document.activeElement, target);
+  assert_false(target.matches(':focus-visible'), 'Pointer focus uses pointer modality');
+  assert_equals(getComputedStyle(target).color, 'rgb(255, 0, 0)', 'Populate the pointer-modality style cache');
+  await test_driver.send_keys(target, '\ue014');
+  assert_equals(document.activeElement, target, 'Focus did not move');
+  assert_true(target.matches(':focus-visible'), 'Canceled keydown still switches the matching state');
+  assert_equals(getComputedStyle(target).color, 'rgb(0, 128, 0)', 'Computed style uses the new matching state');
+}, 'Focus-visible style cache follows input modality even when keydown is canceled');
+</script>

@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stylesheet selector prefixes resolve through namespace rules</title>
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#namespaces">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@namespace svg url(http://www.w3.org/2000/svg);
+svg|*.target { color: rgb(1, 2, 3); }
+</style>
+<svg class="target" id="target"></svg>
+<script>
+test(() => {
+  const rules = document.styleSheets[0].cssRules;
+  assert_equals(rules.length, 2, 'the named-prefix style rule is retained');
+  assert_equals(rules[1].selectorText, 'svg|*.target');
+  assert_equals(getComputedStyle(document.getElementById('target')).color, 'rgb(1, 2, 3)');
+}, 'a declared namespace prefix selects an SVG element');
+</script>

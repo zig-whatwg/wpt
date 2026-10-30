@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nested declarations preserve cascade order and parent selectors</title>
+<link rel="help" href="https://drafts.csswg.org/css-nesting-1/#nested-declarations-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="rules">
+#target {
+  color: red;
+  @media all { color: blue; }
+  color: green;
+  > .child { color: purple; }
+}
+</style>
+<div id="target"><span class="child">child</span></div>
+<script>
+test(() => {
+  const rule = document.getElementById('rules').sheet.cssRules[0];
+  assert_equals(rule.cssRules.length, 3);
+  assert_true(rule.cssRules[1] instanceof CSSNestedDeclarations);
+  assert_equals(rule.cssRules[1].style.color, 'green');
+  assert_equals(rule.cssRules[2].selectorText, '& > .child');
+  assert_equals(getComputedStyle(document.getElementById('target')).color, 'rgb(0, 128, 0)');
+  assert_equals(getComputedStyle(document.querySelector('.child')).color, 'rgb(128, 0, 128)');
+  rule.selectorText = '#missing';
+  assert_not_equals(getComputedStyle(document.querySelector('.child')).color, 'rgb(128, 0, 128)',
+                    'Changing the parent rebuilds its descendants');
+}, 'Nested declarations keep their order and relative children follow the parent');
+</script>

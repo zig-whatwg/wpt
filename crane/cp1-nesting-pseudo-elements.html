@@ -1,0 +1,42 @@
+<!doctype html>
+<title>Nesting parent selectors exclude pseudo-elements while nested declarations retain them</title>
+<link rel="help" href="https://drafts.csswg.org/css-nesting-1/#nest-selector">
+<link rel="help" href="https://drafts.csswg.org/css-nesting-1/#nested-declarations-rule">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="sheet">
+.parent::before {
+  content: "parent";
+  color: green;
+  &::before { color: red; }
+}
+.plain, .pseudo::before {
+  & .child { color: green; }
+}
+.plain .child { color: red; }
+.declarations::before {
+  content: "declarations";
+  color: red;
+  @media all { color: green; }
+}
+</style>
+<div class="parent" id="parent"></div>
+<div class="plain"><span class="child" id="child"></span></div>
+<div class="declarations" id="declarations"></div>
+<script>
+const testSheet = document.getElementById('sheet').sheet;
+test(() => {
+  assert_equals(testSheet.cssRules[0].cssRules.length, 1);
+  assert_equals(testSheet.cssRules[0].cssRules[0].selectorText, '&::before');
+  assert_equals(getComputedStyle(document.getElementById('parent'), '::before').color, 'rgb(0, 128, 0)');
+}, 'A nesting selector cannot represent the parent pseudo-element');
+test(() => {
+  assert_equals(testSheet.cssRules[1].cssRules.length, 1);
+  assert_equals(getComputedStyle(document.getElementById('child')).color, 'rgb(0, 128, 0)');
+}, 'A mixed parent list keeps its element branch and the maximum specificity');
+test(() => {
+  const nested = testSheet.cssRules[3].cssRules[0].cssRules[0];
+  assert_true(nested instanceof CSSNestedDeclarations);
+  assert_equals(getComputedStyle(document.getElementById('declarations'), '::before').color, 'rgb(0, 128, 0)');
+}, 'Nested declarations retain the parent pseudo-element');
+</script>

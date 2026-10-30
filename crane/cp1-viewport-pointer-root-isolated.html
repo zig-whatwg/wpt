@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane's WPT viewport pointer stand-in preserves element-origin moves</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<div id="target">Element-origin target</div>
+<script>
+// User's 2026-10-27 ruling: this is the runner's explicit no-layout
+// stand-in. Real hosts resolve viewport coordinates with their layout backend.
+promise_test(async () => {
+  const root = document.documentElement;
+  const target = document.getElementById('target');
+  await new test_driver.Actions().pointerMove(0, 0, {origin: target}).send();
+  assert_true(target.matches(':hover'), 'element origin still selects that element');
+  await new test_driver.Actions().pointerMove(0, 0).send();
+  assert_true(root.matches(':hover'), 'default viewport origin selects the root');
+  assert_false(document.body.matches(':hover'), 'the root hit does not hover its body descendant');
+  assert_false(target.matches(':hover'), 'viewport move clears the prior element hit');
+  await new test_driver.Actions().pointerMove(73, 19, {origin: 'viewport'}).send();
+  assert_true(root.matches(':hover'), 'another viewport coordinate selects the same root');
+  await new test_driver.Actions().pointerDown().send();
+  assert_true(root.matches(':active'), 'the viewport hit supplies the ordinary pointer-down target');
+  assert_false(target.matches(':active'), 'the old element is not active');
+  await new test_driver.Actions().pointerUp().send();
+  assert_false(root.matches(':active'), 'pointer up clears root activation');
+  await new test_driver.Actions().pointerMove(0, 0, {origin: target}).send();
+  assert_true(target.matches(':hover'), 'a later element-origin move remains unchanged');
+}, 'Viewport pointer moves use the root stand-in and ordinary pointer state transitions');
+</script>

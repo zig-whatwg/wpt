@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Default namespace constraints and a featureless host</title>
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#featureless">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="host"></div>
+<script>
+const host = document.getElementById('host');
+const root = host.attachShadow({mode: 'open'});
+root.innerHTML = `<style>
+  @namespace "urn:other";
+  :host { color: rgb(0, 128, 0); }
+  .ordinary { background-color: rgb(255, 0, 0); }
+</style><span class="ordinary">child</span>`;
+test(() => {
+  assert_equals(getComputedStyle(host).color, 'rgb(0, 128, 0)');
+}, 'A default namespace does not prevent a featureless host from matching :host');
+test(() => {
+  assert_equals(getComputedStyle(root.querySelector('.ordinary')).backgroundColor,
+                'rgba(0, 0, 0, 0)');
+}, 'The same default namespace constrains an ordinary compound without a type');
+</script>

@@ -1,0 +1,23 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<title>Media stalled selector reads the owner's stalled state</title>
+<link rel="help" href="https://html.spec.whatwg.org/#selector-stalled">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<video muted></video>
+<script>
+promise_test(async t => {
+  const video = document.querySelector('video');
+  t.add_cleanup(() => { video.src = ''; });
+  const stalled = new Promise(resolve => video.addEventListener('stalled', resolve, {once:true}));
+  video.src = '/css/selectors/media/support/stall-resume.py?key={{uuid()}}';
+  await stalled;
+  const played = video.play().catch(() => {});
+  try {
+    assert_true(video.matches(':stalled'), 'a playing, buffering, currently stalled element matches');
+  } finally {
+    video.src = '';
+    await played;
+  }
+}, ':stalled reads the existing media loading state');
+</script>
