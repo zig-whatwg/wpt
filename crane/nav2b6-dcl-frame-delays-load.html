@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame a DOMContentLoaded handler inserts delays the window's load event</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane nav2 batch 6 (the F1 A/B's one loss, trusted-types/
+// inheriting-csp-for-local-schemes.html): "the end" queues DOMContentLoaded
+// (step 6) and then spins the event loop until nothing delays the load event
+// (step 8) - the DOMContentLoaded task runs inside that spin, so a frame its
+// handler inserts delays load, which comes after the frame's own load.
+const events = [];
+const frame = document.createElement('iframe');
+frame.srcdoc = '<p>srcdoc</p><script>window.ready = true;\u003C/script>';
+frame.onload = () => events.push('frame-load:' + frame.contentDocument.URL);
+document.addEventListener('DOMContentLoaded', () => {
+  document.body.append(frame);
+  events.push('appended');
+});
+promise_test(() => new Promise(resolve => window.addEventListener('load', () => {
+  events.push('window-load:' + frame.contentDocument.URL + ':' + frame.contentWindow.ready);
+  resolve();
+})).then(() => {
+  assert_array_equals(events, ['appended', 'frame-load:about:srcdoc', 'window-load:about:srcdoc:true']);
+}), 'the window load event waits for a frame inserted from DOMContentLoaded');
+</script>
