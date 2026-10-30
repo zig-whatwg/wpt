@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Dialog form submission preserves optional values and event ordering</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#form-submission-algorithm">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+function fixture(t, markup = '<button>Submit</button>') {
+  const dialog = document.body.appendChild(document.createElement('dialog'));
+  dialog.innerHTML = '<form method=dialog>' + markup + '</form>';
+  t.add_cleanup(() => dialog.remove());
+  dialog.returnValue = 'preserved';
+  dialog.show();
+  return {dialog, form: dialog.firstElementChild,
+          submitter: dialog.querySelector('button, input')};
+}
+
+for (const [attribute, expected] of [[null, 'preserved'], ['', ''], ['accepted', 'accepted']]) {
+  for (const markup of ['<button>Submit</button>', '<input type=submit>']) {
+    test(t => {
+      const {dialog, form, submitter} = fixture(t, markup);
+      if (attribute !== null) submitter.setAttribute('value', attribute);
+      form.requestSubmit(submitter);
+      assert_false(dialog.open, 'submission closes the ancestor dialog');
+      assert_equals(dialog.returnValue, expected);
+    }, markup + ' optional value ' + JSON.stringify(attribute));
+  }
+}
+
+test(t => {
+  const {dialog, form, submitter} = fixture(t, '<input type=image name=picture>');
+  let entries;
+  form.addEventListener('formdata', event => entries = event.formData);
+  submitter.click();
+  assert_false(dialog.open);
+  assert_equals(dialog.returnValue, entries.get('picture.x') + ',' + entries.get('picture.y'));
+  assert_equals(dialog.returnValue, '0,0', 'synthetic activation selects the origin');
+}, 'image return value and entry list use the same selected coordinate');
+
+test(t => {
+  const {dialog, form, submitter} = fixture(t);
+  let formdata = false;
+  form.addEventListener('submit', event => event.preventDefault());
+  form.addEventListener('formdata', () => formdata = true);
+  form.requestSubmit(submitter);
+  assert_true(dialog.open);
+  assert_equals(dialog.returnValue, 'preserved');
+  assert_false(formdata);
+}, 'canceling submit prevents dialog closure and entry construction');
+
+test(t => {
+  const {dialog, form, submitter} = fixture(t, '<button name=result value=before>Submit</button>');
+  form.addEventListener('formdata', event => {
+    event.formData.set('result', 'entry-only');
+    submitter.value = 'after';
+  });
+  form.requestSubmit(submitter);
+  assert_false(dialog.open);
+  assert_equals(dialog.returnValue, 'after', 'read the submitter after formdata');
+}, 'formdata changes are observed through the submitter, not its entry');
+
+test(t => {
+  const {dialog, form, submitter} = fixture(t, '<button value=captured>Submit</button>');
+  dialog.addEventListener('beforetoggle', () => submitter.value = 'replacement');
+  form.requestSubmit(submitter);
+  assert_false(dialog.open);
+  assert_equals(dialog.returnValue, 'captured', 'close snapshots the value before beforetoggle');
+}, 'beforetoggle mutation cannot replace the captured submission value');
+
+test(t => {
+  const {dialog, form, submitter} = fixture(t, '<button value=ignored>Submit</button>');
+  document.body.append(form);
+  t.add_cleanup(() => form.remove());
+  form.requestSubmit(submitter);
+  assert_true(dialog.open);
+  assert_equals(dialog.returnValue, 'preserved');
+}, 'method dialog with no ancestor dialog has no closing target');
+
+test(t => {
+  const {dialog, form} = fixture(t);
+  form.submit();
+  assert_false(dialog.open);
+  assert_equals(dialog.returnValue, '', 'submit() without a submitter clears returnValue');
+}, 'submit() closes and clears the return value without a submitter');
+
+promise_test(async t => {
+  const {dialog, form, submitter} = fixture(t, '<button value=done>Submit</button>');
+  await new Promise(resolve => dialog.addEventListener('toggle', resolve, {once: true}));
+  const order = [];
+  let toggle;
+  form.addEventListener('submit', () => order.push('submit'));
+  form.addEventListener('formdata', () => order.push('formdata'));
+  dialog.addEventListener('beforetoggle', t.step_func(event => {
+    order.push('beforetoggle');
+    assert_equals(event.source, null);
+    assert_false(event.cancelable);
+  }));
+  const toggled = new Promise(resolve => dialog.addEventListener('toggle', event => { toggle = event; resolve(); }, {once: true}));
+  const closed = new Promise(resolve => dialog.addEventListener('close', () => { order.push('close'); resolve(); }, {once: true}));
+  form.requestSubmit(submitter);
+  assert_array_equals(order, ['submit', 'formdata', 'beforetoggle']);
+  await Promise.all([toggled, closed]);
+  assert_equals(toggle.source, null);
+  assert_equals(toggle.oldState, 'open');
+  assert_equals(toggle.newState, 'closed');
+  assert_array_equals(order, ['submit', 'formdata', 'beforetoggle', 'close']);
+}, 'dialog submission uses null source and queues close after synchronous events');
+</script>

@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Queued selectedcontent updates retain a detached select through collection</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/form-elements.html#the-option-element">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+promise_test(async t => {
+  const root = document.body.appendChild(document.createElement('section'));
+  t.add_cleanup(() => root.remove());
+  root.innerHTML = '<select><button><selectedcontent></selectedcontent></button><option>one</option><option>two</option></select>';
+  const selectWeak = new WeakRef(root.firstElementChild);
+  const contentWeak = new WeakRef(root.querySelector('selectedcontent'));
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  root.firstElementChild.options[0].remove();
+  root.firstElementChild.remove();
+  TestUtils.gc();
+  const select = selectWeak.deref();
+  const content = contentWeak.deref();
+  assert_not_equals(select, undefined, 'the queued update retains its detached select');
+  assert_not_equals(content, undefined, 'the select retains the content to update');
+  assert_equals(select.value, 'two');
+  assert_equals(content.textContent, 'one', 'the clone waits for the microtask');
+  await Promise.resolve();
+  assert_equals(content.textContent, 'two', 'the queued update reads the retained select');
+}, 'Option removal keeps a detached select alive until its selectedcontent update');
+</script>

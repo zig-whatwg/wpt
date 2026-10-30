@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Active summary keyboard activation</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#the-summary-element">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-actions.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<body>
+<script>
+for (const key of [' ', '\uE007']) {
+  promise_test(async t => {
+    const details = document.body.appendChild(document.createElement('details'));
+    details.innerHTML = '<summary>First</summary><summary tabindex=0>Second</summary><p>Contents</p>';
+    t.add_cleanup(() => details.remove());
+    const [first, second] = details.querySelectorAll('summary');
+    await test_driver.send_keys(first, key);
+    assert_true(details.open, 'the first summary activates');
+    details.open = false;
+    await test_driver.send_keys(second, key);
+    assert_false(details.open, 'a later summary does not activate');
+    first.addEventListener('keydown', event => event.preventDefault(), {once: true});
+    await test_driver.send_keys(first, key);
+    assert_false(details.open, 'keydown cancellation suppresses activation');
+  }, (key === ' ' ? 'Space' : 'Enter') + ' activates only the first summary and respects cancellation');
+}
+</script>

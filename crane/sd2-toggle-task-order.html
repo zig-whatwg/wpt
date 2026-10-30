@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Toggle tasks run before a subsequently queued zero-delay timer</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#queue-a-dialog-toggle-event-task">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+for (const tag of ['details', 'dialog']) {
+  promise_test(async t => {
+    const element = document.body.appendChild(document.createElement(tag));
+    t.add_cleanup(() => element.remove());
+    const order = [];
+    element.addEventListener('toggle', event => {
+      order.push('toggle');
+      assert_equals(event.source, null);
+    }, {once: true});
+    const open = async () => tag === 'dialog' ? element.show() : element.open = true;
+    await open();
+    await new Promise(resolve => t.step_timeout(() => {
+      order.push('timer');
+      resolve();
+    }, 0));
+    assert_array_equals(order, ['toggle', 'timer']);
+  }, tag + ': opening toggle precedes a subsequent zero-delay timer');
+}
+for (const tag of ['details', 'dialog']) {
+  promise_test(async t => {
+    const element = document.body.appendChild(document.createElement(tag));
+    t.add_cleanup(() => element.remove());
+    const order = [];
+    element.addEventListener('toggle', () => order.push('toggle'), {once: true});
+    await new Promise(resolve => t.step_timeout(resolve, 0));
+    const open = async () => tag === 'dialog' ? element.show() : element.open = true;
+    await open();
+    await new Promise(resolve => t.step_timeout(() => {
+      order.push('timer');
+      resolve();
+    }, 0));
+    assert_array_equals(order, ['toggle', 'timer']);
+  }, tag + ': opening from a timer turn precedes a subsequent zero-delay timer');
+}
+</script>

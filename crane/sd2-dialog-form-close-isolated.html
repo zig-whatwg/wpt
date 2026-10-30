@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Isolated dialog form submission</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#form-submission-algorithm">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<dialog><form method=dialog><button value=accepted>Submit</button></form></dialog>
+<script>
+test(() => {
+  const dialog = document.querySelector('dialog');
+  dialog.show();
+  document.querySelector('button').click();
+  assert_false(dialog.open, 'method=dialog closes its ancestor');
+  assert_equals(dialog.returnValue, 'accepted');
+}, 'dialog form submission closes with the submitter value');
+</script>

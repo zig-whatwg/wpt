@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Fragment navigation reveals details ancestors without layout</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interaction.html#ancestor-revealing-algorithm">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<body>
+<script>
+promise_test(async t => {
+  const outer = document.body.appendChild(document.createElement('details'));
+  outer.innerHTML = '<summary>Outer</summary><details><summary>Inner</summary><span id=sd2-fragment-content>Target</span></details>';
+  t.add_cleanup(() => { outer.remove(); history.replaceState(null, '', location.pathname); });
+  const inner = outer.querySelector('details');
+  location.hash = '#sd2-fragment-content';
+  await new Promise(requestAnimationFrame);
+  assert_true(inner.open, 'inner details is revealed');
+  assert_true(outer.open, 'outer details is revealed');
+  assert_equals(document.querySelector(':target').id, 'sd2-fragment-content');
+}, 'a fragment reveals nested closed details ancestors');
+
+promise_test(async t => {
+  const details = document.body.appendChild(document.createElement('details'));
+  details.innerHTML = '<i></i><summary><span id=sd2-fragment-summary>Summary target</span></summary><p>Contents</p>';
+  t.add_cleanup(() => { details.remove(); history.replaceState(null, '', location.pathname); });
+  location.hash = '#sd2-fragment-summary';
+  await new Promise(requestAnimationFrame);
+  assert_false(details.open, 'the first summary is outside the hidden contents');
+  assert_equals(document.querySelector(':target').id, 'sd2-fragment-summary');
+}, 'a fragment inside the active summary does not reveal its details');
+</script>

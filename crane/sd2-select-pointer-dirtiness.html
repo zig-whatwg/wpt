@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Trusted pointer picking closes base select and sets option dirtiness</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/form-elements.html#concept-select-pick">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/resources/testdriver.js></script>
+<script src=/resources/testdriver-vendor.js></script>
+<script src=/resources/testdriver-actions.js></script>
+<style>select, select::picker(select) { appearance: base-select; }</style>
+<body>
+<script>
+const clickTarget = element => new test_driver.Actions().pointerMove(0, 0, {origin: element}).pointerDown().pointerUp().send();
+for (const alreadySelected of [true, false]) {
+  promise_test(async t => {
+    const select = document.body.appendChild(document.createElement('select'));
+    select.innerHTML = '<option>one</option><option>two</option>';
+    t.add_cleanup(() => select.remove());
+    const option = select.options[1];
+    if (alreadySelected) option.defaultSelected = true;
+    await clickTarget(select);
+    assert_true(select.matches(':open'), 'pointer opens the picker');
+    await clickTarget(option);
+    assert_false(select.matches(':open'), 'picking closes the picker');
+    assert_equals(select.value, 'two');
+    option.defaultSelected = true;
+    option.defaultSelected = false;
+    assert_equals(select.value, 'two', 'selected attribute no longer controls the dirty option');
+  }, `Pointer picking sets dirtiness when already selected = ${alreadySelected}`);
+}
+</script>
