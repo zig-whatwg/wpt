@@ -1,4 +1,4 @@
-// META: title=Retained heap with the back/forward cache: a popup navigated 3 time(s), three navigations, two pages kept: the oldest evicted by size
+// META: title=Retained heap with the back/forward cache: a popup navigated 3 time(s), three navigations, all three pages kept (the cache holds 8 since nav2 batch 6)
 // META: script=/common/dispatcher/dispatcher.js
 // META: script=/common/utils.js
 // META: script=/html/browsers/browsing-the-web/remote-context-helper/resources/remote-context-helper.js
