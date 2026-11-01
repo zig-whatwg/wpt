@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Block-step shorthand resets after substitution changes</title>
+<link rel="help" href="https://drafts.csswg.org/css-rhythm-1/#block-step-shorthand">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  const target = document.getElementById('target');
+  target.style.cssText = '--step: 3px center down; block-step: var(--step)';
+  const computed = getComputedStyle(target);
+  assert_equals(computed.getPropertyValue('block-step-size'), '3px');
+  assert_equals(computed.getPropertyValue('block-step-align'), 'center');
+  assert_equals(computed.getPropertyValue('block-step-round'), 'down');
+  target.style.setProperty('--step', 'none');
+  assert_equals(computed.getPropertyValue('block-step-size'), 'none');
+  assert_equals(computed.getPropertyValue('block-step-insert'), 'margin-box');
+  assert_equals(computed.getPropertyValue('block-step-align'), 'auto');
+  assert_equals(computed.getPropertyValue('block-step-round'), 'up');
+}, 'substituted block-step resets all omitted longhands');
+</script>

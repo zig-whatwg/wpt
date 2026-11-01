@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>List-style shorthand recomputes anonymous counter styles</title>
+<link rel="help" href="https://drafts.csswg.org/css-lists-3/#list-style-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="child"></div></div>
+<script>
+test(() => {
+  const parent = document.getElementById('parent');
+  const child = document.getElementById('child');
+  parent.style.cssText = '--marker: inside symbols(cyclic "a" "b"); list-style: var(--marker)';
+  assert_equals(getComputedStyle(child).listStyleType, 'symbols(cyclic "a" "b")');
+  assert_equals(getComputedStyle(child).listStylePosition, 'inside');
+  parent.style.setProperty('--marker', 'none');
+  TestUtils.gc();
+  assert_equals(getComputedStyle(child).listStyleType, 'none');
+  assert_equals(getComputedStyle(child).listStyleImage, 'none');
+  assert_equals(getComputedStyle(child).listStylePosition, 'outside');
+}, 'list-style inheritance follows substituted anonymous styles and shorthand resets');
+</script>

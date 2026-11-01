@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One used web font through document.fonts.ready</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const sheet = document.createElement('style');
+  sheet.textContent = '@font-face { font-family: FM1CostAhem; src: url(/fonts/Ahem.ttf); }';
+  const text = document.createElement('span');
+  text.style.fontFamily = 'FM1CostAhem';
+  text.textContent = 'A';
+
+  let done = 0;
+  let errors = 0;
+  let resolveDone;
+  const donePromise = new Promise(resolve => { resolveDone = resolve; });
+  const onDone = function () {
+    done += 1;
+    if (done === 1) resolveDone();
+  };
+  const onError = function () { errors += 1; };
+  document.fonts.addEventListener('loadingdone', onDone);
+  document.fonts.addEventListener('loadingerror', onError);
+  t.add_cleanup(() => {
+    document.fonts.removeEventListener('loadingdone', onDone);
+    document.fonts.removeEventListener('loadingerror', onError);
+    text.remove();
+    sheet.remove();
+  });
+
+  document.head.append(sheet);
+  document.body.append(text);
+
+  const started = performance.now();
+  const family = getComputedStyle(text).fontFamily;
+  await document.fonts.ready;
+  const elapsed = performance.now() - started;
+
+  await donePromise;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+
+  assert_equals(family, 'FM1CostAhem');
+  assert_equals(done, 1);
+  assert_true(errors === 0 || errors === 1);
+  assert_equals(document.fonts.size, 1);
+  assert_equals(document.fonts.status, 'loaded');
+  assert_true(Number.isFinite(elapsed) && elapsed >= 0);
+  console.log('FM1_WEBFONT_STATUS=' + (errors === 1 ? 'error' : 'loaded'));
+  console.log('FM1_WEBFONT_LOAD_MS=' + elapsed.toFixed(3));
+}, 'A used Ahem web font completes document.fonts.ready');
+</script>

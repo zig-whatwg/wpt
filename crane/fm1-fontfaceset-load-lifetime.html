@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>FontFaceSet.load owns its pending faces</title>
+<link rel="help" href="https://drafts.csswg.org/css-font-loading-3/#fontfaceset-load">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  for (const font of ['not a font', 'inherit', 'revert-rule']) {
+    const result = document.fonts.load(font);
+    assert_true(result instanceof Promise);
+    await promise_rejects_dom(t, 'SyntaxError', result);
+  }
+  assert_array_equals(await document.fonts.load('16px FM1AbsentFamily'), []);
+}, 'Invalid syntax rejects a promise and an absent family resolves an empty sequence');
+
+promise_test(async t => {
+  let first = new FontFace('FM1Held', 'url(/fonts/Ahem.ttf?fm1-first)', {unicodeRange: 'U+41'});
+  let second = new FontFace('FM1Held', 'url(/fonts/Ahem.ttf?fm1-second)', {unicodeRange: 'U+42'});
+  t.add_cleanup(() => {
+    if (first) document.fonts.delete(first);
+    if (second) document.fonts.delete(second);
+  });
+  document.fonts.add(second);
+  document.fonts.add(first);
+  const result = document.fonts.load('16px FM1Held', 'AB');
+  document.fonts.delete(first);
+  document.fonts.delete(second);
+  first = second = null;
+  TestUtils.gc();
+  TestUtils.gc();
+  const loaded = await result;
+  assert_equals(loaded.length, 2);
+  assert_not_equals(loaded[0], loaded[1]);
+  assert_equals(loaded[0].family, 'FM1Held');
+  assert_equals(loaded[1].family, 'FM1Held');
+  assert_equals(loaded[0].status, 'loaded');
+  assert_equals(loaded[1].status, 'loaded');
+}, 'Pending load retains both removed unicode-range faces across GC');
+
+promise_test(async t => {
+  let face = new FontFace('FM1Failure', 'url(/fonts/fm1-no-such-font.ttf)');
+  t.add_cleanup(() => { if (face) document.fonts.delete(face); });
+  document.fonts.add(face);
+  const result = document.fonts.load('16px FM1Failure', 'A');
+  document.fonts.delete(face);
+  face = null;
+  TestUtils.gc();
+  await promise_rejects_dom(t, 'NetworkError', result);
+}, 'A failed face still rejects the pending load after its other references are dropped');
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  const ready = new Promise(resolve => { frame.onload = resolve; });
+  frame.srcdoc = '<!doctype html><body></body>';
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await ready;
+  const child = frame.contentWindow;
+  let face = new child.FontFace('FM1Discarded', 'url(/fonts/Ahem.ttf?pipe=trickle(d0.1))');
+  child.document.fonts.add(face);
+  const pending = child.document.fonts.load('16px FM1Discarded', 'A');
+  pending.then(() => {}, () => {});
+  face = null;
+  frame.remove();
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 250));
+  assert_array_equals(await document.fonts.load('16px FM1SurvivingAbsentFamily'), []);
+}, 'Discarding a frame with a pending font load leaves the parent font source usable');
+</script>

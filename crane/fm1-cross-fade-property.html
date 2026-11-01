@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cross-fade currentcolor follows color invalidation</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#cross-fade-function">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  const target = document.getElementById('target');
+  target.style.cssText = 'color:red; --mix: cross-fade(currentcolor 50%, blue); background-image: var(--mix)';
+  assert_equals(getComputedStyle(target).backgroundImage, 'cross-fade(rgb(255, 0, 0) 50%, rgb(0, 0, 255))');
+  target.style.color = 'green';
+  TestUtils.gc();
+  assert_equals(getComputedStyle(target).backgroundImage, 'cross-fade(rgb(0, 128, 0) 50%, rgb(0, 0, 255))');
+}, 'cross-fade retains explicit weights and recomputes currentcolor after invalidation');
+</script>

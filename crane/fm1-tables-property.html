@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Table spacing uses substitution and inheritance</title>
+<link rel="help" href="https://drafts.csswg.org/css-tables-3/#border-spacing-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="child"></div></div>
+<script>
+test(() => {
+  const parent = document.getElementById('parent');
+  const child = document.getElementById('child');
+  parent.style.cssText = '--spacing: 2px 3px; border-spacing: var(--spacing)';
+  assert_equals(getComputedStyle(child).borderSpacing, '2px 3px');
+  parent.style.setProperty('--spacing', '4px 5px');
+  assert_equals(getComputedStyle(child).borderSpacing, '4px 5px');
+}, 'border-spacing inherits both substituted lengths and updates after invalidation');
+</script>

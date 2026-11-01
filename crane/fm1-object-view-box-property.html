@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Object view box uses typed declarations, substitution and explicit inheritance</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-5/#the-object-view-box">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="child"></div></div>
+<script>
+test(() => {
+  const parent = document.getElementById('parent');
+  const child = document.getElementById('child');
+  const value = element => getComputedStyle(element).getPropertyValue('object-view-box');
+  parent.style.cssText = '--view: inset(10%); object-view-box: var(--view)';
+  assert_equals(value(parent), 'inset(10%)');
+  assert_equals(value(child), 'none');
+  child.style.setProperty('object-view-box', 'inherit');
+  assert_equals(value(child), 'inset(10%)');
+  parent.style.setProperty('--view', 'inset(20px 30px)');
+  assert_equals(value(parent), 'inset(20px 30px)');
+  assert_equals(value(child), 'inset(20px 30px)');
+  parent.style.setProperty('object-view-box', 'circle(10px)');
+  assert_equals(parent.style.getPropertyValue('object-view-box'), 'var(--view)');
+  assert_equals(value(parent), 'inset(20px 30px)');
+  child.style.removeProperty('object-view-box');
+  assert_equals(value(child), 'none');
+}, 'object-view-box resolves real custom properties, rejects nonrectangles, and inherits only explicitly');
+</script>

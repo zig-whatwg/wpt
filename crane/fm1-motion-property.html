@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Offset shorthand uses real substitution and resets components</title>
+<link rel="help" href="https://drafts.csswg.org/motion-1/#offset-shorthand">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  const target = document.getElementById('target');
+  target.style.cssText = '--motion: ray(45deg) 20% reverse; offset: var(--motion)';
+  assert_equals(getComputedStyle(target).offsetPath, 'ray(45deg)');
+  assert_equals(getComputedStyle(target).offsetDistance, '20%');
+  assert_equals(getComputedStyle(target).offsetRotate, 'auto 180deg');
+  target.style.setProperty('--motion', 'none');
+  assert_equals(getComputedStyle(target).offsetPath, 'none');
+  assert_equals(getComputedStyle(target).offsetDistance, '0px');
+  assert_equals(getComputedStyle(target).offsetRotate, 'auto');
+  assert_equals(getComputedStyle(target).offsetAnchor, 'auto');
+}, 'offset recomputes its path and resets omitted components after substitution changes');
+</script>

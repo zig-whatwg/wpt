@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Content cross-fade recomputes currentcolor after substitution</title>
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#cross-fade-function">
+<link rel="help" href="https://drafts.csswg.org/css-content-3/#content-property">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+test(() => {
+  const target = document.getElementById('target');
+  target.style.cssText = 'color:red; --mix:cross-fade(currentcolor 50%, blue); content:var(--mix)';
+  assert_equals(getComputedStyle(target).content,
+                'cross-fade(rgb(255, 0, 0) 50%, rgb(0, 0, 255))');
+  target.style.color = 'green';
+  TestUtils.gc();
+  assert_equals(getComputedStyle(target).content,
+                'cross-fade(rgb(0, 128, 0) 50%, rgb(0, 0, 255))');
+}, 'content cross-fade resolves real variable substitution and recomputes currentcolor after invalidation');
+</script>
