@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Trusted Types: a report-only javascript: URL anchor navigation reports its violation before the page leaves</title>
+<link rel=help href="https://w3c.github.io/trusted-types/dist/spec/#require-trusted-types-for-pre-navigation-check">
+<link rel=help href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-to-a-javascript:-url">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#event-loop-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// One case of trusted-types/trusted-types-navigation.html ("Navigate a window
+// via anchor with javascript:-urls in report-only mode."), alone. The popup
+// clicks an anchor whose href is a javascript: URL that sets location.href.
+// Its report-only policy reports the pre-navigation check and lets the code
+// run, which starts a navigation of the popup. The popup then forces a
+// connect-src violation (support/csp-violations.js) and, from that event's
+// task, posts its violations to us - all before the navigation it started
+// commits. Firefox and Safari pass the upstream case every run.
+const kSupport = "/trusted-types/support/";
+promise_test(t => new Promise((resolve, reject) => {
+  const seen = [];
+  const win = window.open(kSupport + "navigation-report-only-support.html");
+  t.add_cleanup(() => { removeEventListener("message", listener); win.close(); });
+  function listener(e) {
+    const d = e.data;
+    if (typeof d === "string") { reject(d); return; }
+    const tag = d.type === "DOMContentLoaded" ? "loaded " + new URL(d.uri).pathname.split("/").pop() + new URL(d.uri).search
+                                              : "violation " + d.effectiveDirective + " " + (d.sample || "").slice(0, 13);
+    seen.push(tag);
+    const done = seen.includes("loaded navigation-report-only-support.html") &&
+                 seen.some(s => s.startsWith("violation require-trusted-types-for Location href")) &&
+                 seen.includes("loaded navigation-support.html?navigationattempted=1&continue=1");
+    if (done) resolve();
+  }
+  addEventListener("message", listener);
+  t.step_timeout(() => reject("messages seen: " + JSON.stringify(seen)), 8000);
+}), "A report-only javascript: URL navigation of a window posts its violation before the window navigates");
+</script>
+</body>

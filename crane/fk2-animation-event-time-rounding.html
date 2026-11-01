@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: playback events queued at one moment keep their queue order, whichever way the scheduled event time rounds</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events">
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#precision-of-time-values">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+'use strict';
+// finish() sets the start time to (timeline time - effect end / rate). The finish event's scheduled event time
+// converts the effect end back, (effect end * (1 / rate) + start time), and in doubles that round trip can land one
+// rounding step ABOVE the timeline time the cancel event right after it is scheduled at - which sorted the cancel
+// event first (Web Animations 1 4.4 step 6). Upstream's update-and-send-events.html "Playback events with the same
+// timeline retain the order in which they are queued" lost about 4 runs in 10 that way.
+//
+// A case needs a finish whose round trip rounds UP at the timeline time it runs at. Which way it rounds depends on
+// the timeline time's lowest bits and on the rate, not on the effect end; Crane's document timeline times are
+// multiples of 2^-3 ms (hr-time's binary grid), where it never rounds up at rate 1. So the test plays animations on
+// timelines with many originTimes (0.1 ms steps leave fine bits) at several rates, and once they are ready, runs
+// finish() then cancel() on every one whose round trip rounds up there. Compared bit for bit, each of those sorted
+// the cancel first; compared at the precision of time values (8.1: microseconds), each keeps queue order.
+
+const END = 100000.1;
+
+// The finish event's scheduled time as Crane computes it (model.zig: finish(), animationTimeToTimelineTime,
+// Timeline.toOriginRelative), and the cancel event's.
+function finishAt(time, rate, origin) { return (END * (1 / rate) + (time - END / rate)) + origin; }
+function cancelAt(time, origin) { return time + origin; }
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
+promise_test(async t => {
+  const target = document.getElementById('target');
+  const cases = [];
+  for (let k = 1; k <= 24; ++k) {
+    for (const rate of [1, 2, 0.3, 3]) {
+      const originTime = 0.1 * k;
+      const timeline = new DocumentTimeline({ originTime });
+      const animation = new Animation(new KeyframeEffect(target, null, END), timeline);
+      animation.playbackRate = rate;
+      animation.play();
+      cases.push({ animation, timeline, rate, originTime, events: [] });
+    }
+  }
+  t.add_cleanup(() => cases.forEach(c => c.animation.cancel()));
+  await Promise.all(cases.map(c => c.animation.ready));
+
+  const roundingUp = cases.filter(c => finishAt(c.timeline.currentTime, c.rate, c.originTime) > cancelAt(c.timeline.currentTime, c.originTime));
+  assert_greater_than(roundingUp.length, 0, 'some timeline time and rate round the finish up');
+  for (const c of roundingUp) {
+    c.time = c.timeline.currentTime;
+    c.animation.onfinish = event => c.events.push(event.type);
+    c.animation.oncancel = event => c.events.push(event.type);
+    c.animation.finish();
+    c.animation.cancel();
+  }
+
+  await nextFrame();
+  await nextFrame();
+  for (const c of roundingUp) {
+    assert_array_equals(c.events, ['finish', 'cancel'],
+      `finish() then cancel() at timeline time ${c.time}, rate ${c.rate}, originTime ${c.originTime}`);
+  }
+}, "finish() then cancel() keeps its order when the finish's scheduled time rounds up");
+
+promise_test(async t => {
+  // Times a microsecond apart still sort by time: the comparison is at the precision of time values, no coarser.
+  const target = document.getElementById('target');
+  const a = target.animate(null, 100000);
+  const b = target.animate(null, 100000);
+  t.add_cleanup(() => { a.cancel(); b.cancel(); });
+  await Promise.all([a.ready, b.ready]);
+  const events = [];
+  a.onfinish = () => events.push('a');
+  b.onfinish = () => events.push('b');
+  // a comes first in composite order but is scheduled to finish 2 microseconds after b.
+  a.currentTime = 100000 - 0.003;
+  b.currentTime = 100000 - 0.001;
+  await nextFrame();
+  await nextFrame();
+  assert_array_equals(events, ['b', 'a'], 'finish events 2 microseconds apart sort by scheduled event time');
+}, 'Scheduled event times a few microseconds apart still sort by time');
+</script>

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: a worker's timeOrigin is never before its creator's performance.timeOrigin + performance.now()</title>
+<link rel="help" href="https://w3c.github.io/hr-time/#time-origin">
+<link rel="help" href="https://w3c.github.io/hr-time/#dfn-coarsen-time">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+'use strict';
+// hr-time/timeOrigin.html's "Window and worker timeOrigins are close when created one after another", fifty times.
+// A worker made right after performance.now() often takes its time origin in the same coarse moment, and then
+// timeOrigin + now() must equal the worker's timeOrigin exactly. On a 0.1 ms grid the double sum rounded one step
+// above it in about 1 case in 5 ("expected >= 1793461618246.4001 but got 1793461618246.4"), so a 50-worker file
+// failed almost every run; on Crane's binary grid (125 us) the sum is exact. The window and every worker also
+// share one estimated monotonic time of the Unix epoch (HR-Time 4), so no worker's timeOrigin is off by an
+// estimate of its own.
+const blobURL = URL.createObjectURL(new Blob(['postMessage(performance.timeOrigin)']));
+
+function workerTimeOrigin() {
+  const before = performance.now();
+  const worker = new Worker(blobURL);
+  return new Promise(resolve => {
+    worker.onmessage = event => {
+      const after = performance.now();
+      worker.terminate();
+      resolve({ before, after, origin: event.data });
+    };
+  });
+}
+
+promise_test(async () => {
+  const windowOrigin = performance.timeOrigin;
+  for (let i = 0; i < 50; ++i) {
+    const { before, after, origin } = await workerTimeOrigin();
+    assert_greater_than_equal(origin, windowOrigin + before,
+      `worker ${i}: its timeOrigin is not before the window's timeOrigin + now() before it was made`);
+    assert_less_than_equal(origin - windowOrigin, after,
+      `worker ${i}: its timeOrigin is not after the window's now() once it answered`);
+  }
+}, 'fifty workers made one after another');
+</script>

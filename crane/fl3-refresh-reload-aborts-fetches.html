@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A Refresh to the document's own URL aborts the document's fetches when its reload begins</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/semantics.html#shared-declarative-refresh-steps">
+<link rel=help href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The frame's document has "Refresh: 0" to its own URL, so it is reloaded as
+// soon as it has loaded. The refresh steps navigate (HTML "shared declarative
+// refresh steps" step 13), and navigate step 24.3 aborts the active document
+// once beforeunload has let the navigation go on - before the new document is
+// fetched. Firefox (nsDocShell::InternalLoad's StopInternal(STOP_NETWORK))
+// and Safari (FrameLoader::continueLoadAfterNavigationPolicy's
+// stopAllLoaders) stop the old document's loads when the refresh's reload
+// begins. So a fetch the document started from its load event is aborted
+// long before its 400 ms response, and before the reload's 2 s response
+// replaces the document.
+async_test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  frame.onload = t.step_func(() => {
+    frame.onload = null;
+    frame.contentWindow.fetch("/common/slow.py?delay=400").then(
+      t.unreached_func("the fetch should have been aborted when the refresh's reload began"),
+      t.step_func_done());
+  });
+  frame.src = "resources/fl3-slow-refresh.py?delay=2000";
+}, "A Refresh: 0 reload aborts the document's fetch before the reloaded document arrives");
+</script>
+</body>
