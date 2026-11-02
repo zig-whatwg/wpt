@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The runner's harness setup applies to a page that calls setup() itself</title>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<!--
+  This meta comes after the harness: at its include the harness does not see
+  it, and keeps the normal 10 s timer. The runner's explicit_timeout (the file
+  is long to the runner) is what lets the last test run past it.
+-->
+<meta name=timeout content=long>
+<div id=log></div>
+<script>
+setup({ explicit_done: true });
+
+test(() => {}, "a first test");
+
+test(() => {
+  // output: false - the harness writes no "Running, ..." status into #log.
+  assert_equals(document.getElementById("log").textContent, "", "#log after the first test");
+}, "the harness's output is off");
+
+async_test(t => {
+  t.step_timeout(() => {
+    t.done();
+    // The completion callback reports the file once the page says it is done.
+    done();
+  }, 10500);
+}, "the runner's explicit timeout outlives the harness's normal timer");
+</script>

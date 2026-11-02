@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The harness is not there before the page includes it</title>
+<!--
+  A browser runs this first script before testharness.js exists: the harness
+  API is not defined yet, and calling it throws a ReferenceError - the script
+  ends there. content-security-policy/generic/generic-0_8_1.sub.html calls
+  async_test() this early, and every browser reports only the one subtest its
+  later scripts make (wpt.fyi 2026-11-02, Chrome 156 / Firefox 159 /
+  Safari 27.2). A runner that loads the harness before the page instead runs
+  the rest of that script, and reports a subtest no browser can.
+-->
+<script>
+window.earlyType = typeof async_test;
+window.earlyError = null;
+try {
+  async_test("made before the harness was included: no browser has this subtest");
+} catch (e) {
+  earlyError = e.name;
+}
+</script>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  assert_equals(earlyType, "undefined", "typeof async_test before the include");
+  assert_equals(earlyError, "ReferenceError", "calling it before the include");
+}, "harness API used before the include throws a ReferenceError");
+</script>

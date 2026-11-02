@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>A long file's harness honours its meta timeout when it loads at its include</title>
+<!--
+  The harness reads <meta name=timeout> from the document when testharness.js
+  runs (WindowTestEnvironment.test_timeout). Loaded at the page's include, it
+  sees this one, and its own timer gives the file the long budget: this test
+  runs past the 10 s normal timeout and must still pass.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+async_test(t => {
+  t.step_timeout(() => t.done(), 10500);
+}, "a long file outlives the normal harness timeout");
+</script>
