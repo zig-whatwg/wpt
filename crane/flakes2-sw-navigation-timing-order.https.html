@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A service-worker-controlled navigation's timing marks keep the order the specs give them</title>
+<link rel="help" href="https://w3c.github.io/ServiceWorker/#create-fetch-event-and-dispatch">
+<link rel="help" href="https://w3c.github.io/navigation-timing/#dom-performancenavigationtiming-fetchstart">
+<link rel="help" href="https://w3c.github.io/hr-time/#dfn-coarsen-time">
+<!--
+  service-workers/service-worker/navigation-timing-extended.https.html asserts
+  these orders strictly. The specs give the order, not a gap: Service Workers'
+  "Create Fetch Event and Dispatch" records the fetch event dispatch time
+  (Navigation Timing's fetchStart under a service worker) at step 17.4.12 and
+  dispatches at 17.4.13, so the handler's first reading is microseconds later,
+  and HR-Time coarsens both onto one grid (Crane: 125 us). Equal is the spec's
+  answer whenever both fall in one coarse tick; so are workerStart (Handle
+  Fetch step 14, before step 15 waits for activation) and the activation's
+  end. What would be wrong is the reverse - fetchStart after the handler ran
+  (Firefox 159 fails the upstream file that way), or before the activation
+  ended (Safari 27.2) - and that is what this file checks, deterministically.
+  Lane flakes2, 2026-11-02.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<script>
+const worker_url = 'resources/flakes2-sw-navigation-timing-order-worker.js';
+
+promise_test(async (t) => {
+  const scope = 'resources/flakes2-sw-navigation-timing-order/activating/';
+  const registration = await service_worker_unregister_and_register(t, worker_url + '?delay=100', scope);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activating');
+  const frame = await with_iframe(scope + 'page');
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  const entry = w.performance.getEntriesByType('navigation')[0];
+  const origin = w.performance.timeOrigin;
+  const workerStart = entry.workerStart + origin;
+  const fetchStart = entry.fetchStart + origin;
+  assert_greater_than(entry.workerStart, 0, 'a controlled navigation has a workerStart');
+  // Marked before the 100 ms activation wait: strictly before its end.
+  assert_less_than(workerStart, w.activateWorkerEnd, 'workerStart is marked before the activation ends');
+  assert_greater_than_equal(fetchStart, w.activateWorkerEnd, 'fetchStart is marked once the worker is activated');
+  assert_greater_than_equal(w.handleFetchEvent, fetchStart, 'fetchStart is marked before the fetch event handler runs');
+}, 'a navigation that waits for its worker to activate');
+
+promise_test(async (t) => {
+  const scope = 'resources/flakes2-sw-navigation-timing-order/active/';
+  const registration = await service_worker_unregister_and_register(t, worker_url, scope);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+  for (let i = 0; i < 20; i++) {
+    const frame = await with_iframe(scope + 'page' + i);
+    const w = frame.contentWindow;
+    const entry = w.performance.getEntriesByType('navigation')[0];
+    const origin = w.performance.timeOrigin;
+    const fetchStart = entry.fetchStart + origin;
+    assert_less_than_equal(entry.workerStart + origin, fetchStart, `navigation ${i}: workerStart is not after fetchStart`);
+    assert_greater_than_equal(w.handleFetchEvent, fetchStart, `navigation ${i}: fetchStart is marked before the fetch event handler runs`);
+    frame.remove();
+  }
+}, 'navigations to an active worker');
+</script>
