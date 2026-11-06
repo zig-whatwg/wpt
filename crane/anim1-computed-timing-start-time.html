@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: getComputedTiming() reports the effect's start time</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-2/#dom-computedeffecttiming-starttime">
+<link rel="help" href="https://drafts.csswg.org/web-animations-2/#animation-effect-start-time">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+'use strict';
+// Web Animations 2's ComputedEffectTiming.startTime is the effect's start time: the time its parent group schedules
+// it at - 0 for an effect with no parent group, in milliseconds on a monotonic timeline, whatever its delay.
+const target = document.getElementById('target');
+
+test(t => {
+  const effect = new KeyframeEffect(target, null);
+  assert_equals(effect.getComputedTiming().startTime, 0);
+}, 'An effect with no options has start time 0');
+
+test(t => {
+  const effect = new KeyframeEffect(target, null, { duration: 100, delay: 50 });
+  assert_equals(effect.getComputedTiming().startTime, 0);
+}, 'A delay does not move the start time');
+
+test(t => {
+  const animation = target.animate(null, { duration: 100, delay: -20 });
+  t.add_cleanup(() => animation.cancel());
+  assert_equals(animation.effect.getComputedTiming().startTime, 0);
+}, 'An effect in an animation has start time 0');
+</script>

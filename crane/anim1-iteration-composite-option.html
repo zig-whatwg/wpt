@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: KeyframeEffectOptions.iterationComposite sets the effect's iteration composite operation, and KeyframeEffect(source) copies it</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-2/#dom-keyframeeffect-keyframeeffect">
+<link rel="help" href="https://drafts.csswg.org/web-animations-2/#dom-keyframeeffect-keyframeeffect-source">
+<link rel="help" href="https://drafts.csswg.org/web-animations-2/#effect-accumulation-section">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+'use strict';
+// Web Animations 2 amends the KeyframeEffect(target, keyframes, options) constructor's step 5: assign the
+// iterationComposite AND composite properties from options. Element.animate() makes its effect with that
+// constructor's steps, so the option reaches the effect through both.
+const target = document.getElementById('target');
+
+test(t => {
+  const effect = new KeyframeEffect(target, { marginLeft: ['0px', '10px'] }, { duration: 100, iterationComposite: 'accumulate' });
+  assert_equals(effect.iterationComposite, 'accumulate');
+}, 'The KeyframeEffect constructor assigns iterationComposite from its options');
+
+test(t => {
+  const animation = target.animate({ marginLeft: ['0px', '10px'] }, { duration: 100, iterations: 3, iterationComposite: 'accumulate' });
+  t.add_cleanup(() => animation.cancel());
+  assert_equals(animation.effect.iterationComposite, 'accumulate');
+  animation.pause();
+  // The start of the third iteration: two iterations' end values accumulate onto the first keyframe.
+  animation.currentTime = 200;
+  assert_equals(getComputedStyle(target).marginLeft, '20px');
+  // The middle of the third iteration.
+  animation.currentTime = 250;
+  assert_equals(getComputedStyle(target).marginLeft, '25px');
+}, 'Element.animate() applies the iterationComposite option to the effect value');
+
+test(t => {
+  const source = new KeyframeEffect(target, { marginLeft: ['0px', '10px'] }, { duration: 100, iterationComposite: 'accumulate' });
+  const copy = new KeyframeEffect(source);
+  assert_equals(copy.iterationComposite, 'accumulate');
+}, 'KeyframeEffect(source) copies the iteration composite operation');
+
+test(t => {
+  assert_throws_js(TypeError, () => new KeyframeEffect(target, null, { iterationComposite: 'add' }));
+}, 'An iterationComposite that is not an IterationCompositeOperation throws a TypeError');
+</script>

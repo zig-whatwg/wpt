@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: getComputedTiming() reports a null progress, currentIteration and localTime as null, not as absent</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#dom-animationeffect-getcomputedtiming">
+<link rel="help" href="https://webidl.spec.whatwg.org/#es-dictionary">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="target"></div>
+<script>
+'use strict';
+// getComputedTiming() returns a ComputedEffectTiming whose members the method steps set: progress and
+// currentIteration are the timing model's values, null when the effect is not in effect, and localTime is null with
+// no associated animation. A member that is present converts to a property even when its value is null (WebIDL,
+// dictionary to an ECMAScript value).
+const target = document.getElementById('target');
+
+test(t => {
+  const effect = new KeyframeEffect(target, null, { duration: 100 });
+  const timing = effect.getComputedTiming();
+  assert_true('localTime' in timing, 'localTime is present');
+  assert_equals(timing.localTime, null, 'localTime');
+  assert_true('progress' in timing, 'progress is present');
+  assert_equals(timing.progress, null, 'progress');
+  assert_true('currentIteration' in timing, 'currentIteration is present');
+  assert_equals(timing.currentIteration, null, 'currentIteration');
+}, 'An effect with no animation reports null local time, progress and current iteration');
+
+test(t => {
+  const animation = target.animate(null, { duration: 100, delay: 50 });
+  t.add_cleanup(() => animation.cancel());
+  animation.pause();
+  animation.currentTime = 10;
+  const timing = animation.effect.getComputedTiming();
+  assert_equals(timing.localTime, 10, 'localTime');
+  assert_equals(timing.progress, null, 'progress in the before phase with fill none');
+  assert_equals(timing.currentIteration, null, 'currentIteration in the before phase with fill none');
+}, 'An effect in its before phase reports null progress and current iteration');
+</script>

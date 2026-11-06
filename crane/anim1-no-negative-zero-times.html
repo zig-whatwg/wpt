@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: an animation's current time and playback rate read 0, never negative zero</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#the-current-time-of-an-animation">
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#reversing-an-animation-section">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/web-animations/testcommon.js"></script>
+<div id="log"></div>
+<script>
+'use strict';
+// The current time is (timeline time - start time) x playback rate, and reverse() sets the pending playback rate
+// to the additive inverse of the effective one. In doubles a zero offset times a negative rate, and the inverse of
+// a zero rate, are negative zero. Browsers keep times as integers (Blink AnimationTimeDelta, Gecko TimeDuration)
+// and script reads 0; assert_equals tells -0 from 0.
+
+promise_test(async t => {
+  const anim = createDiv(t).animate(null, 100 * MS_PER_SEC);
+  anim.playbackRate = -1;
+  anim.play();
+  await anim.ready;
+  anim.currentTime = 0;
+  assert_equals(anim.currentTime, 0, 'right after the seek');
+  await waitForNextFrame();
+  assert_equals(anim.currentTime, 0, 'after the finished state updated');
+}, 'A reversed animation seeked to zero reads a current time of 0');
+
+promise_test(async t => {
+  const anim = createDiv(t).animate(null, 100 * MS_PER_SEC);
+  await anim.ready;
+  anim.playbackRate = 0;
+  anim.reverse();
+  assert_equals(anim.playbackRate, 0);
+  await anim.ready;
+  assert_equals(anim.playbackRate, 0);
+}, 'reverse() of a zero playback rate leaves it 0');
+</script>

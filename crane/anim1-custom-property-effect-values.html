@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Crane: custom properties in keyframes animate - by their registered syntax, else discretely</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-properties-values-api-1/#animation-behavior-of-custom-properties">
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#animating-custom-properties">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="parent"><div id="target"></div></div>
+<script>
+'use strict';
+// Web Animations 1 applies the effect values of a keyframe effect's target properties to the target's style at the
+// animation origin, custom properties included. An unregistered custom property's animation type is discrete; a
+// registered one interpolates by computed value as the type it parsed as (CSS Properties and Values API 1 2.5).
+const target = document.getElementById('target');
+const parent = document.getElementById('parent');
+
+function seek(animation, time) {
+  animation.pause();
+  animation.currentTime = time;
+}
+
+test(t => {
+  const animation = target.animate({ '--anim1-plain': ['from', 'to'] }, 1000);
+  t.add_cleanup(() => animation.cancel());
+  seek(animation, 250);
+  assert_equals(getComputedStyle(target).getPropertyValue('--anim1-plain'), 'from');
+  seek(animation, 500);
+  assert_equals(getComputedStyle(target).getPropertyValue('--anim1-plain'), 'to');
+}, 'An unregistered custom property animates discretely, flipping at one half');
+
+test(t => {
+  CSS.registerProperty({ name: '--anim1-length', syntax: '<length>', inherits: false, initialValue: '0px' });
+  const animation = target.animate({ '--anim1-length': ['100px', '200px'] }, 1000);
+  t.add_cleanup(() => animation.cancel());
+  seek(animation, 250);
+  assert_equals(getComputedStyle(target).getPropertyValue('--anim1-length'), '125px');
+}, 'A registered <length> custom property interpolates');
+
+test(t => {
+  CSS.registerProperty({ name: '--anim1-used', syntax: '<length>', inherits: false, initialValue: '0px' });
+  target.style.width = 'var(--anim1-used)';
+  t.add_cleanup(() => { target.style.width = ''; });
+  const animation = target.animate({ '--anim1-used': ['100px', '200px'] }, 1000);
+  t.add_cleanup(() => animation.cancel());
+  seek(animation, 500);
+  assert_equals(getComputedStyle(target).width, '150px');
+}, 'A longhand that substitutes an animated custom property reads its animated value');
+
+test(t => {
+  CSS.registerProperty({ name: '--anim1-inherited', syntax: '<number>', inherits: true, initialValue: '0' });
+  const animation = parent.animate({ '--anim1-inherited': ['10', '20'] }, 1000);
+  t.add_cleanup(() => animation.cancel());
+  seek(animation, 500);
+  assert_equals(getComputedStyle(target).getPropertyValue('--anim1-inherited'), '15');
+}, 'An inherited registered custom property animated on the parent reaches the child');
+
+test(t => {
+  CSS.registerProperty({ name: '--anim1-add', syntax: '<length>', inherits: false, initialValue: '100px' });
+  const animation = target.animate({ '--anim1-add': ['200px', '300px'] }, { duration: 1000, composite: 'add' });
+  t.add_cleanup(() => animation.cancel());
+  seek(animation, 500);
+  assert_equals(getComputedStyle(target).getPropertyValue('--anim1-add'), '350px');
+}, 'A registered custom property adds onto its underlying value');
+</script>
