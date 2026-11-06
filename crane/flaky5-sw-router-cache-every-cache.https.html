@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A router rule's "cache" source looks in every cache of the storage key, in order, past one that lacks the request</title>
+<link rel="help" href="https://w3c.github.io/ServiceWorker/#handle-fetch">
+<link rel="help" href="https://w3c.github.io/ServiceWorker/#dom-installevent-addroutes">
+<!--
+  Handle Fetch step 13.3.3.7 walks the storage key's name to cache map. Its
+  step 7.3 reads "If requestResponses is an empty list, return timingInfo",
+  which would end the walk - and send the request to the network - at the
+  first cache that lacks the request. Both browsers that ship static routing
+  look further: Chromium's ServiceWorkerCacheStorageMatcher::Run asks Cache
+  Storage's Match with MultiCacheQueryOptions and no cache name, which is
+  CacheStorage::MatchAllCaches (every cache, the first match in map order),
+  and WebKit's CacheStorageManager::query with an empty name iterates the
+  caches until one has a match (queryCaches, index + 1). Firefox does not ship
+  addRoutes (bug 1855580). The spec's editors describe the source the same
+  way (w3c/ServiceWorker#1797: "cache" matches against all cache storages).
+  Golden rule 2: the shipping browsers; spec issue w3c/ServiceWorker#1853
+  asks for step 7.3 to continue to the next cache. Upstream's static-router-* files use
+  one cache, "v1", so they only fail when a cache another file made comes
+  first in the map: a WPT runner process that had run
+  resource-timing-cross-origin-server-timing.https.html (its worker opens
+  "test-cache" and never deletes it) failed static-router-no-fetch-handler
+  in generation 203. Lane flaky5, 2026-11-05.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<script>
+const WORKER = 'resources/flaky5-sw-router-cache-worker.js';
+const SCOPE = 'resources/flaky5-sw-router-cache/';
+const EARLIER = 'flaky5-router-cache-earlier';
+const OWN = 'flaky5-router-cache-own';
+
+async function setUp(t, rule) {
+  await caches.delete(EARLIER);
+  await caches.delete(OWN);
+  t.add_cleanup(async () => {
+    await caches.delete(EARLIER);
+    await caches.delete(OWN);
+  });
+  // A cache made before the worker's, holding something else: the first in
+  // the name to cache map.
+  const earlier = await caches.open(EARLIER);
+  await earlier.put(new URL(SCOPE + 'other.txt', location).href, new Response('other'));
+  const registration = await service_worker_unregister_and_register(t, WORKER + '?rule=' + rule, SCOPE);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+  assert_array_equals(await caches.keys(), [EARLIER, OWN], 'the earlier cache comes first in the map');
+}
+
+promise_test(async (t) => {
+  await setUp(t, 'cache');
+  const frame = await with_iframe(SCOPE + 'cached.txt');
+  t.add_cleanup(() => frame.remove());
+  assert_equals(frame.contentDocument.body.innerText, 'From cache', 'the navigation is answered from the second cache');
+  const response = await frame.contentWindow.fetch('cached.txt');
+  assert_equals(response.status, 200, 'a subresource too');
+  assert_equals(await response.text(), 'From cache', 'a subresource too');
+  const other = await frame.contentWindow.fetch('other.txt');
+  assert_equals(await other.text(), 'other', 'the first cache answers for what it holds');
+  const none = await frame.contentWindow.fetch('none.txt');
+  assert_equals(none.status, 404, 'what no cache holds goes to the network');
+}, '"cache": the first response any cache of the map holds, in map order');
+
+promise_test(async (t) => {
+  await setUp(t, 'named');
+  const frame = await with_iframe(SCOPE + 'cached.txt');
+  t.add_cleanup(() => frame.remove());
+  assert_equals(frame.contentDocument.body.innerText, 'From cache', 'the navigation is answered from the named cache');
+  const response = await frame.contentWindow.fetch('cached.txt');
+  assert_equals(await response.text(), 'From cache', 'a subresource too');
+}, '{cacheName}: the named cache, wherever it is in the map');
+</script>
