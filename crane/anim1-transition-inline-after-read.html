@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A transition declared in a style attribute after the last read starts at the next frame</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#starting">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C1): the document has no sheet that declares a transition; the element's
+// style attribute declares one after the element's style was last read, together with the change.
+// The next rendering opportunity's style update starts the transition (CSS Transitions 1 section
+// 3: the after-change style's transition-* values decide, "it is the new values of the
+// transition-* properties that control the transition").
+
+promise_test(async t => {
+  const div = document.createElement('div');
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  getComputedStyle(div).opacity;
+  const run = new Promise(resolve => div.addEventListener('transitionrun', resolve, { once: true }));
+  div.style.transition = 'opacity 100s';
+  div.style.opacity = '0';
+  const event = await run;
+  assert_equals(event.propertyName, 'opacity');
+}, 'Through CSSOM');
+
+promise_test(async t => {
+  const div = document.createElement('div');
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  getComputedStyle(div).opacity;
+  const run = new Promise(resolve => div.addEventListener('transitionrun', resolve, { once: true }));
+  div.setAttribute('style', 'transition: opacity 100s; opacity: 0');
+  const event = await run;
+  assert_equals(event.propertyName, 'opacity');
+}, 'Through setAttribute');
+</script>

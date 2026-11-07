@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A rendering opportunity's style update starts the transitions nobody read</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#starting">
+<link rel="help" href="https://drafts.csswg.org/css-transitions-2/#event-dispatch">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+.fade { transition: opacity 60ms linear; }
+.fade.on { opacity: 0; }
+.slow { transition: opacity 100s linear; }
+.slow.on { opacity: 0; }
+</style>
+<body>
+<div id="markup" class="fade"></div>
+<script>
+'use strict';
+// Crane lane anim1 (C1): HTML "update the rendering" step 16 recalculates the styles of a document
+// that declares transitions, so a change nobody reads still starts its transition at the next
+// rendering opportunity, and a running transition completes with its events (CSS Transitions 2
+// 5.1). The change itself asks for that rendering opportunity.
+
+function frames(n) {
+  return new Promise(resolve => {
+    const step = () => (--n <= 0 ? resolve() : requestAnimationFrame(step));
+    requestAnimationFrame(step);
+  });
+}
+
+function record(target, types) {
+  const seen = [];
+  for (const type of types) target.addEventListener(type, e => seen.push(`${e.type}:${e.propertyName}`));
+  return seen;
+}
+
+promise_test(async t => {
+  const div = document.getElementById('markup');
+  // Never read by script: the frames' style updates gave it its before-change style.
+  await frames(2);
+  const seen = record(div, ['transitionrun', 'transitionstart', 'transitionend']);
+  const ended = new Promise(resolve => div.addEventListener('transitionend', resolve, { once: true }));
+  div.classList.add('on');
+  await ended;
+  assert_array_equals(seen, ['transitionrun:opacity', 'transitionstart:opacity', 'transitionend:opacity']);
+}, 'A class change nobody reads starts the transition at the next rendering opportunity');
+
+promise_test(async t => {
+  const div = document.createElement('div');
+  div.className = 'slow';
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  getComputedStyle(div).opacity;
+  // A task with no rendering opportunity pending: the change must ask for one.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const run = new Promise(resolve => div.addEventListener('transitionrun', resolve, { once: true }));
+  div.classList.add('on');
+  const event = await run;
+  assert_equals(event.propertyName, 'opacity');
+  assert_equals(event.elapsedTime, 0);
+  assert_class_string(event.animation, 'CSSTransition');
+}, 'The change asks for the rendering opportunity that starts its transition');
+
+promise_test(async t => {
+  const div = document.createElement('div');
+  div.className = 'slow';
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  getComputedStyle(div).opacity;
+  // CSS Transitions 1 6.2: transition events "Bubbles: Yes", "Cancelable: No". (The previous
+  // test's transitionrun may still be bubbling: this test starts in a microtask of its dispatch.)
+  const run = new Promise(resolve => {
+    const listener = e => {
+      if (e.target !== div) return;
+      document.removeEventListener('transitionrun', listener);
+      resolve(e);
+    };
+    document.addEventListener('transitionrun', listener);
+  });
+  div.classList.add('on');
+  const event = await run;
+  assert_true(event.bubbles, 'bubbles');
+  assert_false(event.cancelable, 'cancelable');
+  assert_true(event.isTrusted, 'isTrusted');
+}, 'Transition events bubble and are not cancelable');
+
+promise_test(async t => {
+  const div = document.createElement('div');
+  div.className = 'slow';
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  getComputedStyle(div).opacity;
+  await frames(1);
+  // A task after that rendering update: the change waits for the next one.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  div.classList.add('on');
+  // The rendering update that starts it also completes its pending play task, with that update's
+  // timeline time (Blink: the transition is created in the style update, then
+  // PendingAnimations::Update gives it the frame's time).
+  const frameTime = await new Promise(resolve => requestAnimationFrame(() => resolve(document.timeline.currentTime)));
+  const transition = div.getAnimations()[0];
+  await transition.ready;
+  assert_equals(transition.startTime, frameTime);
+}, 'A transition started by a rendering update starts at that update\'s timeline time');
+</script>

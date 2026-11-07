@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An animation created during a rendering update starts at that update's timeline time</title>
+<link rel="help" href="https://drafts.csswg.org/web-animations-1/#waiting-for-the-associated-effect">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C8): HTML "update the rendering" step 16 completes the pending tasks of the
+// animations its rAF callbacks (and their microtasks) created, with that update's timeline time
+// (Blink PendingAnimations::Update; WebKit 294049@main, bug 290993). An animation created in a
+// task between two updates starts at the next update's time. Chrome, Firefox and Safari all pass
+// web-animations/timing-model/animations/start-time-compat.html, which asserts the same.
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(() => resolve(document.timeline.currentTime)));
+}
+
+function makeAnimation(t) {
+  const div = document.createElement('div');
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  return div.animate(null, 100000);
+}
+
+promise_test(async t => {
+  await nextFrame();
+  await nextFrame();
+  let animation, expected;
+  await new Promise(resolve => requestAnimationFrame(() => {
+    animation = makeAnimation(t);
+    expected = document.timeline.currentTime;
+    resolve();
+  }));
+  await animation.ready;
+  assert_equals(animation.startTime, expected, 'start time');
+}, 'An animation created in a requestAnimationFrame callback starts at that frame\'s timeline time');
+
+promise_test(async t => {
+  await nextFrame();
+  // The continuation of an await in a rAF callback runs in the microtask checkpoint after the
+  // callback: still during the rendering update.
+  const expected = document.timeline.currentTime;
+  const animation = makeAnimation(t);
+  await animation.ready;
+  assert_equals(animation.startTime, expected, 'start time');
+}, 'An animation created in a microtask after a requestAnimationFrame callback starts at that frame\'s timeline time');
+
+promise_test(async t => {
+  await nextFrame();
+  await new Promise(resolve => setTimeout(resolve));
+  const animation = makeAnimation(t);
+  const [, expected] = await Promise.all([animation.ready, nextFrame()]);
+  assert_equals(animation.startTime, expected, 'start time');
+}, 'An animation created in a task between two rendering updates starts at the next update\'s timeline time');
+
+promise_test(async t => {
+  await nextFrame();
+  const animation = makeAnimation(t);
+  animation.pause();
+  await new Promise(resolve => requestAnimationFrame(() => {
+    animation.play();
+    resolve();
+  }));
+  const expected = document.timeline.currentTime;
+  await animation.ready;
+  assert_equals(animation.startTime, expected, 'start time');
+}, 'A play() in a requestAnimationFrame callback completes in that frame');
+</script>

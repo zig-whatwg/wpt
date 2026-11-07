@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Style cancels a running CSS transition</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#starting">
+<link rel="help" href="https://drafts.csswg.org/css-transitions-2/#starting">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C1): CSS Transitions 1 section 3 step 3 (no matching transition-property
+// value: cancel), "if an element is no longer in the document, implementations must cancel any
+// running transitions on it", and CSS Transitions 2 section 3 (elements no longer being rendered).
+// A cancel from style disassociates the transition from its owning element after queuing its
+// transitioncancel at that element.
+
+function addDiv(t, style) {
+  const div = document.createElement('div');
+  div.setAttribute('style', style);
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  return div;
+}
+
+function startTransition(t) {
+  const div = addDiv(t, 'margin-left: 0px; transition: margin-left 100s linear');
+  getComputedStyle(div).marginLeft;
+  div.style.marginLeft = '100px';
+  const transition = div.getAnimations()[0];
+  assert_class_string(transition, 'CSSTransition');
+  return [div, transition];
+}
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(resolve));
+}
+
+promise_test(async t => {
+  const [div, transition] = startTransition(t);
+  await transition.ready;
+  await nextFrame();
+  const canceled = new Promise(resolve => div.addEventListener('transitioncancel', resolve, { once: true }));
+  div.style.transitionProperty = 'none';
+  assert_equals(getComputedStyle(div).marginLeft, '100px', 'the after-change value at once');
+  assert_equals(transition.playState, 'idle');
+  assert_equals(div.getAnimations().length, 0);
+  const event = await canceled;
+  assert_equals(event.propertyName, 'margin-left');
+  assert_equals(event.animation, transition);
+}, 'transition-property: none cancels the running transition');
+
+promise_test(async t => {
+  const [div, transition] = startTransition(t);
+  await transition.ready;
+  await nextFrame();
+  const canceled = new Promise(resolve => div.addEventListener('transitioncancel', resolve, { once: true }));
+  div.remove();
+  assert_equals(div.getAnimations().length, 0, 'getAnimations() flushes the removal');
+  await nextFrame();
+  const event = await canceled;
+  assert_equals(event.propertyName, 'margin-left');
+  assert_equals(transition.playState, 'idle');
+}, 'Removing the element cancels its transitions');
+
+promise_test(async t => {
+  const [div, transition] = startTransition(t);
+  await transition.ready;
+  const canceled = new Promise(resolve => div.addEventListener('transitioncancel', resolve, { once: true }));
+  div.style.display = 'none';
+  assert_equals(div.getAnimations().length, 0);
+  await canceled;
+  assert_equals(transition.playState, 'idle');
+}, 'display: none cancels the transitions of an element no longer being rendered');
+
+test(t => {
+  const [div] = startTransition(t);
+  div.remove();
+  div.style.marginLeft = '0px';
+  document.body.append(div);
+  assert_equals(getComputedStyle(div).marginLeft, '0px');
+  assert_equals(div.getAnimations().length, 0);
+}, 'A removed and inserted element has no before-change style');
+
+promise_test(async t => {
+  const [div, transition] = startTransition(t);
+  await transition.ready;
+  div.style.marginLeft = '200px';
+  const animations = div.getAnimations();
+  assert_equals(animations.length, 1);
+  assert_not_equals(animations[0], transition, 'a new transition replaces the old one');
+  assert_equals(transition.playState, 'idle', 'the old one is canceled');
+  assert_equals(animations[0].effect.getKeyframes()[1].marginLeft, '200px');
+}, 'A new end value replaces the running transition');
+</script>

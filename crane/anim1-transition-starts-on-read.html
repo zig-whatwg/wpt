@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A style read that resolves a changed style starts a CSS transition</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#starting">
+<link rel="help" href="https://drafts.csswg.org/css-transitions-2/#the-CSSTransition-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C1): a style resolution whose inputs moved is a style change event for the
+// element it resolves (CSS Transitions 1 section 3: "when up-to-date computed style ... is needed
+// for a script API"). Blink starts transitions in the forced style recalc of getComputedStyle and
+// getAnimations; the interpolation harness's "CSS Transitions" method relies on it.
+
+function addDiv(t, style) {
+  const div = document.createElement('div');
+  if (style) div.setAttribute('style', style);
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  return div;
+}
+
+test(t => {
+  const div = addDiv(t, 'opacity: 1');
+  assert_equals(getComputedStyle(div).opacity, '1');
+  div.style.transition = 'opacity 100s linear -50s';
+  div.style.opacity = '0';
+  assert_equals(getComputedStyle(div).opacity, '0.5', 'the value halfway through');
+  const animations = div.getAnimations();
+  assert_equals(animations.length, 1, 'one transition');
+  assert_class_string(animations[0], 'CSSTransition');
+  assert_equals(animations[0].transitionProperty, 'opacity');
+  assert_equals(animations[0].playState, 'running');
+}, 'getComputedStyle starts a transition from the style it read before');
+
+test(t => {
+  const div = addDiv(t, 'margin-left: 0px');
+  getComputedStyle(div).marginLeft;
+  div.style.transition = 'margin-left 100s steps(4) 2s';
+  div.style.marginLeft = '100px';
+  const transition = div.getAnimations()[0];
+  assert_class_string(transition, 'CSSTransition');
+  const timing = transition.effect.getComputedTiming();
+  assert_equals(timing.duration, 100000, 'duration');
+  assert_equals(timing.delay, 2000, 'delay');
+  assert_equals(timing.fill, 'backwards', 'fill');
+  assert_equals(timing.easing, 'steps(4)', 'easing on the effect timing');
+  const frames = transition.effect.getKeyframes();
+  assert_equals(frames.length, 2, 'two keyframes');
+  assert_equals(frames[0].offset, 0);
+  assert_equals(frames[0].easing, 'linear');
+  assert_equals(frames[0].marginLeft, '0px', 'start value');
+  assert_equals(frames[1].offset, 1);
+  assert_equals(frames[1].marginLeft, '100px', 'end value');
+  assert_equals(getComputedStyle(div).marginLeft, '0px', 'the start value in the delay phase');
+}, 'getAnimations flushes the change and returns a transition with the transition-* values');
+
+test(t => {
+  const div = addDiv(t);
+  div.style.transition = 'opacity 100s';
+  div.style.opacity = '0';
+  assert_equals(div.getAnimations().length, 0);
+}, 'No transition for an element whose style was never resolved before the change');
+
+test(t => {
+  const div = addDiv(t);
+  getComputedStyle(div).opacity;
+  div.style.transition = 'opacity 0s';
+  div.style.opacity = '0';
+  assert_equals(div.getAnimations().length, 0);
+}, 'No transition with a combined duration of 0s');
+
+test(t => {
+  const div = addDiv(t);
+  getComputedStyle(div).opacity;
+  div.style.transition = 'left 100s';
+  div.style.opacity = '0';
+  assert_equals(div.getAnimations().length, 0);
+}, 'No transition for a property transition-property does not name');
+
+test(t => {
+  const div = addDiv(t);
+  getComputedStyle(div).margin;
+  div.style.transition = 'margin 100s';
+  div.style.margin = '10px';
+  const names = div.getAnimations().map(animation => animation.transitionProperty);
+  assert_array_equals(names, ['margin-bottom', 'margin-left', 'margin-right', 'margin-top']);
+}, 'A shorthand in transition-property starts one transition per longhand, in property name order');
+
+test(t => {
+  const div = addDiv(t, 'opacity: 0.5; transition: opacity 100s');
+  getComputedStyle(div).opacity;
+  div.style.opacity = '0.5';
+  assert_equals(div.getAnimations().length, 0);
+}, 'No transition when the value does not change');
+
+test(t => {
+  const div = addDiv(t, 'visibility: visible; transition: float 100s');
+  getComputedStyle(div).cssFloat;
+  div.style.cssFloat = 'left';
+  assert_equals(div.getAnimations().length, 0, 'a discrete property without allow-discrete');
+  div.style.transition = 'float 100s allow-discrete';
+  div.style.cssFloat = 'right';
+  assert_equals(div.getAnimations().length, 1, 'with allow-discrete');
+}, 'A discrete pair transitions only with transition-behavior: allow-discrete');
+</script>

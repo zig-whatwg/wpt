@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Reversing, completed transitions and the transition cascade level</title>
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#reversing">
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#completion">
+<link rel="help" href="https://drafts.csswg.org/css-transitions-2/#cascade-level">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+.important { opacity: 1 !important; transition: opacity 100s linear -50s; }
+.important.on { opacity: 0 !important; }
+</style>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C1): CSS Transitions 1 section 3 step 4.3 (a transition back to its
+// reversing-adjusted start value is shortened by the reversing shortening factor), section 5
+// (a finished transition moves to the completed transitions; an unchanged end value starts
+// nothing), and CSS Transitions 2 4.2 (an owned transition's value is applied at the
+// transitions level, above every important declaration).
+
+function addDiv(t, style) {
+  const div = document.createElement('div');
+  if (style) div.setAttribute('style', style);
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  return div;
+}
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(resolve));
+}
+
+test(t => {
+  const div = addDiv(t, 'margin-left: 0px; transition: margin-left 10s linear');
+  getComputedStyle(div).marginLeft;
+  div.style.marginLeft = '100px';
+  const forward = div.getAnimations()[0];
+  forward.currentTime = 2500;
+  assert_equals(getComputedStyle(div).marginLeft, '25px');
+  div.style.marginLeft = '0px';
+  const animations = div.getAnimations();
+  assert_equals(animations.length, 1);
+  const back = animations[0];
+  assert_not_equals(back, forward);
+  // Factor: |0.25 * 1 + (1 - 1)| = 0.25.
+  assert_equals(back.effect.getComputedTiming().duration, 2500, 'shortened duration');
+  assert_equals(back.effect.getKeyframes()[0].marginLeft, '25px', 'start value: the current value');
+  assert_equals(back.effect.getKeyframes()[1].marginLeft, '0px', 'end value');
+}, 'A transition back to its start is shortened by the reversing shortening factor');
+
+test(t => {
+  const div = addDiv(t, 'margin-left: 0px; transition: margin-left 10s linear -4s');
+  getComputedStyle(div).marginLeft;
+  div.style.marginLeft = '100px';
+  const forward = div.getAnimations()[0];
+  // The delay is -4s: 40% done at once.
+  assert_equals(getComputedStyle(div).marginLeft, '40px');
+  div.style.marginLeft = '0px';
+  const back = div.getAnimations()[0];
+  assert_not_equals(back, forward);
+  // A negative delay is scaled by the factor 0.4.
+  assert_equals(back.effect.getComputedTiming().delay, -1600, 'scaled delay');
+  assert_equals(back.effect.getComputedTiming().duration, 4000, 'scaled duration');
+}, 'A negative delay is scaled by the reversing shortening factor');
+
+promise_test(async t => {
+  const div = addDiv(t, 'margin-left: 0px; transition: margin-left 10s linear');
+  getComputedStyle(div).marginLeft;
+  div.style.marginLeft = '100px';
+  const transition = div.getAnimations()[0];
+  transition.finish();
+  await nextFrame();
+  await nextFrame();
+  assert_equals(div.getAnimations().length, 0, 'no relevant animation once finished');
+  div.style.marginLeft = '100px';
+  assert_equals(div.getAnimations().length, 0, 'the completed transition\'s end value starts nothing');
+  div.style.marginLeft = '50px';
+  assert_equals(div.getAnimations().length, 1, 'a new end value starts a new transition');
+}, 'A finished transition is a completed transition');
+
+test(t => {
+  const div = addDiv(t);
+  div.className = 'important';
+  getComputedStyle(div).opacity;
+  div.classList.add('on');
+  assert_equals(getComputedStyle(div).opacity, '0.5', 'the transition value beats !important');
+}, 'An owned transition applies at the transitions level of the cascade');
+
+test(t => {
+  const parent = addDiv(t, 'transition: opacity 100s, margin-left 100s');
+  const child = document.createElement('div');
+  child.setAttribute('style', 'transition: opacity 100s');
+  parent.append(child);
+  getComputedStyle(parent).opacity;
+  getComputedStyle(child).opacity;
+  child.style.opacity = '0.5';
+  parent.style.marginLeft = '10px';
+  parent.style.opacity = '0.5';
+  const all = document.getAnimations().filter(a => a.effect.target === parent || a.effect.target === child);
+  assert_array_equals(all.map(a => [a.effect.target === parent ? 'parent' : 'child', a.transitionProperty].join(':')),
+                      ['parent:margin-left', 'parent:opacity', 'child:opacity']);
+}, 'getAnimations() sorts transitions by owning element in tree order, then property name');
+</script>
