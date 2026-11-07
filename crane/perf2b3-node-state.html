@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Node-family attributes and [SameObject] identity, across every family</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#SameObject">
+<link rel=help href="https://dom.spec.whatwg.org/#interface-node">
+<link rel=help href="https://html.spec.whatwg.org/multipage/dom.html#htmlelement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="host"></div>
+<script>
+// Lane perf2 batch 3: a Node-family object's generated state keeps only its
+// impl's state and its [SameObject] caches; every attribute is an accessor over
+// the node. This checks, per family, that the attributes still read what was
+// written and every [SameObject] attribute is still the same object.
+const SVG = "http://www.w3.org/2000/svg";
+// A [SameObject] attribute's value exists and is the same object on the next
+// read (undefined === undefined would pass vacuously).
+function assert_same_object(owner, name, label) {
+  const first = owner[name];
+  assert_true(first !== undefined && first !== null, label + " exists");
+  assert_equals(owner[name], first, label);
+}
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+
+test(() => {
+  const host = document.getElementById("host");
+  const div = document.createElement("div");
+  host.appendChild(div);
+  div.id = "d";
+  div.className = "a b";
+  div.title = "tip";
+  div.lang = "fr";
+  div.dir = "RTL";
+  div.hidden = true;
+  div.tabIndex = 2;
+  div.accessKey = "k";
+  div.translate = false;
+  div.draggable = true;
+  div.slot = "s";
+  assert_equals(div.id, "d");
+  assert_equals(div.className, "a b");
+  assert_equals(div.title, "tip");
+  assert_equals(div.lang, "fr");
+  assert_equals(div.dir, "rtl");
+  assert_equals(div.hidden, true);
+  assert_equals(div.tabIndex, 2);
+  assert_equals(div.accessKey, "k");
+  assert_equals(div.translate, false);
+  assert_equals(div.draggable, true);
+  assert_equals(div.slot, "s");
+  assert_equals(div.getAttribute("title"), "tip");
+  assert_equals(div.getAttribute("dir"), "RTL");
+  assert_equals(div.tagName, "DIV");
+  assert_equals(div.nodeType, Node.ELEMENT_NODE);
+  assert_equals(div.parentNode, host);
+  assert_true(div.isConnected);
+  div.innerHTML = "<b>x</b>y";
+  assert_equals(div.textContent, "xy");
+  assert_equals(div.childElementCount, 1);
+  assert_equals(div.firstElementChild.tagName, "B");
+}, "HTMLElement, Element and Node attributes read what was written");
+
+test(() => {
+  const div = document.createElement("div");
+  div.innerHTML = "<i></i>";
+  assert_same_object(div, "childNodes", "childNodes");
+  assert_same_object(div, "children", "children");
+  assert_same_object(div, "classList", "classList");
+  assert_same_object(div, "attributes", "attributes");
+  assert_same_object(div, "part", "part");
+  assert_same_object(div, "style", "style");
+  assert_same_object(div, "dataset", "dataset");
+  const frag = document.createDocumentFragment();
+  assert_same_object(frag, "children", "fragment children");
+  assert_same_object(document, "implementation", "implementation");
+  for (const name of ["images", "embeds", "plugins", "links", "forms", "scripts", "anchors", "applets", "all", "styleSheets", "children"])
+    assert_same_object(document, name, "document." + name);
+  const svg = document.createElementNS(SVG, "svg");
+  assert_same_object(svg, "style", "svg style");
+}, "[SameObject] attributes are the same object on every read, in every family");
+
+promise_test(async () => {
+  const kept = [];
+  for (let i = 0; i < 200; i++) {
+    const d = document.createElement("section");
+    d.classList.add("c" + i);
+    d.style.color = "red";
+    d.dataset.n = String(i);
+    d.classList.expando = i;
+    d.style.expando = i;
+    d.dataset.expando2 = String(i);
+    kept.push(d);
+  }
+  await collect();
+  await new Promise(r => setTimeout(r, 0));
+  await collect();
+  kept.forEach((d, i) => {
+    assert_equals(d.classList.expando, i, "classList kept its expando");
+    assert_equals(d.style.expando, i, "style kept its expando");
+    assert_equals(d.dataset.n, String(i));
+    assert_equals(d.className, "c" + i);
+    assert_equals(d.style.color, "red");
+  });
+}, "[SameObject] caches survive collections of their wrappers");
+
+test(() => {
+  const text = document.createTextNode("one");
+  assert_equals(text.data, "one");
+  assert_equals(text.length, 3);
+  text.data = "three";
+  assert_equals(text.nodeValue, "three");
+  text.nodeValue = "two";
+  assert_equals(text.textContent, "two");
+  assert_equals(text.wholeText, "two");
+  assert_equals(text.nodeName, "#text");
+  const comment = document.createComment("note");
+  assert_equals(comment.data, "note");
+  comment.appendData("!");
+  assert_equals(comment.nodeValue, "note!");
+  const pi = document.createProcessingInstruction("x", "y");
+  assert_equals(pi.target, "x");
+  assert_equals(pi.data, "y");
+  const attr = document.createAttribute("data-a");
+  attr.value = "v";
+  assert_equals(attr.value, "v");
+  assert_equals(attr.name, "data-a");
+  const el = document.createElement("p");
+  el.setAttributeNode(attr);
+  assert_equals(el.getAttribute("data-a"), "v");
+  assert_equals(attr.ownerElement, el);
+  const doctype = document.implementation.createDocumentType("html", "p", "s");
+  assert_equals(doctype.name, "html");
+  assert_equals(doctype.publicId, "p");
+  assert_equals(doctype.systemId, "s");
+}, "CharacterData, Text, Comment, ProcessingInstruction, Attr and DocumentType attributes");
+
+test(() => {
+  const doc = document.implementation.createHTMLDocument("t");
+  assert_equals(doc.title, "t");
+  doc.title = "u";
+  assert_equals(doc.title, "u");
+  assert_equals(doc.compatMode, "CSS1Compat");
+  assert_equals(doc.characterSet, "UTF-8");
+  assert_equals(doc.contentType, "text/html");
+  assert_equals(doc.body.tagName, "BODY");
+  doc.dir = "rtl";
+  assert_equals(doc.dir, "rtl");
+  const host = document.createElement("div");
+  const root = host.attachShadow({ mode: "open" });
+  root.innerHTML = "<span></span>";
+  assert_equals(root.mode, "open");
+  assert_equals(root.host, host);
+  assert_equals(root.childElementCount, 1);
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("width", "10");
+  assert_equals(svg.getAttribute("width"), "10");
+  assert_equals(svg.namespaceURI, SVG);
+  assert_equals(svg.tagName, "svg");
+  const xml = document.implementation.createDocument(null, "r");
+  assert_equals(xml.documentElement.tagName, "r");
+}, "Document, ShadowRoot, SVG and XMLDocument attributes");
+</script>
