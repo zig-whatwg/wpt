@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>CSS animations from style fire their events at the owning element, in composite order</title>
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/#event-dispatch">
+<link rel="help" href="https://drafts.csswg.org/css-animations-1/#event-animationevent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@keyframes anim1-ev { from { margin-left: 0px } to { margin-left: 100px } }
+</style>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C2): CSS Animations 2 5.1's table (interval start / interval end, the
+// iteration boundary, the cancel's active time), the events' Bubbles: Yes and Cancelable: No
+// (CSS Animations 1 5.2), and the 4.4 step 6 tie-break by composite order: events of one
+// scheduled time are sorted by their owning elements' tree order (CSS Animations 2 2.2), not by
+// the order the animations were made in (css-animations event-order.tentative).
+
+function addDiv(t, style, before) {
+  const div = document.createElement('div');
+  if (style) div.setAttribute('style', style);
+  document.body.insertBefore(div, before || null);
+  t.add_cleanup(() => div.remove());
+  return div;
+}
+
+function eventsAtDocument(t, types, count, filter) {
+  return new Promise(resolve => {
+    const seen = [];
+    const listener = event => {
+      if (filter && !filter(event)) return;
+      seen.push(event);
+      if (seen.length === count) resolve(seen);
+    };
+    for (const type of types) document.addEventListener(type, listener);
+    t.add_cleanup(() => { for (const type of types) document.removeEventListener(type, listener); });
+  });
+}
+
+promise_test(async t => {
+  const div = addDiv(t);
+  const events = eventsAtDocument(t, ['animationstart', 'animationend'], 2, e => e.target === div);
+  div.style.animation = 'anim1-ev 100s -200s';
+  const [start, end] = await events;
+  assert_equals(start.type, 'animationstart');
+  assert_equals(start.elapsedTime, 100, 'interval start: min(-delay, active duration)');
+  assert_equals(end.type, 'animationend');
+  assert_equals(end.elapsedTime, 100, 'interval end');
+  assert_true(start.bubbles, 'bubbles');
+  assert_false(start.cancelable, 'not cancelable');
+  assert_true(start.isTrusted, 'trusted');
+  assert_equals(start.animationName, 'anim1-ev');
+  assert_equals(start.pseudoElement, '');
+  assert_class_string(start.animation, 'CSSAnimation');
+  assert_equals(start.animation, end.animation, 'one CSSAnimation');
+}, 'animationstart and animationend of an animation already past its end');
+
+promise_test(async t => {
+  const div = addDiv(t);
+  const events = eventsAtDocument(t, ['animationstart', 'animationiteration'], 2, e => e.target === div);
+  div.style.animation = 'anim1-ev 1s 3 -1.5s';
+  const [start, iteration] = await events;
+  assert_equals(start.type, 'animationstart');
+  assert_equals(start.elapsedTime, 1.5);
+  assert_equals(iteration.type, 'animationiteration');
+  assert_equals(iteration.elapsedTime, 2, 'the iteration boundary times the duration');
+}, 'animationiteration at the iteration boundary');
+
+promise_test(async t => {
+  const div = addDiv(t);
+  div.style.animation = 'anim1-ev 100s';
+  const animation = div.getAnimations()[0];
+  await eventsAtDocument(t, ['animationstart'], 1, e => e.target === div);
+  const canceled = eventsAtDocument(t, ['animationcancel'], 1, e => e.target === div);
+  div.style.animationName = 'none';
+  getComputedStyle(div).marginLeft;
+  assert_equals(animation.playState, 'idle');
+  const [cancel] = await canceled;
+  assert_greater_than_equal(cancel.elapsedTime, 0);
+  assert_less_than(cancel.elapsedTime, 100);
+  assert_equals(cancel.animationName, 'anim1-ev');
+}, 'removing the name fires animationcancel at the element it was removed from');
+
+promise_test(async t => {
+  const second = addDiv(t);
+  const first = addDiv(t, null, second);
+  const events = eventsAtDocument(t, ['animationstart'], 2, e => e.target === first || e.target === second);
+  // The later element's animation is made first.
+  second.style.animation = 'anim1-ev 100s -200s';
+  second.getAnimations();
+  first.style.animation = 'anim1-ev 100s -200s';
+  first.getAnimations();
+  const [a, b] = await events;
+  assert_equals(a.target, first, 'the first element in tree order first');
+  assert_equals(b.target, second);
+}, 'events of the same time sort by the owning elements\' tree order');
+</script>
+</body>

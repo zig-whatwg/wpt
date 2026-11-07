@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A style read that resolves animation-name makes a CSS animation from its @keyframes rule</title>
+<link rel="help" href="https://drafts.csswg.org/css-animations-1/#animations">
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/#keyframes">
+<link rel="help" href="https://drafts.csswg.org/css-cascade-5/#layering">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@keyframes anim1-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes anim1-var { from { margin-left: var(--from) } to { margin-left: var(--to) } }
+@keyframes anim1-omit-from { to { margin-left: 100px } }
+@keyframes anim1-important { from { opacity: 0 } to { opacity: 0.5; opacity: 1 !important } }
+@keyframes anim1-easing {
+  from { margin-left: 0px; animation-timing-function: steps(2, end) }
+  to { margin-left: 100px }
+}
+@layer anim1-low, anim1-high;
+@layer anim1-high { @keyframes anim1-layered { from { margin-left: 0px } to { margin-left: 100px } } }
+@layer anim1-low { @keyframes anim1-layered { from { margin-left: 0px } to { margin-left: 400px } } }
+@keyframes anim1-last { from { margin-left: 0px } to { margin-left: 400px } }
+@keyframes anim1-last { from { margin-left: 0px } to { margin-left: 100px } }
+</style>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C2): a style resolution whose inputs moved is the element's style change event
+// (tmp/plans/anim1b2-design.md section 1); at it the animation-* properties make CSSAnimations
+// (CSS Animations 2 section 3.2, Blink CSSAnimations::CalculateAnimationUpdate). The interpolation
+// harness's "CSS Animations" method declares @keyframes and reads getComputedStyle at once.
+
+function addDiv(t, style) {
+  const div = document.createElement('div');
+  if (style) div.setAttribute('style', style);
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  return div;
+}
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-fade 100s linear -50s');
+  assert_equals(getComputedStyle(div).opacity, '0.5', 'the value halfway through');
+  const animations = div.getAnimations();
+  assert_equals(animations.length, 1, 'one animation');
+  assert_class_string(animations[0], 'CSSAnimation');
+  assert_equals(animations[0].animationName, 'anim1-fade');
+  assert_equals(animations[0].playState, 'running');
+  const timing = animations[0].effect.getTiming();
+  assert_equals(timing.duration, 100000, 'duration');
+  assert_equals(timing.delay, -50000, 'delay');
+  assert_equals(timing.easing, 'linear', 'the effect timing is linear');
+}, 'getComputedStyle makes a CSS animation and applies its value at once');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-easing 100s ease-in');
+  const frames = div.getAnimations()[0].effect.getKeyframes();
+  assert_equals(frames.length, 2, 'two keyframes');
+  assert_equals(frames[0].easing, 'steps(2)', 'the keyframe declares its timing function');
+  assert_equals(frames[1].easing, 'ease-in', 'animation-timing-function is the default keyframe easing');
+  assert_equals(div.getAnimations()[0].effect.getTiming().easing, 'linear');
+}, 'animation-timing-function goes on the keyframes, not on the effect');
+
+test(t => {
+  const div = addDiv(t, '--from: 10px; --to: 30px; animation: anim1-var 100s linear -50s');
+  assert_equals(getComputedStyle(div).marginLeft, '20px');
+}, 'var() in a keyframe resolves against the animated element');
+
+test(t => {
+  const div = addDiv(t, 'margin-left: 20px; animation: anim1-omit-from 100s linear -50s');
+  assert_equals(getComputedStyle(div).marginLeft, '60px', 'from the underlying value');
+  const frames = div.getAnimations()[0].effect.getKeyframes();
+  assert_equals(frames.length, 2, 'a generated initial keyframe');
+  assert_equals(frames[0].offset, 0);
+  assert_equals(frames[0].marginLeft, '20px', 'the generated keyframe reports the computed value');
+  assert_equals(frames[0].composite, 'replace');
+  assert_equals(frames[1].composite, 'auto');
+}, 'a missing from keyframe animates from the underlying value');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-important 100s linear -50s');
+  assert_equals(getComputedStyle(div).opacity, '0.25', '!important in a keyframe is ignored');
+  div.style.setProperty('opacity', '0.75', 'important');
+  assert_equals(getComputedStyle(div).opacity, '0.75', 'an important declaration beats the animation');
+}, 'importance: ignored in keyframes, above animations in the cascade');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-layered 100s linear -50s');
+  assert_equals(getComputedStyle(div).marginLeft, '50px', 'the higher layer wins the name');
+  div.style.animationName = 'anim1-last';
+  assert_equals(getComputedStyle(div).marginLeft, '50px', 'the last rule of a name wins');
+}, '@keyframes name collisions: layer order, then the last rule');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-not-yet 100s linear -50s');
+  assert_equals(getComputedStyle(div).marginLeft, '0px');
+  assert_equals(div.getAnimations().length, 0, 'no rule, no animation');
+  const sheet = document.styleSheets[0];
+  sheet.insertRule('@keyframes anim1-not-yet { from { margin-left: 0px } to { margin-left: 100px } }', sheet.cssRules.length);
+  t.add_cleanup(() => sheet.deleteRule(sheet.cssRules.length - 1));
+  assert_equals(div.getAnimations().length, 1, 'the rule inserted later makes it');
+  assert_equals(getComputedStyle(div).marginLeft, '50px');
+}, 'an animation starts when its @keyframes rule appears');
+</script>
+</body>

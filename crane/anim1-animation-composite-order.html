@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Composite order of CSS transitions, CSS animations and script animations; script overrides</title>
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/#animation-composite-order">
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/#animations">
+<link rel="help" href="https://drafts.csswg.org/css-transitions-1/#application">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@keyframes anim1-co-a { from { opacity: 0 } to { opacity: 1 } }
+@keyframes anim1-co-b { from { opacity: 0 } to { opacity: 1 } }
+@keyframes anim1-co-ml { from { margin-left: 200px } to { margin-left: 300px } }
+</style>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C2): getAnimations() sorts owned CSS transitions, then owned CSS animations
+// (owning elements in tree order, then animation-name position), then every other animation by
+// its global animation list position - an animation that lost its owning element included (Blink
+// AnimationClassPriority, Gecko IsTiedToMarkup, WebKit compareAnimationsByCompositeOrder). A
+// disassociated CSS animation takes its global position when it first leaves idle (CSS Animations
+// 2 2.2). Script play()/pause() override animation-play-state (CSS Animations 2 section 2). A
+// transition's value is not applied to a property a CSS animation animates (CSS Transitions 1
+// section 4).
+
+function addDiv(t, style, parent) {
+  const div = document.createElement('div');
+  if (style) div.setAttribute('style', style);
+  (parent || document.body).append(div);
+  t.add_cleanup(() => div.remove());
+  return div;
+}
+
+test(t => {
+  const parent = addDiv(t);
+  const child = addDiv(t, null, parent);
+  child.style.animation = 'anim1-co-b 100s, anim1-co-a 100s';
+  parent.style.animation = 'anim1-co-a 100s';
+  const script = parent.animate({ opacity: [0, 1] }, 100000);
+  parent.style.marginLeft = '0px';
+  getComputedStyle(parent).marginLeft;
+  parent.style.transition = 'margin-left 100s';
+  parent.style.marginLeft = '100px';
+  const all = document.getAnimations().filter(a => a.effect && (a.effect.target === parent || a.effect.target === child));
+  assert_equals(all.length, 5);
+  assert_class_string(all[0], 'CSSTransition', 'the transition first');
+  assert_equals(all[1].effect.target, parent, 'the parent\'s CSS animation');
+  assert_equals(all[2].animationName, 'anim1-co-b', 'the child\'s in animation-name order');
+  assert_equals(all[3].animationName, 'anim1-co-a');
+  assert_equals(all[4], script, 'the script animation last');
+}, 'transitions, then CSS animations in tree and name order, then script animations');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-co-a 100s');
+  const css = div.getAnimations()[0];
+  div.style.animation = 'none';
+  getComputedStyle(div).opacity;
+  const script = div.animate({ opacity: [0, 1] }, 100000);
+  css.play();
+  const order = div.getAnimations();
+  assert_equals(order.length, 2);
+  assert_equals(order[0], script, 'the script animation made earlier');
+  assert_equals(order[1], css, 'the disassociated CSS animation joins the list when it leaves idle');
+}, 'a CSS animation that lost its owning element sorts by its global position');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-co-a 100s paused');
+  const animation = div.getAnimations()[0];
+  assert_equals(animation.playState, 'paused');
+  animation.play();
+  div.style.animationPlayState = 'paused';
+  assert_equals(animation.playState, 'running', 'after play(), animation-play-state no longer pauses');
+  animation.pause();
+  div.style.animationPlayState = 'running';
+  assert_equals(animation.playState, 'paused', 'nor plays after pause()');
+}, 'play() and pause() override animation-play-state');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-co-a 100s');
+  const animation = div.getAnimations()[0];
+  animation.effect.updateTiming({ duration: 50000 });
+  div.style.animationDuration = '10s';
+  div.style.animationDelay = '5s';
+  const timing = div.getAnimations()[0].effect.getTiming();
+  assert_equals(timing.duration, 50000, 'the duration set by script is kept');
+  assert_equals(timing.delay, 5000, 'the delay still follows the style');
+}, 'updateTiming() overrides only the members it sets');
+
+test(t => {
+  const div = addDiv(t, 'margin-left: 0px');
+  getComputedStyle(div).marginLeft;
+  div.style.transition = 'margin-left 100s linear -50s';
+  div.style.marginLeft = '100px';
+  assert_equals(getComputedStyle(div).marginLeft, '50px', 'the transition applies');
+  div.style.animation = 'anim1-co-ml 100s linear -25s';
+  assert_equals(getComputedStyle(div).marginLeft, '225px', 'the animation, not the transition');
+}, 'a CSS animation of a property hides a running transition of it');
+</script>
+</body>

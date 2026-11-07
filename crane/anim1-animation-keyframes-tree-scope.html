@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>animation-name finds @keyframes from the tree of the sheet that declared it</title>
+<link rel="help" href="https://drafts.csswg.org/css-scoping-1/#shadow-names">
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/#keyframes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@keyframes anim1-outer { from { margin-left: 0px } to { margin-left: 400px } }
+#anim1-host-plain { animation: anim1-inner 100s linear -50s; }
+</style>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C2): @keyframes names are tree-scoped references. A :host, ::slotted() or
+// :host::before rule declares animation-name in the shadow tree's sheet while the element styled is
+// in the document tree: the name resolves in the declaring tree first, then outward (Blink
+// StyleResolver::FindKeyframesRule from the ScopedCSSName's TreeScope; WebKit
+// nameStyleScopeOrdinal). css/css-shadow/keyframes-003, -004, -006 and -005 assert the same.
+
+function addHost(t, id, inner) {
+  const host = document.createElement('div');
+  if (id) host.id = id;
+  document.body.append(host);
+  t.add_cleanup(() => host.remove());
+  host.attachShadow({ mode: 'open' }).innerHTML = inner;
+  return host;
+}
+
+const innerKeyframes = '@keyframes anim1-inner { from { margin-left: 0px } to { margin-left: 100px } }';
+
+test(t => {
+  const host = addHost(t, null, `<style>${innerKeyframes} :host { animation: anim1-inner 100s linear -50s }</style>`);
+  assert_equals(host.getAnimations().length, 1, 'the :host rule finds the shadow tree\'s @keyframes');
+  assert_equals(getComputedStyle(host).marginLeft, '50px');
+}, ':host declaring animation-name resolves in the shadow tree');
+
+test(t => {
+  const host = addHost(t, null, `<style>${innerKeyframes} ::slotted(span) { animation: anim1-inner 100s linear -50s }</style><slot></slot>`);
+  const span = document.createElement('span');
+  host.append(span);
+  assert_equals(span.getAnimations().length, 1, 'the ::slotted() rule finds the shadow tree\'s @keyframes');
+  assert_equals(getComputedStyle(span).marginLeft, '50px');
+}, '::slotted() declaring animation-name resolves in the shadow tree');
+
+test(t => {
+  const host = addHost(t, null, `<style>${innerKeyframes} :host::before { content: ""; animation: anim1-inner 100s linear -50s }</style>`);
+  assert_equals(getComputedStyle(host, '::before').marginLeft, '50px');
+}, ':host::before declaring animation-name resolves in the shadow tree');
+
+test(t => {
+  const host = addHost(t, 'anim1-host-plain', `<style>${innerKeyframes}</style>`);
+  assert_equals(host.getAnimations().length, 0, 'a document rule does not see the shadow tree\'s @keyframes');
+  assert_equals(getComputedStyle(host).marginLeft, '0px');
+}, '@keyframes do not leak out of the shadow tree');
+
+test(t => {
+  const host = addHost(t, null, '<style>div { animation: anim1-outer 100s linear -50s }</style><div></div>');
+  const inner = host.shadowRoot.querySelector('div');
+  assert_equals(inner.getAnimations().length, 1, 'the name is looked up outward to the document');
+  assert_equals(getComputedStyle(inner).marginLeft, '200px');
+}, 'a name not found in the declaring tree resolves in the enclosing tree');
+</script>
+</body>

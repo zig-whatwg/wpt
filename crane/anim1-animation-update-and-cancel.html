@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Changes to animation-* update, keep or cancel the CSS animations they made</title>
+<link rel="help" href="https://drafts.csswg.org/css-animations-1/#animations">
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/#owning-element-section">
+<link rel="help" href="https://drafts.csswg.org/css-animations-2/#animation-play-state">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+@keyframes anim1-a { from { opacity: 0 } to { opacity: 1 } }
+@keyframes anim1-b { from { margin-left: 0px } to { margin-left: 100px } }
+</style>
+<body>
+<script>
+'use strict';
+// Crane lane anim1 (C2): CSS Animations 1 section 2 ("Changes to the values of animation properties
+// while the animation is running apply as if the animation had those values from when it began";
+// the animation-name matching), CSS Animations 2 2.1 (display: none in the base style terminates,
+// and disassociates) and 4.5 (newly paused / running). Chrome, Firefox and Safari keep the same
+// CSSAnimation object across these updates (css-animations Element-getAnimations.tentative).
+
+function addDiv(t, style) {
+  const div = document.createElement('div');
+  if (style) div.setAttribute('style', style);
+  document.body.append(div);
+  t.add_cleanup(() => div.remove());
+  return div;
+}
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-a 100s linear -50s');
+  const animation = div.getAnimations()[0];
+  assert_equals(getComputedStyle(div).opacity, '0.5');
+  div.style.animationDuration = '200s';
+  assert_equals(getComputedStyle(div).opacity, '0.25', 'the same current time, a longer duration');
+  assert_equals(div.getAnimations()[0], animation, 'the same object');
+  assert_equals(animation.effect.getTiming().duration, 200000);
+}, 'a timing change updates the animation in place');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-a 100s');
+  const a = div.getAnimations()[0];
+  div.style.animation = 'anim1-b 100s, anim1-a 100s';
+  const both = div.getAnimations();
+  assert_equals(both.length, 2);
+  assert_equals(both[0].animationName, 'anim1-b', 'animation-name order');
+  assert_equals(both[1], a, 'the existing animation is kept');
+  div.style.animation = 'anim1-b 100s';
+  assert_equals(a.playState, 'idle', 'the dropped name cancels its animation');
+  assert_equals(div.getAnimations().length, 1);
+  assert_equals(div.getAnimations()[0], both[0]);
+}, 'animation-name changes keep, add and cancel animations by name');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-a 100s, anim1-a 100s');
+  assert_equals(div.getAnimations().length, 2, 'one animation per name, duplicates too');
+  div.style.animationName = 'none';
+  assert_equals(div.getAnimations().length, 0);
+}, 'duplicated names and none');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-a 100s');
+  const animation = div.getAnimations()[0];
+  div.style.animationPlayState = 'paused';
+  assert_equals(animation.playState, 'paused', 'playState processes the pending style change');
+  div.style.animationPlayState = 'running';
+  assert_equals(animation.playState, 'running');
+}, 'animation-play-state pauses and plays');
+
+test(t => {
+  const parent = addDiv(t);
+  const child = document.createElement('div');
+  child.style.animation = 'anim1-a 100s';
+  parent.append(child);
+  const animation = child.getAnimations()[0];
+  assert_equals(animation.playState, 'running');
+  parent.style.display = 'none';
+  assert_equals(child.getAnimations().length, 0, 'an ancestor with display: none terminates it');
+  assert_equals(animation.playState, 'idle');
+  parent.style.display = '';
+  const restarted = child.getAnimations();
+  assert_equals(restarted.length, 1, 'displayed again: it starts anew');
+  assert_not_equals(restarted[0], animation, 'a new animation');
+}, 'display: none cancels, and display again restarts');
+
+test(t => {
+  const div = addDiv(t, 'animation: anim1-a 100s');
+  const animation = div.getAnimations()[0];
+  div.style.animationName = 'none';
+  getComputedStyle(div).opacity;
+  assert_equals(animation.playState, 'idle');
+  assert_equals(animation.animationName, 'anim1-a', 'it keeps its name');
+  assert_equals(div.getAnimations().length, 0);
+  animation.play();
+  assert_equals(div.getAnimations().length, 1, 'played by script, it is relevant again');
+  div.style.animationName = 'anim1-a';
+  assert_equals(div.getAnimations().length, 2, 'the name makes a new one: the old is disassociated');
+  animation.cancel();
+}, 'an animation dropped from animation-name is disassociated');
+</script>
+</body>
