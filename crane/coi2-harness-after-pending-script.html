@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A script still loading before the harness include: the harness is still only the page's</title>
+<!--
+  The page's parser blocks on the first script below, whose response the
+  server holds for a second (pipe=trickle(d1)); the test has no timer of its
+  own. In a browser nothing defines the harness API until the page's own
+  testharness.js include runs, so the inline script after the slow one sees
+  none, and the page's one harness is the one that reports.
+
+  html/cross-origin-embedder-policy/reporting-to-frame-owner.https.html and
+  reporting-to-worker-owner.https.html load /common/get-host-info.sub.js
+  before testharness.js. When a runner installs a harness of its own while the
+  parse is blocked there - taking "no include reached yet" for "the page has
+  no include" - the page's include later makes a second one. The runner's
+  copy, which has no subtests, arms its timeout first, and in a file that
+  ends at the harness timeout it is the one that completes: the run reports
+  no subtest at all (lane coi2 batch 3).
+-->
+<script src="/common/empty.js?pipe=trickle(d1)"></script>
+<script>
+window.harnessBeforeInclude = typeof add_completion_callback;
+window.completionFlagBeforeInclude = typeof window.__wpt_complete;
+</script>
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+test(() => {
+  assert_equals(harnessBeforeInclude, "undefined", "typeof add_completion_callback before the include");
+  assert_equals(completionFlagBeforeInclude, "undefined", "no runner completion state before the include");
+}, "no harness exists before the page's include while a script before it is still loading");
+</script>

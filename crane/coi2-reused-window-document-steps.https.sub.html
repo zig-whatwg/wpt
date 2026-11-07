@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A Window a navigation reuses still runs its old document's unloading cleanup steps</title>
+<!--
+  An iframe's initial about:blank and the same-origin document it navigates to
+  share one Window (HTML "create and initialize a Document object" step 6),
+  but the about:blank document is still unloaded and destroyed, and HTML's
+  unloading document cleanup steps run for it: a WebSocket its global made
+  is made to disappear ("unload a document" step 18; the WebSocket standard's
+  "make disappear" fails a connecting socket and closes an open one). Only
+  the global's own teardown - its reporting registrations, its channels' keeps
+  - waits for the global's end (lane coi2 batch 3).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  w.reusedWindowMarker = 'the initial about:blank Window';
+  const socket = new w.WebSocket('wss://{{host}}:{{ports[wss][0]}}/echo');
+  assert_equals(socket.readyState, WebSocket.CONNECTING);
+  const load = new Promise(resolve => frame.addEventListener('load', resolve, {once: true}));
+  frame.src = '/common/blank.html';
+  await load;
+  assert_equals(w.reusedWindowMarker, 'the initial about:blank Window', 'the navigation reused the Window');
+  assert_true(socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED,
+              'the about:blank\'s socket disappeared with its document: readyState ' + socket.readyState);
+}, 'a WebSocket of the initial about:blank disappears when a same-origin navigation reuses its Window');
+</script>

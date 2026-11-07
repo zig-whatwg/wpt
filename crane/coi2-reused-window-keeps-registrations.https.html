@@ -1,0 +1,134 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A Window a navigation reuses keeps its ReportingObserver registrations and its BroadcastChannels</title>
+<!--
+  An iframe's initial about:blank document and the same-origin document it
+  navigates to share one Window (HTML "create and initialize a Document
+  object" step 6). The Reporting spec keeps the registered reporting observer
+  list on that global, and Blink ends a ReportingObserver only when its
+  ExecutionContext is destroyed, which a reused LocalDOMWindow never is. So
+  an observer of that Window - registered by the new document, or by the
+  about:blank before the navigation - is still kept by its registration after
+  a garbage collection, and hears the next report: here the "corp" report of
+  a cross-origin child the require-corp document cannot embed.
+  html/cross-origin-embedder-policy/reporting-navigation.https.html lost such
+  reports at random (lane coi2 batch 3): the about:blank's unload ended the
+  Window's registrations, so a later observer was never kept.
+
+  A BroadcastChannel of that Window is the same: HTML keeps one with a message
+  listener strongly from its relevant global while it is not closed, and
+  Blink closes it only at ContextDestroyed; the about:blank's unload ended its
+  keep the same way.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+const {ORIGIN, REMOTE_ORIGIN} = get_host_info();
+const COEP_PAGE = ORIGIN + '/common/blank.html?pipe=|header(cross-origin-embedder-policy,require-corp)';
+const BLOCKED_CHILD = REMOTE_ORIGIN + '/common/blank.html?pipe=';
+
+function loaded(frame) {
+  return new Promise(resolve => frame.addEventListener('load', resolve, {once: true}));
+}
+
+// Observe `w` with an observer nothing but its registration holds, collect,
+// then make a report in `w` and resolve with the report types its callback
+// hears.
+function heardAfterCollection(w, register) {
+  return new Promise(async resolve => {
+    register(w, reports => resolve(reports.map(r => r.body.type)));
+    await garbageCollect();
+    await garbageCollect();
+    const child = w.document.createElement('iframe');
+    child.src = BLOCKED_CHILD;
+    w.document.body.appendChild(child);
+  });
+}
+
+const register = (w, callback) => { new w.ReportingObserver(callback).observe(); };
+
+// The cases run side by side, so that one whose callback never runs - it
+// times out - does not keep the others from reporting.
+function parallel_promise_test(body, name) {
+  async_test(t => { body(t).then(t.step_func_done(), t.step_func(e => { throw e; })); }, name);
+}
+
+parallel_promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  frame.src = COEP_PAGE;
+  const load = loaded(frame);
+  document.body.appendChild(frame);
+  await load;
+  assert_array_equals(await heardAfterCollection(frame.contentWindow, register), ['corp']);
+}, 'an observer registered by the document that reused the Window is kept');
+
+parallel_promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  w.reusedWindowMarker = 'the initial about:blank Window';
+  const result = new Promise(resolve => {
+    register(w, reports => resolve(reports.map(r => r.body.type)));
+  });
+  const load = loaded(frame);
+  frame.src = COEP_PAGE;
+  await load;
+  // An expando lives on the Window, not on its WindowProxy: still there,
+  // the new document has the about:blank's Window.
+  assert_equals(w.reusedWindowMarker, 'the initial about:blank Window', 'the navigation reused the Window');
+  await garbageCollect();
+  await garbageCollect();
+  const child = w.document.createElement('iframe');
+  child.src = BLOCKED_CHILD;
+  w.document.body.appendChild(child);
+  assert_array_equals(await result, ['corp']);
+}, 'an observer registered on the initial about:blank before the navigation is kept');
+
+parallel_promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  frame.src = COEP_PAGE;
+  const load = loaded(frame);
+  document.body.appendChild(frame);
+  await load;
+  const name = 'coi2-reused-window-' + Math.random();
+  const heard = new Promise(resolve => {
+    const channel = new frame.contentWindow.BroadcastChannel(name);
+    channel.onmessage = e => resolve(e.data);
+  });
+  await garbageCollect();
+  await garbageCollect();
+  const sender = new BroadcastChannel(name);
+  t.add_cleanup(() => sender.close());
+  sender.postMessage('after the collection');
+  assert_equals(await heard, 'after the collection');
+}, 'a BroadcastChannel made in the Window the document reused still hears a message after a collection');
+
+parallel_promise_test(async t => {
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  w.reusedWindowMarker = 'the initial about:blank Window';
+  const name = 'coi2-reused-window-before-' + Math.random();
+  const heard = new Promise(resolve => {
+    const channel = new w.BroadcastChannel(name);
+    channel.onmessage = e => resolve(e.data);
+  });
+  const load = loaded(frame);
+  frame.src = COEP_PAGE;
+  await load;
+  assert_equals(w.reusedWindowMarker, 'the initial about:blank Window', 'the navigation reused the Window');
+  await garbageCollect();
+  await garbageCollect();
+  const sender = new BroadcastChannel(name);
+  t.add_cleanup(() => sender.close());
+  sender.postMessage('after the navigation and a collection');
+  assert_equals(await heard, 'after the navigation and a collection');
+}, 'a BroadcastChannel made on the initial about:blank before the navigation still hears a message');
+</script>

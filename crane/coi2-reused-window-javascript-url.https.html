@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A Window a javascript: URL's document reuses keeps the ReportingObserver registered on it</title>
+<!--
+  This page requires CORP of what it embeds (its .headers), and so does an
+  iframe's initial about:blank, whose policy container is this page's. A
+  javascript: URL navigation of that frame makes a document of the String it
+  returns, which keeps the replaced document's policy container ("evaluate a
+  javascript: URL" step 12) and its Window ("create and initialize a Document
+  object" step 6: the initial about:blank is same origin with it). An
+  observer registered on the about:blank before the navigation is still
+  registered with that Window, and kept by it through a collection: it hears
+  the "corp" report of a cross-origin child the frame cannot embed (lane coi2
+  batch 3; Blink ends a ReportingObserver only at ContextDestroyed, which a
+  reused LocalDOMWindow never gets).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const {REMOTE_ORIGIN} = get_host_info();
+  const frame = document.createElement('iframe');
+  t.add_cleanup(() => frame.remove());
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  w.reusedWindowMarker = 'the initial about:blank Window';
+  const heard = new Promise(resolve => {
+    new w.ReportingObserver(reports => resolve(reports.map(r => r.body.type))).observe();
+  });
+  const load = new Promise(resolve => frame.addEventListener('load', resolve, {once: true}));
+  frame.src = "javascript:'<!doctype html><body>a javascript: URL\\'s document</body>'";
+  await load;
+  assert_equals(w.reusedWindowMarker, 'the initial about:blank Window', 'the navigation reused the Window');
+  await garbageCollect();
+  await garbageCollect();
+  const child = w.document.createElement('iframe');
+  child.src = REMOTE_ORIGIN + '/common/blank.html?pipe=';
+  w.document.body.appendChild(child);
+  assert_array_equals(await heard, ['corp']);
+}, 'an observer registered on the initial about:blank before a javascript: URL navigation is kept');
+</script>
