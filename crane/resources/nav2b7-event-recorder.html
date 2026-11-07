@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<script>
+// Lane nav2 batch 7: records the lifecycle events this document's Window gets, into parent.nav2b7Events.
+function record(e) {
+  parent.nav2b7Events.push({
+    type: e.type,
+    targetIsDocument: e.target === document,
+    currentTargetIsWindow: e.currentTarget === window,
+    bubbles: e.bubbles,
+    cancelable: e.cancelable,
+    persisted: "persisted" in e ? e.persisted : null,
+  });
+}
+for (const type of ["load", "pageshow", "pagehide", "unload"]) addEventListener(type, record);
+</script>
+<p>recorder</p>

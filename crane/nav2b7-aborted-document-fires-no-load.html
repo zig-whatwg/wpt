@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A document a navigation aborts before its load event never fires load; the parse's end keeps its order</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#abort-a-document">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane nav2 batch 7. Golden rule 2, the majority (Firefox, Safari; Chrome
+// differs): a document that a navigation aborts before its load event fired
+// never fires load (nor pageshow), and its container's first load event is the
+// new document's - Gecko's nsDocumentViewer::LoadComplete fires load only for
+// a load that was not aborted. The three cases:
+// 1. A form submitted while the document is parsed (replace-before-load/
+//    form-submit.html, form-requestsubmit.html, form-submit-button-click.html:
+//    all three browsers pass): the planned navigation's task runs after the
+//    parse and before the load task.
+// 2. A navigation while an image delays the load event (a-user-click.html,
+//    location-assign-user-click.html: Firefox and Safari pass).
+// 3. The parse of a fully received body ends in the task that ran its scripts:
+//    an unhandledrejection queued by an inline script follows "interactive"
+//    (promise-rejection-event-during-parse.html: Firefox passes; Chrome's
+//    separate end-of-body task puts it first).
+window.events = [];
+const injector = "/html/browsers/browsing-the-web/navigating-across-documents/replace-before-load/resources/";
+
+function watchFrame(t, src, doneSearch) {
+  const frame = document.createElement("iframe");
+  const loads = [];
+  return new Promise(resolve => {
+    frame.addEventListener("load", t.step_func(() => {
+      const w = frame.contentWindow;
+      loads.push(w.location.pathname.split("/").pop() + w.location.search.slice(0, 14));
+      if (w.location.search.startsWith(doneSearch)) t.step_timeout(() => { frame.remove(); resolve(loads); }, 300);
+    }));
+    frame.src = src;
+    document.body.append(frame);
+  });
+}
+
+promise_test(async t => {
+  events.length = 0;
+  const code = `
+    addEventListener("load", () => parent.events.push("load"));
+    addEventListener("pageshow", () => parent.events.push("pageshow"));
+    const form = document.createElement("form");
+    form.action = "/common/blank.html";
+    form.innerHTML = '<input type="hidden" name="replaced" value="1">';
+    document.currentScript.before(form);
+    form.submit();
+  `;
+  const loads = await watchFrame(t, injector + "code-injector.html?pipe=sub(none)&code=" + encodeURIComponent(code), "?replaced=1");
+  assert_array_equals(loads, ["blank.html?replaced=1"], "the container's load events");
+  assert_array_equals(events, [], "the aborted document fires neither load nor pageshow");
+}, "a form submitted while the document is parsed: the aborted document never fires load");
+
+promise_test(async t => {
+  events.length = 0;
+  const code = `
+    addEventListener("load", () => parent.events.push("load"));
+    addEventListener("DOMContentLoaded", () => setTimeout(() => {
+      parent.events.push("navigating, readyState=" + document.readyState);
+      location.assign("/common/blank.html?replaced=2");
+    }, 0));
+  `;
+  const loads = await watchFrame(t, injector + "slow-code-injector.html?pipe=sub(none)&code=" + encodeURIComponent(code), "?replaced=2");
+  assert_array_equals(loads, ["blank.html?replaced=2"], "the container's load events");
+  assert_array_equals(events, ["navigating, readyState=interactive"], "the aborted document's events");
+}, "a navigation while an image delays the load event: the aborted document never fires load");
+
+promise_test(async t => {
+  const code = `
+    const order = [];
+    document.addEventListener("readystatechange", () => order.push("readystatechange:" + document.readyState));
+    addEventListener("unhandledrejection", e => { e.preventDefault(); order.push("unhandledrejection"); });
+    Promise.reject(new Error("intentional"));
+    addEventListener("load", () => parent.postMessage(order, "*"));
+  `;
+  const frame = document.createElement("iframe");
+  const got = new Promise(resolve => addEventListener("message", e => { if (e.source === frame.contentWindow) resolve(e.data); }));
+  frame.src = injector + "code-injector.html?pipe=sub(none)&code=" + encodeURIComponent(code);
+  document.body.append(frame);
+  const order = await got;
+  frame.remove();
+  assert_array_equals(order, ["readystatechange:interactive", "unhandledrejection", "readystatechange:complete"]);
+}, "an unhandledrejection queued while a fetched document is parsed follows its readiness 'interactive'");
+</script>

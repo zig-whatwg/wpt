@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>load, pageshow, pagehide and unload: the legacy target override flag, and page transition events bubble and are cancelable</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#fire-a-page-transition-event">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane nav2 batch 7 (html/browsers/browsing-the-web/history-traversal/001.html,
+// unloading-documents/unload/003.html): HTML fires load, pageshow, pagehide and
+// unload at the Window with the legacy target override flag set, so DOM dispatch
+// step 5 makes the Window's associated Document the event's target while the
+// Window stays its currentTarget; "fire a page transition event" initializes
+// bubbles and cancelable to true (whatwg/html#6794). Blink: LocalDOMWindow::
+// DispatchEvent(event, document()); PageTransitionEvent(Bubbles::kYes, Cancelable::kYes).
+window.nav2b7Events = [];
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  frame.src = "resources/nav2b7-event-recorder.html";
+  await new Promise(resolve => { frame.onload = resolve; document.body.append(frame); });
+  frame.src = "/common/blank.html";
+  await new Promise(resolve => { frame.onload = resolve; });
+  frame.remove();
+  const seen = nav2b7Events.map(e => `${e.type} target=${e.targetIsDocument ? "document" : "other"} currentTarget=${e.currentTargetIsWindow ? "window" : "other"} bubbles=${e.bubbles} cancelable=${e.cancelable} persisted=${e.persisted}`);
+  assert_array_equals(seen, [
+    "load target=document currentTarget=window bubbles=false cancelable=false persisted=null",
+    "pageshow target=document currentTarget=window bubbles=true cancelable=true persisted=false",
+    "pagehide target=document currentTarget=window bubbles=true cancelable=true persisted=false",
+    "unload target=document currentTarget=window bubbles=false cancelable=false persisted=null",
+  ]);
+}, "load, pageshow, pagehide and unload target the document and reach the Window; page transition events bubble and are cancelable");
+</script>

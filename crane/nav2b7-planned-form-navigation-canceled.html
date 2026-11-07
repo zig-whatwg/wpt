@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A navigation that starts in a navigable cancels a planned form navigation aimed at it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#plan-to-navigate">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe name="nav2b7target"></iframe>
+<form target="nav2b7target" action="/common/blank.html"><input type="hidden" name="from" value="form"></form>
+<a target="nav2b7target" href="/common/blank.html?from=link">link</a>
+<script>
+// Lane nav2 batch 7 (navigating-across-documents/006.html, 008.html: Chrome,
+// Firefox and Safari pass). The spec's "plan to navigate" queues the form's
+// navigation and only the form's own next plan removes it, so the link's
+// navigation (started at once by "follow the hyperlink") would be replaced when
+// the queued task runs. The browsers drop the pending submission aimed at a
+// frame when another navigation starts in that frame: Blink FrameLoader::
+// WillStartNavigation -> CancelProvisionalLoaderForNewNavigation ->
+// Frame::CancelFormSubmission. Golden rule 2: all three.
+promise_test(async t => {
+  const frame = document.querySelector("iframe");
+  const loads = [];
+  frame.onload = () => loads.push(frame.contentWindow.location.search);
+  const link = document.querySelector("a");
+  link.onclick = () => document.forms[0].submit();
+  link.click();
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_array_equals(loads, ["?from=link"]);
+}, "the link's navigation wins over the form submission its click handler planned");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  frame.name = "nav2b7second";
+  document.body.append(frame);
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const form = document.createElement("form");
+  form.target = "nav2b7second";
+  form.action = "/common/blank.html";
+  form.innerHTML = '<input type="hidden" name="from" value="form2">';
+  document.body.append(form);
+  const loads = [];
+  frame.onload = () => loads.push(frame.contentWindow.location.search);
+  form.submit();
+  // Location's navigate of the same navigable, after the plan: the plan is dropped.
+  frame.contentWindow.location.href = "/common/blank.html?from=location";
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_array_equals(loads, ["?from=location"]);
+}, "a location navigation of the target navigable cancels the planned form navigation");
+</script>

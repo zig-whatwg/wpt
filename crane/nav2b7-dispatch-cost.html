@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Event dispatch cost: an EventTarget, a node in a tree, and the Window (lane nav2 batch 7)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="outer"><div id="inner"><span id="leaf"></span></div></div>
+<script>
+// Lane nav2 batch 7 (cause D): DOM dispatch step 5's targetOverride is a new
+// field of the event path's input, null on every dispatch but HTML's Window
+// load and page transition events. A cost pair on these loops shows the
+// ordinary path unchanged. Each subtest's name carries its time.
+function time(label, n, target, make) {
+  let delivered = 0;
+  const listener = () => delivered++;
+  const at = target === window ? window : target;
+  at.addEventListener("nav2b7", listener);
+  if (target !== window && target.parentNode) document.body.addEventListener("nav2b7", listener);
+  const event = make();
+  const start = performance.now();
+  for (let i = 0; i < n; ++i) at.dispatchEvent(event);
+  const elapsed = performance.now() - start;
+  at.removeEventListener("nav2b7", listener);
+  document.body.removeEventListener("nav2b7", listener);
+  test(() => {
+    assert_greater_than_equal(delivered, n);
+    assert_equals(event.eventPhase, Event.NONE);
+  }, label + ": " + n + " dispatches in " + elapsed.toFixed(3) + " ms");
+}
+time("EventTarget", 100000, new EventTarget(), () => new Event("nav2b7"));
+time("span in a tree, bubbling", 100000, document.getElementById("leaf"), () => new Event("nav2b7", { bubbles: true }));
+time("Window", 100000, window, () => new Event("nav2b7"));
+</script>
