@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>An operation's or accessor's result and errors are made in the function's realm</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#dfn-create-operation-function">
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-sequence">
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-dictionary">
+<link rel="help" href="https://webidl.spec.whatwg.org/#js-union">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<iframe id="frame" srcdoc="<!doctype html><body>"></iframe>
+<script>
+// Each method or accessor is called on an object of one realm through the
+// function of the OTHER realm, in both directions. ECMA-262
+// BuiltinCallOrConstruct makes the function's [[Realm]] the current realm,
+// and WebIDL converts a result and throws an error there:
+//   - a sequence<T> result is ArrayCreate's Array (WebIDL 3.2.20);
+//   - a dictionary result is OrdinaryObjectCreate(%Object.prototype%)
+//     (3.2.18), the [Default] toJSON object too (3.7.7.1);
+//   - a union result is its member's conversion (3.2.24): a platform object
+//     is itself, in its own relevant realm, never a second wrapper;
+//   - a TypeError or DOMException is thrown in the current realm (3.7.6,
+//     3.7.7 "create an operation function", 3.2.x conversions).
+// Promises, ArrayBuffers and typed arrays are made in the realm the method's
+// own steps name (often this's relevant realm): covered by
+// streams/readable-streams/global.html,
+// fetch/api/response/response-{arraybuffer,blob}-realm, not here.
+// (Crane: lane perf3 made the binding's realm lookups lazy; this pins that
+// each kind still lands in the function's realm.)
+
+setup({ explicit_done: true });
+
+function accessor(proto, name) {
+  for (let o = proto; o; o = Object.getPrototypeOf(o)) {
+    const d = Object.getOwnPropertyDescriptor(o, name);
+    if (d) return d;
+  }
+  throw new Error("no " + name);
+}
+
+onload = () => {
+  const other = document.getElementById("frame").contentWindow;
+  const sides = [
+    ["the other realm's function on this realm's object", other, self],
+    ["this realm's function on the other realm's object", self, other],
+  ];
+
+  for (const [label, fn, obj] of sides) {
+    test(() => {
+      const el = obj.document.createElement("div");
+      el.setAttribute("a", "1");
+      el.setAttribute("b", "2");
+      const names = fn.Element.prototype.getAttributeNames.call(el);
+      assert_array_equals(names, ["a", "b"]);
+      assert_equals(Object.getPrototypeOf(names), fn.Array.prototype);
+    }, "sequence<DOMString> (getAttributeNames): " + label);
+
+    test(() => {
+      const encoder = new obj.TextEncoder();
+      const result = fn.TextEncoder.prototype.encodeInto.call(encoder, "hi", new obj.Uint8Array(4));
+      assert_equals(result.read, 2);
+      assert_equals(result.written, 2);
+      assert_equals(Object.getPrototypeOf(result), fn.Object.prototype);
+    }, "dictionary (encodeInto): " + label);
+
+    test(() => {
+      const json = fn.DOMPointReadOnly.prototype.toJSON.call(new obj.DOMPointReadOnly(1, 2));
+      assert_equals(json.x, 1);
+      assert_equals(Object.getPrototypeOf(json), fn.Object.prototype);
+    }, "[Default] toJSON dictionary (DOMPointReadOnly): " + label);
+
+    test(() => {
+      const data = new obj.FormData();
+      const file = new obj.File(["x"], "a.txt");
+      data.append("f", file);
+      data.append("s", "v");
+      const got = fn.FormData.prototype.get.call(data, "f");
+      assert_equals(got, file, "the entry's own File");
+      assert_equals(Object.getPrototypeOf(got), obj.File.prototype, "in its relevant realm");
+      assert_equals(fn.FormData.prototype.get.call(data, "s"), "v");
+    }, "union (FormData.get's File or USVString): " + label);
+
+    test(() => {
+      const el = obj.document.createElement("div");
+      assert_throws_js(fn.TypeError, () => fn.Element.prototype.getAttribute.call({}, "a"),
+                       "an invalid this");
+      assert_throws_js(fn.TypeError, () => fn.Element.prototype.setAttribute.call(el, "a"),
+                       "too few arguments");
+      assert_throws_js(fn.TypeError, () => fn.Node.prototype.appendChild.call(el, {}),
+                       "an argument that is not a Node");
+      assert_throws_dom("InvalidCharacterError", fn.DOMException,
+                        () => fn.Element.prototype.setAttribute.call(el, "a b", ""),
+                        "the method steps' exception");
+    }, "an operation's errors: " + label);
+
+    test(() => {
+      const input = obj.document.createElement("input");
+      const valueAsNumber = accessor(fn.HTMLInputElement.prototype, "valueAsNumber");
+      assert_throws_dom("InvalidStateError", fn.DOMException, () => valueAsNumber.set.call(input, 1),
+                        "the setter steps' exception");
+      const body = accessor(fn.Document.prototype, "body");
+      assert_throws_js(fn.TypeError, () => body.set.call(obj.document, {}),
+                       "a value that is not an HTMLElement");
+      const nodeType = accessor(fn.Node.prototype, "nodeType");
+      assert_throws_js(fn.TypeError, () => nodeType.get.call({}), "a getter's invalid this");
+    }, "an accessor's errors: " + label);
+  }
+
+  done();
+};
+</script>
+</body>
