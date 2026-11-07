@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>addEventListener / removeEventListener cost</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The perf suite's events.add-remove-listener loop (tests/perf/workloads/events.html), timed in a
+// page: every iteration appends a listener and removes it, so each pays the listener-change check
+// an ordinary target makes (one byte test) twice. Lane listen1's cost pair, base vs tip.
+function loop(target, n) {
+  const fns = [() => {}, () => {}, () => {}, () => {}];
+  for (let i = 0; i < 1000; i++) { const f = fns[i & 3]; target.addEventListener('click', f); target.removeEventListener('click', f); }
+  const start = performance.now();
+  for (let i = 0; i < n; i++) { const f = fns[i & 3]; target.addEventListener('click', f); target.removeEventListener('click', f); }
+  return performance.now() - start;
+}
+const n = 200000;
+const element = loop(document.createElement('div'), n);
+const plain = loop(new EventTarget(), n);
+test(() => {}, 'element add+remove: ' + element.toFixed(3) + ' ms for ' + n + ' pairs');
+test(() => {}, 'EventTarget add+remove: ' + plain.toFixed(3) + ' ms for ' + n + ' pairs');
+</script>

@@ -1,0 +1,148 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A PermissionStatus is kept while it has a change listener, and only then</title>
+<link rel="help" href="https://w3c.github.io/permissions/#garbage-collection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script>
+// Permissions 6.3.5: "A PermissionStatus object MUST NOT be garbage collected
+// if it has an event listener whose type is change." Each case makes its
+// statuses in a helper, so that nothing of the test's own keeps them, then
+// leaves the task (WeakRef targets are kept to the end of the job that made
+// the WeakRef, and the task that resolved a query can still hold its result),
+// and collects. A status with no listener, made beside the kept one, is the
+// control: it must be gone, or the collection proves nothing.
+const descriptor = {name: "geolocation"};
+
+function nextTask() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function collect() {
+  await nextTask();
+  TestUtils.gc();
+  TestUtils.gc();
+  await nextTask();
+  TestUtils.gc();
+}
+
+async function query() {
+  return navigator.permissions.query(descriptor);
+}
+
+// Make a status, let `setUp` give it listeners, and return only weak
+// references: to it and to a control status nothing listens to.
+async function weakStatuses(setUp) {
+  const status = await query();
+  const control = await query();
+  await setUp(status);
+  return {status: new WeakRef(status), control: new WeakRef(control)};
+}
+
+async function reset(t) {
+  await test_driver.set_permission(descriptor, "prompt");
+  t.add_cleanup(() => test_driver.set_permission(descriptor, "prompt"));
+}
+
+promise_test(async t => {
+  await reset(t);
+  let heard = null;
+  const refs = await weakStatuses(status => {
+    status.addEventListener("change", event => { heard = event.target.state; }, {once: true});
+  });
+  await collect();
+  assert_equals(refs.control.deref(), undefined, "the control status was collected");
+  assert_not_equals(refs.status.deref(), undefined, "the status with a change listener was kept");
+  await test_driver.set_permission(descriptor, "granted");
+  await nextTask();
+  assert_equals(heard, "granted", "its change event arrived");
+}, "A change listener keeps a status script dropped, through a collection in a later task, and its change event arrives");
+
+promise_test(async t => {
+  await reset(t);
+  let heard = null;
+  const refs = await weakStatuses(status => {
+    status.onchange = event => { heard = event.target.state; };
+  });
+  await collect();
+  assert_equals(refs.control.deref(), undefined, "the control status was collected");
+  assert_not_equals(refs.status.deref(), undefined, "the status with an onchange handler was kept");
+  await test_driver.set_permission(descriptor, "denied");
+  await nextTask();
+  assert_equals(heard, "denied", "its change event arrived");
+}, "An onchange event handler keeps a status script dropped");
+
+promise_test(async t => {
+  await reset(t);
+  const refs = await weakStatuses(status => {
+    const first = () => {};
+    status.addEventListener("change", first);
+    status.addEventListener("change", () => {});
+    status.removeEventListener("change", first);
+  });
+  await collect();
+  assert_equals(refs.control.deref(), undefined, "the control status was collected");
+  assert_not_equals(refs.status.deref(), undefined, "one change listener is left, so the status is kept");
+}, "Removing one of two change listeners keeps the status");
+
+promise_test(async t => {
+  await reset(t);
+  const refs = await weakStatuses(status => {
+    const listener = () => {};
+    status.addEventListener("change", listener);
+    status.addEventListener("change", listener, {capture: true});
+    status.removeEventListener("change", listener);
+    status.removeEventListener("change", listener, {capture: true});
+  });
+  await collect();
+  assert_equals(refs.status.deref(), undefined, "the status was collected");
+}, "Removing the last change listener lets the status be collected");
+
+promise_test(async t => {
+  await reset(t);
+  const refs = await weakStatuses(status => {
+    status.onchange = () => {};
+    status.onchange = null;
+  });
+  await collect();
+  assert_equals(refs.status.deref(), undefined, "the status was collected");
+}, "Clearing the onchange handler lets the status be collected");
+
+promise_test(async t => {
+  await reset(t);
+  const refs = await weakStatuses(status => {
+    const controller = new AbortController();
+    status.addEventListener("change", () => {}, {signal: controller.signal});
+    controller.abort();
+  });
+  await collect();
+  assert_equals(refs.status.deref(), undefined, "the status was collected");
+}, "A change listener removed by its AbortSignal lets the status be collected");
+
+promise_test(async t => {
+  await reset(t);
+  let heard = 0;
+  const refs = await weakStatuses(status => {
+    status.addEventListener("change", () => { heard++; }, {once: true});
+  });
+  await collect();
+  assert_not_equals(refs.status.deref(), undefined, "kept until its change event");
+  await test_driver.set_permission(descriptor, "granted");
+  await nextTask();
+  assert_equals(heard, 1, "its once listener ran");
+  await collect();
+  assert_equals(refs.status.deref(), undefined, "the status was collected once its once listener was removed");
+}, "A once change listener's dispatch removes it, and the status can then be collected");
+
+promise_test(async t => {
+  await reset(t);
+  const refs = await weakStatuses(status => {
+    status.addEventListener("somethingelse", () => {});
+    status.onerror = () => {};
+  });
+  await collect();
+  assert_equals(refs.status.deref(), undefined, "the status was collected");
+}, "Listeners of other types do not keep a status");
+</script>
