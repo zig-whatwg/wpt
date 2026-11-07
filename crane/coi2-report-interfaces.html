@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="img-src 'none'; report-to none">
+<title>Report and the report bodies are interfaces, as Chrome, Firefox and Safari ship them</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane lane coi2, batch 2 (the user's ruling of 2026-11-05): ReportBody and
+// CSPViolationReportBody have interface objects in all three browsers, and a
+// report's toJSON and its body's toJSON give their attributes. (Report and the
+// [LegacyNoInterfaceObject] bodies have none in the browsers; Crane's
+// bindings do not honour [LegacyNoInterfaceObject] yet - a queued bindings
+// item - so this file does not check their absence.)
+test(() => {
+  assert_equals(typeof ReportBody, "function", "ReportBody");
+  assert_equals(typeof CSPViolationReportBody, "function", "CSPViolationReportBody");
+  assert_equals(Object.getPrototypeOf(CSPViolationReportBody.prototype), ReportBody.prototype);
+  assert_throws_js(TypeError, () => new ReportBody());
+}, "Exposure");
+
+promise_test(async t => {
+  const reports = new Promise(resolve => {
+    const observer = new ReportingObserver(resolve, {types: ["csp-violation"]});
+    observer.observe();
+    t.add_cleanup(() => observer.disconnect());
+  });
+  const img = document.createElement("img");
+  img.src = "/images/green.png#blocked";
+  document.body.appendChild(img);
+  const [report] = await reports;
+  assert_equals(report.type, "csp-violation");
+  assert_true(report.body instanceof CSPViolationReportBody, "body interface");
+  assert_true(report.body instanceof ReportBody, "body is a ReportBody");
+  assert_equals(report.body, report.body, "the same body object on every read");
+  assert_equals(report.body.effectiveDirective, "img-src");
+  assert_equals(report.body.disposition, "enforce");
+  // Report's toJSON is [Default] (Firefox, WebKit; the user's ruling of
+  // 2026-11-05): its body member is the body object itself.
+  const json = report.toJSON();
+  assert_equals(json.type, "csp-violation");
+  assert_equals(json.url, report.url);
+  assert_equals(json.body, report.body, "the body object");
+  const body = report.body.toJSON();
+  assert_equals(body.effectiveDirective, "img-src");
+  assert_equals(body.blockedURL, report.body.blockedURL);
+  assert_true("referrer" in body && "lineNumber" in body, "every attribute, null ones too");
+  const parsed = JSON.parse(JSON.stringify(report));
+  assert_equals(parsed.body.effectiveDirective, "img-src");
+  assert_equals(JSON.stringify(ReportBody.prototype.toJSON.call(report.body)), "{}", "ReportBody's own toJSON has no member");
+}, "A csp-violation report and its CSPViolationReportBody");
+</script>

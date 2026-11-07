@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A COEP CORP violation report across a redirect names the request's first URL</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// Crane lane coi2, batch 2. Fetch "queue a cross-origin embedder policy CORP
+// violation report" step 2: "Let serializedURL be the result of serializing a
+// response URL for reporting with response", which reads response's URL
+// list[0] - the URL the request started at, not where its redirects ended.
+// html/cross-origin-embedder-policy/reporting-subresource-corp.https.html
+// expects the same of its redirect case.
+promise_test(async t => {
+  const {ORIGIN, REMOTE_ORIGIN} = get_host_info();
+  const frame_url = `${ORIGIN}/common/blank.html?pipe=header(cross-origin-embedder-policy,require-corp)`;
+  const frame = document.createElement("iframe");
+  frame.src = frame_url;
+  await new Promise(resolve => { frame.onload = resolve; document.body.appendChild(frame); });
+  t.add_cleanup(() => frame.remove());
+  const target = `${REMOTE_ORIGIN}/common/text-plain.txt`;
+  const url = `${ORIGIN}/common/redirect.py?location=${encodeURIComponent(target)}`;
+  const reports = new Promise(resolve => {
+    const observer = new frame.contentWindow.ReportingObserver(resolve);
+    observer.observe();
+  });
+  await frame.contentWindow.fetch(url, {mode: "no-cors", cache: "no-store"}).catch(() => {});
+  const [report] = await reports;
+  assert_equals(report.type, "coep");
+  assert_equals(report.body.type, "corp");
+  assert_equals(report.body.disposition, "enforce");
+  assert_equals(report.body.blockedURL, url, "the URL the request started at");
+}, "blockedURL is the response's first URL");
+</script>

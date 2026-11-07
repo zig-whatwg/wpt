@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>coi2: a popup that tells its opener it loaded</title>
+<script>
+// The opener waits for this message instead of reading the popup, so that
+// its first use of the popup is the access its test reports.
+addEventListener("load", () => opener.postMessage("coi2-ready", "*"));
+</script>

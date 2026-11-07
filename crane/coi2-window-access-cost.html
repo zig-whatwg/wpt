@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>The cost of a frame's cross-origin accessible members, read from its parent</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane lane coi2, batch 2: every use of a CrossOriginProperties(Window)
+// member from another realm asks the host's report_window_access (HTML
+// 7.1.3.3's access report check). This page times 1,000,000 such uses of a
+// same-origin frame's self, closed and length, and of its blur(), against
+// the page's own window.self, so a cost pair names the check's price. The
+// subtest names carry the times; the assertions only keep the loops honest.
+const N = 1000000;
+function time(f) {
+  const start = performance.now();
+  const result = f();
+  return [performance.now() - start, result];
+}
+const frame = document.createElement("iframe");
+document.body.appendChild(frame);
+const w = frame.contentWindow;
+const [own, ownCount] = time(() => { let n = 0; for (let i = 0; i < N; ++i) if (window.self === window) ++n; return n; });
+const [attributes, attributeCount] = time(() => { let n = 0; for (let i = 0; i < N; ++i) if (w.self === w && !w.closed && w.length === 0) ++n; return n; });
+const [operation, operationCount] = time(() => { let n = 0; for (let i = 0; i < N; ++i) { w.blur(); ++n; } return n; });
+test(() => assert_equals(ownCount, N), "own window.self x" + N + ": " + own.toFixed(1) + " ms");
+test(() => assert_equals(attributeCount, N), "frame self+closed+length x" + N + ": " + attributes.toFixed(1) + " ms");
+test(() => assert_equals(operationCount, N), "frame blur() x" + N + ": " + operation.toFixed(1) + " ms");
+</script>

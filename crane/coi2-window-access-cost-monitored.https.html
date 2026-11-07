@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>The cost of a frame's cross-origin accessible members once the Browser monitors access reports</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane lane coi2, batch 2: coi2-window-access-cost.html's loops, in a page
+// whose Browser has started its access monitoring. This page's
+// Cross-Origin-Opener-Policy-Report-Only: same-origin would have put its
+// popup (no opener policy) in another browsing context group, so the popup's
+// navigation parts their virtual browsing context groups (HTML "obtain a
+// browsing context to use for a navigation response" step 9.1), and from
+// then on every use below asks the access report check - the price a page
+// with no such split no longer pays. The subtest names carry the times; the
+// assertions only keep the loops honest.
+setup({explicit_done: true});
+const N = 1000000;
+function time(f) {
+  const start = performance.now();
+  const result = f();
+  return [performance.now() - start, result];
+}
+let popup = null;
+addEventListener("message", e => {
+  if (e.data !== "coi2-ready") return;
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  const [own, ownCount] = time(() => { let n = 0; for (let i = 0; i < N; ++i) if (window.self === window) ++n; return n; });
+  const [attributes, attributeCount] = time(() => { let n = 0; for (let i = 0; i < N; ++i) if (w.self === w && !w.closed && w.length === 0) ++n; return n; });
+  const [operation, operationCount] = time(() => { let n = 0; for (let i = 0; i < N; ++i) { w.blur(); ++n; } return n; });
+  test(() => assert_equals(ownCount, N), "monitored own window.self x" + N + ": " + own.toFixed(1) + " ms");
+  test(() => assert_equals(attributeCount, N), "monitored frame self+closed+length x" + N + ": " + attributes.toFixed(1) + " ms");
+  test(() => assert_equals(operationCount, N), "monitored frame blur() x" + N + ": " + operation.toFixed(1) + " ms");
+  popup.close();
+  done();
+});
+popup = window.open(new URL("resources/coi2-popup-ready.html", location.href).href);
+</script>

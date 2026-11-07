@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A COOP report-only page's access to its openee is reported once to its ReportingObservers, in Chromium's shape</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Crane lane coi2, batch 2. Only Chrome ships COOP access reports, so its
+// shape (wpt.fyi: html/cross-origin-opener-policy/reporting/access-reporting/):
+// a "coop-access-violation" report on the accessing page's ReportingObservers
+// with a CoopAccessViolationReportBody, made once per pair of windows
+// (Chromium's one-shot CoopAccessMonitor). This page's
+// Cross-Origin-Opener-Policy-Report-Only: same-origin would have put a popup
+// with no opener policy in another browsing context group.
+promise_test(async t => {
+  // Nothing reads the popup before the access under test: its first use
+  // consumes the pair's one report. The popup says it loaded by a message.
+  const loaded = new Promise(resolve => addEventListener("message", e => {
+    if (e.data === "coi2-ready") resolve();
+  }));
+  const popup_url = new URL("resources/coi2-popup-ready.html", location.href).href;
+  const popup = window.open(popup_url);
+  t.add_cleanup(() => popup.close());
+  await loaded;
+  const observer = new ReportingObserver(() => {});
+  observer.observe();
+  t.add_cleanup(() => observer.disconnect());
+  popup.blur();
+  const reports = observer.takeRecords();
+  assert_equals(reports.length, 1, "one report");
+  const [report] = reports;
+  assert_equals(report.type, "coop-access-violation");
+  assert_equals(report.url, location.href);
+  assert_equals(report.body.type, "access-from-coop-page-to-openee");
+  assert_equals(report.body.property, "blur");
+  assert_equals(report.body.openeeURL, popup_url);
+  assert_true(report.body.sourceFile.endsWith("coi2-coop-access-report.https.html"), "sourceFile");
+  assert_true(report.body.lineNumber > 0, "lineNumber");
+  const json = JSON.parse(JSON.stringify(report.body));
+  assert_equals(json.openeeURL, popup_url);
+  assert_false("openerURL" in json, "no openerURL");
+  assert_false("otherDocumentURL" in json, "no otherDocumentURL");
+  // The pair's monitor is used: no second report.
+  popup.focus();
+  void popup.closed;
+  assert_equals(observer.takeRecords().length, 0, "reported once per pair");
+}, "Access from the COOP page to its openee");
+</script>
