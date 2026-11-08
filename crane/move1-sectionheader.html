@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>header and footer scoped to sectioning content map to sectionheader and sectionfooter</title>
+<link rel="help" href="https://w3c.github.io/html-aam/#el-header">
+<link rel="help" href="https://w3c.github.io/aria/#sectionheader">
+<!-- ARIA 1.3 sectionheader/sectionfooter (w3c/aria#1931). Chrome 157 and Safari 27.2 pass
+     html-aam/roles-contextual.tentative.html 4/4, Firefox 159 0/4: the shipping majority.
+     The role follows a move: dom/nodes/moveBefore/role-updates-after-move.html. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<header id="top">Top</header>
+<footer id="bottom">Bottom</footer>
+<article><header id="in-article">x</header><footer id="foot-article">x</footer></article>
+<aside><header id="in-aside">x</header></aside>
+<nav><footer id="in-nav">x</footer></nav>
+<section><header id="in-section">x</header></section>
+<main><footer id="in-main">x</footer></main>
+<div><header id="in-div">x</header></div>
+<section id="target"></section>
+<script>
+const role = id => test_driver.get_computed_role(document.getElementById(id));
+promise_test(async () => {
+  assert_equals(await role("top"), "banner");
+  assert_equals(await role("bottom"), "contentinfo");
+  assert_equals(await role("in-div"), "banner");
+}, "header and footer scoped to the body keep banner and contentinfo");
+promise_test(async () => {
+  assert_equals(await role("in-article"), "sectionheader");
+  assert_equals(await role("foot-article"), "sectionfooter");
+  assert_equals(await role("in-aside"), "sectionheader");
+  assert_equals(await role("in-nav"), "sectionfooter");
+  assert_equals(await role("in-section"), "sectionheader");
+  assert_equals(await role("in-main"), "sectionfooter");
+}, "header and footer in sectioning content or main are sectionheader and sectionfooter");
+promise_test(async () => {
+  const header = document.getElementById("top");
+  document.getElementById("target").moveBefore(header, null);
+  assert_equals(await role("top"), "sectionheader");
+  document.body.moveBefore(header, document.body.firstChild);
+  assert_equals(await role("top"), "banner");
+}, "the role follows a move");
+</script>
