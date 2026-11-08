@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selectors nested past 75 blocks are invalid (Firefox 159's bound), at any depth without a crash</title>
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#matches">
+<!-- Lane crash1 (2026-11-08). Selectors 4 sets no depth limit; Chrome 156 and Safari 27 parse
+     10,000 nested :is() but crash at 60,000 (Safari at 10,000); Firefox 159 makes a selector
+     whose blocks nest past 75 invalid (cssparser REASONABLE_NESTED_BLOCK_LIMIT). The user's
+     ruling: Firefox's bound. Expectations measured in Firefox 159 (tmp/crash1/probe/boundary.html). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="t"><span id="c"></span></div>
+<script>
+const R = (s, n) => s.repeat(n);
+const chain = (open, n, middle) => R(open, n) + middle + R(')', n);
+
+test(() => {
+  assert_equals(document.querySelector(chain(':is(', 75, '#t')), t);
+  assert_throws_dom('SyntaxError', () => document.querySelector(chain(':is(', 76, '#t')));
+}, '75 nested :is() match; the 76th block makes the selector invalid');
+
+for (const n of [10000, 60000]) {
+  test(() => {
+    for (const open of [':is(', ':where(', ':not(', ':nth-child(1 of '])
+      assert_throws_dom('SyntaxError', () => document.querySelector(chain(open, n, '#t')), open);
+  }, n + ' nested functional pseudo-classes are invalid, not a crash');
+}
+
+test(() => {
+  for (const open of [':where(', ':not(', ':nth-child(1 of ']) {
+    document.querySelector(chain(open, 75, '#t'));
+    assert_throws_dom('SyntaxError', () => document.querySelector(chain(open, 76, '#t')), open);
+  }
+  assert_equals(document.querySelector('#t:has(' + chain(':is(', 74, '#c') + ')'), t);
+  assert_throws_dom('SyntaxError', () => document.querySelector('#t:has(' + chain(':is(', 75, '#c') + ')'));
+  assert_throws_dom('SyntaxError', () => document.querySelector(chain(':is(', 75, ':nth-child(1)')));
+}, 'each functional pseudo-class is one block on the same boundary');
+
+test(() => {
+  const deep = chain(':is(', 75, '#c');
+  assert_throws_dom('SyntaxError', () => document.querySelector(':is(#t, ' + deep + ')'));
+  assert_throws_dom('SyntaxError', () => document.querySelector(':is(' + deep + ', #t)'));
+  assert_throws_dom('SyntaxError', () => t.matches(chain(':is(', 76, '#t')));
+}, 'a block past the bound is not forgiven by :is()');
+
+test(() => {
+  assert_equals(document.querySelector(chain(':is(', 74, '[id]')), t);
+  assert_equals(document.querySelector(chain(':is(', 75, '[id]')), null);
+}, 'an attribute selector at the 76th block is an invalid item that :is() forgives');
+
+test(() => {
+  assert_true(CSS.supports('selector(' + chain(':is(', 74, '#t') + ')'));
+  assert_false(CSS.supports('selector(' + chain(':is(', 75, '#t') + ')'));
+}, 'selector() counts its own block');
+
+test(() => {
+  const style = document.createElement('style');
+  style.textContent = chain(':is(', 75, '#t') + '{--a:1} ' + chain(':is(', 76, '#t') + '{--b:1} ' + chain(':is(', 10000, '#t') + '{--c:1}';
+  document.head.appendChild(style);
+  try {
+    assert_equals(style.sheet.cssRules.length, 1);
+    assert_equals(getComputedStyle(t).getPropertyValue('--a'), '1');
+    assert_throws_dom('SyntaxError', () => style.sheet.insertRule(chain(':is(', 76, '#t') + '{--d:1}'));
+  } finally {
+    style.remove();
+  }
+}, 'a style rule whose selector passes the bound is dropped; insertRule throws');
+</script>

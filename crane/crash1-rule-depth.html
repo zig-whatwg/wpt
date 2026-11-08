@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS rules nested past 75 blocks are dropped as Firefox 159 drops them, at any depth without a crash</title>
+<link rel="help" href="https://drafts.csswg.org/css-nesting-1/#nesting">
+<!-- Lane crash1 (2026-11-08). CSS Nesting 1 and CSS Syntax 3 set no depth limit; Chrome 156
+     keeps 1,000 nested rules and crashes at 10,000, Safari 27 keeps 128 (WebKit
+     maximumRuleListNestingLevel), Firefox 159 keeps 75 (cssparser REASONABLE_NESTED_BLOCK_LIMIT):
+     the 76th block is not entered - its rule is dropped and its contents are read by the 75th.
+     The user's ruling: Firefox's bound. Expectations measured in Firefox 159
+     (tmp/crash1/probe/boundary.html). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const R = (s, n) => s.repeat(n);
+function sheet(text) {
+  const style = document.createElement('style');
+  style.textContent = text;
+  document.head.appendChild(style);
+  const out = [];
+  // Iterative: a deep rule tree in another engine must not overflow this walk.
+  const stack = [[style.sheet.cssRules, 1]];
+  while (stack.length) {
+    const [list, depth] = stack.pop();
+    for (const rule of list) {
+      out.push(depth + ':' + rule.constructor.name.replace('CSS', '').replace('Rule', '') + (rule.style && rule.style.length ? '[' + Array.from(rule.style).join(',') + ']' : ''));
+      if (rule.cssRules) stack.push([rule.cssRules, depth + 1]);
+    }
+  }
+  const p = getComputedStyle(document.documentElement).getPropertyValue('--p').trim();
+  style.remove();
+  return { count: out.length, last: out[out.length - 1], applied: p === '1', all: out };
+}
+const amp = (n, inner) => ':root{' + R('&{', n - 1) + inner + R('}', n);
+
+test(() => {
+  const r = sheet(amp(75, '--p:1'));
+  assert_equals(r.count, 75);
+  assert_equals(r.last, '75:Style[--p]');
+  assert_true(r.applied);
+}, '75 nested style rules are kept');
+
+for (const n of [76, 1000, 60000]) {
+  test(() => {
+    const r = sheet(amp(n, '--p:1'));
+    assert_equals(r.count, 75);
+    assert_equals(r.last, '75:Style[--p]');
+    assert_true(r.applied);
+  }, n + ' nested style rules: the rules past the 75th are dropped, their declarations read by the 75th');
+}
+
+test(() => {
+  const r = sheet(amp(75, '--a:1; &{--p:1} --b:2'));
+  assert_equals(r.count, 76);
+  assert_array_equals(r.all.slice(-2), ['75:Style[--a,--p]', '75:NestedDeclarations[--b]']);
+}, 'declarations around a dropped rule stay in their order');
+
+for (const open of ['@media all{', '@supports (color:red){', '@layer{']) {
+  test(() => {
+    const kept = sheet(R(open, 74) + ':root{--p:1}' + R('}', 74));
+    assert_equals(kept.count, 75);
+    assert_true(kept.applied);
+    for (const n of [75, 1000]) {
+      const r = sheet(R(open, n) + ':root{--p:1}' + R('}', n));
+      assert_equals(r.count, 75, n);
+      assert_false(r.applied, n);
+    }
+  }, open + ' nests to 75 blocks; the style rule in the 76th is dropped');
+}
+
+test(() => {
+  assert_equals(sheet(amp(75, '@media all{--p:1}')).last, '75:Style[--p]');
+  assert_equals(sheet(amp(75, '@font-face{font-family:x}')).last, '75:Style[font-family]');
+}, 'an at-rule whose block would be the 76th is dropped; its declarations join the 75th rule');
+
+test(() => {
+  const nested = (n) => R('.y, :root{', 10) + R(':is(', n) + ':root' + R(')', n) + '{--p:1}' + R('}', 10);
+  assert_equals(sheet(nested(65)).count, 11);
+  assert_equals(sheet(nested(66)).count, 10);
+}, 'a nested rule whose selector passes the bound with its enclosing rules is dropped');
+
+test(() => {
+  // A condition, not a rule block: Firefox drops the rule past its block bound, Chrome crashes
+  // at 60,000; Crane bounds <query-in-parens> as its media queries do (128 levels).
+  assert_equals(sheet('@container ' + R('(', 60000) + 'width > 0px' + R(')', 60000) + '{:root{--p:1}}').count, 0);
+}, '@container conditions nested 60,000 deep: the rule is dropped, not a crash');
+
+test(() => {
+  const style = document.createElement('style');
+  document.head.appendChild(style);
+  try {
+    style.sheet.insertRule(amp(75, '--p:1'));
+    assert_throws_dom('SyntaxError', () => style.sheet.insertRule(amp(76, '--p:1')));
+  } finally {
+    style.remove();
+  }
+}, 'insertRule of a 76-deep rule is a SyntaxError (a "}" is left over)');
+</script>
