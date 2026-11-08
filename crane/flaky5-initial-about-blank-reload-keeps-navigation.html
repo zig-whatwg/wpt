@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>location.reload() of a frame's initial about:blank leaves the frame's navigation in flight</title>
+<!--
+  Lane flaky5. html/semantics/embedded-content/the-iframe-element/
+  iframe-loading-lazy-reload-location-reload.html failed in generation 210's
+  sweep ("got about:blank"): Crane loads every iframe eagerly, so the test's
+  location.reload() of the frame's initial about:blank ran while the frame's
+  navigation to its src was in flight, and the reload's population ended that
+  navigation whenever the src response had not arrived yet.
+
+  HTML "attempt to populate the history entry's document" step 5.1 abandons a
+  reload's population when the navigable's ongoing navigation is a navigation
+  ID. Chrome 156, Firefox 159 and Safari 27 agree for the initial about:blank
+  (probed 2026-11-08 with a 1.5 s src: all three keep the src), and all three
+  differ from that step for a loaded document, whose reload ends a navigation
+  in flight (case 2). Chromium: LocalFrame::Reload returns when the
+  DocumentLoader has no history item; WebKit: NavigationScheduler::
+  scheduleRefresh returns for a document whose URL is empty - the initial
+  empty document of a frame whose first navigation has not committed.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// A response that comes after a second: the navigation to it is in flight
+// for that long.
+const SLOW = new URL("/common/blank.html?pipe=trickle(d1)", location.href).href;
+const FIRST = new URL("/common/blank.html?first", location.href).href;
+const settle = (t, ms) => new Promise(resolve => t.step_timeout(resolve, ms));
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loads = [];
+  frame.onload = () => loads.push(frame.contentWindow.location.href);
+  frame.src = SLOW;
+  document.body.appendChild(frame);
+  // Its initial about:blank, with the navigation to SLOW in flight.
+  assert_equals(frame.contentWindow.location.href, "about:blank");
+  frame.contentWindow.location.reload();
+  await settle(t, 2500);
+  assert_equals(frame.contentWindow.location.href, SLOW, "the navigation in flight commits");
+  assert_array_equals(loads, [SLOW], "one load, the navigation's");
+}, "location.reload() of a frame's initial about:blank does not end the frame's navigation in flight");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  await new Promise(resolve => {
+    frame.onload = resolve;
+    frame.src = FIRST;
+    document.body.appendChild(frame);
+  });
+  // Out of the load event's task.
+  await settle(t, 0);
+  const loads = [];
+  frame.onload = () => loads.push(frame.contentWindow.location.href);
+  frame.contentWindow.location.href = SLOW;
+  frame.contentWindow.location.reload();
+  await settle(t, 2500);
+  assert_equals(frame.contentWindow.location.href, FIRST, "the reload ended the navigation in flight");
+  assert_array_equals(loads, [FIRST], "one load, the reload's");
+}, "location.reload() of a loaded document ends the frame's navigation in flight, as Chrome, Firefox and Safari do");
+</script>
