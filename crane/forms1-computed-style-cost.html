@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Computed style of pages with and without selects (lane forms1 cost pair)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+.styled { color: rgb(1, 2, 3); padding: 1px; }
+.base, .base::picker(select) { appearance: base-select; }
+</style>
+<div id=plain></div>
+<div id=selects></div>
+<script>
+// The UA sheet's select blocks use -internal-auto-base(), which resolves
+// `appearance` first: a page without a select must pay nothing for it. Each
+// round invalidates every style (a class flip on the container) and reads
+// them all again.
+const rounds = 20;
+
+function time(container, elements) {
+  const start = performance.now();
+  let checksum = 0;
+  for (let round = 0; round < rounds; ++round) {
+    container.classList.toggle('styled');
+    for (const element of elements) checksum += getComputedStyle(element).display.length;
+  }
+  return [performance.now() - start, checksum];
+}
+
+const plain = document.getElementById('plain');
+for (let i = 0; i < 1000; ++i) {
+  const div = document.createElement('div');
+  div.innerHTML = '<span>a</span><b>b</b><i>c</i>';
+  plain.append(div);
+}
+const plainElements = Array.from(plain.querySelectorAll('*'));
+const [plainMs, plainSum] = time(plain, plainElements);
+test(() => {
+  assert_equals(plainElements.length, 4000);
+  assert_equals(plainSum, rounds * (1000 * 'block'.length + 1000 * 'inline'.length * 3));
+}, "4000 elements without a select, " + rounds + " rounds: " + plainMs.toFixed(3) + " ms");
+
+const selects = document.getElementById('selects');
+for (let i = 0; i < 200; ++i) {
+  const select = document.createElement('select');
+  if (i % 2) select.className = 'base';
+  select.innerHTML = '<option>a</option><option>b</option><optgroup><option>c</option></optgroup>';
+  selects.append(select);
+}
+const selectElements = Array.from(selects.querySelectorAll('select, option, optgroup'));
+const [selectMs, selectSum] = time(selects, selectElements);
+test(() => {
+  assert_equals(selectElements.length, 1000);
+  // Native: inline-block select, block options and optgroup; base:
+  // inline-flex select, flex options, block optgroup.
+  assert_equals(selectSum, rounds * (100 * ('inline-block'.length + 4 * 'block'.length) + 100 * ('inline-flex'.length + 3 * 'flex'.length + 'block'.length)));
+}, "200 selects (half base-select) with 800 options and optgroups, " + rounds + " rounds: " + selectMs.toFixed(3) + " ms");
+</script>
