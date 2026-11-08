@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS simple blocks nested 60,000 deep parse without a crash, in a style attribute, a style sheet and an @import pre-scan</title>
+<link rel="help" href="https://drafts.csswg.org/css-syntax-3/#consume-simple-block">
+<!-- css/css-syntax/crashtests/unclosed-open-brackets.html (crbug 41343497) as a testharness test.
+     CSS Syntax 3 5.5.9 sets no depth limit; Blink (CSSTokenizer's block stack) and Gecko
+     (cssparser consume_until_end_of_block) consume blocks iteratively, so each value below
+     parses and is then invalid for its property (content and color take no blocks). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="target"></div>
+<script>
+const depth = 60000;
+
+test(() => {
+  document.documentElement.style = 'content: ' + '('.repeat(depth) + '";';
+  assert_equals(document.documentElement.style.content, '');
+  document.documentElement.removeAttribute('style');
+}, 'a style attribute of 60,000 unclosed ( parses, and the invalid declaration is dropped');
+
+test(() => {
+  target.style.cssText = 'color: green; content: ' + '['.repeat(depth);
+  assert_equals(target.style.color, 'green');
+  assert_equals(target.style.content, '');
+  target.removeAttribute('style');
+}, 'cssText with 60,000 unclosed [ keeps the declaration before it');
+
+test(() => {
+  const style = document.createElement('style');
+  style.textContent = '#target { color: green } #target { color: ' + '{'.repeat(depth);
+  document.head.appendChild(style);
+  try {
+    assert_equals(style.sheet.cssRules.length, 2);
+    assert_equals(getComputedStyle(target).color, 'rgb(0, 128, 0)');
+  } finally {
+    style.remove();
+  }
+}, 'a style sheet whose last rule holds 60,000 unclosed { keeps its rules');
+
+test(() => {
+  const style = document.createElement('style');
+  style.textContent = '@import url(data:text/css,%23target%7Bcolor%3Agreen%7D); #target { content: ' + '('.repeat(depth) + ')'.repeat(depth) + ' }';
+  document.head.appendChild(style);
+  try {
+    assert_equals(style.sheet.cssRules.length, 2);
+    assert_equals(style.sheet.cssRules[0].constructor.name, 'CSSImportRule');
+  } finally {
+    style.remove();
+  }
+}, 'a sheet whose rule after an @import holds 60,000 closed ( blocks keeps the @import');
+</script>
