@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<script>
+  window.onload = () => window.opener.loadResolver();
+</script>
+<form action="/common/blank.html?session=1">
+  <input id=t name=t value=initial>
+  <input type=checkbox id=c name=c>
+  <select id=s name=s><option>one</option><option value=two>Two</option></select>
+  <textarea id=a name=a>default</textarea>
+  <input type=password id=p name=p>
+  <input id=off name=off autocomplete=off>
+</form>
+<script>
+  window.events = [];
+  for (const control of document.querySelectorAll('input, select, textarea')) {
+    control.addEventListener('input', () => events.push('input'));
+    control.addEventListener('change', () => events.push('change'));
+  }
+</script>

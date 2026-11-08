@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form control states: restored after back/forward, not after a reload (lane forms1 batch 2)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// HTML 7.4.6.5 "save persisted state" / "restore persisted state" leave the
+// persisted user state implementation-defined. Crane keeps Blink's
+// FormController state: after a back/forward traversal the new document's
+// controls get their old values back, with no input or change event; a
+// password, and a control whose autocomplete is "off", are not saved.
+// A reload restores nothing - golden rule 2, the majority: Chrome
+// (DocumentLoader::DidInstallNewDocument, IsBackForwardOrRestore only) and
+// Safari (HistoryController::restoreDocumentState returns for Reload) do not,
+// Firefox does. The page is no-store, so no back/forward cache keeps it.
+function loaded() { return new Promise(resolve => window.loadResolver = resolve); }
+function turn(t) { return new Promise(resolve => t.step_timeout(resolve, 0)); }
+
+promise_test(async t => {
+  const w = window.open('resources/forms1b2-form-state-page.html');
+  t.add_cleanup(() => w.close());
+  await loaded();
+  await turn(t);
+  const $ = selector => w.document.querySelector(selector);
+  $('#t').value = 'typed';
+  $('#c').checked = true;
+  $('#s').value = 'two';
+  $('#a').value = 'area';
+  $('#p').value = 'secret';
+  $('#off').value = 'not kept';
+  w.location.href = '/html/semantics/forms/the-input-element/resources/loadresolver.html';
+  await loaded();
+  w.history.back();
+  await loaded();
+  await turn(t);
+  assert_equals($('#t').value, 'typed', 'text input');
+  assert_true($('#c').checked, 'checkbox');
+  assert_equals($('#s').value, 'two', 'select');
+  assert_equals($('#a').value, 'area', 'textarea');
+  assert_equals($('#p').value, '', 'a password is not saved');
+  assert_equals($('#off').value, '', 'autocomplete=off is not saved');
+  assert_array_equals(w.events, [], 'no input or change event');
+
+  $('#t').value = 'before reload';
+  w.location.reload();
+  await loaded();
+  await turn(t);
+  assert_equals($('#t').value, 'initial', 'a reload restores nothing');
+  assert_false($('#c').checked, 'a reload restores no checkedness');
+}, 'A back traversal restores form control values; a reload does not');
+</script>
