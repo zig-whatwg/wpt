@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node whose unchanged wrapper script dropped gets one script cannot tell from the old after young-generation collections</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#es-platform-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P8 (tmp/redesign/wrapper-redesign-design.md 4.11):
+// once V8 drops an unmodified node wrapper in a young-generation collection,
+// the node's next access makes a new one (Blink's model, BlinkRootsHandler
+// ResetRoot). Script must not be able to tell: the wrapper has its
+// interface's prototype, no own properties, the node's state - which lives in
+// the node, never in the wrapper - and one identity by every path to it.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+function scavenge() {
+  let sink = 0;
+  for (let round = 0; round < 48; round++) {
+    const junk = [];
+    for (let i = 0; i < 4096; i++) junk.push({ i, s: "x" + (i & 7) });
+    sink += junk.length;
+  }
+  return sink;
+}
+
+const detachedRoot = document.createElement("section");
+const inTree = document.body.appendChild(document.createElement("div"));
+
+for (const [label, where] of [["in the document's tree", inTree], ["in a detached tree script holds", detachedRoot]]) {
+  promise_test(async t => {
+    (() => {
+      const a = where.appendChild(document.createElement("a"));
+      a.setAttribute("href", "#x");
+      a.dataset.kind = "anchor";
+      a.className = "c1 c2";
+      a.appendChild(document.createTextNode("text"));
+      // The listener must not capture the wrapper: that would keep it.
+      a.addEventListener("wr8", e => { e.currentTarget.ownerDocument.wr8Heard = (e.currentTarget.ownerDocument.wr8Heard || 0) + 1; });
+    })();
+    for (let i = 0; i < 3; i++) {
+      await nextTask(t);
+      scavenge();
+    }
+    await nextTask(t);
+    const a = where.querySelector("a");
+    assert_equals(Object.getPrototypeOf(a), HTMLAnchorElement.prototype, "its interface's prototype");
+    assert_true(a instanceof HTMLAnchorElement);
+    assert_array_equals(Object.getOwnPropertyNames(a), [], "no own properties");
+    assert_equals(a, where.lastChild, "one identity by every path");
+    assert_equals(a, where.firstChild.firstChild.parentNode);
+    assert_equals(a.getAttribute("href"), "#x", "its attributes");
+    assert_equals(a.dataset.kind, "anchor");
+    assert_array_equals([...a.classList], ["c1", "c2"]);
+    assert_equals(a.textContent, "text", "its children");
+    a.dispatchEvent(new Event("wr8"));
+    assert_equals(document.wr8Heard, 1, "its event listener");
+    document.wr8Heard = 0;
+  }, `a dropped, unchanged wrapper's node answers the same through a fresh wrapper, ${label}`);
+}
+</script>

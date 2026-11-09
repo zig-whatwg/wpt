@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node wrapper script changed, or holds through another object, keeps its identity through young-generation collections</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#es-platform-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P8 (tmp/redesign/wrapper-redesign-design.md 4.11,
+// risk R3): V8 may drop a node's wrapper in a young-generation collection only
+// while it is an "unmodified API object" (V8 13.1 JSObject::
+// IsUnmodifiedApiObject: still its constructor's initial map, no elements, no
+// identity hash) and nothing reaches it. Any change script makes to a wrapper
+// - an expando, a changed prototype, a custom element's class, an indexed
+// property, an integrity level - changes its map, so that wrapper is never
+// the one dropped: after scavenges and full collections it is still there,
+// with its change, whenever script reaches its node again. Neither is a
+// wrapper script reaches through another object: a parent's tree, a static
+// NodeList, a Range or a MutationRecord.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+function scavenge() {
+  let sink = 0;
+  for (let round = 0; round < 48; round++) {
+    const junk = [];
+    for (let i = 0; i < 4096; i++) junk.push({ i, s: "x" + (i & 7) });
+    sink += junk.length;
+  }
+  return sink;
+}
+async function everyCollection(t, check) {
+  for (const step of ["scavenges", "full collection", "scavenges again"]) {
+    await nextTask(t);
+    if (step === "full collection") await TestUtils.gc(); else scavenge();
+    for (let i = 0; i < 3; i++) await nextTask(t);
+    check(step);
+  }
+}
+
+class Other extends HTMLElement {}
+customElements.define("wr8-modified", class extends HTMLElement { constructor() { super(); this.made = "by its class"; } });
+
+function changeWrappers(where) {
+  where.appendChild(document.createElement("i")).expando = "expando";
+  Object.setPrototypeOf(where.appendChild(document.createElement("b")), Other.prototype);
+  where.appendChild(document.createElement("wr8-modified"));
+  where.appendChild(document.createElement("u"))[0] = "element";
+  Object.preventExtensions(where.appendChild(document.createElement("s")));
+}
+
+function checkChanged(where, step) {
+  assert_equals(where.querySelector("i").expando, "expando", `the expando (${step})`);
+  assert_equals(Object.getPrototypeOf(where.querySelector("b")), Other.prototype, `the changed prototype (${step})`);
+  assert_equals(where.querySelector("wr8-modified").made, "by its class", `the custom element's own property (${step})`);
+  assert_equals(where.querySelector("u")[0], "element", `the indexed property (${step})`);
+  assert_false(Object.isExtensible(where.querySelector("s")), `the integrity level (${step})`);
+}
+
+const detachedRoot = document.createElement("section");
+const inTree = document.body.appendChild(document.createElement("div"));
+
+for (const [label, where] of [["in the document's tree", inTree], ["in a detached tree script holds", detachedRoot]]) {
+  promise_test(async t => {
+    assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+    changeWrappers(where);
+    await everyCollection(t, step => checkChanged(where, step));
+  }, `a wrapper script changed keeps its change through scavenges and full collections, ${label}`);
+}
+
+promise_test(async t => {
+  const seen = new WeakSet();
+  const held = (() => {
+    const root = document.createElement("section");
+    const deep = root.appendChild(document.createElement("div")).appendChild(document.createElement("em"));
+    deep.expando = "deep";
+    seen.add(deep);
+    const listed = root.appendChild(document.createElement("i"));
+    seen.add(listed);
+    const list = root.querySelectorAll("i");
+    const ranged = root.appendChild(document.createElement("u"));
+    seen.add(ranged);
+    const range = new Range();
+    range.selectNode(ranged);
+    const target = document.createElement("ol");
+    const observer = new MutationObserver(() => {});
+    observer.observe(target, { childList: true });
+    const recorded = target.appendChild(document.createElement("li"));
+    seen.add(recorded);
+    recorded.remove();
+    return { root, list, range, records: observer.takeRecords() };
+  })();
+  await everyCollection(t, step => {
+    const deep = held.root.firstChild.firstChild;
+    assert_true(seen.has(deep), `a node reached only through its tree (${step})`);
+    assert_equals(deep.expando, "deep", `with its expando (${step})`);
+    assert_true(seen.has(held.list[0]), `a node a static NodeList holds (${step})`);
+    assert_equals(held.list[0], held.root.querySelector("i"), `the same wrapper by both paths (${step})`);
+    const ranged = held.range.startContainer.childNodes[held.range.startOffset];
+    assert_true(seen.has(ranged), `a node a Range holds (${step})`);
+    assert_equals(held.records.length, 2, "the insertion's and the removal's records");
+    assert_true(seen.has(held.records[1].removedNodes[0]), `a node a MutationRecord holds (${step})`);
+    assert_equals(held.records[1].removedNodes[0], held.records[0].addedNodes[0], `one wrapper in both records (${step})`);
+  });
+}, "a wrapper reached through another object - a tree, a NodeList, a Range, a MutationRecord - keeps its identity");
+</script>
