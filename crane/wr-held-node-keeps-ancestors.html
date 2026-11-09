@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node script holds keeps its ancestors' wrappers and expandos</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-tree-parent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0), rule 3.2 (b), upward: a held node keeps every ancestor's
+// wrapper. Blink: Node::Trace visits parent_or_shadow_host_node_; WebKit: the
+// held wrapper adds its root as an opaque root, which keeps every wrapper of
+// the tree. crane/r3-detached-tree-child-keeps-root.html pins the root; this
+// pins every level's expando and identity, for an element and a Text.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// A chain root > div x6, every ancestor wrapped with an expando and a
+// WeakRef, a sibling beside the root's first child, and `leaf` at the bottom.
+function heldLeaf(makeLeaf) {
+  const refs = [];
+  const root = document.createElement("article");
+  root.wr = "root";
+  refs.push(new WeakRef(root));
+  let at = root;
+  for (let level = 1; level <= 6; level++) {
+    at = at.appendChild(document.createElement("div"));
+    at.wr = "level " + level;
+    refs.push(new WeakRef(at));
+  }
+  root.appendChild(document.createElement("aside")).wr = "aside";
+  const leaf = at.appendChild(makeLeaf());
+  return { leaf, refs };
+}
+
+function checkAncestors(leaf, refs) {
+  let at = leaf;
+  for (let level = 6; level >= 1; level--) {
+    at = at.parentNode;
+    assert_equals(at.wr, "level " + level, "the expando at level " + level);
+    assert_equals(refs[level].deref(), at, "the same wrapper at level " + level);
+  }
+  const root = at.parentNode;
+  assert_equals(root.wr, "root", "the root's expando");
+  assert_equals(refs[0].deref(), root, "the same root wrapper");
+  assert_equals(root.lastChild.wr, "aside", "a sibling off the path keeps its expando too");
+  assert_equals(leaf.getRootNode(), root, "the leaf's root is the tree's");
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { leaf, refs } = heldLeaf(() => document.createElement("span"));
+  await collect(t);
+  checkAncestors(leaf, refs);
+}, "a held element keeps every ancestor's wrapper");
+
+promise_test(async t => {
+  const { leaf, refs } = heldLeaf(() => document.createTextNode("leaf"));
+  await collect(t);
+  checkAncestors(leaf, refs);
+}, "a held Text keeps every ancestor's wrapper");
+
+promise_test(async t => {
+  // The negative control: nothing held, everything collected.
+  const refs = (() => heldLeaf(() => document.createElement("span")).refs)();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "every wrapper of the dropped tree is collected");
+}, "the same tree with its leaf dropped too is collected");
+</script>

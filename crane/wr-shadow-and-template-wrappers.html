@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: shadow trees and template contents keep their wrappers through their host</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-shadow-root-host">
+<link rel=help href="https://html.spec.whatwg.org/multipage/scripting.html#template-contents">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0), rule 3.2 over the HOST-INCLUDING tree: a shadow root's host
+// and a template's contents' host link two trees into one T(n). Blink: Node's
+// parent_or_shadow_host_node_, ElementRareData's shadow root, and the template
+// contents' host_ (TemplateContentDocumentFragment) are all traced; WebKit's
+// opaque root of a shadow tree is its host's (Node::opaqueRoot is the
+// shadow-including root). Each side, held alone, keeps the other's wrappers.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// A detached host with a shadow tree whose root, a <p> and a <slot> carry
+// expandos and WeakRefs.
+function hostWithShadowTree(mode) {
+  const host = document.createElement("div");
+  host.wr = "host";
+  const shadow = host.attachShadow({ mode });
+  shadow.wr = "shadow root";
+  const inner = shadow.appendChild(document.createElement("p"));
+  inner.wr = "inner";
+  const slot = shadow.appendChild(document.createElement("slot"));
+  slot.wr = "slot";
+  return { host, inner, refs: [new WeakRef(host), new WeakRef(shadow), new WeakRef(inner), new WeakRef(slot)] };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { host, refs } = (() => { const made = hostWithShadowTree("open"); return { host: made.host, refs: made.refs }; })();
+  await collect(t);
+  const shadow = host.shadowRoot;
+  assert_equals(shadow.wr, "shadow root", "the shadow root's expando");
+  assert_equals(refs[1].deref(), shadow, "the same shadow root wrapper");
+  assert_equals(shadow.firstChild.wr, "inner", "a shadow tree node's expando");
+  assert_equals(refs[2].deref(), shadow.firstChild, "the same wrapper");
+  assert_equals(shadow.lastChild.wr, "slot", "the slot's expando");
+}, "a held host keeps its shadow tree's wrappers");
+
+promise_test(async t => {
+  const { inner, refs } = (() => { const made = hostWithShadowTree("closed"); return { inner: made.inner, refs: made.refs }; })();
+  await collect(t);
+  const shadow = inner.getRootNode();
+  assert_equals(shadow.wr, "shadow root", "the closed shadow root's expando");
+  assert_equals(refs[1].deref(), shadow, "the same shadow root wrapper");
+  assert_equals(shadow.host.wr, "host", "the host's expando");
+  assert_equals(refs[0].deref(), shadow.host, "the same host wrapper");
+  assert_equals(shadow.lastChild.wr, "slot", "a sibling in the shadow tree");
+}, "a node held inside a closed shadow tree keeps its shadow root and host");
+
+// A detached template whose contents and their first child carry expandos.
+function templateWithContents() {
+  const template = document.createElement("template");
+  template.wr = "template";
+  template.innerHTML = "<p>first</p><b>second</b>";
+  const content = template.content;
+  content.wr = "content";
+  content.firstChild.wr = "first";
+  return { template, first: content.firstChild, refs: [new WeakRef(template), new WeakRef(content), new WeakRef(content.firstChild)] };
+}
+
+promise_test(async t => {
+  const { template, refs } = (() => { const made = templateWithContents(); return { template: made.template, refs: made.refs }; })();
+  await collect(t);
+  assert_equals(template.content.wr, "content", "the contents' expando");
+  assert_equals(refs[1].deref(), template.content, "the same contents wrapper");
+  assert_equals(template.content.firstChild.wr, "first", "a node of the contents");
+  assert_equals(refs[2].deref(), template.content.firstChild, "the same wrapper");
+}, "a held template keeps its contents' wrappers");
+
+promise_test(async t => {
+  const { first, refs } = (() => { const made = templateWithContents(); return { first: made.first, refs: made.refs }; })();
+  await collect(t);
+  const content = first.parentNode;
+  assert_equals(content.wr, "content", "the contents' expando");
+  assert_equals(refs[1].deref(), content, "the same contents wrapper");
+  assert_equals(content.lastChild.localName, "b", "the rest of the contents");
+  // Not pinned here: whether the template - the contents' host - keeps its
+  // wrapper too. Chrome traces TemplateContentDocumentFragment::host_ and
+  // Firefox's fragment holds its host (DocumentFragment::mHost), Safari's
+  // host is a WeakPtr; Crane on base lets the template's wrapper go, and the
+  // redesign's walk (P5, which climbs to the host-including root) keeps it.
+  // P5 adds that assertion with its change.
+}, "a node held inside template contents keeps the contents");
+
+promise_test(async t => {
+  // The negative control: both trees dropped are collected.
+  const refs = (() => [...hostWithShadowTree("open").refs, ...templateWithContents().refs])();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "every wrapper is collected");
+}, "a dropped host and a dropped template are collected with what they host");
+</script>

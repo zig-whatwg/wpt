@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node adopted into a frame's document keeps its tree's wrappers and its new document</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-adopt">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0; risk R3, "an adopted node"): adopting moves a subtree to
+// another document (DOM "adopt" step 3: every inclusive descendant's node
+// document is set), and the frame's document is another realm's. A node has
+// one wrapper whatever realm reads it (section 4.7: Blink's main world), so
+// after the move its wrappers and expandos stay, its ownerDocument is the
+// frame's, and a tree inserted into the frame's document is kept by that
+// document (rule 3.2 b). Blink moves the traced tree scope
+// (TreeScopeAdopter); WebKit moves the node to the new document's opaque root.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+const frame = document.body.appendChild(document.createElement("iframe"));
+
+// A detached tree of the top document: root > middle > leaf, with expandos.
+function treeToAdopt() {
+  const root = document.createElement("section");
+  root.wr = "root";
+  const middle = root.appendChild(document.createElement("div"));
+  middle.wr = "middle";
+  const leaf = middle.appendChild(document.createElement("span"));
+  leaf.wr = "leaf";
+  return { root, leaf, refs: [new WeakRef(root), new WeakRef(middle), new WeakRef(leaf)] };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frameDocument = frame.contentDocument;
+  const { leaf, refs } = (() => {
+    const made = treeToAdopt();
+    frameDocument.adoptNode(made.root);
+    return { leaf: made.leaf, refs: made.refs };
+  })();
+  await collect(t);
+  assert_equals(leaf.ownerDocument, frameDocument, "the leaf's node document is the frame's");
+  assert_equals(leaf.parentNode.wr, "middle", "its parent's expando");
+  assert_equals(refs[1].deref(), leaf.parentNode, "the same parent wrapper");
+  const root = leaf.getRootNode();
+  assert_equals(root.wr, "root", "its root's expando");
+  assert_equals(refs[0].deref(), root, "the same root wrapper");
+  assert_equals(root.ownerDocument, frameDocument, "the root moved too");
+}, "a node of an adopted detached tree keeps the tree, now the frame document's");
+
+promise_test(async t => {
+  const frameDocument = frame.contentDocument;
+  // The initial about:blank document's body (HTML "create a new browsing
+  // context and document" populates html, head and body).
+  const parent = frameDocument.body || frameDocument.documentElement;
+  assert_not_equals(parent, null, "the frame's document has an element to append to");
+  const refs = (() => {
+    const made = treeToAdopt();
+    // appendChild adopts first (DOM "insert" step 7.1).
+    parent.appendChild(made.root);
+    return made.refs;
+  })();
+  await collect(t);
+  assert_equals(frame.contentDocument, frameDocument, "the frame still shows the same document");
+  const root = parent.lastChild;
+  assert_equals(root.wr, "root", "the inserted root's expando");
+  assert_equals(refs[0].deref(), root, "the same root wrapper");
+  assert_equals(root.firstChild.firstChild.wr, "leaf", "its leaf's");
+  assert_equals(refs[2].deref(), root.firstChild.firstChild, "the same leaf wrapper");
+  root.remove();
+}, "a tree moved into the frame's document is kept by that document");
+
+promise_test(async t => {
+  // The negative control: adopted, then dropped, it is collected.
+  const frameDocument = frame.contentDocument;
+  const refs = (() => {
+    const made = treeToAdopt();
+    frameDocument.adoptNode(made.root);
+    return made.refs;
+  })();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), [true, true, true], "the adopted tree, dropped, is collected");
+}, "an adopted tree script drops is collected");
+</script>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an img whose load is pending keeps its wrapper and its tree's after script drops it</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/images.html#update-the-image-data">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0), rule 3.2 (c): a node kept by pending activity keeps the
+// wrappers of its tree. HTML's update the image data queues an element task
+// on the img that fires load or error at it, so the element - and the event
+// handlers script set on it - must outlive script's last reference; WebKit's
+// ImageLoader holds the element while an event is pending, Blink's
+// HTMLImageElement has pending activity while its loader does. Here the img
+// sits in a detached tree whose root carries an expando, and its load is a
+// network fetch the server delays, with collections while it waits.
+// crane/rc6-img-load-expando.html pins a lone img loading a data: URL.
+
+function wait(t, ms) {
+  return new Promise(resolve => t.step_timeout(resolve, ms));
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  self.wrSeen = [];
+  (() => {
+    const root = document.createElement("div");
+    root.wr = "root";
+    const img = root.appendChild(new Image());
+    img.wr = "img";
+    img.onload = function () { self.wrSeen.push("load:" + this.wr + ":" + this.parentNode.wr); };
+    img.onerror = function () { self.wrSeen.push("error:" + this.wr); };
+    img.src = "/images/green.png?pipe=trickle(d0.3)&wr=" + Date.now();
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  for (let i = 0; i < 200 && self.wrSeen.length === 0; i++) {
+    await wait(t, 20);
+    await TestUtils.gc();
+  }
+  assert_array_equals(self.wrSeen, ["load:img:root"], "load fired at the img, its expando and its root's intact");
+}, "a dropped img in a detached tree keeps its wrapper and its tree's while its fetch is pending");
+
+// The control's handler: a function that closes over no img. A handler that
+// did (img.onload = () => ... img ...) would keep its img for good on base -
+// a listener is a strong root until refcount step 8 (decision D7,
+// crane/rc-self-capturing-listener-collected.html) - and test that, not this.
+function wrControlEvent() {
+  self.wrControlDone();
+}
+
+promise_test(async t => {
+  // The negative control: once the load has fired, nothing keeps the img.
+  const refs = await new Promise(resolve => {
+    let made;
+    self.wrControlDone = () => resolve(made);
+    made = (() => {
+      const root = document.createElement("div");
+      const img = root.appendChild(new Image());
+      img.onload = wrControlEvent;
+      img.onerror = wrControlEvent;
+      img.src = "/images/green.png?wr-control=" + Date.now();
+      return [new WeakRef(root), new WeakRef(img)];
+    })();
+  });
+  let collected = false;
+  for (let i = 0; i < 10 && !collected; i++) {
+    await wait(t, 10);
+    await TestUtils.gc();
+    collected = refs.every(r => r.deref() === undefined);
+  }
+  assert_true(collected, "the loaded img and its tree are collected");
+}, "an img whose load has fired is collected once script drops it");
+</script>

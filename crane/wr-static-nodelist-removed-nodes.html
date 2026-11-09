@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a static NodeList keeps its removed nodes' wrappers, expandos and trees</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0), rule 3.2 (d): a holder whose wrapper is kept keeps the
+// wrappers of the trees it holds nodes of. A querySelectorAll() list is
+// static (DOM 4.2.6: "the static result"), so it still lists nodes removed
+// from their tree. Browsers split (section 2.5): Chrome's StaticNodeList
+// traces Member<Node>, Firefox's list holds the natives and a wrapper with an
+// expando is preserved, Safari has no static-list branch; Crane follows the
+// majority, Chrome and Firefox: the removed nodes keep their wrappers.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// A connected container's three <p>s, each with a <b>, listed, given
+// expandos, then removed one by one; the container goes too.
+function listOfRemovedNodes() {
+  const container = document.body.appendChild(document.createElement("div"));
+  container.innerHTML = "<p><b>1</b></p><p><b>2</b></p><p><b>3</b></p>";
+  const list = container.querySelectorAll("p");
+  const refs = [];
+  list.forEach((p, i) => {
+    p.wr = "p" + i;
+    p.firstChild.wr = "b" + i;
+    refs.push(new WeakRef(p), new WeakRef(p.firstChild));
+  });
+  for (const p of list) p.remove();
+  container.remove();
+  return { list, refs };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { list, refs } = listOfRemovedNodes();
+  await collect(t);
+  assert_equals(list.length, 3, "the list is static");
+  for (let i = 0; i < 3; i++) {
+    const p = list[i];
+    assert_equals(p.parentNode, null, "p" + i + " is removed");
+    assert_equals(p.wr, "p" + i, "p" + i + "'s expando");
+    assert_equals(refs[2 * i].deref(), p, "the same wrapper for p" + i);
+    assert_equals(p.firstChild.wr, "b" + i, "its child's expando");
+    assert_equals(refs[2 * i + 1].deref(), p.firstChild, "the same wrapper for its child");
+  }
+}, "a held static NodeList keeps its removed nodes' wrappers and their trees'");
+
+promise_test(async t => {
+  // Nodes script never wrapped, removed by an innerHTML: the list keeps the
+  // nodes and their subtrees (native retention, not only wrappers).
+  const list = (() => {
+    const container = document.createElement("div");
+    container.innerHTML = "<ul><li>one</li><li>two</li></ul>";
+    const list = container.querySelectorAll("li");
+    container.innerHTML = "";
+    return list;
+  })();
+  await collect(t);
+  assert_equals(list.length, 2);
+  assert_equals(list[0].textContent, "one");
+  assert_equals(list[1].parentNode, list[0].parentNode, "the two items still share their list");
+  assert_equals(list[0].parentNode.localName, "ul");
+}, "a static NodeList keeps nodes removed before script ever wrapped them");
+
+promise_test(async t => {
+  // The negative control: the list dropped too, everything is collected.
+  const refs = (() => listOfRemovedNodes().refs)();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "every wrapper is collected");
+}, "the removed nodes and their list, all dropped, are collected");
+</script>

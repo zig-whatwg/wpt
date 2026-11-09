@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node wrapper reachable only through its tree stays a WeakMap key, WeakRef target and registered target</title>
+<link rel=help href="https://tc39.es/ecma262/#sec-weakmap-objects">
+<link rel=help href="https://tc39.es/ecma262/#sec-weak-ref-objects">
+<link rel=help href="https://tc39.es/ecma262/#sec-finalization-registry-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0; risk R3, and P8's precondition): a wrapper that script reaches
+// only through its tree is live (rule 3.2 b), so ECMAScript must not see it
+// collected: a WeakMap keyed by it still answers, a WeakRef to it still
+// derefs to it, and a FinalizationRegistry it is registered with does not call
+// back (ECMA-262 9.9.3: an object is live while some execution could observe
+// its identity - here through root.firstChild). Blink keeps tree wrappers by
+// tracing; Firefox preserves a wrapper that becomes a WeakMap key or WeakRef
+// target (builtin/WeakMapObject-inl.h, builtin/WeakRefObject.cpp).
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// A held root whose child (and, under a parsed middle, grandchild) script
+// used as weak targets and then dropped.
+function treeWithWeakTargets(map, registry) {
+  const root = document.createElement("div");
+  root.innerHTML = "<section><p></p></section>";
+  const child = root.appendChild(document.createElement("span"));
+  child.wr = "child";
+  const deep = root.firstChild.firstChild;
+  deep.wr = "deep";
+  map.set(child, "child value");
+  map.set(deep, "deep value");
+  registry.register(child, "child");
+  registry.register(deep, "deep");
+  return { root, refs: [new WeakRef(child), new WeakRef(deep)] };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const map = new WeakMap();
+  const finalized = [];
+  const registry = new FinalizationRegistry(held => finalized.push(held));
+  const { root, refs } = treeWithWeakTargets(map, registry);
+  await collect(t);
+  // Cleanup callbacks run as tasks after a collection: give them turns.
+  for (let i = 0; i < 5; i++) await nextTask(t);
+  const child = root.lastChild;
+  const deep = root.firstChild.firstChild;
+  assert_equals(refs[0].deref(), child, "the WeakRef still derefs to the child");
+  assert_equals(refs[1].deref(), deep, "and to the node under the parsed middle");
+  assert_equals(map.get(child), "child value", "the WeakMap still answers for the child");
+  assert_equals(map.get(deep), "deep value", "and for the deep node");
+  assert_equals(child.wr, "child");
+  assert_equals(deep.wr, "deep");
+  assert_array_equals(finalized, [], "no registered node was finalized");
+}, "a node reachable only through its held tree stays every weak target it was");
+
+promise_test(async t => {
+  // The negative control: a node removed from the tree and dropped is
+  // collected - its WeakRef empties and its registry calls back.
+  const finalized = [];
+  const registry = new FinalizationRegistry(held => finalized.push(held));
+  const { root, ref } = (() => {
+    const root = document.createElement("div");
+    const gone = root.appendChild(document.createElement("span"));
+    registry.register(gone, "gone");
+    gone.remove();
+    return { root, ref: new WeakRef(gone) };
+  })();
+  for (let i = 0; i < 20 && finalized.length === 0; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  assert_equals(ref.deref(), undefined, "the removed node's wrapper is collected");
+  assert_array_equals(finalized, ["gone"], "its registry called back");
+  assert_equals(root.firstChild, null);
+}, "a node removed from its tree and dropped is collected and finalized");
+</script>

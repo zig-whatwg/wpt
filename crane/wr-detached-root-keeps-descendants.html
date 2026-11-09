@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a detached root script holds keeps its descendants' wrappers and expandos</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-tree">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0), rule 3.2 (b): a node's wrapper is kept while a wrapper of
+// another node of its tree is. Blink traces the tree from any live node
+// (Node::Trace, ContainerNode::Trace: first_child_, next_, parent_); WebKit
+// keeps every wrapper whose node's opaque root was reached
+// (JSNodeOwner::isReachableFromOpaqueRoots). Script holds only the root: every
+// descendant script made and dropped keeps its expando and its identity
+// across collections. GREEN on base: it pins what the redesign must not change.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// A detached root with a chain of six wrapped divs, a Text and a Comment,
+// each with an expando and a WeakRef (which keeps nothing once this job ends).
+function rootWithWrappedDescendants() {
+  const root = document.createElement("section");
+  const refs = [];
+  let at = root;
+  for (let depth = 1; depth <= 6; depth++) {
+    at = at.appendChild(document.createElement("div"));
+    at.wr = "depth " + depth;
+    refs.push(new WeakRef(at));
+  }
+  const text = root.appendChild(document.createTextNode("tail"));
+  text.wr = "text";
+  refs.push(new WeakRef(text));
+  const comment = root.appendChild(document.createComment("c"));
+  comment.wr = "comment";
+  refs.push(new WeakRef(comment));
+  return { root, refs };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { root, refs } = rootWithWrappedDescendants();
+  await collect(t);
+  let at = root;
+  for (let depth = 1; depth <= 6; depth++) {
+    at = at.firstChild;
+    assert_equals(at.wr, "depth " + depth, "the expando at depth " + depth);
+    assert_equals(refs[depth - 1].deref(), at, "the same wrapper at depth " + depth);
+  }
+  assert_equals(root.childNodes[1].wr, "text", "the Text's expando");
+  assert_equals(refs[6].deref(), root.childNodes[1], "the same Text wrapper");
+  assert_equals(root.lastChild.wr, "comment", "the Comment's expando");
+  assert_equals(refs[7].deref(), root.lastChild, "the same Comment wrapper");
+}, "a held detached root keeps every descendant script wrapped");
+
+// A parsed tree (made with no wrappers) in which script wrapped a few nodes.
+function parsedRootWithSomeWrapped() {
+  const root = document.createElement("div");
+  root.innerHTML = "<ul><li>a</li><li>b</li><li>c</li></ul><p><b>x</b><i>y</i></p>";
+  root.querySelector("li:nth-child(2)").wr = "li b";
+  root.querySelector("i").wr = "i";
+  return root;
+}
+
+promise_test(async t => {
+  const root = parsedRootWithSomeWrapped();
+  await collect(t);
+  assert_equals(root.querySelector("li:nth-child(2)").wr, "li b", "a wrapped list item's expando");
+  assert_equals(root.querySelector("i").wr, "i", "a wrapped leaf's expando");
+  assert_equals(root.querySelector("li").wr, undefined, "a node script never touched has none");
+}, "a held parsed root keeps the wrappers script made inside it");
+
+promise_test(async t => {
+  // The negative control: the same tree, dropped, is collected - the
+  // collections above are real ones.
+  const refs = (() => rootWithWrappedDescendants().refs)();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "every wrapper of the dropped tree is collected");
+}, "the same tree, dropped by script, is collected");
+</script>

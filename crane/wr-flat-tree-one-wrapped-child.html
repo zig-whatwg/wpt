@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a 10,000-child flat tree with one wrapped child keeps that wrapper and the tree</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-tree">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0; decision 7, the wide case): a parsed root with 10,000
+// children, one of which script wrapped. Whichever of the two script holds,
+// the other's wrapper and expando are kept (rule 3.2 b) - the case in which a
+// walk that keeps tree wrappers at collection time tests every child of the
+// root, and gc_bench's `wide` measures what that costs.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+const count = 10000;
+const middle = 5000;
+
+function wideTree() {
+  const root = document.createElement("div");
+  root.innerHTML = "<p></p>".repeat(count);
+  root.wr = "root";
+  const child = root.children[middle];
+  child.wr = "the one";
+  return { root, child, refs: [new WeakRef(root), new WeakRef(child)] };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { child, refs } = (() => { const made = wideTree(); return { child: made.child, refs: made.refs }; })();
+  await collect(t);
+  const root = child.parentNode;
+  assert_equals(root.wr, "root", "the root's expando");
+  assert_equals(refs[0].deref(), root, "the same root wrapper");
+  assert_equals(root.childElementCount, count, "every child is still there");
+  assert_equals(root.children[middle], child, "the held child is where it was");
+  assert_equals(child.wr, "the one");
+}, "the one wrapped child, held, keeps its 10,000-child parent");
+
+promise_test(async t => {
+  const { root, refs } = (() => { const made = wideTree(); return { root: made.root, refs: made.refs }; })();
+  await collect(t);
+  const child = root.children[middle];
+  assert_equals(child.wr, "the one", "the wrapped child's expando");
+  assert_equals(refs[1].deref(), child, "the same child wrapper");
+  assert_equals(root.firstChild.wr, undefined, "an unwrapped sibling has none");
+}, "the 10,000-child root, held, keeps its one wrapped child");
+
+promise_test(async t => {
+  // The negative control: both dropped, both collected.
+  const refs = (() => wideTree().refs)();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), [true, true], "the dropped tree's wrappers are collected");
+}, "the dropped flat tree is collected");
+</script>

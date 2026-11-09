@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a MutationRecord's nodes keep their wrappers while it is pending and once delivered</title>
+<link rel=help href="https://dom.spec.whatwg.org/#queue-a-tree-mutation-record">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0), rule 3.2 (d) for MutationRecords: a queued childList
+// record's target, added and removed nodes and siblings keep their wrappers -
+// and their subtrees' - until delivery, and a delivered record script keeps
+// does the same. Blink: MutationRecord traces target_, added_nodes_,
+// removed_nodes_, previous_sibling_ and next_sibling_, and the observer
+// traces records_; WebKit: ChildListRecord::visitNodesInGCThread adds their
+// opaque roots. All three browsers agree. crane/rc5-pending-target-expando.html
+// pins an attributes record's target.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// Under a detached, observed parent: a sibling, then `q` (with a child)
+// appended and removed. Nothing but the observer's records names them.
+function mutate(observer) {
+  const parent = document.createElement("div");
+  parent.wr = "parent";
+  parent.appendChild(document.createElement("i")).wr = "before";
+  observer.observe(parent, { childList: true });
+  const q = document.createElement("section");
+  q.wr = "q";
+  q.appendChild(document.createElement("b")).wr = "q child";
+  parent.appendChild(q);
+  q.remove();
+}
+
+function checkRecords(records) {
+  assert_equals(records.length, 2, "an append and a removal");
+  const [added, removed] = records;
+  assert_equals(added.target.wr, "parent", "the target's expando");
+  assert_equals(added.addedNodes[0].wr, "q", "the added node's expando");
+  assert_equals(added.addedNodes[0].firstChild.wr, "q child", "its subtree's");
+  assert_equals(added.previousSibling.wr, "before", "the previous sibling's");
+  assert_equals(removed.removedNodes[0], added.addedNodes[0], "one wrapper for the node in both records");
+  assert_equals(removed.target, added.target, "one target");
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const delivered = new Promise(resolve => {
+    const observer = new MutationObserver(records => resolve(records));
+    mutate(observer);
+    // Still in this job: the records are queued, and only they reach the nodes.
+    TestUtils.gc();
+    TestUtils.gc();
+  });
+  checkRecords(await delivered);
+}, "a pending childList record keeps its nodes' wrappers until delivery");
+
+promise_test(async t => {
+  // A delivered record script keeps holds them the same way.
+  const records = await new Promise(resolve => {
+    const observer = new MutationObserver(records => resolve(records));
+    mutate(observer);
+  });
+  await collect(t);
+  checkRecords(records);
+}, "delivered records script keeps keep their nodes' wrappers");
+
+promise_test(async t => {
+  // The negative control: records nobody keeps, with their nodes, go.
+  const refs = await new Promise(resolve => {
+    const refs = [];
+    const observer = new MutationObserver(records => {
+      refs.push(new WeakRef(records[0].target), new WeakRef(records[0].addedNodes[0]));
+      observer.disconnect();
+      resolve(refs);
+    });
+    mutate(observer);
+  });
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), [true, true], "the delivered and dropped records' nodes are collected");
+}, "records delivered and dropped let their nodes go");
+</script>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node keeps its node document's tree and its wrappers</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0), rule 3.2 (b)'s second half and refcount decision D6: a node
+// keeps its node document, and the document keeps its tree. Blink: Node::Trace
+// visits tree_scope_ (the document), which traces its tree; WebKit can reduce
+// a document only nodes reference to a husk (Document::removedLastRef), so
+// Crane follows Blink (crane/rc-document-held-through-detached-node.html pins
+// a removed node; this pins a node the document made and never inserted, a
+// node inside its tree, and an XML document's).
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+// A windowless HTML document with expandos on itself, its body and a <main>.
+function windowlessDocument() {
+  const doc = document.implementation.createHTMLDocument("wr-doc");
+  doc.wr = "doc";
+  doc.body.wr = "body";
+  doc.body.appendChild(doc.createElement("main")).wr = "main";
+  return doc;
+}
+
+function checkDocument(doc, refs) {
+  assert_not_equals(doc, null);
+  assert_equals(refs[0].deref(), doc, "the same document wrapper");
+  assert_equals(doc.wr, "doc", "the document's expando");
+  assert_equals(doc.title, "wr-doc", "its tree is intact");
+  assert_equals(doc.body.wr, "body", "the body's expando");
+  assert_equals(refs[1].deref(), doc.body, "the same body wrapper");
+  assert_equals(doc.body.firstChild.wr, "main", "a node of its tree");
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { node, refs } = (() => {
+    const doc = windowlessDocument();
+    return { node: doc.createElement("p"), refs: [new WeakRef(doc), new WeakRef(doc.body)] };
+  })();
+  await collect(t);
+  checkDocument(node.ownerDocument, refs);
+}, "a node a windowless document made, never inserted, keeps the document's tree");
+
+promise_test(async t => {
+  const { node, refs } = (() => {
+    const doc = windowlessDocument();
+    const node = doc.body.firstChild.appendChild(doc.createElement("span"));
+    return { node, refs: [new WeakRef(doc), new WeakRef(doc.body)] };
+  })();
+  await collect(t);
+  checkDocument(node.ownerDocument, refs);
+  assert_equals(node.parentNode.wr, "main", "the node's parent");
+}, "a node inside a windowless document's tree keeps the document");
+
+promise_test(async t => {
+  const { node, refs } = (() => {
+    const doc = document.implementation.createDocument("urn:wr", "root", null);
+    doc.wr = "xml";
+    doc.documentElement.wr = "root";
+    return { node: doc.createTextNode("x"), refs: [new WeakRef(doc), new WeakRef(doc.documentElement)] };
+  })();
+  await collect(t);
+  const doc = node.ownerDocument;
+  assert_equals(refs[0].deref(), doc, "the same XML document wrapper");
+  assert_equals(doc.wr, "xml", "its expando");
+  assert_equals(doc.documentElement.wr, "root", "its document element's expando");
+  assert_equals(refs[1].deref(), doc.documentElement, "the same wrapper");
+}, "a Text an XML document made keeps the document's tree");
+
+promise_test(async t => {
+  // The negative control: the document dropped with its nodes is collected.
+  const refs = (() => {
+    const doc = windowlessDocument();
+    return [new WeakRef(doc), new WeakRef(doc.body), new WeakRef(doc.createElement("p"))];
+  })();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "every wrapper is collected");
+}, "a windowless document nothing holds is collected");
+</script>

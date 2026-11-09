@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a custom element in a detached tree keeps its wrapper, prototype and expandos</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/custom-elements.html#custom-element-constructor">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's identity suite (tmp/redesign/wrapper-redesign-design.md
+// section 7, P0; risk R3, "a custom element's prototype"): a custom element's
+// wrapper is the object its constructor made (HTML "create an element" step
+// 6.1: the constructor's result is the element). A collected wrapper cannot be
+// made again - a new wrapper would be a plain HTMLElement with none of the
+// constructor's own properties - so while the element's tree is held, its
+// wrapper must be kept (rule 3.2 b). Blink and WebKit keep it by tracing /
+// opaque roots, as any tree wrapper.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+let constructed = 0;
+class WrElement extends HTMLElement {
+  constructor() {
+    super();
+    constructed++;
+    this.made = "by the constructor";
+  }
+  greet() { return "hello from " + this.localName; }
+}
+customElements.define("wr-element", WrElement);
+
+// A held detached root with two custom elements, made by createElement and by
+// `new`, under a plain middle node; both dropped.
+function rootWithCustomElements() {
+  const root = document.createElement("div");
+  const middle = root.appendChild(document.createElement("section"));
+  const created = middle.appendChild(document.createElement("wr-element"));
+  created.wr = "created";
+  const constructedOne = root.appendChild(new WrElement());
+  constructedOne.wr = "constructed";
+  return { root, refs: [new WeakRef(created), new WeakRef(constructedOne)] };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const before = constructed;
+  const { root, refs } = rootWithCustomElements();
+  assert_equals(constructed, before + 2, "two constructors ran");
+  await collect(t);
+  const created = root.firstChild.firstChild;
+  const constructedOne = root.lastChild;
+  for (const [element, name, ref] of [[created, "created", refs[0]], [constructedOne, "constructed", refs[1]]]) {
+    assert_true(element instanceof WrElement, name + ": still a WrElement");
+    assert_equals(Object.getPrototypeOf(element), WrElement.prototype, name + ": its prototype");
+    assert_equals(element.greet(), "hello from wr-element", name + ": its class's method");
+    assert_equals(element.made, "by the constructor", name + ": its constructor's property");
+    assert_equals(element.wr, name, name + ": its expando");
+    assert_equals(ref.deref(), element, name + ": the same wrapper");
+  }
+  assert_equals(constructed, before + 2, "no constructor ran again");
+}, "custom elements inside a held detached tree keep the wrappers their constructors made");
+
+promise_test(async t => {
+  // The negative control: the tree dropped is collected.
+  const refs = (() => rootWithCustomElements().refs)();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), [true, true], "both custom element wrappers are collected");
+}, "a dropped detached tree's custom elements are collected");
+</script>
