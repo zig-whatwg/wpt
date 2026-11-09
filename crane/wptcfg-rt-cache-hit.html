@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A response from the HTTP cache: its connection times are its fetchStart</title>
+<link rel=help href="https://w3c.github.io/resource-timing/#dom-performanceresourcetiming-domainlookupstart">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// Resource Timing reads the fetch's final connection timing info, which Fetch
+// leaves null when no connection is made (a response from the HTTP cache).
+// Chrome, Firefox and Safari report every connection time as fetchStart for
+// such a response, and resource-timing/resource-timing-level1.sub.html
+// checks fetchStart <= domainLookupStart for every entry on its page -
+// testharness.js among them, which a browser fetches from its cache after
+// the first page (Cache-Control: max-age=3600).
+promise_test(async () => {
+  const url = new URL("/common/blank.html?pipe=header(Cache-Control,max-age=3600)&token=" +
+                      Math.random(), location).href;
+  await (await fetch(url)).text();
+  await (await fetch(url)).text();
+  const entries = performance.getEntriesByName(url);
+  assert_equals(entries.length, 2, "two fetches, two entries");
+  const cached = entries[1];
+  assert_equals(cached.transferSize, 0, "the second fetch was answered by the HTTP cache");
+  assert_equals(cached.domainLookupStart, cached.fetchStart, "domainLookupStart");
+  assert_equals(cached.domainLookupEnd, cached.fetchStart, "domainLookupEnd");
+  assert_equals(cached.connectStart, cached.fetchStart, "connectStart");
+  assert_equals(cached.connectEnd, cached.fetchStart, "connectEnd");
+  assert_equals(cached.secureConnectionStart, 0, "secureConnectionStart (no TLS)");
+  // resource-timing-level1.sub.html's next invariants: connectEnd <=
+  // requestStart <= responseStart <= responseEnd, for the cache's read.
+  assert_less_than_equal(cached.connectEnd, cached.requestStart, "connectEnd <= requestStart");
+  assert_less_than_equal(cached.requestStart, cached.responseStart, "requestStart <= responseStart");
+  assert_less_than_equal(cached.responseStart, cached.responseEnd, "responseStart <= responseEnd");
+}, "A response from the HTTP cache has domainLookupStart == connectStart == fetchStart, and its request and response starts after them");
+</script>
