@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Compression Streams Brotli format support</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+for (const Stream of [CompressionStream, DecompressionStream]) {
+  test(() => {
+    const stream = new Stream("brotli");
+    assert_true(stream.readable instanceof ReadableStream);
+    assert_true(stream.writable instanceof WritableStream);
+  }, Stream.name + " supports the standardized Brotli format");
+}
+</script>

@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8">
+<title>Fetch body clone uses structured cloning for branch two</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-body-clone">
+<script src="/resources/testharness.js"></script><script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const chunk = new Uint8Array([1, 2, 3]);
+  const response = new Response(new ReadableStream({start(c) { c.enqueue(chunk); c.close(); }}));
+  const clone = response.clone();
+  const [left, right] = await Promise.all([response.body.getReader().read(), clone.body.getReader().read()]);
+  assert_not_equals(left.value, right.value);
+  assert_not_equals(left.value.buffer, right.value.buffer);
+  left.value[0] = 9;
+  assert_equals(right.value[0], 1);
+}, 'Cloning a Response separates branch chunks and their backing storage');
+</script>

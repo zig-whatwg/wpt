@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicit ARIA element references do not require an ID</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#attr-associated-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(t => {
+  const owner = document.createElement('div');
+  const target = document.createElement('span');
+  owner.append(target);
+  document.body.append(owner);
+  t.add_cleanup(() => owner.remove());
+  owner.ariaActiveDescendantElement = target;
+  assert_equals(owner.ariaActiveDescendantElement, target,
+                'the explicit target is returned even without an ID');
+  assert_equals(owner.getAttribute('aria-activedescendant'), '',
+                'the setter leaves an empty content attribute');
+  owner.removeAttribute('aria-activedescendant');
+  assert_equals(owner.ariaActiveDescendantElement, null,
+                'content-attribute removal clears the explicit target');
+}, 'Element ARIA single-reference setter stores and clears an explicit target');
+</script>

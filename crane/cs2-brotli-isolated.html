@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Brotli decompression of one known input</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const stream = new DecompressionStream('brotli');
+  const writer = stream.writable.getWriter();
+  const result = new Response(stream.readable).text();
+  await writer.write(new Uint8Array([0x21, 0x08, 0x00, 0x04, 0x66, 0x6f, 0x6f, 0x03]));
+  await writer.close();
+  assert_equals(await result, 'foo');
+}, 'Brotli BufferSource input decompresses to foo');
+</script>

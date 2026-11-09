@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>One hundred thousand MIME parses through XMLHttpRequest</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async t => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', 'data:text/plain,%80');
+  const types = [
+    'text/plain;charset=utf-8',
+    'TEXT/HTML;CHARSET=GBK',
+    'application/json; charset=UTF-8; charset=windows-1252',
+    'text/plain; note="a,b;c"',
+    'image/svg+xml'
+  ];
+  const start = performance.now();
+  for (let i = 0; i < 99999; ++i) {
+    xhr.overrideMimeType(types[i % types.length]);
+  }
+  xhr.overrideMimeType('text/plain;charset=windows-1252');
+  const elapsed = performance.now() - start;
+  await new Promise((resolve, reject) => {
+    xhr.onload = resolve;
+    xhr.onerror = () => reject(new Error('The data URL request failed'));
+    xhr.send();
+  });
+  assert_equals(xhr.responseText, '\u20ac', 'The final parsed charset controls response decoding');
+  console.log('MS2_MIME_MS=' + elapsed);
+}, '100000 MIME parses retain the final override and decode the response');
+</script>

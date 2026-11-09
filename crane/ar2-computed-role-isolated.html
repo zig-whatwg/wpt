@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ElementInternals default role reaches computed accessibility semantics</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/custom-elements.html#accessibility-semantics">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+customElements.define('ar2-role-default', class extends HTMLElement {});
+promise_test(async t => {
+  const element = document.createElement('ar2-role-default');
+  const internals = element.attachInternals();
+  internals.role = 'button';
+  internals.ariaLabel = 'Default button';
+  document.body.append(element);
+  t.add_cleanup(() => element.remove());
+  assert_equals(internals.role, 'button');
+  assert_false(element.hasAttribute('role'));
+  assert_equals(await test_driver.get_computed_role(element), 'button');
+  assert_equals(await test_driver.get_computed_label(element), 'Default button');
+}, 'Private ARIA defaults participate in computed role and label');
+</script>

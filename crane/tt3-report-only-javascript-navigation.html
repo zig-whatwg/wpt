@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Report-only Trusted Types navigation reports and reaches its destination</title>
+<link rel="help" href="https://w3c.github.io/trusted-types/dist/spec/#require-trusted-types-for-pre-navigation-check">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(t => new Promise(resolve => {
+  const seen = { initial: false, violation: false, destination: false };
+  const popup = window.open("/trusted-types/support/navigation-report-only-support.html");
+  let finished = false;
+  function finish() {
+    if (finished) return;
+    finished = true;
+    t.step(() => {
+      assert_true(seen.initial, "the initial popup document loads");
+      assert_true(seen.destination, "the javascript URL's navigation reaches its destination");
+      assert_true(seen.violation, "the report-only Trusted Types violation reaches the opener");
+    });
+    resolve();
+  }
+  function receive(event) {
+    const message = event.data;
+    if (message.type === "DOMContentLoaded") {
+      const url = new URL(message.uri);
+      if (url.searchParams.has("navigationattempted")) seen.destination = true;
+      else seen.initial = true;
+    }
+    if (message.effectiveDirective === "require-trusted-types-for") seen.violation = true;
+    if (seen.initial && seen.destination && seen.violation) finish();
+  }
+  addEventListener("message", receive);
+  const deadline = t.step_timeout(finish, 5000);
+  t.add_cleanup(() => {
+    clearTimeout(deadline);
+    removeEventListener("message", receive);
+    popup.close();
+  });
+}), "a report-only javascript URL delivers its violation and completes navigation");
+</script>

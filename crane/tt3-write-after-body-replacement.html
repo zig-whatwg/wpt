@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>document.write uses the live DOM after body text is replaced</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+test(() => {
+  const doc = new DOMParser().parseFromString("<body></body>", "text/html");
+  doc.write("before");
+  assert_equals(doc.body.textContent, "before");
+  doc.body.textContent = "";
+  doc.write("after");
+  assert_equals(doc.body.textContent, "after");
+  doc.close();
+}, "a later write inserts text after script removes the earlier text node");
+</script>

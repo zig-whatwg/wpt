@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG handler defaults require the SVG element interface</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const element = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  assert_true(element instanceof SVGElement);
+  assert_equals(element.onclick, null);
+}, 'An SVG g element exposes SVGElement handler defaults');
+</script>
