@@ -1,0 +1,108 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Range's contents algorithms over deep trees, without a crash</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-range-extract">
+<!-- Lane crash1 batch 3 (2026-11-08). DOM's "extract" and "clone the contents" recurse into a
+     partially contained child's subrange once per level; Crane recursed in native code and a
+     30,000-level range overflowed its stack (crash1 b2's sweep). The stringifier, deleteContents and
+     a deep tree's move into and out of the document run here at 30,000 levels; extract and clone at
+     3,000, because their steps re-insert each subrange's fragment into its clone - O(depth^2) moved
+     nodes, in Blink's bottom-up walk too - and Crane's per-node insertion steps make 10,000 levels
+     take about 20 s (the queued cost item). The unit tests (tests/dom/crash1_range_depth_test.zig)
+     take extract and clone to 10,000. Each test builds its chain in 500-level innerHTML chunks
+     (the HTML parser's depth cap is 512) and checks the result's shape, not only that nothing
+     crashed. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const DEPTH = 30000;
+const CONTENTS_DEPTH = 3000;
+// `n` nested divs under `parent`, the deepest holding a Text "abcd"; answers the Text node.
+function chain(parent, n) {
+  let leaf = parent;
+  for (let made = 0; made < n; made += 500) {
+    const k = Math.min(500, n - made);
+    const scratch = document.createElement('div');
+    scratch.innerHTML = '<div>'.repeat(k);
+    const top = scratch.firstChild;
+    let bottom = top;
+    while (bottom.firstChild) bottom = bottom.firstChild;
+    leaf.appendChild(top);
+    leaf = bottom;
+  }
+  return leaf.appendChild(document.createTextNode('abcd'));
+}
+// The first-child chain below `node`: its length and its end.
+function below(node) {
+  let levels = 0;
+  while (node.firstChild) { node = node.firstChild; levels++; }
+  return { levels, leaf: node };
+}
+function fresh() {
+  const root = document.createElement('section');
+  document.body.appendChild(root);
+  return root;
+}
+
+test(() => {
+  const root = fresh();
+  const start = chain(root, CONTENTS_DEPTH);
+  const end = chain(root, 2);
+  const range = new Range();
+  range.setStart(start, 1);
+  range.setEnd(end, 3);
+  const fragment = range.extractContents();
+  const left = below(fragment.firstChild);
+  assert_equals(left.levels, CONTENTS_DEPTH, 'the start side comes out as one clone chain');
+  assert_equals(left.leaf.data, 'bcd');
+  assert_equals(start.data, 'a');
+  assert_equals(below(fragment.lastChild).leaf.data, 'abc');
+  assert_equals(end.data, 'd');
+  assert_true(range.collapsed);
+  assert_equals(range.startContainer, root);
+  assert_equals(range.startOffset, 1);
+  root.remove();
+}, 'extractContents from 3,000 levels deep');
+
+test(() => {
+  const root = fresh();
+  const start = chain(root, 2);
+  const end = chain(root, CONTENTS_DEPTH);
+  const range = new Range();
+  range.setStart(start, 1);
+  range.setEnd(end, 3);
+  const fragment = range.cloneContents();
+  const right = below(fragment.lastChild);
+  assert_equals(right.levels, CONTENTS_DEPTH, 'the end side clones as one chain');
+  assert_equals(right.leaf.data, 'abc');
+  assert_equals(end.data, 'abcd', 'cloning changes nothing');
+  root.remove();
+}, 'cloneContents to 3,000 levels deep');
+
+test(() => {
+  const root = fresh();
+  const start = chain(root, DEPTH);
+  const end = chain(root, DEPTH);
+  const range = new Range();
+  range.setStart(start, 2);
+  range.setEnd(end, 2);
+  assert_equals(String(range), 'cdab');
+  range.deleteContents();
+  assert_equals(start.data, 'ab');
+  assert_equals(end.data, 'cd');
+  assert_equals(range.startContainer, root);
+  assert_equals(range.startOffset, 1);
+  root.remove();
+}, 'toString and deleteContents between two 30,000-level leaves');
+
+test(() => {
+  const holder = document.createElement('div');
+  const leaf = chain(holder, DEPTH);
+  document.body.appendChild(holder);
+  assert_true(leaf.isConnected);
+  holder.remove();
+  assert_false(leaf.isConnected);
+}, 'a 30,000-level detached tree moved into the document and out again');
+</script>
