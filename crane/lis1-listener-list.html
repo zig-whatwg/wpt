@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: the event listener list - one list for every type, the dispatch clone, event handlers in place</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-listener-invoke">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke">
+<link rel="help" href="https://dom.spec.whatwg.org/#add-an-event-listener">
+<link rel="help" href="https://dom.spec.whatwg.org/#remove-an-event-listener">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#activate-an-event-handler">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#deactivate-an-event-handler">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane lis1 (plan-v2 N5): a target's listeners, its event handlers' among
+// them, are one array for every event type, and dispatch's clone (DOM
+// "invoke" step 8) is the listeners present when it starts. Each case
+// changes the list from inside a listener in a way that moves the list
+// under the dispatch: removals before, at and after the running listener,
+// appends that outgrow the list, handlers replaced, deactivated and
+// activated again. Every expected order is the DOM and HTML standards'.
+
+function named(log, name) {
+  return () => log.push(name);
+}
+
+test(() => {
+  const target = new EventTarget();
+  const log = [];
+  const fns = [];
+  for (let i = 0; i < 8; i++) fns.push(named(log, i));
+  // Listener 3 removes 0 and 1 (already run: behind it), itself, and 5
+  // (ahead of it).
+  fns[3] = () => {
+    log.push(3);
+    target.removeEventListener("x", fns[0]);
+    target.removeEventListener("x", fns[1]);
+    target.removeEventListener("x", fns[3]);
+    target.removeEventListener("x", fns[5]);
+  };
+  for (const f of fns) target.addEventListener("x", f);
+  target.dispatchEvent(new Event("x"));
+  assert_array_equals(log, [0, 1, 2, 3, 4, 6, 7]);
+  log.length = 0;
+  target.dispatchEvent(new Event("x"));
+  assert_array_equals(log, [2, 4, 6, 7]);
+}, "removals behind, at and ahead of the running listener: the removed ones ahead never run");
+
+test(() => {
+  const target = new EventTarget();
+  const log = [];
+  const added = [];
+  target.addEventListener("x", () => {
+    log.push("first");
+    // Outgrow the list: none of these is in the clone.
+    for (let i = 0; i < 40; i++) {
+      const f = named(log, "added" + i);
+      added.push(f);
+      target.addEventListener("x", f);
+    }
+  });
+  target.addEventListener("x", named(log, "second"));
+  target.addEventListener("x", named(log, "third"));
+  target.dispatchEvent(new Event("x"));
+  assert_array_equals(log, ["first", "second", "third"]);
+  log.length = 0;
+  // The next dispatch runs the 40, after the three; the 40 its first
+  // listener appends again are not in its clone.
+  target.dispatchEvent(new Event("x"));
+  assert_equals(log.length, 3 + 40);
+  assert_array_equals(log.slice(0, 4), ["first", "second", "third", "added0"]);
+  assert_equals(log[42], "added39");
+}, "listeners appended during a dispatch, past the list's room, do not run in it");
+
+test(() => {
+  const target = new EventTarget();
+  const log = [];
+  const again = named(log, "again");
+  target.addEventListener("x", () => {
+    log.push("a");
+    target.removeEventListener("x", again);
+    target.addEventListener("x", again);
+  });
+  target.addEventListener("x", again);
+  target.addEventListener("x", named(log, "c"));
+  target.dispatchEvent(new Event("x"));
+  // Removed and added again: a new listener, after the clone was taken.
+  assert_array_equals(log, ["a", "c"]);
+}, "a listener removed and added again during a dispatch is a new listener and does not run");
+
+test(() => {
+  const target = new EventTarget();
+  const log = [];
+  target.addEventListener("x", named(log, "x1"));
+  target.addEventListener("y", named(log, "y1"));
+  target.addEventListener("x", named(log, "x2"), true);
+  target.addEventListener("xx", named(log, "xx"));
+  target.addEventListener("y", named(log, "y2"), true);
+  target.addEventListener("x", named(log, "x3"));
+  target.addEventListener("lis1-custom-type", named(log, "custom"));
+  target.dispatchEvent(new Event("x"));
+  assert_array_equals(log, ["x2", "x1", "x3"]);
+  log.length = 0;
+  target.dispatchEvent(new Event("y"));
+  assert_array_equals(log, ["y2", "y1"]);
+  log.length = 0;
+  target.dispatchEvent(new Event("lis1-custom-type"));
+  target.dispatchEvent(new Event("lis1-custom-typ"));
+  target.dispatchEvent(new Event("LIS1-CUSTOM-TYPE"));
+  assert_array_equals(log, ["custom"]);
+}, "listeners of several types in one target: each event reaches its own type's, capturing first at the target");
+
+test(() => {
+  const el = document.createElement("div");
+  const log = [];
+  el.addEventListener("click", named(log, "before"));
+  el.onclick = named(log, "handler1");
+  el.addEventListener("click", named(log, "after"));
+  el.click();
+  assert_array_equals(log, ["before", "handler1", "after"], "activated where it was first set");
+  log.length = 0;
+  el.onclick = named(log, "handler2");
+  el.click();
+  assert_array_equals(log, ["before", "handler2", "after"], "a new value keeps the listener's place");
+  log.length = 0;
+  el.onclick = null;
+  el.onclick = named(log, "handler3");
+  el.click();
+  assert_array_equals(log, ["before", "after", "handler3"], "deactivated, then activated again at the end");
+}, "an event handler's listener keeps its place while its value changes, and moves to the end when activated again");
+
+test(() => {
+  const el = document.createElement("div");
+  const log = [];
+  el.addEventListener("click", () => {
+    log.push("first");
+    el.onclick = null;
+    el.onclick = named(log, "new handler");
+  });
+  el.onclick = named(log, "old handler");
+  el.addEventListener("click", named(log, "last"));
+  el.click();
+  // The old handler's listener was removed before it was reached; the new
+  // one was appended after the clone.
+  assert_array_equals(log, ["first", "last"]);
+  assert_equals(typeof el.onclick, "function");
+  log.length = 0;
+  // Again: the handler's listener, now last, is removed and appended anew.
+  el.click();
+  assert_array_equals(log, ["first", "last"]);
+}, "a handler deactivated and activated again during a dispatch does not run in it");
+
+test(() => {
+  const el = document.createElement("div");
+  const log = [];
+  el.addEventListener("click", () => {
+    log.push("first");
+    el.onclick = named(log, "replaced");
+  });
+  el.onclick = named(log, "original");
+  el.click();
+  // The same listener, with a new value: the processing algorithm reads the
+  // value when it runs.
+  assert_array_equals(log, ["first", "replaced"]);
+}, "a handler whose value is replaced during a dispatch runs its new value in place");
+
+test(() => {
+  const target = new EventTarget();
+  const log = [];
+  const controller = new AbortController();
+  target.addEventListener("x", () => { log.push("aborts"); controller.abort(); });
+  target.addEventListener("x", named(log, "signalled"), { signal: controller.signal });
+  target.addEventListener("x", named(log, "once"), { once: true });
+  target.addEventListener("x", named(log, "plain"));
+  target.dispatchEvent(new Event("x"));
+  assert_array_equals(log, ["aborts", "once", "plain"]);
+  log.length = 0;
+  target.dispatchEvent(new Event("x"));
+  assert_array_equals(log, ["aborts", "plain"]);
+}, "a signal's removal and a once removal during a dispatch");
+
+test(() => {
+  const target = new EventTarget();
+  const log = [];
+  target.addEventListener("x", () => {
+    log.push("outer start");
+    target.dispatchEvent(new Event("y"));
+    log.push("outer end");
+  });
+  target.addEventListener("y", () => {
+    log.push("inner");
+    // Remove every "x" listener while the outer dispatch walks them.
+    target.removeEventListener("x", second);
+  });
+  const second = named(log, "second");
+  target.addEventListener("x", second);
+  target.dispatchEvent(new Event("x"));
+  assert_array_equals(log, ["outer start", "inner", "outer end"]);
+}, "a nested dispatch at the same target changes the list the outer one walks");
+
+test(() => {
+  const root = document.createElement("div");
+  const child = root.appendChild(document.createElement("span"));
+  const types = [];
+  for (let i = 0; i < 60; i++) types.push("lis1-type-" + i);
+  types.push("click", "input", "keydown", "pointerdown", "focusin", "transitionend");
+  const log = [];
+  // React registers each event type it supports on its root, capture and
+  // bubble: many types, two listeners each, in one target's list.
+  for (const type of types) {
+    root.addEventListener(type, (e) => log.push("capture " + e.type), true);
+    root.addEventListener(type, (e) => log.push("bubble " + e.type));
+  }
+  for (const type of types) child.dispatchEvent(new Event(type, { bubbles: true }));
+  assert_equals(log.length, types.length * 2);
+  for (let i = 0; i < types.length; i++) {
+    assert_equals(log[2 * i], "capture " + types[i]);
+    assert_equals(log[2 * i + 1], "bubble " + types[i]);
+  }
+}, "a root with two listeners for each of many types: each event runs exactly its type's two");
+
+test(() => {
+  const target = new EventTarget();
+  const f = () => {};
+  target.addEventListener("x", f);
+  target.addEventListener("x", f);
+  target.addEventListener("x", f, true);
+  target.addEventListener("lis1-x", f);
+  target.addEventListener("lis1-x", f);
+  let count = 0;
+  const counter = () => count++;
+  for (let i = 0; i < 3; i++) target.addEventListener("x", counter);
+  target.dispatchEvent(new Event("x"));
+  assert_equals(count, 1);
+}, "a listener equal in type, callback and capture is added once, for listed and custom types alike");
+</script>
