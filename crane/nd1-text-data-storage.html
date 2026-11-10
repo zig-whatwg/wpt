@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>CharacterData data of every shape - short text, whitespace many nodes share, long text - reads, splices and splits exactly, and a change to one node never reaches another</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-cd-replace">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-cd-substring">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-text-split">
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#insert-a-character">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="parsed">
+          <b>x</b>
+          <i>a longer run of text</i>
+          <!--
+          -->
+</div>
+<script>
+// Engines keep a node's data in more than one shape. Gecko points one-character
+// text and whitespace runs (an optional space, up to 7 newlines, then up to 50
+// spaces or tabs) into static shared buffers and copies them out before a change
+// (dom/base/CharacterDataBuffer.cpp); Blink's parser shares whitespace-only text
+// as atoms (html_construction_site.cc); Crane keeps up to 8 bytes in the node,
+// Gecko's whitespace shapes as a slice of one static blob and anything else in a
+// block of its own (src/dom/character_data.zig). None of it may show: each node's
+// data is its own string, measured and indexed in UTF-16 code units (DOM 4.10).
+"use strict";
+
+const ws = (lead, newlines, white, n) => (lead ? " " : "") + "\n".repeat(newlines) + white.repeat(n);
+const shapes = [
+  ws(false, 1, " ", 30),   // Blink's longest newline-then-spaces string
+  ws(true, 7, "\t", 50),   // Gecko's longest shared string: 58
+  ws(false, 7, " ", 2),
+  ws(false, 0, "\t", 9),
+  ws(true, 0, " ", 50),
+];
+const outside = [
+  ws(false, 8, " ", 1),    // 8 newlines
+  ws(true, 0, " ", 51),    // 51 whites after the space
+  "\n" + " ".repeat(10) + "\t",
+  "\r\n" + " ".repeat(8),
+  " ".repeat(10) + "x",
+];
+
+test(() => {
+  const div = document.getElementById("parsed");
+  const kids = div.childNodes;
+  assert_equals(kids[0].data, "\n          ");
+  assert_equals(kids[1].firstChild.data, "x");
+  assert_equals(kids[2].data, "\n          ");
+  assert_equals(kids[3].firstChild.data, "a longer run of text");
+  assert_equals(kids[5].nodeType, Node.COMMENT_NODE);
+  assert_equals(kids[5].data, "\n          ");
+  assert_equals(kids[0].length, 11);
+}, "the parser's whitespace, short and long text read back exactly");
+
+test(() => {
+  const div = document.getElementById("parsed");
+  const a = div.childNodes[0], b = div.childNodes[2], c = div.childNodes[5];
+  a.appendData("!");
+  assert_equals(a.data, "\n          !");
+  assert_equals(b.data, "\n          ", "another text with the same whitespace is unchanged");
+  assert_equals(c.data, "\n          ", "a comment with the same whitespace is unchanged");
+  b.insertData(1, "y");
+  assert_equals(b.data, "\ny          ");
+  c.deleteData(0, 1);
+  assert_equals(c.data, "          ");
+  assert_equals(a.data, "\n          !");
+  const fresh = new DOMParser().parseFromString("<p>\n          </p>", "text/html").querySelector("p").firstChild;
+  assert_equals(fresh.data, "\n          ", "a node parsed later still reads the shared whitespace");
+}, "a change to one node's whitespace reaches no other node with the same data");
+
+for (const s of shapes.concat(outside)) {
+  test(() => {
+    const t = document.createTextNode(s);
+    assert_equals(t.data, s);
+    assert_equals(t.length, s.length);
+    const u = new Text(s);
+    t.appendData("z");
+    assert_equals(t.data, s + "z");
+    assert_equals(u.data, s);
+    t.deleteData(s.length, 1);
+    assert_equals(t.data, s);
+    t.replaceData(0, 1, "q");
+    assert_equals(t.data, "q" + s.slice(1));
+    assert_equals(u.data, s);
+    assert_equals(u.substringData(1, 5), s.slice(1, 6));
+    const split = u.splitText(3);
+    assert_equals(u.data, s.slice(0, 3));
+    assert_equals(split.data, s.slice(3));
+  }, `whitespace ${JSON.stringify(s)} (${s.length} code units) reads, splices and splits exactly`);
+}
+
+test(() => {
+  const e = "\u{1F600}";
+  const t = document.createTextNode("abcd" + e);
+  assert_equals(t.length, 6);
+  t.insertData(5, "x");
+  assert_equals(t.length, 7);
+  assert_equals(t.data, "abcd\uD83Dx\uDE00", "a pair split into its surrogates");
+  t.deleteData(5, 1);
+  assert_equals(t.data, "abcd" + e, "the halves meet again");
+  assert_equals(t.length, 6);
+  t.insertData(4, "e");
+  assert_equals(t.data, "abcde" + e);
+  assert_equals(t.substringData(5, 1), "\uD83D");
+  assert_equals(t.substringData(6, 1), "\uDE00");
+  const lone = document.createTextNode("\uD800abcde");
+  assert_equals(lone.length, 6);
+  lone.replaceData(1, 5, "\uDC00");
+  assert_equals(lone.data, "\u{10000}");
+  assert_equals(lone.length, 2);
+  assert_equals(lone.substringData(1, 1), "\uDC00");
+}, "an astral pair and a lone surrogate around an 8-byte edge keep exact UTF-16 lengths");
+
+test(() => {
+  const host = document.createElement("div");
+  const indent = "\n" + " ".repeat(20);
+  host.innerHTML = indent;
+  const t = host.firstChild;
+  const rest = t.splitText(9);
+  assert_equals(t.data, indent.slice(0, 9));
+  assert_equals(rest.data, indent.slice(9));
+  const clone = rest.cloneNode();
+  host.append(clone, "x\u{1F600}");
+  assert_equals(host.textContent, indent + indent.slice(9) + "x\u{1F600}");
+  host.normalize();
+  assert_equals(host.childNodes.length, 1);
+  assert_equals(host.firstChild, t);
+  assert_equals(t.data, indent + indent.slice(9) + "x\u{1F600}");
+  t.data = " ".repeat(30);
+  assert_equals(t.data, " ".repeat(30));
+  t.appendData("!");
+  t.deleteData(0, 25);
+  assert_equals(t.data, "     !");
+  assert_equals(rest.data, indent.slice(9), "the split-off node keeps its own data");
+}, "splitText, cloneNode, textContent, normalize and the data setter over whitespace");
+
+test(() => {
+  const host = document.createElement("div");
+  host.innerHTML = "\n&#32;" + " ".repeat(10) + "<b></b>ab&amp;cd&#x1F600;";
+  assert_equals(host.firstChild.data, "\n" + " ".repeat(11), "character tokens split by a reference are one Text node");
+  assert_equals(host.lastChild.data, "ab&cd\u{1F600}");
+  assert_equals(host.lastChild.length, 7);
+}, "the parser coalesces adjacent character tokens into one node's data");
+
+promise_test(async () => {
+  const host = document.createElement("div");
+  host.innerHTML = "\n" + " ".repeat(12);
+  const t = host.firstChild;
+  const records = [];
+  const mo = new MutationObserver(r => records.push(...r));
+  mo.observe(host, { characterData: true, characterDataOldValue: true, subtree: true });
+  t.appendData("x");
+  t.data = "\t".repeat(20);
+  t.replaceData(0, 20, "s");
+  await Promise.resolve();
+  mo.disconnect();
+  assert_array_equals(records.map(r => r.oldValue), ["\n" + " ".repeat(12), "\n" + " ".repeat(12) + "x", "\t".repeat(20)]);
+  assert_equals(t.data, "s");
+}, "characterData records keep each old value, whitespace included");
+</script>
