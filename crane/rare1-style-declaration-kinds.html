@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: each kind of CSSStyleDeclaration works with its own state</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#the-cssstyledeclaration-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id=sheet>
+#t { color: rgb(1, 2, 3); }
+@keyframes k { from { opacity: 0.25; } }
+@page { margin-left: 1in; }
+</style>
+<body>
+<div id=t></div>
+<script>
+// Lane rare1 moved what only a computed or a detached declaration reads out
+// of every declaration's state. Each kind must still behave as CSSOM says.
+const t = document.getElementById('t');
+
+test(() => {
+  const style = t.style;
+  assert_equals(t.style, style, '[SameObject]');
+  assert_equals(style.parentRule, null);
+  style.marginTop = '2px';
+  assert_equals(t.getAttribute('style'), 'margin-top: 2px;');
+  t.setAttribute('style', 'padding: 1px');
+  assert_equals(style.padding, '1px');
+  assert_equals(style.length, 4);
+  style.cssText = '';
+  assert_equals(style.length, 0);
+}, 'inline (element.style)');
+
+test(() => {
+  const cs = getComputedStyle(t);
+  assert_equals(cs.color, 'rgb(1, 2, 3)');
+  assert_equals(cs.parentRule, null);
+  assert_throws_dom('NoModificationAllowedError', () => { cs.color = 'red'; cs.setProperty('color', 'red'); });
+  t.style.color = 'rgb(4, 5, 6)';
+  assert_equals(cs.color, 'rgb(4, 5, 6)', 'live');
+  t.style.color = '';
+  const before = getComputedStyle(t, '::before');
+  assert_equals(typeof before.display, 'string');
+}, 'computed (getComputedStyle), with and without a pseudo-element');
+
+test(() => {
+  const rules = document.getElementById('sheet').sheet.cssRules;
+  const rule = rules[0];
+  const style = rule.style;
+  assert_equals(rule.style, style, '[SameObject]');
+  assert_equals(style.parentRule, rule);
+  assert_equals(style.color, 'rgb(1, 2, 3)');
+  style.color = 'rgb(7, 8, 9)';
+  assert_equals(getComputedStyle(t).color, 'rgb(7, 8, 9)', 'a rule change reaches the cascade');
+  style.color = 'rgb(1, 2, 3)';
+  const keyframe = rules[1].cssRules[0];
+  assert_equals(keyframe.style.opacity, '0.25');
+  assert_equals(keyframe.style.parentRule, keyframe);
+  const page = rules[2];
+  assert_equals(page.style.marginLeft, '1in');
+}, 'rule (CSSStyleRule, CSSKeyframeRule, CSSPageRule)');
+</script>

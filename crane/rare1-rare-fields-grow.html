@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: an element's rare fields keep their objects while more are added</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style">
+<link rel="help" href="https://dom.spec.whatwg.org/#dom-element-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane rare1: an element's rare data is one sparse block that MOVES when a
+// field is added (Blink's NodeRareData since 2026-01). Every [SameObject]
+// object and every value kept there must survive each addition, in any
+// order, including an addition made while another field is being made.
+function fresh() {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  return el;
+}
+
+test(() => {
+  const el = fresh();
+  const style = el.style;
+  style.color = 'red';
+  const map = el.attributes;
+  el.setAttribute('title', 't');
+  const title = el.getAttributeNode('title');
+  const shadow = el.attachShadow({ mode: 'open' });
+  el.nonce = 'n-1';
+  const target = fresh();
+  el.ariaActiveDescendantElement = target;
+  for (let i = 0; i < 12; i++) {
+    el.setAttribute('data-a' + i, String(i));
+    el.getAttributeNode('data-a' + i);
+  }
+  assert_equals(el.style, style, 'style');
+  assert_equals(el.style.color, 'red', 'style value');
+  assert_equals(el.attributes, map, 'attributes');
+  assert_equals(el.getAttributeNode('title'), title, 'Attr node');
+  assert_equals(el.shadowRoot, shadow, 'shadow root');
+  assert_equals(el.nonce, 'n-1', 'nonce');
+  assert_equals(el.ariaActiveDescendantElement, target, 'element reference');
+  assert_equals(el.getAttribute('style'), 'color: red;', 'style attribute');
+}, 'style first, then every other rare field: each keeps its object');
+
+test(() => {
+  const el = fresh();
+  el.nonce = 'first';
+  const shadow = el.attachShadow({ mode: 'closed' });
+  const map = el.attributes;
+  const style = el.style;
+  style.setProperty('margin-left', '3px');
+  assert_equals(el.style, style);
+  assert_equals(el.attributes, map);
+  assert_equals(el.nonce, 'first');
+  assert_equals(el.style.marginLeft, '3px');
+  assert_equals(el.shadowRoot, null, 'a closed root is not exposed');
+  assert_true(shadow instanceof ShadowRoot);
+}, 'style last: the fields made before it keep theirs');
+
+test(() => {
+  const el = fresh();
+  el.nonce = 'x';
+  el.nonce = '';
+  assert_equals(el.nonce, '', 'explicitly empty');
+  el.nonce = 'y';
+  assert_equals(el.nonce, 'y');
+  el.removeAttribute('nonce');
+  assert_equals(el.nonce, 'y', 'the slot is not the content attribute');
+}, 'a cleared and reset nonce reads back');
+
+test(() => {
+  const els = [];
+  for (let i = 0; i < 200; i++) els.push(fresh());
+  const styles = els.map((el) => el.style);
+  els.forEach((el, i) => { if (i % 3 === 0) el.attributes; if (i % 5 === 0) el.nonce = 'n' + i; });
+  els.forEach((el, i) => {
+    assert_equals(el.style, styles[i]);
+    if (i % 5 === 0) assert_equals(el.nonce, 'n' + i);
+  });
+}, 'many elements, fields added in different orders');
+
+test(() => {
+  const el = fresh();
+  let inner = 0;
+  el.onclick = () => { inner++; el.click(); };
+  el.click();
+  assert_equals(inner, 1, 'a click() inside its own click event does nothing (click in progress)');
+  el.click();
+  assert_equals(inner, 2, 'the flag is unset after the dispatch');
+}, 'click(): the in-progress flag stops re-entrance and is reset');
+</script>

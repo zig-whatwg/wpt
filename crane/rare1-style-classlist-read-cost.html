@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane timing: element.style and element.classList, first and cached reads</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=host></div>
+<script>
+// Timing page for lane rare1 (one sparse rare block per element). Each round
+// makes 2,000 elements in the document (one wrapper each, as a framework's),
+// then times:
+//   styleFirst  - the first `el.style` read of each: the object made, its
+//                 rare slots (16 + 16 bytes) and its wrapper;
+//   styleCached - 20 more `el.style` reads of each ([SameObject] hits, the
+//                 sparse block's bit 1);
+//   classFirst  - the first `el.classList` of each (the generated cache);
+//   classCached - 20 more `el.classList` reads of each (the grid's pattern:
+//                 58,137 cached reads, ~10 per object).
+// The sums over ROUNDS rounds are globals the console reads (psElapsed-style)
+// and are in the subtest names; every subtest passes when identity holds.
+const ROUNDS = 10, N = 2000, REPEAT = 20;
+const host = document.getElementById('host');
+const t = { styleFirst: 0, styleCached: 0, classFirst: 0, classCached: 0 };
+let same = true;
+for (let r = 0; r < ROUNDS; r++) {
+  host.textContent = '';
+  const els = [];
+  for (let i = 0; i < N; i++) els.push(host.appendChild(document.createElement('div')));
+  let t0 = performance.now();
+  const styles = els.map((el) => el.style);
+  t.styleFirst += performance.now() - t0;
+  t0 = performance.now();
+  for (let k = 0; k < REPEAT; k++) for (let i = 0; i < N; i++) if (els[i].style !== styles[i]) same = false;
+  t.styleCached += performance.now() - t0;
+  t0 = performance.now();
+  const lists = els.map((el) => el.classList);
+  t.classFirst += performance.now() - t0;
+  t0 = performance.now();
+  for (let k = 0; k < REPEAT; k++) for (let i = 0; i < N; i++) if (els[i].classList !== lists[i]) same = false;
+  t.classCached += performance.now() - t0;
+}
+host.textContent = '';
+globalThis.styleFirst = t.styleFirst;
+globalThis.styleCached = t.styleCached;
+globalThis.classFirst = t.classFirst;
+globalThis.classCached = t.classCached;
+for (const [name, ms] of Object.entries(t)) {
+  test(() => { assert_true(same, 'every read is the same object'); }, name + ': ' + ms.toFixed(1) + ' ms for ' + ROUNDS + ' rounds');
+}
+</script>
