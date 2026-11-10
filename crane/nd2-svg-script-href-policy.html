@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<title>An SVG script's href survives a Trusted Types default policy that changes it during processing</title>
+<link rel="help" href="https://w3c.github.io/trusted-types/dist/spec/#prepare-the-script-text">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<svg id="host"></svg>
+<script>
+// Crane (lane nd2 batch 2): processing an SVG script reads its href, then
+// prepares its script text - which runs the default policy's createScript
+// when the text did not come through a Trusted Types sink - then fetches.
+// The policy below changes the href (and grows the element's attribute
+// list) while it runs. The href read before must still be readable after:
+// main d7d5a0be246 kept a borrowed view of the old value's buffer, which
+// the change freed, and fetched whatever the freed bytes held. Whichever
+// href a browser fetches - the one read before the policy ran or the one it
+// set - exactly one of the two scripts runs and no error event fires.
+const SVG_NS = "http://www.w3.org/2000/svg";
+window.ran = [];
+let target = null;
+trustedTypes.createPolicy("default", {
+  createScriptURL: url => url,
+  createScript: text => {
+    if (target) {
+      const script = target;
+      target = null;
+      script.setAttribute("href", "data:text/javascript,ran.push('b')");
+      for (let i = 0; i < 20; i++) script.setAttribute("data-grow" + i, "x");
+    }
+    return text;
+  },
+});
+
+promise_test(async () => {
+  const script = document.createElementNS(SVG_NS, "script");
+  script.setAttribute("href", "data:text/javascript,ran.push('a')");
+  // Text appended as a node: not a Trusted Types sink, so preparing the
+  // script text asks the default policy.
+  script.appendChild(document.createTextNode("/* untrusted */"));
+  const settled = new Promise((resolve, reject) => {
+    script.addEventListener("load", resolve);
+    script.addEventListener("error", () => reject(new Error("the script fired error")));
+  });
+  target = script;
+  document.getElementById("host").appendChild(script);
+  await settled;
+  assert_equals(target, null, "the default policy ran");
+  assert_equals(ran.length, 1, "one script ran");
+  assert_in_array(ran[0], ["a", "b"]);
+  assert_equals(script.getAttribute("href"), "data:text/javascript,ran.push('b')");
+}, "An SVG script whose href a Trusted Types default policy changes while its text is prepared still runs one of its scripts");
+</script>

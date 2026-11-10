@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A popover attribute change whose beforetoggle handler removes the attribute leaves the later change steps sound</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/popover.html#the-popover-attribute">
+<link rel="help" href="https://dom.spec.whatwg.org/#handle-attribute-changes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane (lane nd2 batch 2): the popover attribute's change steps (HTML: "If
+// oldValue and value are in different states, then run the hide popover
+// algorithm given element, true, true, false, and null") fire beforetoggle
+// synchronously, so script runs before the element type's own attribute
+// change steps for the same change - a link element's compare the old and
+// new values. The handler below removes the attribute and grows the
+// element's attribute list. On main d7d5a0be246 the later steps were handed
+// the new value's buffer, which the removal had freed (a link's steps
+// compared freed bytes); the values are now held across the steps.
+for (const tag of ["link", "div", "button"]) {
+  test(() => {
+    const element = document.createElement(tag);
+    element.setAttribute("popover", "auto");
+    document.body.append(element);
+    element.showPopover();
+    assert_true(element.matches(":popover-open"), "shown");
+    let events = [];
+    element.addEventListener("beforetoggle", event => {
+      events.push(event.newState);
+      if (event.newState !== "closed") return;
+      element.removeAttribute("popover");
+      for (let i = 0; i < 20; i++) element.setAttribute("data-grow" + i, "x");
+    });
+    element.setAttribute("popover", "manual");
+    assert_array_equals(events, ["closed"]);
+    assert_false(element.hasAttribute("popover"));
+    assert_false(element.matches(":popover-open"));
+    assert_equals(element.getAttribute("data-grow19"), "x");
+    assert_equals(element.attributes.length, 20);
+    element.remove();
+  }, `<${tag}>: a beforetoggle handler that removes the popover attribute during its change`);
+}
+</script>
