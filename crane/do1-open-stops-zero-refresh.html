@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>document.open() stops a document whose declarative refresh of time 0 is due: its fetches end whatever their progress, and the refresh ends with them</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#abort-a-document">
+<link rel=help href="https://github.com/whatwg/html/issues/4003">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The document open steps' step 8 stops loading a document whose navigable
+// has an ongoing navigation. Blink and WebKit also stop a document whose
+// declarative refresh of time 0 is set up but has not navigated yet: Blink's
+// Document::open (IsHttpRefreshScheduledWithin(base::TimeDelta()) ->
+// FrameLoader::StopAllLoaders, whose Document::CancelParsing cancels the
+// refresh) and WebKit's Document::open (NavigationScheduler::
+// hasQueuedNavigation() -> FrameLoader::stopAllLoaders; didExplicitOpen
+// cancels the scheduled refresh). Stopping aborts the document: "abort a
+// document" step 2 cancels every fetch in its context, "discarding any tasks
+// queued for them".
+//
+// A data: URL's response is there at once: the task that would resolve the
+// fetch's promise is queued before the refresh even starts waiting. Only
+// document.open() itself can abort that fetch, and it must - whatever the
+// fetch's progress. The upstream file
+// html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js
+// fetches over HTTP, where the same order holds only when the network is the
+// slower side.
+const resources = "/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/resources/";
+
+for (const [kind, url] of [["<meta> refresh", resources + "meta-refresh.py?0"],
+                           ["Refresh header", resources + "http-refresh.py?0"]]) {
+  async_test(t => {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    t.add_cleanup(() => frame.remove());
+    frame.onload = t.step_func(() => {
+      frame.onload = null;
+      frame.contentWindow.fetch("data:text/plain,answered").then(
+        t.unreached_func("document.open() should have aborted the fetch"),
+        t.step_func_done());
+      frame.contentDocument.open();
+    });
+    frame.src = url;
+  }, `document.open() aborts a fetch whose response is already there, with a ${kind} of time 0 due`);
+}
+
+async_test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  frame.onload = t.step_func(() => {
+    const opened = frame.contentDocument;
+    opened.open();
+    opened.write("<p id=opened>opened</p>");
+    opened.close();
+    // The open steps muted this frame's load event for the opened document
+    // (step 14): a load now is a new document - the refresh navigated.
+    frame.onload = t.unreached_func("the refresh should have ended when document.open() stopped the document");
+    t.step_timeout(() => {
+      assert_equals(frame.contentDocument, opened, "the frame still shows the opened document");
+      assert_not_equals(opened.getElementById("opened"), null, "with what was written to it");
+      t.done();
+    }, 1000);
+  });
+  frame.src = resources + "meta-refresh.py?0";
+}, "a <meta> refresh of time 0 ends when document.open() stops the document");
+
+// Control: a refresh that is not due at once is no navigation yet, and
+// document.open() leaves the document's fetches alone (all three browsers:
+// abort-refresh-multisecond-meta.window.js).
+async_test(t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  frame.onload = t.step_func(() => {
+    frame.onload = null;
+    let opened = false;
+    frame.contentWindow.fetch("data:text/plain,answered").then(
+      t.step_func_done(response => {
+        assert_true(opened, "document.open() ran before the fetch was answered");
+        assert_equals(response.status, 200);
+      }),
+      t.unreached_func("a refresh of time 1 is no navigation yet: the fetch should have been answered"));
+    frame.contentDocument.open();
+    opened = true;
+  });
+  frame.src = resources + "meta-refresh.py?1";
+}, "document.open() leaves a fetch alone with a <meta> refresh of time 1 due");
+</script>
+</body>
