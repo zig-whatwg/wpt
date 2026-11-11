@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Classes read through a class value's token list: the ordered set parser, quirks-mode folding, shared values, a cached selector across value churn</title>
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-ordered-set-parser">
+<link rel="help" href="https://drafts.csswg.org/selectors-4/#class-html">
+<link rel="help" href="https://dom.spec.whatwg.org/#concept-getelementsbyclassname">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id="root"></div>
+<script>
+// Crane (lane nd2 batch 3): a class attribute's value record carries its
+// tokens, split once per distinct value (Blink's SpaceSplitString::Data,
+// WebKit's SpaceSplitStringData), and a compiled class selector keeps its
+// name's id. These pin what that must not change, against what Chrome,
+// Firefox and Safari do.
+const root = document.getElementById("root");
+function make(cls) {
+  const el = document.createElement("span");
+  el.className = cls;
+  root.append(el);
+  return el;
+}
+
+test(() => {
+  const el = make("a b");
+  // `.a\ b` names the class "a b", which no token can be.
+  assert_false(el.matches(".a\\ b"));
+  assert_equals(root.querySelectorAll(".a\\ b").length, 0);
+  assert_true(el.matches(".a.b"));
+  el.remove();
+}, "a class selector whose name holds a space matches no element");
+
+test(() => {
+  const el = make("a\u000Bb c");
+  assert_false(el.matches(".a"), "VT is no ASCII whitespace");
+  assert_true(el.matches(".a\\b b"));
+  assert_true(el.matches(".c"));
+  assert_equals(el.classList.length, 2);
+  assert_equals(el.classList[0], "a\u000Bb");
+  el.className = " \ta\nb\fc\rd e  ";
+  assert_array_equals(Array.from(el.classList), ["a", "b", "c", "d", "e"]);
+  assert_equals(el.classList.value, " \ta\nb\fc\rd e  ");
+  el.className = "b a b c a";
+  assert_array_equals(Array.from(el.classList), ["b", "a", "c"]);
+  el.remove();
+}, "the five ASCII whitespace characters split classes, VT does not, and duplicates count once");
+
+test(() => {
+  const a = make("x y");
+  const b = make("x y");
+  assert_true(a.matches(".y") && b.matches(".y"));
+  a.className = "x z";
+  assert_true(a.matches(".z"));
+  assert_false(a.matches(".y"));
+  assert_true(b.matches(".y"));
+  assert_false(b.matches(".z"));
+  assert_true(b.classList.toggle("w"));
+  assert_equals(b.className, "x y w");
+  assert_false(a.matches(".w"));
+  assert_equals(document.getElementsByClassName("x y").length, 1);
+  a.remove(); b.remove();
+}, "two elements with one class value: changing one leaves the other's classes");
+
+test(() => {
+  const a = make("y zz");
+  assert_true(a.matches(".zz"));
+  a.className = "q";
+  const other = document.createElement("div");
+  root.append(other);
+  for (let i = 0; i < 600; i++) other.setAttribute("data-churn", "value " + i + " " + "x".repeat(i % 3 ? 10 : 300));
+  for (let i = 0; i < 600; i++) other.className = "churn" + i;
+  const b = make("other");
+  assert_false(b.matches(".zz"));
+  assert_false(a.matches(".zz"));
+  assert_true(b.matches(".other"));
+  b.className = "zz other";
+  assert_true(b.matches(".zz"));
+  a.remove(); b.remove(); other.remove();
+}, "a compiled class selector still answers after the values it named come and go");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = "<p class='Foo bar'>a</p><p class='foo BAR'>b</p><p class='École'>c</p>";
+  frame.onload = t.step_func_done(() => {
+    const doc = frame.contentDocument;
+    assert_equals(doc.compatMode, "BackCompat");
+    const [p1, p2, p3] = doc.querySelectorAll("p");
+    for (const selector of [".foo", ".FOO", ".Foo", ".bar", ".Bar"]) {
+      assert_true(p1.matches(selector), "p1 " + selector);
+      assert_true(p2.matches(selector), "p2 " + selector);
+      assert_equals(doc.querySelectorAll(selector).length, 2, selector);
+    }
+    assert_equals(doc.getElementsByClassName("FOO bar").length, 2);
+    // ASCII case-insensitive only.
+    assert_true(p3.matches(".ÉCOLE"));
+    assert_false(p3.matches(".école"));
+    assert_equals(doc.getElementsByClassName("école").length, 0);
+    // DOMTokenList compares tokens identical-to in any mode.
+    assert_false(p1.classList.contains("foo"));
+    assert_true(p1.classList.contains("Foo"));
+    frame.remove();
+  });
+  document.body.append(frame);
+}, "in a quirks-mode document classes compare ASCII case-insensitively");
+</script>
