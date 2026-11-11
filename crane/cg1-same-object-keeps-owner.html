@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: every element-level [SameObject] child script keeps alone keeps its element (caches in rare data)</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#SameObject">
+<link rel=help href="https://dom.spec.whatwg.org/#dom-element-classlist">
+<link rel=help href="https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane cg1 (N1): an element's [SameObject] caches - classList, part,
+// children, dataset, attributeStyleMap, SVG's style and className - left its
+// generated State for its rare data, and the caches the impls keep
+// themselves (attributes, HTML style) lost their generated copy. The binding
+// ties a [SameObject] child's wrapper to its element's both ways
+// (recordSameObjectEdge): script can keep the child and drop the element,
+// and the element must live as long as the child does (Blink traces the
+// element from the child; WebKit forwards the child's reference count to
+// it). These keep ONLY the child of a detached element, collect, and read
+// and write through the child: a freed element reads poison in the
+// bug-finding run.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+const SVG = "http://www.w3.org/2000/svg";
+
+function detached(build, make = () => document.createElement("div")) {
+  const root = document.createElement("section");
+  root.cg1 = "root";
+  const element = root.appendChild(make());
+  element.cg1 = "element";
+  element.setAttribute("class", "a");
+  element.setAttribute("part", "p");
+  element.setAttribute("data-x", "1");
+  element.setAttribute("style", "color: red");
+  element.appendChild(document.createElement("span")).id = "child";
+  return build(element);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const lists = [];
+  for (let i = 0; i < 50; i++) lists.push(detached(e => e.classList));
+  await collect(t);
+  for (const list of lists) {
+    list.add("b");
+    assert_equals(list.value, "a b");
+  }
+}, "classList keeps its element");
+
+promise_test(async t => {
+  const attributes = detached(e => e.attributes);
+  await collect(t);
+  const element = attributes.getNamedItem("class").ownerElement;
+  assert_equals(element.cg1, "element", "the element's wrapper, with its expando");
+  assert_equals(element.parentNode.cg1, "root", "and its tree");
+  assert_equals(attributes.length, 4);
+}, "attributes keeps its element");
+
+promise_test(async t => {
+  const styles = [];
+  for (let i = 0; i < 50; i++) styles.push(detached(e => e.style));
+  await collect(t);
+  for (const style of styles) {
+    assert_equals(style.color, "red");
+    style.color = "blue";
+    assert_equals(style.cssText, "color: blue;");
+  }
+}, "style keeps its element");
+
+promise_test(async t => {
+  const parts = [];
+  for (let i = 0; i < 50; i++) parts.push(detached(e => e.part));
+  await collect(t);
+  for (const part of parts) {
+    part.add("q");
+    assert_equals(part.value, "p q");
+  }
+}, "part keeps its element");
+
+promise_test(async t => {
+  const collections = [];
+  for (let i = 0; i < 50; i++) collections.push(detached(e => e.children));
+  await collect(t);
+  for (const children of collections) {
+    assert_equals(children.length, 1);
+    assert_equals(children[0].id, "child");
+    assert_equals(children[0].parentNode.cg1, "element");
+  }
+}, "children keeps its element");
+
+promise_test(async t => {
+  const sets = [];
+  for (let i = 0; i < 50; i++) sets.push(detached(e => e.dataset));
+  await collect(t);
+  for (const dataset of sets) {
+    assert_equals(dataset.x, "1");
+    dataset.y = "2";
+    assert_equals(dataset.y, "2");
+  }
+}, "dataset keeps its element");
+
+promise_test(async t => {
+  const maps = [];
+  for (let i = 0; i < 50; i++) maps.push(detached(e => e.attributeStyleMap));
+  await collect(t);
+  for (const map of maps) {
+    assert_true(map.has("color"));
+    map.delete("color");
+    assert_false(map.has("color"));
+  }
+}, "attributeStyleMap keeps its element");
+
+promise_test(async t => {
+  const names = [];
+  for (let i = 0; i < 50; i++) names.push(detached(e => e.className, () => document.createElementNS(SVG, "rect")));
+  await collect(t);
+  for (const name of names) {
+    assert_equals(name.baseVal, "a");
+    name.baseVal = "c";
+    assert_equals(name.baseVal, "c");
+  }
+}, "an SVG element's className keeps its element");
+
+promise_test(async t => {
+  const styles = [];
+  for (let i = 0; i < 50; i++) styles.push(detached(e => e.style, () => document.createElementNS(SVG, "rect")));
+  await collect(t);
+  for (const style of styles) {
+    assert_equals(style.color, "red");
+    style.color = "blue";
+    assert_equals(style.color, "blue");
+  }
+}, "an SVG element's style keeps its element");
+
+promise_test(async t => {
+  // The same object every read, after the element's wrapper was collected
+  // and made again: the expando proves it is the one script set.
+  const keep = [];
+  for (let i = 0; i < 20; i++) {
+    const el = document.body.appendChild(document.createElement("div"));
+    el.classList.cg1 = i;
+    el.style.cg1 = i;
+    el.dataset.cg1x = String(i);
+    keep.push(el);
+  }
+  await collect(t);
+  keep.forEach((el, i) => {
+    assert_equals(el.classList.cg1, i, "classList " + i);
+    assert_equals(el.style.cg1, i, "style " + i);
+    assert_equals(el.dataset.cg1x, String(i), "dataset " + i);
+    el.remove();
+  });
+}, "every read answers the same object, with its expandos");
+</script>
