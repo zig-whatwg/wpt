@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: elements whose declarations match share no value they compute differently</title>
+<link rel="help" href="https://drafts.csswg.org/css-cascade-5/#computed">
+<link rel="help" href="https://drafts.csswg.org/cssom-1/#dom-window-getcomputedstyle">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+  .row { display: block; margin: 2px 0; padding: 1px 4px; color: rgb(51, 51, 51); background: rgb(250, 250, 250); border: 1px solid rgb(221, 221, 221); }
+  .c2 { background: rgb(238, 238, 255); }
+  .a { font-size: 10px; color: rgb(1, 2, 3); margin-right: 4px; }
+  .b { font-size: 20px; color: rgb(4, 5, 6); margin-right: 6px; writing-mode: vertical-rl; --v: 7px; }
+  .k { margin-left: 2em; padding-left: 1rem; border-left: 1px solid currentcolor; margin-inline-start: 3px;
+       margin-right: inherit; padding-top: var(--v, 1px); width: calc(1px * sibling-index()); display: block; }
+  .q::before { content: attr(data-q); }
+</style>
+<div id=rows></div>
+<div id=contexts>
+  <div class=a><p class="k q" data-q=one>1</p><p class="k q" data-q=two>2</p><p class=k>3</p></div>
+  <div class=b><p class="k q" data-q=one>1</p><p class=k>2</p><p class=k>3</p></div>
+</div>
+<script>
+// Crane's style engine shares the groups of computed values that elements
+// matched by the same declarations compute identically (Blink's
+// MatchedPropertiesCache, WebKit's MatchedDeclarationsCache). These are the
+// cases where the same declarations compute DIFFERENT values: each must stay
+// its element's own, in whatever order the elements are resolved.
+const rows = document.getElementById('rows');
+for (let i = 0; i < 200; i++) {
+  const e = document.createElement('div');
+  e.className = 'row';
+  rows.append(e);
+}
+const ks = [...document.querySelectorAll('#contexts .k')];
+const cs = (e, p) => getComputedStyle(e).getPropertyValue(p);
+
+test(() => {
+  for (const e of rows.children) assert_equals(cs(e, 'background-color'), 'rgb(250, 250, 250)');
+  const seventh = rows.children[7];
+  seventh.classList.add('c2');
+  assert_equals(cs(seventh, 'background-color'), 'rgb(238, 238, 255)', 'the element whose class changed');
+  assert_equals(cs(rows.children[6], 'background-color'), 'rgb(250, 250, 250)', 'its previous sibling');
+  assert_equals(cs(rows.children[8], 'background-color'), 'rgb(250, 250, 250)', 'its next sibling');
+  seventh.classList.remove('c2');
+  assert_equals(cs(seventh, 'background-color'), 'rgb(250, 250, 250)', 'after the class is removed');
+}, 'A class change restyles one of 200 siblings that share their values');
+
+test(() => {
+  rows.children[3].style.backgroundColor = 'rgb(5, 5, 5)';
+  assert_equals(cs(rows.children[3], 'background-color'), 'rgb(5, 5, 5)');
+  assert_equals(cs(rows.children[4], 'background-color'), 'rgb(250, 250, 250)');
+  rows.children[3].style.backgroundColor = '';
+  assert_equals(cs(rows.children[3], 'background-color'), 'rgb(250, 250, 250)');
+}, 'An inline style on one of them is its own');
+
+test(() => {
+  const sheet = document.createElement('style');
+  sheet.textContent = '.row { background: rgb(1, 1, 1); }';
+  document.head.append(sheet);
+  for (const e of rows.children) assert_equals(cs(e, 'background-color'), 'rgb(1, 1, 1)');
+  sheet.remove();
+  for (const e of rows.children) assert_equals(cs(e, 'background-color'), 'rgb(250, 250, 250)');
+}, 'A sheet inserted and removed restyles all of them');
+
+test(() => {
+  rows.style.fontWeight = '700';
+  for (const e of rows.children) {
+    assert_equals(cs(e, 'font-weight'), '700');
+    assert_equals(cs(e, 'color'), 'rgb(51, 51, 51)');
+  }
+  rows.style.fontWeight = '';
+}, 'An inherited value changed on their parent reaches every child');
+
+test(() => {
+  // em follows each parent's font size; margin-inline-start maps by each
+  // element's writing mode (inherited from its parent).
+  assert_equals(cs(ks[0], 'margin-left'), '3px');
+  assert_equals(cs(ks[3], 'margin-left'), '40px');
+  assert_equals(cs(ks[3], 'margin-top'), '3px');
+  assert_equals(cs(ks[0], 'padding-left'), '16px');
+  assert_equals(cs(ks[3], 'padding-left'), '16px');
+}, 'em, rem and a logical margin compute per element');
+
+test(() => {
+  assert_equals(cs(ks[0], 'border-left-color'), 'rgb(1, 2, 3)');
+  assert_equals(cs(ks[3], 'border-left-color'), 'rgb(4, 5, 6)');
+  assert_equals(cs(ks[0], 'margin-right'), '4px');
+  assert_equals(cs(ks[3], 'margin-right'), '6px');
+  assert_equals(cs(ks[0], 'padding-top'), '1px');
+  assert_equals(cs(ks[3], 'padding-top'), '7px');
+}, 'currentcolor, explicit inherit and var() follow each parent');
+
+test(() => {
+  assert_equals(cs(ks[0], 'width'), '1px');
+  assert_equals(cs(ks[1], 'width'), '2px');
+  assert_equals(cs(ks[2], 'width'), '3px');
+  assert_equals(cs(ks[4], 'width'), '2px');
+  assert_equals(getComputedStyle(ks[0], '::before').content, '"one"');
+  assert_equals(getComputedStyle(ks[1], '::before').content, '"two"');
+}, 'sibling-index() and attr() compute per element');
+
+test(() => {
+  const props = ['color', 'font-size', 'margin-left', 'margin-top', 'margin-right', 'padding-left', 'padding-top',
+    'border-left-color', 'width', 'display', 'writing-mode'];
+  const read = (els) => new Map(els.map((e) => [e, props.map((p) => cs(e, p)).join('; ') + ' | ' + getComputedStyle(e, '::before').content]));
+  const all = [...document.querySelectorAll('#contexts *')];
+  const forward = read(all);
+  const sheet = document.createElement('style');
+  sheet.textContent = '.unused-style1 { color: red; }';
+  document.head.append(sheet);
+  const reverse = read([...all].reverse());
+  for (const e of all) assert_equals(reverse.get(e), forward.get(e));
+  sheet.remove();
+}, 'Every value is the same whichever element is resolved first');
+</script>

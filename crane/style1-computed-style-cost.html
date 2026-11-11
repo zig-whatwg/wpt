@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane timing: computed style - first reads, cached reads, recalculation and the geometry flush</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+.row { display: block; margin: 2px 0; padding: 1px 4px; color: #333; background: #fafafa; border: 1px solid #ddd; font-size: 14px; }
+.c1 { color: #a00; } .c2 { background: #eef; } .c3 { margin-left: 8px; } .c4 { padding-top: 3px; }
+.c5 { border-color: #0a0; } .c6 { font-weight: bold; } .c7 { opacity: 0.5; } .c8 { display: flex; } .c9 { text-align: right; }
+.alt > .row { color: #444; }
+#flush > .row { transition: opacity 1s; }
+</style>
+<body>
+<div id=host></div>
+<div id=flush></div>
+<script>
+// Timing page for lane style1 (computed-value groups shared between elements
+// through the matched-properties cache). Each round makes 2,000 rows in the
+// document, then times:
+//   gcsFirst   - getComputedStyle(row).display on each: every style resolved
+//                (the cascade, then the cache's lookup and sharing);
+//   gcsCached  - 20 more reads of each (the cached styles' keys hold);
+//   gcsTen     - the same first reads over rows with ten classes in turn;
+//   recalc     - a class on the parent that changes an inherited value, then
+//                one read of each row: every style resolved again;
+//   flush      - in a container whose rows declare a transition (so the
+//                document declares one), a parent class change and ONE
+//                offsetWidth read: the geometry read's style update resolves
+//                every element (dom.style.engine.updateStyleForRead).
+// The sums over ROUNDS rounds are globals the console reads, and are in the
+// subtest names; every subtest passes when the values are the expected ones.
+const ROUNDS = 10, N = 2000, REPEAT = 20;
+const host = document.getElementById('host');
+const flushHost = document.getElementById('flush');
+const t = { gcsFirst: 0, gcsCached: 0, gcsTen: 0, recalc: 0, flush: 0 };
+let ok = true;
+function rows(container, distinct) {
+  container.textContent = '';
+  const els = [];
+  for (let i = 0; i < N; i++) {
+    const e = document.createElement('div');
+    e.className = 'row c' + (i % distinct);
+    els.push(container.appendChild(e));
+  }
+  return els;
+}
+for (let r = 0; r < ROUNDS; r++) {
+  host.className = '';
+  let els = rows(host, 1);
+  let t0 = performance.now();
+  for (const e of els) if (getComputedStyle(e).display !== 'block') ok = false;
+  t.gcsFirst += performance.now() - t0;
+  t0 = performance.now();
+  for (let k = 0; k < REPEAT; k++) for (const e of els) if (getComputedStyle(e).display !== 'block') ok = false;
+  t.gcsCached += performance.now() - t0;
+  t0 = performance.now();
+  host.className = 'alt';
+  for (const e of els) if (getComputedStyle(e).color !== 'rgb(68, 68, 68)') ok = false;
+  t.recalc += performance.now() - t0;
+  els = rows(host, 10);
+  t0 = performance.now();
+  for (const e of els) getComputedStyle(e).display;
+  t.gcsTen += performance.now() - t0;
+  host.textContent = '';
+  flushHost.className = '';
+  const flushRows = rows(flushHost, 1);
+  flushRows[0].offsetWidth;
+  t0 = performance.now();
+  flushHost.className = 'alt';
+  flushRows[N - 1].offsetWidth;
+  t.flush += performance.now() - t0;
+  if (getComputedStyle(flushRows[N >> 1]).color !== 'rgb(51, 51, 51)') ok = false;
+  flushHost.textContent = '';
+}
+for (const [name, ms] of Object.entries(t)) globalThis[name] = ms;
+for (const [name, ms] of Object.entries(t)) {
+  test(() => { assert_true(ok, 'every computed value is the expected one'); }, name + ': ' + ms.toFixed(1) + ' ms for ' + ROUNDS + ' rounds');
+}
+</script>
