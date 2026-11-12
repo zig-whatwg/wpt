@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A removed frame's pagehide and unload handlers still see its parent and top, and reach its parent</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#unload-a-document">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-parent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane nav2 batch 10, the removed-frame design item, family (b): the readers
+// DURING the removal. A Window keeps its navigable until its document is
+// destroyed (HTML "destroy a document" steps 6-7), and a removed frame's
+// documents are unloaded before that: Crane unloads the subtree before "destroy
+// a child navigable" destroys it (dom.navigables.destroyChildNavigable, a stated
+// deviation: every browser fires pagehide and unload at a removed frame), and
+// Blink's LocalFrame::DetachImpl dispatches unload
+// (DispatchUnloadEventAndFillOldDocumentInfoIfNeeded) and detaches the child
+// frames before DomWindow()->FrameDestroyed() and before Frame::Detach clears
+// the owner's content frame. So in each handler window.parent and window.top
+// are what they were, the container still answers the frame's window, and
+// window.parent.postMessage reaches the parent - the reader
+// fetch/api/cors/cors-keepalive.any.js depends on (its "in unload" cases post
+// the token from the removed frame's unload handler: Chrome 157, Firefox 160
+// and Safari 27.2 pass them).
+window.unloadRecords = [];
+
+// The frame's own script, in its own realm, as cors-keepalive's
+// keepalive-iframe.html is: it records what its Window answers in each
+// handler, then posts to window.parent read at that moment.
+function frameScript(name) {
+  return `<!DOCTYPE html><body><script>
+    const expectedParent = window.parent;
+    const expectedTop = window.top;
+    const container = window.frameElement;
+    for (const type of ["pagehide", "unload"]) {
+      addEventListener(type, () => {
+        const record = { name: ${JSON.stringify(name)}, type };
+        record.parent = window.parent === expectedParent;
+        record.top = window.top === expectedTop;
+        record.contentWindow = container.contentWindow === window;
+        try {
+          window.parent.postMessage({ from: ${JSON.stringify(name)}, type }, "*");
+          record.posted = true;
+        } catch (e) {
+          record.posted = e.name;
+        }
+        expectedTop.unloadRecords.push(record);
+      });
+    }
+  </scr` + `ipt>`;
+}
+
+function loadFrame(doc, srcdoc) {
+  const frame = doc.createElement("iframe");
+  return new Promise(resolve => {
+    frame.onload = () => resolve(frame);
+    frame.srcdoc = srcdoc;
+    doc.body.append(frame);
+  });
+}
+
+promise_test(async t => {
+  unloadRecords.length = 0;
+  const outer = await loadFrame(document, frameScript("outer"));
+  const outerWindow = outer.contentWindow;
+  await loadFrame(outerWindow.document, frameScript("inner"));
+  const posted = [];
+  const heard = new Promise(resolve => {
+    addEventListener("message", function listener(e) {
+      if (e.source !== outerWindow) return;
+      posted.push(e.data.type);
+      if (e.data.type === "unload") {
+        removeEventListener("message", listener);
+        resolve();
+      }
+    });
+  });
+
+  outer.remove();
+
+  assert_equals(outerWindow.parent, null, "the removed frame's Window has no parent once the removal returns");
+  const seen = unloadRecords.map(r => r.name + ":" + r.type).sort();
+  assert_array_equals(seen, ["inner:pagehide", "inner:unload", "outer:pagehide", "outer:unload"],
+                      "pagehide and unload fired at both frames during the removal");
+  for (const record of unloadRecords) {
+    const what = record.name + " " + record.type;
+    assert_true(record.parent, what + ": window.parent is still its parent");
+    assert_true(record.top, what + ": window.top is still the top-level window");
+    assert_true(record.contentWindow, what + ": its container still answers its window");
+    assert_equals(record.posted, true, what + ": window.parent.postMessage did not throw");
+  }
+  await heard;
+  assert_array_equals(posted, ["pagehide", "unload"], "the removed frame's posts reached its parent");
+}, "a removed frame's pagehide and unload handlers see its parent and top and reach its parent");
+</script>

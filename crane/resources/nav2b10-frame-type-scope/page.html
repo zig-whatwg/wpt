@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<body>
+<script>
+// Lane nav2 batch 10: tells the test page (an opener, or the top-level
+// window) that this document loaded, and whether it is controlled.
+addEventListener("load", () => {
+  (window.opener || window.top).postMessage({
+    loaded: location.search.slice(1),
+    controlled: navigator.serviceWorker.controller !== null,
+  }, "*");
+});
+</script>

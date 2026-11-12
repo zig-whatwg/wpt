@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A removed frame's Window, and every Window inside it, has no navigable once the removal returns</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-parent">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane nav2 batch 10, the removed-frame design item, family (c): the readers
+// AFTER the removal. HTML "destroy a child navigable" (steps 3 and 5: the
+// container's content navigable null, then "destroy a document and its
+// descendants") ends with every document of the subtree destroyed, and
+// "destroy a document" (steps 6-7) leaves its Window no browsing context and
+// no navigable - so parent, top and frameElement are null and closed is true
+// (the spec's own example under the frameElement getter: element.remove(),
+// then iframeWindow.top, .parent and .frameElement are null). Blink: Frame::
+// Detach runs LocalFrame::DetachImpl (each child frame detached first by
+// DetachChildren, then DomWindow()->FrameDestroyed(): DOMWindow::GetFrame()
+// is null) and then DisconnectOwnerElement (HTMLFrameOwnerElement::
+// ClearContentFrame: contentWindow null), all inside the removal; and for a
+// removal it runs opened_frame_tracker_.Dispose(), which clears the opener of
+// every window the frame opened. html/semantics/embedded-content/the-iframe-
+// element/iframe-synchronously-discard.html (Chrome 157, Firefox 160 and
+// Safari 27.2 pass) asserts the first two of these readers.
+
+function loadFrame(doc, src) {
+  const frame = doc.createElement("iframe");
+  return new Promise(resolve => {
+    frame.onload = () => resolve(frame);
+    frame.src = src;
+    doc.body.append(frame);
+  });
+}
+
+promise_test(async t => {
+  const child = await loadFrame(document, "/common/blank.html?child");
+  const childWindow = child.contentWindow;
+  const grandchild = await loadFrame(childWindow.document, "/common/blank.html?grandchild");
+  const grandchildWindow = grandchild.contentWindow;
+  assert_equals(childWindow.parent, window, "child parentage before the removal");
+  assert_equals(grandchildWindow.parent, childWindow, "grandchild parentage before the removal");
+  assert_equals(grandchildWindow.frameElement, grandchild, "grandchild frameElement before the removal");
+  assert_equals(childWindow.length, 1, "the child has one child navigable before the removal");
+
+  child.remove();
+
+  assert_equals(child.contentWindow, null, "the removed container has no content window");
+  assert_equals(childWindow.parent, null, "the removed frame's Window has no parent");
+  assert_equals(childWindow.top, null, "the removed frame's Window has no top");
+  assert_equals(childWindow.frameElement, null, "the removed frame's Window has no frameElement");
+  assert_true(childWindow.closed, "the removed frame's Window is closed");
+  assert_equals(childWindow.length, 0, "the removed frame's Window has no child navigables");
+  assert_equals(grandchild.contentWindow, null, "the frame inside the removed frame has no content window");
+  assert_equals(grandchildWindow.parent, null, "the inner frame's Window has no parent");
+  assert_equals(grandchildWindow.top, null, "the inner frame's Window has no top");
+  assert_equals(grandchildWindow.frameElement, null, "the inner frame's Window has no frameElement");
+  assert_true(grandchildWindow.closed, "the inner frame's Window is closed");
+}, "a removed frame and the frame inside it are detached when the removal returns");
+
+promise_test(async t => {
+  // The frame's own script opens the popup: window.open()'s opener is the
+  // entry global's browsing context (HTML window open steps, whatwg/html PR
+  // 10547), so the call runs in a listener of the frame's realm.
+  const child = document.createElement("iframe");
+  await new Promise(resolve => {
+    child.onload = resolve;
+    child.srcdoc = `<script>
+      addEventListener("open-popup", () => { window.popup = open("/common/blank.html?popup-of-removed-frame"); });
+    </scr` + `ipt>`;
+    document.body.append(child);
+  });
+  const childWindow = child.contentWindow;
+  childWindow.dispatchEvent(new childWindow.Event("open-popup"));
+  const popup = childWindow.popup;
+  t.add_cleanup(() => popup.close());
+  assert_equals(popup.opener, childWindow, "the popup's opener is the frame before the removal");
+
+  child.remove();
+
+  assert_equals(popup.opener, null, "a window the removed frame opened has no opener");
+  assert_false(popup.closed, "the popup itself lives on, a top-level traversable of its own");
+}, "a window a removed frame opened loses its opener with the removal");
+
+promise_test(async t => {
+  const child = await loadFrame(document, "/common/blank.html?navigated-a");
+  const grandchild = await loadFrame(child.contentDocument, "/common/blank.html?inner");
+  const grandchildWindow = grandchild.contentWindow;
+  assert_equals(grandchildWindow.parent, child.contentWindow, "grandchild parentage before the navigation");
+
+  await new Promise(resolve => {
+    child.onload = resolve;
+    child.src = "/common/blank.html?navigated-b";
+  });
+
+  assert_equals(grandchild.contentWindow, null, "a frame in the document navigated away from has no content window");
+  assert_equals(grandchildWindow.parent, null, "its Window has no parent");
+  assert_equals(grandchildWindow.top, null, "its Window has no top");
+  assert_equals(grandchildWindow.frameElement, null, "its Window has no frameElement");
+  assert_true(grandchildWindow.closed, "its Window is closed");
+}, "a frame inside a document its navigable navigated away from is detached once the new document loads");
+</script>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A window client's frame type is its navigable's, also for a Window kept for the document that replaces its initial about:blank</title>
+<link rel="help" href="https://w3c.github.io/ServiceWorker/#get-frame-type">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#window-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+// Lane nav2 batch 10, the removed-frame design item, family (a): the reader at
+// a document's CREATION. A frame or popup navigated from its initial
+// about:blank to a same-origin document keeps its Window (HTML "create and
+// initialize a Document object" step 6), and Crane makes the new document's
+// service worker client while that Window still holds the old about:blank -
+// already destroyed by its unload, and still the navigable's active document
+// until the new one is activated. Service Workers' "Get Frame Type" reads the
+// NAVIGABLE ("nested" when it has a parent, "auxiliary" for an auxiliary
+// browsing context), so a predicate that takes the navigable away from a
+// Window whose document is destroyed must not fire for this Window: lane nav2
+// batch 9's 3a3ddd1dd3a did, and the first FULL A/B read "top-level" here
+// (service-workers/service-worker/clients-get, clients-matchall-client-types,
+// navigate-window, windowclient-navigate). Frame types: "nested" for a frame
+// (clients-matchall-client-types: Chrome 157, Firefox 160, Safari 27.2 pass),
+// "auxiliary" for a window.open() popup (navigate-window.https.html's first
+// case: Firefox 160 and Safari 27.2 pass, the spec's answer; Chrome 157 reads
+// otherwise).
+const scope = "resources/nav2b10-frame-type-scope/";
+const page = scope + "page.html";
+
+function loaded(name) {
+  return new Promise(resolve => {
+    addEventListener("message", function listener(e) {
+      if (!e.data || e.data.loaded !== name) return;
+      removeEventListener("message", listener);
+      resolve(e.data);
+    });
+  });
+}
+
+promise_test(async t => {
+  const registration = await sw1Register(t, "resources/nav2b10-frame-type-sw.js", { scope });
+  await sw1WaitForState(registration.installing, "activated");
+
+  const frameLoaded = loaded("frame");
+  const frame = document.createElement("iframe");
+  frame.src = page + "?frame";
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  assert_true((await frameLoaded).controlled, "the frame's document is controlled");
+
+  const innerLoaded = loaded("inner");
+  const inner = frame.contentDocument.createElement("iframe");
+  inner.src = "page.html?inner";
+  frame.contentDocument.body.append(inner);
+  assert_true((await innerLoaded).controlled, "the inner frame's document is controlled");
+
+  const popupLoaded = loaded("popup");
+  const popup = window.open(page + "?popup");
+  t.add_cleanup(() => popup.close());
+  assert_true((await popupLoaded).controlled, "the popup's document is controlled");
+
+  const channel = new MessageChannel();
+  const answer = new Promise(resolve => { channel.port1.onmessage = e => resolve(e.data); });
+  registration.active.postMessage({ port: channel.port2 }, [channel.port2]);
+  const clients = {};
+  for (const client of await answer) clients[client.url] = client;
+
+  const expected = [
+    [new URL(page + "?frame", location).href, "nested"],
+    [new URL(scope + "page.html?inner", location).href, "nested"],
+    [new URL(page + "?popup", location).href, "auxiliary"],
+    [location.href, "top-level"],
+  ];
+  for (const [url, frameType] of expected) {
+    const client = clients[url];
+    assert_not_equals(client, undefined, "a window client for " + url);
+    assert_equals(client.matchAll, frameType, "matchAll()'s frameType of " + url);
+    assert_equals(client.get, frameType, "get()'s frameType of " + url);
+  }
+}, "frames, a popup and the top-level window keep their frame types through the Window kept for each new document");
+</script>
