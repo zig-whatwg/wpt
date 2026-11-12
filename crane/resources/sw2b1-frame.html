@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>sw2b1 frame</title>
+<body>
+<script>
+// Lane sw2 b1: a controlled frame; ?nested makes it open one more frame of
+// its own, in scope.
+if (new URLSearchParams(location.search).has("nested")) {
+  const frame = document.createElement("iframe");
+  frame.src = location.pathname + "?name=" + new URLSearchParams(location.search).get("name") + "-inner";
+  document.body.appendChild(frame);
+}
+</script>

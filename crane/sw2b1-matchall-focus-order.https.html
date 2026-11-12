@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Clients.matchAll(): window clients most recently focused first</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#clients-matchall">
+<link rel=help href="https://html.spec.whatwg.org/multipage/interaction.html#dom-window-focus">
+<link rel=help href="https://html.spec.whatwg.org/multipage/interaction.html#focus-update-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="resources/sw1-helpers.js"></script>
+<body>
+<script>
+// Lane sw2 b1. Service Workers matchAll() step 2.6.4 puts window clients
+// whose browsing context has been focused first, most recently focused
+// first, then the never-focused ones in creation order. Window.focus() runs
+// the focusing steps for its navigable, so its focus update fires 'focus' at
+// the frame's Window. The focus time is the browsing context's (a frame that
+// navigates keeps it), and focusing a nested frame also refreshes its
+// ancestors - one time for the whole focus update, so they tie and keep
+// creation order (w3c/ServiceWorker#1080; the upstream file
+// service-workers/service-worker/clients-matchall-order.https.html).
+const scope = "resources/sw2b1-frame.html";
+const frameURL = name => new URL("resources/sw2b1-frame.html?name=" + name, location).href;
+
+async function worker(t) {
+  const registration = await sw1Register(t, "resources/sw2b1-matchall-worker.js", { scope });
+  await sw1WaitForState(registration.installing, "activated");
+  return registration.active;
+}
+
+function openFrame(t, parent, url) {
+  return new Promise(resolve => {
+    const frame = parent.document.createElement("iframe");
+    frame.src = url;
+    frame.onload = () => resolve(frame);
+    parent.document.body.appendChild(frame);
+    t.add_cleanup(() => frame.remove());
+  });
+}
+
+function focusWindow(w) {
+  return new Promise(resolve => {
+    w.addEventListener("focus", () => resolve(), { once: true });
+    w.focus();
+  });
+}
+
+function matchAll(sw) {
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = e => resolve(e.data);
+    sw.postMessage({ port: channel.port2 }, [channel.port2]);
+  });
+}
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const a = await openFrame(t, window, frameURL("a"));
+  const b = await openFrame(t, window, frameURL("b"));
+  const c = await openFrame(t, window, frameURL("c"));
+  assert_array_equals(await matchAll(sw), [frameURL("a"), frameURL("b"), frameURL("c")], "never focused: creation order");
+  await focusWindow(a.contentWindow);
+  await focusWindow(c.contentWindow);
+  await focusWindow(b.contentWindow);
+  assert_array_equals(await matchAll(sw), [frameURL("b"), frameURL("c"), frameURL("a")], "most recently focused first");
+}, "Window.focus() fires focus at the frame's Window, and matchAll() lists the frames most recently focused first");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const a = await openFrame(t, window, frameURL("a"));
+  const b = await openFrame(t, window, frameURL("b"));
+  const c = await openFrame(t, window, frameURL("c"));
+  await focusWindow(a.contentWindow);
+  await focusWindow(b.contentWindow);
+  // a's browsing context gets a new document: a new client, of a browsing
+  // context that has been focused.
+  await new Promise(resolve => { a.onload = resolve; a.contentWindow.location.href = frameURL("a2"); });
+  assert_array_equals(await matchAll(sw), [frameURL("b"), frameURL("a2"), frameURL("c")]);
+}, "a frame's focus time is its browsing context's: the next document of a focused frame is listed by it");
+
+promise_test(async t => {
+  const sw = await worker(t);
+  const top0 = await openFrame(t, window, frameURL("t0"));
+  const top1 = await openFrame(t, window, frameURL("t1") + "&nested");
+  await new Promise(resolve => {
+    const poll = () => {
+      const inner = top1.contentDocument.querySelector("iframe");
+      if (inner && inner.contentDocument && inner.contentDocument.readyState === "complete") resolve();
+      else t.step_timeout(poll, 10);
+    };
+    poll();
+  });
+  const inner = top1.contentDocument.querySelector("iframe");
+  await focusWindow(top0.contentWindow);
+  await focusWindow(inner.contentWindow);
+  // The nested frame's focus update refreshes its parent with the same time:
+  // the parent, created first, comes first.
+  assert_array_equals(await matchAll(sw), [frameURL("t1") + "&nested", frameURL("t1-inner"), frameURL("t0")]);
+}, "focusing a nested frame refreshes its ancestors' focus time too, and equal times keep creation order");
+</script>
