@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>A Response dropped with its body transfer still open is collected, and the page lives</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// A fetch() whose Response nobody keeps and whose body nobody reads, while the
+// server still holds the rest of the body back. Fetch 5.7 "Garbage collection"
+// lets the user agent terminate such a fetch; a collection may find the
+// Response dead while its transfer is open, and ending the transfer is engine
+// work (it reports to the page). V8 >= 14 runs weak callbacks' second pass
+// under DisallowJSObjectModification and CHECKs it, so a finalizer that did
+// that work inside the collection ended the process ("Check failed:
+// AllowJSObjectModification::IsAllowed(isolate)": lane v8up's sweep, three
+// cookies files). The engine must run it after the collection, at the
+// agent's safe point.
+//
+// What every browser must satisfy, whichever way it ends the load (terminated
+// at the collection, or left to finish): the page keeps running, and the load
+// is reported to Resource Timing exactly once.
+//
+// The collection triggers, named: (1) garbage made across timer tasks - V8's
+// own collections, whose second pass it posts as a task; (2) TestUtils.gc()
+// (https://testutils.spec.whatwg.org/) where it exists - a forced collection,
+// whose second pass runs before the collection returns.
+const HELD_SECONDS = 3;
+const url = new URL("/common/text-plain.txt?pipe=trickle(16:d" + HELD_SECONDS + ")&v8up-open-body=" + Math.random(), location).href;
+
+function entries() {
+  return performance.getEntriesByName(url).length;
+}
+
+async function collect() {
+  for (let round = 0; round < 8; round++) {
+    let junk = [];
+    for (let i = 0; i < 40000; i++) junk.push({ i, s: "x" + i });
+    junk = null;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  if (self.TestUtils && TestUtils.gc) await TestUtils.gc();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+promise_test(async (t) => {
+  const started = performance.now();
+  // Settles when the headers arrive, with the first 16 bytes of the body; the
+  // server sends the rest HELD_SECONDS later. The reaction keeps nothing of
+  // the Response.
+  const status = await fetch(url).then((response) => response.status);
+  assert_equals(status, 200, "the headers arrived");
+  assert_equals(entries(), 0, "the transfer is open: the load has not ended for Resource Timing");
+
+  await collect();
+  await collect();
+  assert_less_than(performance.now() - started, HELD_SECONDS * 1000, "the collections ran while the server still held the body");
+
+  // The page is alive after them: its script runs and its tree answers.
+  const probe = document.createElement("p");
+  probe.textContent = "alive";
+  document.body.appendChild(probe);
+  assert_equals(document.body.lastChild.textContent, "alive");
+
+  // The load is reported - at the collection or at the transfer's own end.
+  await t.step_wait(() => entries() >= 1, "the dropped Response's load is reported", (HELD_SECONDS + 20) * 1000, 50);
+  // Once the server's hold is over nothing more can end it: reported once.
+  const remaining = HELD_SECONDS * 1000 + 500 - (performance.now() - started);
+  if (remaining > 0) await new Promise((resolve) => t.step_timeout(resolve, remaining));
+  await collect();
+  assert_equals(entries(), 1, "reported exactly once");
+}, "a Response dropped with its body transfer open: collections leave the page running and its load reported once");
+</script>
+<body></body>

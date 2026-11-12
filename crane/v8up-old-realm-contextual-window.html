@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Code of a realm whose frame navigated reads its OWN Window's members contextually</title>
+<link rel=help href="https://tc39.es/ecma262/#sec-object-environment-records-getbindingvalue-n-s">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-history-length">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-frameelement">
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-document-defaultview">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Lane v8up b3a (the V8 15.7 port, tmp/plans/v8-global-object-design.md 2.3). A function made in a frame's first
+// document runs after the frame navigated. Its contextual reads (`location`, not `window.location`) resolve in its
+// own realm's global Environment Record, whose binding object is the OLD global object (ECMA-262
+// GetBindingValue), so WebIDL's `this` is the old Window; `window.X`, `self.X`, `globalThis.X` go through the
+// WindowProxy to the new Window. Firefox 159 and Safari 27 do that; Chrome 156 reads the NEW Window for every
+// uncached accessor, because V8 replaces a global-object receiver by the reused global proxy (objects.cc,
+// GetPropertyWithAccessor). Probe: tmp/probes/v8up-detached/ (2026-11-11). Ruling: the spec and the majority.
+//
+// What each member then does on the OLD Window (lane v8up b3e; probe tmp/probes/v8up-oldwin3/ v3 and v4,
+// 2026-11-11: Chrome 157.0, Firefox 159.0, Safari 27.0; golden rule 2, the integrator's rulings):
+// case                                   | spec                   | Chrome 157   | Firefox 159  | Safari 27   | Crane
+// document                               | old                    | old          | old          | old         | old
+// location (which Location object)       | old                    | NEW          | old          | old         | old
+// the old Location's href                | about:blank (*)        | old URL      | new URL      | old URL     | old URL
+// history.length                         | SecurityError, old     | a number (n) | SecurityError| SecurityError| SecurityError,
+//                                        | realm's DOMException   |              | old realm's  | old realm's | old realm's
+// frameElement                           | null (no navigable)    | iframe (n)   | throws       | null        | null (spec)
+// document.defaultView                   | null                   | null         | WindowProxy  | null        | null
+// typeof DOMParser, first read after it  | function, old realm's  | undefined    | function     | function    | function
+// window.XMLSerializer, the old realm's  | the NEW realm's        | new realm's  | new realm's  | new realm's | new realm's
+// first read, before the new realm's     | (through the proxy)    | (v5)         | (v5)         | (v5)        |
+// (*) "destroy a Document" step 6 nulls the old Document's browsing context, so its Location has no relevant
+// Document; Chrome and Safari read the Window's Document (Blink Location::Url). (n) Chrome reads the NEW Window
+// for these: V8 replaces the global-object receiver by the reused proxy; its undefined DOMParser is V8's lazy
+// data property handed the detached proxy copy, the mechanism Crane shares and answers for (the majority).
+// (v5) Probe v5 (lane v8up b3f, tmp/probes/v8up-oldwin3/pages/main5.html, out-v5/): the old realm's
+// `window.XMLSerializer` is the first touch of the NEW global's lazy property, and all three answer the new
+// realm's function, the same object the new realm then reads itself; V8 runs that getter in the old (calling)
+// realm, so Crane takes the realm from the holder there (realm_global.receiverRealm `.native`).
+
+function load(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+// A frame at blank.html?old, a function of its realm that evaluates `source` contextually there, what its
+// Window had, and the frame navigated to blank.html?new.
+async function navigatedFrame(t) {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const first = load(frame);
+  frame.src = "/common/blank.html?old";
+  document.body.append(frame);
+  await first;
+  const w = frame.contentWindow;
+  w.eval("var marker = 'old';");
+  const run = w.eval("(function (source) { return eval(source); })");
+  const old = {
+    document: frame.contentDocument,
+    location: w.location,
+    navigator: w.navigator,
+    performance: w.performance,
+    history: w.history,
+    customElements: w.customElements,
+    crypto: w.crypto,
+    DOMException: w.DOMException,
+  };
+  const second = load(frame);
+  frame.src = "/common/blank.html?new";
+  await second;
+  return { frame, run, old };
+}
+
+promise_test(async t => {
+  const { run, old } = await navigatedFrame(t);
+  assert_equals(run("document"), old.document);
+  assert_true(run("document.URL").endsWith("blank.html?old"), run("document.URL"));
+}, "document, read contextually, is the old Window's document");
+
+promise_test(async t => {
+  const { run, old } = await navigatedFrame(t);
+  assert_equals(run("location"), old.location, "the old Window's Location");
+  assert_true(run("location.href").endsWith("blank.html?old"), run("location.href"));
+}, "location, read contextually, is the old Window's Location, whose URL is the old document's");
+
+promise_test(async t => {
+  const { run, old } = await navigatedFrame(t);
+  assert_throws_dom("SecurityError", old.DOMException, () => run("history.length"));
+}, "history.length, read contextually, throws: the old Window's document is not fully active");
+
+promise_test(async t => {
+  const { run } = await navigatedFrame(t);
+  assert_equals(run("frameElement"), null);
+}, "frameElement, read contextually, is null: the old Window's document has no navigable");
+
+promise_test(async t => {
+  const { run } = await navigatedFrame(t);
+  assert_equals(run("document.defaultView"), null);
+}, "the old document's defaultView is null: it has no browsing context");
+
+promise_test(async t => {
+  const { run, old } = await navigatedFrame(t);
+  for (const name of ["navigator", "performance", "history", "customElements", "crypto"])
+    assert_equals(run(name), old[name], name);
+}, "navigator, performance, history, customElements and crypto, read contextually, are the old Window's");
+
+promise_test(async t => {
+  const { frame, run } = await navigatedFrame(t);
+  const now = frame.contentDocument;
+  assert_true(now.URL.endsWith("blank.html?new"), now.URL);
+  assert_equals(run("window.document"), now, "window.document");
+  assert_equals(run("self.document"), now, "self.document");
+  assert_equals(run("globalThis.document"), now, "globalThis.document");
+  assert_equals(run("(function () { return this; })().document"), now, "a sloppy function's this.document");
+  assert_equals(run("window"), frame.contentWindow, "window is the frame's WindowProxy");
+}, "window.X, self.X, globalThis.X and a sloppy this.X go through the WindowProxy to the new Window");
+
+promise_test(async t => {
+  const { frame, run } = await navigatedFrame(t);
+  assert_equals(run("marker"), "old", "a var of the old global");
+  assert_equals(run("window.marker"), undefined, "the new Window has none");
+  assert_equals(frame.contentWindow.marker, undefined);
+}, "a var of the old global keeps the old realm's value");
+
+promise_test(async t => {
+  const { frame, run } = await navigatedFrame(t);
+  // Nothing in the old realm read DOMParser before the navigation, so this is its first read there.
+  assert_equals(run("typeof DOMParser"), "function", "the old realm's interface object");
+  assert_not_equals(run("DOMParser"), frame.contentWindow.DOMParser, "not the new Window's");
+}, "an interface object, read contextually for the first time after the navigation, is the old realm's");
+
+promise_test(async t => {
+  const { frame, run } = await navigatedFrame(t);
+  const newWindow = frame.contentWindow;
+  // Nothing read XMLSerializer before: the old realm's `window.XMLSerializer` is the first read of the NEW global's.
+  const viaWindow = run("window.XMLSerializer");
+  assert_equals(typeof viaWindow, "function", "typeof window.XMLSerializer, read in the old realm");
+  assert_equals(Object.getPrototypeOf(viaWindow), newWindow.Function.prototype, "the new realm's function");
+  assert_equals(newWindow.eval("XMLSerializer"), viaWindow, "the new realm's own later read is the same object");
+  assert_true(run("window.XMLSerializer !== XMLSerializer"), "not the old realm's, read contextually there");
+}, "an interface object the old realm reads first through window. is the new realm's, as the new realm reads it");
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  const first = load(frame);
+  frame.src = "/common/blank.html?removed";
+  document.body.append(frame);
+  await first;
+  const w = frame.contentWindow;
+  const run = w.eval("(function (source) { return eval(source); })");
+  const oldDocument = frame.contentDocument, oldLocation = w.location, oldCrypto = w.crypto;
+  frame.remove();
+  assert_equals(run("document"), oldDocument, "document");
+  assert_equals(run("location"), oldLocation, "location");
+  assert_equals(run("crypto"), oldCrypto, "crypto");
+  assert_equals(run("window.document"), oldDocument, "window.document: the WindowProxy keeps its last Window");
+  assert_equals(run("frameElement"), null, "frameElement");
+  assert_equals(run("document.defaultView"), null, "document.defaultView");
+}, "after the frame's removal, contextual reads and window.X all read the old Window");
+</script>
+</body>

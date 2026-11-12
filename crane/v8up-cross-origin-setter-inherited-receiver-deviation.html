@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>KNOWN DEVIATION (V8 >= 14): a cross-origin location / href write through an inheriting receiver runs the setter on the holder</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#crossoriginset-(-o,-p,-v,-receiver-)">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// KNOWN DEVIATION, recorded so that a later V8 or the JavaScriptCore adapter that tells the binding the receiver
+// flips it (lane v8up b4, 2026-11-11; the upstream subtests are the two "... setter throws TypeError in lexical
+// realm on invalid |this| value" of html/browsers/origin/cross-origin-objects/
+// window-location-and-location-href-cross-realm-set.html).
+//
+// The spec: CrossOriginSet(O, P, V, Receiver) step 3.1 is Call(desc.[[Set]], Receiver, V), so a write whose
+// receiver only INHERITS from a cross-origin Window or Location calls the setter on that receiver, and the
+// setter's brand check throws a TypeError of the lexical realm. Firefox 160 and Safari 27.2 do that; Chrome 157
+// does not (wpt.fyi, stable runs of 2026-11-11: 9/11, 11/11, 11/11 on that file).
+//
+// V8 >= 14 removed v8::PropertyCallbackInfo<T>::This() (V8 24eb3c4ba35): the failed-access-check interceptor is
+// still called for such a write (js-objects.cc JSObject::SetPropertyWithFailedAccessCheck), but its arguments
+// hold only the holder (v8-function-callback.h PropertyCallbackInfo: kHolderIndex, no receiver slot;
+// js-objects.cc SetPropertyWithInterceptorInternal: PropertyCallbackArguments(isolate, it->GetHolderForApi(),
+// should_throw)), and v8::AccessCheckCallback gets the accessed object, not the receiver. So the adapter can only
+// call the setter on the holder (Blink does the same), and the write performs the navigation a direct
+// `crossOriginWindow.location = url` is allowed to perform. Nothing is read and no new capability is given.
+// On V8 13.1 the adapter passed info.This() and Crane threw.
+//
+// This file asserts Crane's answer TODAY; when it fails because the write throws a TypeError, the deviation is
+// gone: update it to the spec's answer.
+
+const URL_CROSS_ORIGIN = get_host_info().HTTP_REMOTE_ORIGIN + "/common/blank.html";
+const { set: locationSet } = Object.getOwnPropertyDescriptor(window, "location");
+const { set: hrefSet } = Object.getOwnPropertyDescriptor(location, "href");
+
+function makeWindow(t, src) {
+  return new Promise(resolve => {
+    const iframe = document.createElement("iframe");
+    t.add_cleanup(() => { iframe.remove(); });
+    iframe.onload = () => { resolve(iframe.contentWindow); };
+    iframe.src = src;
+    document.body.append(iframe);
+  });
+}
+
+function thrown(fn) {
+  try { fn(); } catch (e) { return e; }
+  return null;
+}
+
+promise_test(async t => {
+  const crossOriginWindow = await makeWindow(t, URL_CROSS_ORIGIN);
+  // Not the deviation: a setter called as a function sees its receiver (FunctionCallbackInfo::This).
+  assert_throws_js(TypeError, () => { locationSet.call([], "#foo"); });
+  assert_equals(thrown(() => { Object.create(crossOriginWindow).location = "#foo"; }), null,
+                "DEVIATION: the spec, Firefox and Safari throw a TypeError of the lexical realm");
+}, "KNOWN DEVIATION: Object.create(crossOriginWindow).location = url does not throw (spec, Firefox, Safari: TypeError)");
+
+promise_test(async t => {
+  const crossOriginWindow = await makeWindow(t, URL_CROSS_ORIGIN);
+  // Not the deviation: a setter called as a function sees its receiver.
+  assert_throws_js(TypeError, () => { hrefSet.call(null, "#foo"); });
+  assert_equals(thrown(() => { Object.create(crossOriginWindow.location).href = "#foo"; }), null,
+                "DEVIATION: the spec, Firefox and Safari throw a TypeError of the lexical realm");
+}, "KNOWN DEVIATION: Object.create(crossOriginWindow.location).href = url does not throw (spec, Firefox, Safari: TypeError)");
+</script>
+</body>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Platform objects made and dropped inside callbacks: the callbacks' results, their exceptions and the algorithms that called them are intact</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Script that makes and drops many platform objects inside a callback - a
+// timer callback, an event listener, a promise job - while the algorithm that
+// called it (dispatchEvent, the timer task) waits below. The engine collects
+// by itself while such a loop runs, and what it does with the dropped objects'
+// native state it does somewhere inside that callback (Crane: at a binding's
+// return into the callback's script, for objects made since the callback
+// began; lane v8up b6c). Nothing of that is observable. What every browser
+// must satisfy: the loop computes what it computes, an exception a binding
+// throws inside it reaches its catch block, a constructor whose dictionary
+// getter or subclass constructor churns still makes its object, and an
+// algorithm that called the callback still finds its own arguments as it
+// left them - at every level of nesting.
+//
+// The collections are the engine's own: each loop allocates enough for
+// several. Nothing forces one.
+const CHURN = 30000;
+
+// Make and drop `count` Events; the sum of their type lengths proves each
+// was whole when it was read.
+function churn(count, type = "churn") {
+  let length = 0;
+  for (let i = 0; i < count; i++) length += new Event(type).type.length;
+  return length;
+}
+
+test(() => {
+  assert_equals(churn(CHURN), CHURN * 5);
+}, "a top-level script's loop");
+
+promise_test(async () => {
+  const length = await Promise.resolve().then(() => churn(CHURN));
+  assert_equals(length, CHURN * 5);
+}, "a promise job's loop");
+
+promise_test(async (t) => {
+  const length = await new Promise((resolve) => t.step_timeout(() => resolve(churn(CHURN)), 0));
+  assert_equals(length, CHURN * 5);
+}, "a timer callback's loop");
+
+test(() => {
+  const target = new EventTarget();
+  let length = -1;
+  target.addEventListener("go", (event) => {
+    length = churn(CHURN);
+    event.preventDefault();
+  });
+  const event = new Event("go", { cancelable: true });
+  const delivered = target.dispatchEvent(event);
+  assert_equals(length, CHURN * 5);
+  // dispatchEvent read its event after the listener returned.
+  assert_false(delivered, "the listener cancelled it");
+  assert_true(event.defaultPrevented);
+  assert_equals(event.target, target);
+  assert_equals(event.currentTarget, null);
+  assert_equals(event.eventPhase, Event.NONE);
+}, "a listener's loop, and the dispatch that called it");
+
+test(() => {
+  // Three levels. Each listener makes objects, drops some, keeps others
+  // across the dispatch it starts, and churns; every level's dispatch still
+  // uses the event it was given when its listener has returned.
+  const seen = [];
+  const outer = new EventTarget();
+  const middle = new EventTarget();
+  const inner = new EventTarget();
+  inner.addEventListener("inner", (event) => {
+    seen.push("inner:" + event.detail.made + ":" + churn(CHURN, "in"));
+  });
+  middle.addEventListener("middle", (event) => {
+    churn(CHURN / 2, "mid");
+    // Made in this callback, before the nested one begins, and in use by it.
+    const detail = { made: "middle" };
+    const nested = new CustomEvent("inner", { detail });
+    const kept = new Event("kept-by-middle");
+    assert_true(inner.dispatchEvent(nested));
+    churn(CHURN / 2, "mid");
+    seen.push("middle:" + nested.detail.made + ":" + nested.type + ":" + kept.type + ":" + (nested.target === inner));
+    event.stopImmediatePropagation();
+  });
+  middle.addEventListener("middle", () => seen.push("never"));
+  outer.addEventListener("outer", (event) => {
+    const before = new Event("made-before-the-nested-dispatch");
+    churn(CHURN / 2, "out");
+    assert_true(middle.dispatchEvent(new Event("middle")));
+    churn(CHURN / 2, "out");
+    seen.push("outer:" + before.type + ":" + (event.target === outer) + ":" + event.eventPhase);
+  });
+  const event = new Event("outer");
+  assert_true(outer.dispatchEvent(event));
+  assert_array_equals(seen, [
+    "inner:middle:" + CHURN * 2,
+    "middle:middle:inner:kept-by-middle:true",
+    "outer:made-before-the-nested-dispatch:true:" + Event.AT_TARGET,
+  ]);
+  assert_equals(event.eventPhase, Event.NONE);
+  assert_equals(event.target, outer);
+}, "listeners that dispatch from inside listeners");
+
+promise_test(async (t) => {
+  // A binding that throws inside the loop: its exception reaches the catch
+  // block, every time, whatever the engine did with the garbage around it.
+  const caught = await new Promise((resolve) => t.step_timeout(() => {
+    const names = new Map();
+    for (let round = 0; round < 60; round++) {
+      churn(1000);
+      try {
+        new Event();
+        names.set("no exception", (names.get("no exception") || 0) + 1);
+      } catch (error) {
+        names.set(error.name, (names.get(error.name) || 0) + 1);
+      }
+      try {
+        document.createElement("");
+        names.set("no exception", (names.get("no exception") || 0) + 1);
+      } catch (error) {
+        names.set(error.name, (names.get(error.name) || 0) + 1);
+      }
+    }
+    resolve([...names].sort().join());
+  }, 0));
+  assert_equals(caught, "InvalidCharacterError,60,TypeError,60");
+}, "a callback's bindings that throw keep their exceptions");
+
+test(() => {
+  const target = new EventTarget();
+  const results = [];
+  target.addEventListener("build", () => {
+    // A dictionary getter runs inside the constructor's own call.
+    let read = 0;
+    const event = new Event("built", {
+      get bubbles() {
+        read++;
+        churn(CHURN / 2, "get");
+        return true;
+      },
+      get cancelable() {
+        read++;
+        churn(CHURN / 2, "get");
+        return true;
+      },
+    });
+    results.push([event.type, event.bubbles, event.cancelable, read].join());
+
+    // A subclass's constructor is script around the constructor's call.
+    class Tagged extends Event {
+      constructor(tag) {
+        super("tagged");
+        churn(CHURN / 2, "sub");
+        this.tag = tag;
+      }
+    }
+    const tagged = new Tagged(7);
+    churn(CHURN / 2, "sub");
+    results.push([tagged instanceof Tagged, tagged instanceof Event, tagged.type, tagged.tag].join());
+
+    // Objects of other interfaces, and nodes, made and dropped in the loop.
+    let total = 0;
+    for (let i = 0; i < CHURN / 6; i++) {
+      total += new URLSearchParams("a=" + i).get("a").length;
+      total += new Headers({ k: "v" }).get("k").length;
+      total += document.createElement("i").localName.length;
+      total += new Text("t" + i).data.length;
+    }
+    results.push(total > 0);
+  });
+  assert_true(target.dispatchEvent(new Event("build")));
+  assert_array_equals(results, ["built,true,true,2", "true,true,tagged,7", true]);
+}, "constructors that run script, inside a listener");
+</script>

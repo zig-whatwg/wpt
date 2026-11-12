@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>KNOWN DEVIATION (V8): an old realm's own Window getter applied to the WindowProxy reads the old Window</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-windowproxy-exotic-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// KNOWN DEVIATION, recorded so that a later V8 or the JavaScriptCore adapter that can tell the two cases apart
+// flips it (lane v8up b3a; tmp/plans/v8-global-object-design.md 2.3; the integrator's ruling, 2026-11-11).
+//
+// The spec and all three browsers (Chrome 156, Firefox 159, Safari 27: tmp/probes/v8up-detached/) read the NEW
+// Window here: `this` is the WindowProxy, whose [[Window]] is the navigation's new Window. Crane reads the OLD one.
+// V8 gives the binding no way to tell this call from a contextual read in the old realm (`location`), which must
+// read the OLD Window (v8up-old-realm-contextual-window.html): in a detached context V8 substitutes the reused
+// global proxy for the global-object receiver (objects.cc GetPropertyWithAccessor) and runs the getter in the old
+// context, exactly as for an explicit call of the old realm's getter on that proxy; FunctionCallbackInfo exposes
+// nothing that differs (This, NewTarget, IsConstructCall, Data). Blink unwraps This() and so reads the NEW Window
+// in both cases, deviating on the contextual read instead. This file asserts Crane's answer TODAY; when it
+// fails because Crane reads the new Window, the deviation is gone: update it to the spec's answer.
+
+function load(frame) {
+  return new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+}
+
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const first = load(frame);
+  frame.src = "/common/blank.html?old";
+  document.body.append(frame);
+  await first;
+  const w = frame.contentWindow;
+  const getters = w.eval(`({
+    location: Object.getOwnPropertyDescriptor(window, "location").get,
+    document: Object.getOwnPropertyDescriptor(window, "document").get,
+    callOn: (getter, receiver) => getter.call(receiver),
+  })`);
+  const oldDocument = frame.contentDocument;
+  const oldLocation = w.location;
+  const second = load(frame);
+  frame.src = "/common/blank.html?new";
+  await second;
+  // From the old realm, as its code would: the old realm's getter on its `window` (the WindowProxy).
+  // `w` is the frame's WindowProxy, the object the old realm's `window` is.
+  const run = getters.callOn;
+  assert_equals(run(getters.document, w), oldDocument,
+                "DEVIATION: the spec and Chrome/Firefox/Safari give the new Window's document");
+  // The Location OBJECT, not its href: which Window the getter acts on is the deviation; what an old Window's
+  // Location then reports is Location's own algorithm (v8up-old-realm-contextual-window.html).
+  assert_equals(run(getters.location, w), oldLocation,
+                "DEVIATION: the spec and Chrome/Firefox/Safari give the new Window's Location");
+}, "KNOWN DEVIATION: oldGetter.call(windowProxy) from the old realm reads the old Window (spec and browsers: the new)");
+</script>
+</body>
