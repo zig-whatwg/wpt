@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="img-src 'none'">
+<title>CSP: an img's request-time violation reports the script that started the update</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function nextViolation() {
+  return new Promise(resolve => document.addEventListener('securitypolicyviolation', resolve, { once: true }));
+}
+promise_test(async () => {
+  const seen = nextViolation();
+  const img = document.createElement('img');
+  img.src = '/content-security-policy/support/fail.png';
+  const e = await seen;
+  assert_equals(e.effectiveDirective, 'img-src');
+  assert_equals(new URL(e.sourceFile).pathname, location.pathname);
+  assert_equals(e.lineNumber, 15);
+  assert_greater_than(e.columnNumber, 0, 'the column is the JS engine\'s convention');
+}, 'a violation found in the microtask of "update the image data" reports the line of the src set');
+
+promise_test(async () => {
+  const seen = nextViolation();
+  const s = document.createElement('script');
+  s.src = '/content-security-policy/support/inject-image.sub.js';
+  document.body.appendChild(s);
+  const e = await seen;
+  assert_equals(new URL(e.sourceFile).pathname, '/content-security-policy/support/inject-image.sub.js');
+  // Line 2 sets src; line 3 inserts the img (whatwg/html#10531 is open on
+  // which one triggers the update).
+  assert_in_array(e.lineNumber, [2, 3]);
+  assert_greater_than(e.columnNumber, 0);
+}, 'the location is the external script\'s that set src');
+
+</script>

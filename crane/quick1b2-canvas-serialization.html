@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>HTMLCanvasElement toDataURL and toBlob: a serialization of the bitmap as a file</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+// HTML 4.12.5.1 toDataURL / toBlob over 4.12.5.5. Crane encodes PNG only (the
+// platform's image_encoding capability); every other type falls back to PNG,
+// as the spec requires for an unsupported type.
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('the image did not load: ' + url.slice(0, 40)));
+    img.src = url;
+  });
+}
+
+function pixelsOf(img, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  context.drawImage(img, 0, 0);
+  return Array.from(context.getImageData(0, 0, width, height).data);
+}
+
+function paintedCanvas() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 3;
+  canvas.height = 2;
+  const context = canvas.getContext('2d');
+  const data = context.createImageData(3, 2);
+  data.data.set([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
+                 10, 20, 30, 255, 255, 255, 255, 128, 255, 0, 0, 0]);
+  context.putImageData(data, 0, 0);
+  return { canvas, expected: Array.from(context.getImageData(0, 0, 3, 2).data) };
+}
+
+test(() => {
+  const canvas = document.createElement('canvas');
+  assert_true(canvas.toDataURL().startsWith('data:image/png;base64,'));
+  assert_true(canvas.toDataURL('ImAgE/PnG').startsWith('data:image/png;base64,'));
+  assert_true(canvas.toDataURL('image/example').startsWith('data:image/png;base64,'));
+  assert_true(canvas.toDataURL('image/png;charset=x').startsWith('data:image/png;base64,'));
+}, 'toDataURL answers a PNG data: URL, for an unsupported type too');
+
+test(() => {
+  const wide = document.createElement('canvas');
+  wide.height = 0;
+  assert_equals(wide.toDataURL(), 'data:,');
+  const tall = document.createElement('canvas');
+  tall.width = 0;
+  tall.getContext('2d');
+  assert_equals(tall.toDataURL(), 'data:,');
+}, 'a bitmap without pixels is data:,');
+
+promise_test(async () => {
+  const { canvas, expected } = paintedCanvas();
+  const img = await loadImage(canvas.toDataURL());
+  assert_equals(img.naturalWidth, 3);
+  assert_equals(img.naturalHeight, 2);
+  assert_array_equals(pixelsOf(img, 3, 2), expected);
+}, 'toDataURL\'s PNG decodes to the canvas\'s pixels, straight alpha kept');
+
+promise_test(async () => {
+  const blank = document.createElement('canvas');
+  blank.width = 5;
+  blank.height = 7;
+  const img = await loadImage(blank.toDataURL());
+  assert_equals(img.naturalWidth, 5);
+  assert_equals(img.naturalHeight, 7);
+  assert_array_equals(pixelsOf(img, 5, 7), new Array(5 * 7 * 4).fill(0));
+}, 'a canvas with no context serializes transparent black of its size');
+
+promise_test(async () => {
+  const { canvas, expected } = paintedCanvas();
+  let sync = true;
+  const blob = await new Promise(resolve => {
+    canvas.toBlob(b => {
+      assert_false(sync, 'the callback runs in a task');
+      resolve(b);
+    }, 'image/jpeg', 0.5);
+    sync = false;
+  });
+  assert_true(blob instanceof Blob);
+  assert_equals(blob.type, 'image/png');
+  const url = URL.createObjectURL(blob);
+  const img = await loadImage(url);
+  URL.revokeObjectURL(url);
+  assert_array_equals(pixelsOf(img, 3, 2), expected);
+}, 'toBlob hands over an image/png Blob of the bitmap in a task');
+
+promise_test(async () => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 0;
+  const blob = await new Promise(resolve => canvas.toBlob(resolve));
+  assert_equals(blob, null);
+}, 'toBlob of a bitmap without pixels hands over null');
+
+promise_test(async () => {
+  const img = await loadImage(get_host_info().HTTP_REMOTE_ORIGIN + '/images/green.png');
+  const canvas = document.createElement('canvas');
+  canvas.getContext('2d').drawImage(img, 0, 0);
+  assert_throws_dom('SecurityError', () => canvas.toDataURL());
+  assert_throws_dom('SecurityError', () => canvas.toBlob(() => {}));
+}, 'a canvas that is not origin-clean throws SecurityError');
+</script>
