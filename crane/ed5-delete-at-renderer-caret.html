@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Backspace at the caret a click would place deletes, and fires selectionchange</title>
+<!--
+  editing/other/fire-selection-change-on-deleting-empty-element.html and
+  selection/fire-selectionchange-event-on-deleting-single-character-inside-inline-element.html
+  click an editing host with content: where the caret lands is the renderer's
+  position-for-point (Crane draws nothing, so a click there places no caret).
+  These cases put the caret where a renderer's click (and End, a line-box read)
+  would: the rest of each test - Backspace, selectionchange - must hold.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<div contenteditable="true" id="target"></div>
+<script>
+const backspace = "";
+const settle = () => new Promise(resolve => step_timeout(resolve, 100));
+
+promise_test(async () => {
+  const target = document.getElementById("target");
+  target.innerHTML = "<h1>A</h1>";
+  target.focus();
+  // The click's centre is past "A" on the heading's line.
+  getSelection().collapse(target.querySelector("h1").firstChild, 1);
+  await settle();
+  await test_driver.send_keys(target, backspace);
+  await settle();
+  assert_equals(target.innerHTML, "<h1><br></h1>", "Character should be removed");
+  let count = 0;
+  const count_change = () => ++count;
+  document.addEventListener("selectionchange", count_change);
+  await test_driver.send_keys(target, backspace);
+  await settle();
+  document.removeEventListener("selectionchange", count_change);
+  assert_equals(count, 1, "Selection change count should match");
+}, "Backspace after the last character of a heading, then in the emptied heading");
+
+for (const [label, build, expected] of [
+  ["a single character in an inline editing host", () => {
+    const span = document.createElement("span");
+    span.contentEditable = "true";
+    span.textContent = "X";
+    document.body.appendChild(span);
+    return [span, span, span];
+  }, ""],
+  ["a single character in a nested plaintext-only host", () => {
+    const outer = document.createElement("span");
+    outer.contentEditable = "true";
+    const inner = document.createElement("span");
+    inner.contentEditable = "plaintext-only";
+    inner.textContent = "Y";
+    outer.appendChild(inner);
+    document.body.appendChild(outer);
+    return [outer, inner, inner];
+  }, ""],
+  ["one of two characters in an inline editing host", () => {
+    const span = document.createElement("span");
+    span.contentEditable = "true";
+    span.textContent = "AB";
+    document.body.appendChild(span);
+    return [span, span, span];
+  }, "A"],
+]) {
+  promise_test(async t => {
+    const [root, host, text_parent] = build();
+    t.add_cleanup(() => root.remove());
+    host.focus();
+    // Click and End leave the caret at the end of the line.
+    getSelection().collapse(text_parent.firstChild, text_parent.firstChild.length);
+    await settle();
+    let count = 0;
+    const count_change = () => ++count;
+    document.addEventListener("selectionchange", count_change);
+    t.add_cleanup(() => document.removeEventListener("selectionchange", count_change));
+    await test_driver.send_keys(host, backspace);
+    await settle();
+    assert_greater_than(count, 0, "selectionchange should fire");
+    assert_equals(host.textContent, expected, "Text should be deleted");
+  }, `Backspace at the end of ${label}`);
+}
+</script>
+</body>
