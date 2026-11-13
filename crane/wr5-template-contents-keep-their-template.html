@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node of a template's contents keeps its template's wrapper and expandos</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/scripting.html#the-template-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P5, the walk (tmp/redesign/wrapper-redesign-design.md
+// 3.2): a template's contents are in the template's host-including tree, so a
+// wrapper script reaches inside the contents keeps every wrapper of that tree,
+// the template's included. Blink traces the template from its contents
+// (TemplateContentDocumentFragment::Trace visits host_, and
+// HTMLTemplateElement::Trace visits content_); a JS edge from the contents to
+// their template never existed in Crane before the walk.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { b, ref } = (() => {
+    const template = document.createElement("template");
+    template.wr = "template";
+    template.content.wr = "content";
+    const b = template.content.appendChild(document.createElement("b"));
+    return { b, ref: new WeakRef(template) };
+  })();
+  await collect(t);
+  assert_equals(b.parentNode.wr, "content", "the contents' wrapper and expando");
+  const template = ref.deref();
+  assert_not_equals(template, undefined, "the template's wrapper is kept");
+  assert_equals(template.wr, "template", "the template's expando");
+  assert_equals(template.content, b.parentNode, "the same contents");
+}, "a node of a template's contents keeps the template's wrapper");
+
+promise_test(async t => {
+  const { content, ref } = (() => {
+    const template = document.createElement("template");
+    template.wr = "template";
+    return { content: template.content, ref: new WeakRef(template) };
+  })();
+  await collect(t);
+  const template = ref.deref();
+  assert_not_equals(template, undefined, "the template's wrapper is kept by its contents'");
+  assert_equals(template.wr, "template");
+  assert_equals(template.content, content);
+}, "a template's contents keep the template's wrapper");
+
+promise_test(async t => {
+  const refs = (() => {
+    const template = document.createElement("template");
+    const b = template.content.appendChild(document.createElement("b"));
+    return [new WeakRef(template), new WeakRef(template.content), new WeakRef(b)];
+  })();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), [true, true, true], "the dropped template, its contents and their node are collected");
+}, "a dropped template and its contents are collected");
+</script>

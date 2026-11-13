@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a parser document.open() replaced keeps its stack's wrappers while it unwinds</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P6 for the HTML parser: a custom element's
+// connectedCallback - a reaction the parser runs while it inserts the
+// element, with no script nesting and no dynamic-markup counter, so
+// document.open() is allowed (HTML document open steps 5-6) - takes the
+// element out and calls document.open(): the parser inserting it is aborted
+// and replaced, and its tree leaves the Document, reached only through the
+// old parser's stack of open elements while its frames unwind. Blink keeps
+// that parser on its C++ stack and its HTMLConstructionSite::Trace visits
+// open_elements_ (Chromium 131.0.6778.0): a collection there keeps the
+// wrappers of that tree. Mirrored with every node edge off in
+// tests/html/wr6_parser_trace_test.zig.
+const frameSource = `<!doctype html><body>
+<script>
+customElements.define('x-reopen', class extends HTMLElement {
+  connectedCallback() {
+    if (window.reopened) return;
+    window.reopened = true;
+    this.remove();
+    document.open();
+    parent.TestUtils.gc();
+    const e = window.ref.deref();
+    window.result = e !== undefined && e.wr === 'e' && e.firstChild.wr === 'f' && !e.isConnected;
+    document.close();
+  }
+});
+<\/script>
+<div id=e><span id=f></span><script>
+(() => { const e = document.getElementById('e'); e.wr = 'e'; e.firstChild.wr = 'f'; window.ref = new WeakRef(e); })();
+<\/script><x-reopen></x-reopen></div>`;
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  const loaded = new Promise(resolve => frame.onload = resolve);
+  frame.srcdoc = frameSource;
+  document.body.appendChild(frame);
+  await loaded;
+  assert_true(frame.contentWindow.reopened, "the reaction ran document.open()");
+  assert_true(frame.contentWindow.result, "the old parser's tree kept its wrappers through the collection");
+}, "a collection while a replaced parser unwinds keeps the wrappers of its stack's tree");
+</script>

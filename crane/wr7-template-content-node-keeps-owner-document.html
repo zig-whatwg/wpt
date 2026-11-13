@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node of a template's contents keeps its node document - the template's inert owner document - after its template's document goes</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/scripting.html#appropriate-template-contents-owner-document">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P7 (tmp/redesign/wrapper-redesign-design.md section
+// 7): reading a node no longer wraps its ancestors or its node document. A
+// template's contents belong to the document's "appropriate template contents
+// owner document", an inert document script never reads here. A node of the
+// contents keeps its node document for as long as the node lives (Blink's
+// Node::Trace visits tree_scope_, which traces its document; WebKit counts
+// the node on its document), so after the frame whose document made the
+// template is removed - that document's realm ends - and after collections,
+// the node's ownerDocument is still a working document, the same one each
+// time.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  await nextTask(t);
+  const doc = frame.contentDocument;
+  const b = (() => {
+    const template = doc.createElement("template");
+    template.innerHTML = "<b>text</b><i></i>";
+    return template.content.firstChild;
+  })();
+  b.wr7 = "held";
+  frame.remove();
+  await collect(t);
+  assert_equals(b.wr7, "held", "its expando");
+  assert_equals(b.textContent, "text", "its child");
+  assert_equals(b.nextSibling.localName, "i", "its tree");
+  const owner = b.ownerDocument;
+  assert_equals(owner.nodeType, Node.DOCUMENT_NODE, "its node document is a document");
+  assert_not_equals(owner, doc, "the inert template contents owner document, not the frame's");
+  assert_equals(b.ownerDocument, owner, "the same one each time");
+  assert_equals(owner.createElement("u").ownerDocument, owner, "a document that still works");
+  await collect(t);
+  assert_equals(b.ownerDocument, owner, "and after more collections");
+}, "a node of a template's contents keeps its inert owner document after the template's document goes");
+</script>

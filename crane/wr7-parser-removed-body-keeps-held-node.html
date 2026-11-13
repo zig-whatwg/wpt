@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a body the parser removes for a frameset keeps the node a script held in it</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P7 (tmp/redesign/wrapper-redesign-design.md section
+// 7): reading a node no longer wraps its ancestors. HTML "in body", a start
+// tag "frameset" while the frameset-ok flag is "ok": "Remove the second
+// element on the stack of open elements from its parent node" - the body,
+// with everything parsed into it. A script inside the body read a node of it
+// (getElementById: the body itself is never read, so never wrapped). No
+// body start tag (in "after head" it sets the flag to "not ok"; the div's
+// implies the body) and no character data come before the frameset, so the
+// flag stays "ok". The
+// node script holds keeps its tree - the removed body and its children - for
+// as long as script holds it, after the parse ends and after collections
+// (Blink's Node::Trace reaches the parent; WebKit's node keeps its root).
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await nextTask(t);
+  const doc = frame.contentDocument;
+  self.wr7Held = null;
+  doc.open();
+  doc.write("<div id=a title=t><b></b></div>" +
+            "<script>parent.wr7Held = document.getElementById('a'); parent.wr7Held.wr7 = 'held';<\/script>" +
+            "<frameset></frameset>");
+  doc.close();
+  const held = self.wr7Held;
+  self.wr7Held = null;
+  assert_not_equals(held, null, "the script ran");
+  assert_equals(doc.body.localName, "frameset", "the frameset replaced the body");
+  await collect(t);
+  assert_equals(held.wr7, "held", "its expando");
+  assert_equals(held.localName, "div");
+  assert_equals(held.firstChild.localName, "b", "its child");
+  assert_equals(held.title, "t", "its attribute");
+  assert_equals(held.parentNode.localName, "body", "its parent, the removed body");
+  assert_equals(held.parentNode.parentNode, null, "a removed root");
+  assert_equals(held.ownerDocument, doc, "its node document");
+}, "a body the parser removed for a frameset keeps the node a script held in it, through collections");
+</script>

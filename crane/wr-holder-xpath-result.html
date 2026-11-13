@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an XPathResult snapshot keeps its nodes' wrappers and trees</title>
+<link rel=help href="https://dom.spec.whatwg.org/#interface-xpathresult">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P6 (tmp/redesign/wrapper-redesign-design.md 3.2
+// rule (d), 4.4 "Holders"): a holder whose wrapper is kept keeps the wrappers
+// of the nodes it holds for script, and of their trees. Blink's XPathResult::Trace
+// visits node_set_ and document_ (core/xml/xpath_result.cc, Chromium
+// 131.0.6778.0).
+// Mirrored with every node edge off in tests/v8/wr6_holder_tracing_test.zig.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function snapshotOfDetached() {
+  const container = document.createElement("div");
+  container.wr = "c";
+  for (let i = 0; i < 2; i++) container.appendChild(document.createElement("p")).wr = "p" + i;
+  const result = document.evaluate(".//p", container, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+  return { result, refs: [new WeakRef(container), new WeakRef(container.firstChild), new WeakRef(container.lastChild)] };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { result, refs } = snapshotOfDetached();
+  await collect(t);
+  assert_equals(result.snapshotLength, 2);
+  assert_equals(result.snapshotItem(0).wr, "p0");
+  assert_equals(result.snapshotItem(1).wr, "p1");
+  assert_equals(result.snapshotItem(1).parentNode.wr, "c", "the detached tree's root keeps its expando");
+  assert_equals(refs[0].deref(), result.snapshotItem(0).parentNode, "the same wrapper");
+}, "a snapshot of a detached tree keeps its nodes' and their tree's wrappers");
+
+promise_test(async t => {
+  const refs = (() => snapshotOfDetached().refs)();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "every wrapper is collected");
+}, "a dropped snapshot lets its nodes go");
+</script>

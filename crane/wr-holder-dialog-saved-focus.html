@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an open modal dialog keeps its saved focus's wrapper</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#previously-focused-element">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<dialog id=d><p>dialog</p></dialog>
+<script>
+"use strict";
+// The wrapper redesign's P6 (tmp/redesign/wrapper-redesign-design.md 4.4
+// "Holders"): a NODE that holds a node for script keeps its wrapper. An open
+// modal dialog keeps its previously focused element - "close the dialog"
+// focuses it again - and Blink's HTMLDialogElement::Trace visits
+// previously_focused_element_ (Chromium 131.0.6778.0). Mirrored with every
+// node edge off, the dialog never wrapped, in tests/html/wr6_node_holder_test.zig.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const ref = (() => {
+    const f = document.body.appendChild(document.createElement("input"));
+    f.wr = "f";
+    f.focus();
+    return new WeakRef(f);
+  })();
+  document.getElementById("d").showModal();
+  t.add_cleanup(() => { if (document.getElementById("d").open) document.getElementById("d").close(); });
+  ref.deref().remove();
+  await collect(t);
+  const f = ref.deref();
+  assert_not_equals(f, undefined, "the dialog keeps its saved focus");
+  assert_equals(f.wr, "f", "with its expando");
+  assert_false(f.isConnected);
+}, "an open modal dialog keeps its detached saved focus's wrapper");
+
+promise_test(async t => {
+  const ref = (() => {
+    const f = document.body.appendChild(document.createElement("input"));
+    f.wr = "f";
+    f.focus();
+    return new WeakRef(f);
+  })();
+  const dialog = document.getElementById("d");
+  dialog.showModal();
+  ref.deref().remove();
+  dialog.close();
+  await collect(t);
+  assert_equals(ref.deref(), undefined, "closed, the dialog lets it go");
+}, "a closed dialog lets its saved focus go");
+</script>

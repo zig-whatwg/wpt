@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: records still queued on a MutationObserver keep their nodes' wrappers</title>
+<link rel=help href="https://dom.spec.whatwg.org/#mutationobserver-record-queue">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P6 (tmp/redesign/wrapper-redesign-design.md 3.2
+// rule (d), 4.4 "Holders"): a holder whose wrapper is kept keeps the wrappers
+// of the nodes it holds for script, and of their trees. Records waiting in an
+// observer's record queue are reached only through the observer: Blink's
+// MutationObserver::Trace visits records_ (core/dom/mutation_observer.cc,
+// Chromium 131.0.6778.0) and each ChildListRecord::Trace its nodes.
+// Mirrored with every node edge off in tests/v8/wr6_holder_tracing_test.zig.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function observedRemoval(observer) {
+  const host = document.createElement("div");
+  host.wr = "host";
+  const u = host.appendChild(document.createElement("u"));
+  u.wr = "u";
+  u.appendChild(document.createElement("em")).wr = "em";
+  observer.observe(host, { childList: true });
+  host.removeChild(u);
+  return [new WeakRef(host), new WeakRef(u), new WeakRef(u.firstChild)];
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  let delivered = 0;
+  const observer = new MutationObserver(() => { delivered++; });
+  t.add_cleanup(() => observer.disconnect());
+  (() => {
+    const host = document.createElement("div");
+    host.wr = "host";
+    const u = host.appendChild(document.createElement("u"));
+    u.wr = "u";
+    u.appendChild(document.createElement("em")).wr = "em";
+    observer.observe(host, { childList: true });
+    host.removeChild(u);
+  })();
+  // Collected in this task, while the record is still queued: no microtask
+  // checkpoint has delivered it, and nothing but the queued record reaches
+  // the removed node (no WeakRef: one made in this task would keep it).
+  TestUtils.gc();
+  TestUtils.gc();
+  const records = observer.takeRecords();
+  assert_equals(delivered, 0, "still queued when collected");
+  assert_equals(records.length, 1, "one record queued");
+  assert_equals(records[0].target.wr, "host", "the target's expando");
+  assert_equals(records[0].removedNodes[0].wr, "u", "the removed node's expando");
+  assert_equals(records[0].removedNodes[0].firstChild.wr, "em", "its child's expando");
+}, "a record queued on an observer keeps its nodes' wrappers through collections");
+
+promise_test(async t => {
+  let records = null;
+  const observer = new MutationObserver(r => { records = r; });
+  const refs = observedRemoval(observer);
+  await collect(t);
+  assert_not_equals(records, null, "the callback ran");
+  assert_equals(records[0].removedNodes[0].wr, "u", "the delivered record's node keeps its expando");
+  assert_equals(refs[1].deref(), records[0].removedNodes[0], "the same wrapper");
+  observer.disconnect();
+  records = null;
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "dropped with the records, every wrapper is collected");
+}, "a delivered record keeps its nodes until script drops it");
+</script>

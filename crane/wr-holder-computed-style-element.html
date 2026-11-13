@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a computed CSSStyleDeclaration keeps its element's wrapper</title>
+<link rel=help href="https://drafts.csswg.org/cssom/#dom-window-getcomputedstyle">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P6 (tmp/redesign/wrapper-redesign-design.md 3.2
+// rule (d), 4.4 "Holders"): a holder whose wrapper is kept keeps the wrappers
+// of the nodes it holds for script, and of their trees. Blink's
+// CSSComputedStyleDeclaration::Trace visits its element_; the declaration
+// reads the element's style live, so it keeps it.
+// Mirrored with every node edge off in tests/v8/wr6_holder_tracing_test.zig.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function styleOfDetached() {
+  const element = document.createElement("span");
+  element.wr = "el";
+  element.appendChild(document.createElement("b")).wr = "b";
+  return { style: getComputedStyle(element), refs: [new WeakRef(element), new WeakRef(element.firstChild)] };
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const { style, refs } = styleOfDetached();
+  await collect(t);
+  assert_not_equals(style, null);
+  assert_not_equals(refs[0].deref(), undefined, "the element's wrapper is kept");
+  assert_equals(refs[0].deref().wr, "el");
+  assert_equals(refs[1].deref(), refs[0].deref().firstChild, "and its tree's");
+}, "a held computed declaration keeps its element's wrapper");
+
+promise_test(async t => {
+  const refs = (() => styleOfDetached().refs)();
+  await collect(t);
+  assert_array_equals(refs.map(r => r.deref() === undefined), refs.map(() => true), "every wrapper is collected");
+}, "a dropped declaration lets its element go");
+</script>

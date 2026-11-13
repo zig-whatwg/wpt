@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a subtree removed while its root was never read keeps the node script holds in it, through its document's realm's end</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-remove">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P7 (tmp/redesign/wrapper-redesign-design.md section
+// 7): node wrappers lose their JS edges, and reading a node no longer wraps
+// its ancestors. A node script reads out of a tree - getElementById - is
+// wrapped alone; the subtree around it, removed before script read any other
+// node of it, has an unwrapped root. The node script holds keeps its tree
+// (Blink's Node::Trace reaches the parent from the node; WebKit's node keeps
+// its root alive through its ref), so its parent chain, its text and its
+// node document stay, after the frame whose document it belongs to is
+// removed (the document's realm ends) and after collections.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  await nextTask(t);
+  const doc = frame.contentDocument;
+  doc.body.innerHTML = "<section id=s><div><p id=x>text</p></div></section>";
+  // Read from the document: only p is wrapped.
+  const p = doc.getElementById("x");
+  p.wr7 = "held";
+  // The section leaves the tree; script never read it.
+  doc.body.innerHTML = "";
+  await collect(t);
+  assert_equals(p.wr7, "held", "before the realm's end: its expando");
+  assert_equals(p.parentNode.parentNode.id, "s", "before the realm's end: its tree");
+  // The frame's document's realm ends.
+  frame.remove();
+  await collect(t);
+  assert_equals(p.wr7, "held", "its expando");
+  assert_equals(p.localName, "p");
+  assert_equals(p.textContent, "text", "its child");
+  assert_equals(p.parentNode.localName, "div", "its parent");
+  assert_equals(p.parentNode.parentNode.localName, "section", "its root");
+  assert_equals(p.parentNode.parentNode.parentNode, null, "a removed root");
+  assert_equals(p.ownerDocument, doc, "its node document");
+  assert_equals(p.ownerDocument.createElement("i").ownerDocument, doc, "a document that still works");
+}, "a removed subtree whose root script never read keeps a held node's tree across its realm's end");
+</script>

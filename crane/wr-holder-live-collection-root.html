@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a live collection keeps its root's wrapper and tree</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-collection-root">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P6 (tmp/redesign/wrapper-redesign-design.md 3.2
+// rule (d), 4.4 "Holders"): a holder whose wrapper is kept keeps the wrappers
+// of the nodes it holds for script, and of their trees. WebKit's collections hold
+// Ref<ContainerNode> m_ownerNode and Blink's LiveNodeListBase traces its
+// owner node: script that keeps only root.children or root.childNodes keeps
+// the root, and reaches it again through a member.
+// Mirrored with every node edge off in tests/v8/wr6_holder_tracing_test.zig.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+function liveOf(kind) {
+  const root = document.createElement("div");
+  root.wr = "root";
+  root.appendChild(document.createElement("p"));
+  return { list: kind === "children" ? root.children : root.childNodes, refs: [new WeakRef(root)] };
+}
+
+for (const kind of ["children", "childNodes"]) {
+  promise_test(async t => {
+    assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+    const { list, refs } = liveOf(kind);
+    await collect(t);
+    assert_equals(list.length, 1);
+    assert_equals(list[0].parentNode.wr, "root", "the root keeps its expando");
+    assert_equals(refs[0].deref(), list[0].parentNode, "the same wrapper");
+  }, kind + " keeps its detached root's wrapper");
+
+  promise_test(async t => {
+    const refs = (() => liveOf(kind).refs)();
+    await collect(t);
+    assert_equals(refs[0].deref(), undefined, "collected");
+  }, "a dropped " + kind + " lets its root go");
+}
+</script>

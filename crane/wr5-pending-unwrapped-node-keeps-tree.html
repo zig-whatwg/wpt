@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a parsed img nothing wrapped keeps its tree's wrappers while its load is pending</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/images.html#updating-the-image-data">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// The wrapper redesign's P5, rule 3.2 (c) (tmp/redesign/wrapper-redesign-
+// design.md): a node kept by pending activity keeps the wrappers of its tree
+// whether or not script ever wrapped it. Blink's HTMLImageElement has pending
+// activity while its loader does, so the element is traced
+// (ActiveScriptWrappableManager) and through Node::Trace its tree and their
+// wrappers; crane/wr-pending-activity-keeps-tree.html pins the same for an img
+// script made (and so wrapped). Here the img comes from the parser, its root
+// carries an expando, and the load is a fetch the server delays, with
+// collections while it waits.
+
+function wait(t, ms) {
+  return new Promise(resolve => t.step_timeout(resolve, ms));
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  self.wr5Seen = [];
+  (() => {
+    const root = document.createElement("div");
+    root.wr = "root";
+    root.innerHTML = '<span><img onload="self.wr5Seen.push(\'load:\' + this.parentNode.parentNode.wr)" ' +
+      'onerror="self.wr5Seen.push(\'error\')" src="/images/green.png?pipe=trickle(d0.3)&wr5=' + Date.now() + '"></span>';
+  })();
+  TestUtils.gc();
+  TestUtils.gc();
+  for (let i = 0; i < 200 && self.wr5Seen.length === 0; i++) {
+    await wait(t, 20);
+    await TestUtils.gc();
+  }
+  assert_array_equals(self.wr5Seen, ["load:root"], "load fired at the img, and its tree's root kept its wrapper and expando");
+}, "a parsed img nothing wrapped, loading in a tree script dropped, keeps that tree's wrappers");
+</script>

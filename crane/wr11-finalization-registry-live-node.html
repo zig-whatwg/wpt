@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a FinalizationRegistry callback does not run for a node that is still in its document, and runs for one nothing reaches</title>
+<link rel=help href="https://tc39.es/ecma262/#sec-liveness">
+<link rel=help href="https://tc39.es/ecma262/#sec-weakref-execution">
+<link rel=help href="https://tc39.es/ecma262/#sec-finalization-registry.prototype.register">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=host><span></span><b></b></div>
+<script>
+"use strict";
+// ECMA-262 9.9.2 (Liveness): an object is live while a possible future
+// execution can observe its identity, and 9.9.3 (Execution) lets an
+// implementation clear a FinalizationRegistry's cell - and enqueue its
+// cleanup - only for an object that is not live. A node script can reach
+// through its tree is live: script gets "the same object" for it every time
+// (Web IDL platform objects keep their identity), so its registry callback
+// must not run while the node is there.
+//
+// Lane wr1 batch 11 (the wrapper redesign on V8 15.7): a node's wrapper is a
+// droppable reference, which V8 reclaims in a young-generation collection
+// while it is an unmodified API object nothing else reaches, and V8 15.7
+// treats a FinalizationRegistry target weakly in such a collection
+// (handle_weak_ref_weakly_in_minor_gc) - registering does not modify the
+// wrapper, so the callback ran for the in-tree node. Measured with this
+// page's shape: Chrome 157.0.8103.51 runs it; Firefox 159.0.1 does not;
+// WebKit keeps a wrapper whose node is reachable from an opaque root.
+// Crane starts V8 with that flag off (src/runtime/engines/v8/
+// snapshot_loader.zig RUNTIME_V8_FLAGS).
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+// Young-generation collections: V8 runs them as its young generation fills,
+// and no API asks for one, so fill it several times over with garbage.
+function scavenge() {
+  let sink = 0;
+  for (let round = 0; round < 64; round++) {
+    const junk = [];
+    for (let i = 0; i < 4096; i++) junk.push({ i, s: "x" + (i & 7) });
+    sink += junk.length;
+  }
+  return sink;
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const finalized = [];
+  const registry = new FinalizationRegistry(held => finalized.push(held));
+  const host = document.getElementById("host");
+  // Registered and let go at once: no script reference to either wrapper
+  // survives these calls. Nothing else is done to the wrappers (no expando,
+  // no WeakMap key, no WeakRef) - registering is their only use.
+  (function () { registry.register(host.children[0], "in-tree span"); })();
+  (function () { registry.register(host.children[1], "in-tree b, later removed and dropped"); })();
+  (function () { registry.register(document.createElement("p"), "detached and dropped"); })();
+
+  // Young-generation collections only, over several tasks.
+  for (let round = 0; round < 12; round++) {
+    scavenge();
+    await nextTask(t);
+  }
+  assert_false(finalized.includes("in-tree span"), "no callback for the in-tree span after young-generation collections");
+  assert_false(finalized.includes("in-tree b, later removed and dropped"), "no callback for the in-tree b after young-generation collections");
+  assert_equals(host.children[0].localName, "span", "the span is still in its tree");
+
+  // Full collections, and young ones again.
+  for (let round = 0; round < 3; round++) {
+    await TestUtils.gc();
+    scavenge();
+    for (let i = 0; i < 3; i++) await nextTask(t);
+  }
+  assert_false(finalized.includes("in-tree span"), "no callback for the in-tree span after full collections");
+  assert_false(finalized.includes("in-tree b, later removed and dropped"), "no callback for the in-tree b after full collections");
+  // The collections ran: the node nothing reached was finalized.
+  assert_true(finalized.includes("detached and dropped"), "the detached, dropped node's callback ran");
+
+  // Removed and dropped, the second node is no longer live: its callback runs.
+  (function () { host.children[1].remove(); })();
+  for (let round = 0; round < 20 && !finalized.includes("in-tree b, later removed and dropped"); round++) {
+    await TestUtils.gc();
+    scavenge();
+    for (let i = 0; i < 3; i++) await nextTask(t);
+  }
+  assert_true(finalized.includes("in-tree b, later removed and dropped"), "the removed, dropped node's callback ran");
+  assert_false(finalized.includes("in-tree span"), "and still none for the span, which is in its tree");
+  assert_equals(host.children.length, 1, "one child left");
+}, "a FinalizationRegistry callback runs for a node nothing reaches and never for one still in its document");
+</script>
