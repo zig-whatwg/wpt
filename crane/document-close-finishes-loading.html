@@ -30,7 +30,12 @@ promise_test(async () => {
   f.contentWindow.addEventListener("load", () => seen.push("window load"));
   doc.write("<title>t</title><p>written</p>");
   doc.close();
-  assert_equals(doc.readyState, "interactive", "the parser has stopped");
+  // The load is complete when close() returns: nothing delays it, and Chrome
+  // and Safari complete it in the task in which the parser stops (lane nav2
+  // batch 12, the user's ruling 2026-11-12; nav2's probe 2026-11-14: Chrome
+  // 157 and Safari 27 read "complete" after close(), Firefox 159
+  // "interactive"). Before batch 12 this asserted "interactive".
+  assert_equals(doc.readyState, "complete", "the parser has stopped and nothing delays the load");
   await elementLoaded;
   assert_array_equals(seen, [
     "readystatechange interactive",

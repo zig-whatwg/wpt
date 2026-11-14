@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A navigation the parse planned or started runs before the load at the end of the parse</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<!--
+  Crane test (lane nav2 batch 12). With nothing delaying it, Crane completes the
+  load in the task in which the parser stops, as Chrome and Safari do (the
+  user's ruling 2026-11-12). A navigation the parse planned - a form submission,
+  a javascript: URL - must still come first: Blink's Document::ShouldComplete
+  waits while a javascript: URL task is active, WebKit's Document::implicitClose
+  while the NavigationScheduler has a location change pending (a scheduled form
+  submission is one), and Gecko posts its onload. A location change the parse
+  makes starts its navigation at once and aborts the document, so its first
+  document never fires load. replace-before-load/form-submit.html, execution-
+  timing/028.html and navigating-across-documents/014.html are the WPT files.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function firstLoadUrl(t, srcdoc) {
+  return new Promise(resolve => {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    frame.srcdoc = srcdoc;
+    frame.addEventListener("load", () => resolve(frame.contentWindow.location.href), { once: true });
+    document.body.append(frame);
+  });
+}
+
+promise_test(async t => {
+  const url = await firstLoadUrl(t,
+    "<form action='/common/blank.html'><input type=hidden name=submitted></form>" +
+    "<script>document.forms[0].submit();<\/script><p>parsed</p>");
+  assert_equals(url, new URL("/common/blank.html?submitted=", location.href).href);
+}, "a form submitted during the parse: the frame's first load is the submission's document");
+
+promise_test(async t => {
+  const url = await firstLoadUrl(t,
+    "<script>location.href = '/common/blank.html?assigned';<\/script><p>parsed</p>");
+  assert_equals(url, new URL("/common/blank.html?assigned", location.href).href);
+}, "location.href set in a parser-blocking script: the frame's first load is the new document");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  window.order = [];
+  frame.srcdoc = "<script>" +
+    "addEventListener('load', () => parent.order.push('load'));" +
+    "location.replace(\"javascript:parent.order.push('javascript: URL')\");" +
+    "parent.order.push('script end');<\/script><p>parsed</p>";
+  frame.addEventListener("load", t.step_func(() => {
+    t.step_timeout(t.step_func_done(() => {
+      assert_array_equals(window.order, ["script end", "javascript: URL", "load"]);
+    }), 100);
+  }), { once: true });
+  document.body.append(frame);
+}, "a javascript: URL queued during the parse runs before the load");
+</script>

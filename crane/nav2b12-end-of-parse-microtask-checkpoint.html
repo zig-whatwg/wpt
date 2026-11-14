@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The microtasks the parse queued run before DOMContentLoaded and load at the end of the parse</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<!--
+  Crane test (lane nav2 batch 12). With DOMContentLoaded, and the load when nothing
+  delays it, in the task in which the parser stops, a microtask the parse queued
+  after its last script - a MutationObserver's records of the last nodes the parser
+  inserted - must still run before those events' listeners, as HTML's order gives
+  them: WebKit's Document::finishedParsing performs a microtask checkpoint before
+  it dispatches DOMContentLoaded and Firefox queues DOMContentLoaded (lane nav2's
+  probe 2026-11-14: Safari 27 and Firefox 159 see both records in the listener;
+  Chrome 157, whose checkpoint comes after DOMContentLoaded, none).
+  custom-elements/perform-microtask-checkpoint-before-construction.html reads the
+  records in onload (Chrome, Firefox and Safari pass it).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function frameRecords(t) {
+  return new Promise(resolve => {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    frame.srcdoc = "<!doctype html><body><script>" +
+      "window.seen = [];" +
+      "new MutationObserver(records => { for (const r of records) for (const n of r.addedNodes) if (n.id) seen.push(n.id); })" +
+      ".observe(document.body, { childList: true, subtree: true });" +
+      "document.addEventListener('DOMContentLoaded', () => { window.atDCL = seen.slice(); });" +
+      "addEventListener('load', () => { window.atLoad = seen.slice(); });" +
+      "<\/script><p id=first></p><p id=last></p>";
+    frame.onload = () => resolve(frame.contentWindow);
+    document.body.append(frame);
+  });
+}
+
+promise_test(async t => {
+  const win = await frameRecords(t);
+  assert_array_equals(win.atDCL, ["first", "last"], "records delivered before DOMContentLoaded");
+  assert_array_equals(win.atLoad, ["first", "last"], "records delivered before load");
+}, "a MutationObserver's records of the parse's last insertions reach it before DOMContentLoaded and load");
+</script>

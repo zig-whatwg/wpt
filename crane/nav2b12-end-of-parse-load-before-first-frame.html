@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>With nothing delaying it, the load and pageshow come before the first rendering opportunity after the parse</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<!--
+  Crane test (lane nav2 batch 12; the user's ruling 2026-11-12, golden rule 2).
+  A frame's parse asks for an animation frame, then keeps the parser's task busy
+  for longer than a refresh interval, so a rendering opportunity is due the
+  moment the parser stops. Chrome 157 and Firefox 159 fire DOMContentLoaded,
+  load and pageshow in the task in which the parser stopped when nothing delays
+  the load (Blink FrameLoader::FinishedParsing -> Document::CheckCompleted,
+  WebKit FrameLoader::finishedParsing -> checkCompleted), so pageshow comes
+  before pagereveal and the first rAF. With an image still loading, the load
+  waits and both render first: pagereveal (Chrome) and rAF before load and
+  pageshow (lane nav2's probe, 2026-11-14:
+  "DCL,load,pageshow,pagereveal,rAF" / "DCL,pagereveal,rAF,...,load,pageshow").
+  html/browsers/browsing-the-web/history-traversal/pagereveal/order-in-new-document-navigation-iframe.html
+  is the race this test makes certain.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+const frameScript =
+  "window.eventLog = [];" +
+  "let rafs = 0;" +
+  "(function record() { requestAnimationFrame(() => { if (rafs++ < 3) eventLog.push('rAF'); record(); }); })();" +
+  "document.addEventListener('DOMContentLoaded', () => eventLog.push('DCL'));" +
+  "addEventListener('load', () => eventLog.push('load'));" +
+  "addEventListener('pageshow', () => eventLog.push('pageshow'));" +
+  "addEventListener('pagereveal', () => eventLog.push('pagereveal'));";
+// Keeps the parser's task busy past one 60 Hz refresh interval (16.7 ms).
+const busyScript = "const end = performance.now() + 60; while (performance.now() < end) {}";
+
+function frameLog(t, body) {
+  return new Promise(resolve => {
+    const frame = document.createElement("iframe");
+    t.add_cleanup(() => frame.remove());
+    frame.srcdoc = "<!doctype html><script>" + frameScript + "<\/script><body>" + body +
+      "<script>" + busyScript + "<\/script>";
+    frame.onload = () => {
+      const win = frame.contentWindow;
+      // Three animation frames later every event has been logged.
+      win.requestAnimationFrame(() => win.requestAnimationFrame(() => win.requestAnimationFrame(() => resolve(win.eventLog.slice()))));
+    };
+    document.body.append(frame);
+  });
+}
+
+promise_test(async t => {
+  const log = await frameLog(t, "<p>no subresources</p>");
+  assert_array_equals(log.slice(0, 5), ["DCL", "load", "pageshow", "pagereveal", "rAF"]);
+}, "nothing delays the load: DOMContentLoaded, load and pageshow come before the frame that was due as the parser stopped");
+
+promise_test(async t => {
+  const log = await frameLog(t, "<img src='/images/green.png?pipe=trickle(d0.5)'>");
+  assert_equals(log[0], "DCL", "DOMContentLoaded first");
+  assert_less_than(log.indexOf("pagereveal"), log.indexOf("rAF"), "pagereveal before the first rAF");
+  assert_less_than(log.indexOf("rAF"), log.indexOf("load"), "a frame before the delayed load");
+  assert_less_than(log.indexOf("load"), log.indexOf("pageshow"), "pageshow after load");
+}, "an image delays the load: the frame comes first, then load and pageshow");
+</script>

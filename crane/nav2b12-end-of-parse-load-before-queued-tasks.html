@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>The end of the parse fires DOMContentLoaded and, when nothing delays it, load in the parse's own task</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#the-end">
+<!--
+  Crane test (lane nav2 batch 11; the user's ruling 2026-11-12, golden rule 2).
+  HTML "the end" queues DOMContentLoaded (step 6) and the load (step 9) as
+  tasks. All three browsers fire DOMContentLoaded synchronously when the
+  parser stops (Blink Document::FinishedParsing, "FIXME ... crbug.com/961428";
+  WebKit Document::finishedParsing, "FIXME ... webkit.org/b/82931"; Gecko
+  through a script runner). Chrome and Safari then complete the load in the
+  same task when nothing delays it (Blink FrameLoader::FinishedParsing ->
+  Document::CheckCompleted -> LocalDOMWindow::DispatchLoadEvent ->
+  owner->DispatchLoad(); WebKit FrameLoader::finishedParsing ->
+  checkCompleted -> Document::implicitClose -> dispatchLoadEventToParent),
+  so a task the frame's parse queued - a message to its parent, a timer -
+  runs after the frame's and its container's load events.
+  service-workers/service-worker/client-url-creation-url.https.html depends
+  on it (Chrome 157 10/10, Safari 27.2 10/10, Firefox 160 TIMEOUT).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = "<script>parent.postMessage('posted while parsing', '*');<\/script><p>no subresources</p>";
+  frame.onload = t.step_func(() => {
+    // The listener starts after the container's load event: the message,
+    // queued while the frame parsed, has not been delivered yet.
+    window.addEventListener("message", t.step_func_done(e => {
+      assert_equals(e.source, frame.contentWindow, "the frame's message");
+      assert_equals(e.data, "posted while parsing");
+    }));
+    t.step_timeout(() => assert_unreached("the message was delivered before the frame's load event"), 2000);
+  });
+  t.add_cleanup(() => frame.remove());
+  document.body.append(frame);
+}, "a frame's load event comes before a message it posted while parsing");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = "<script>" +
+    "window.order = [];" +
+    "setTimeout(() => order.push('timeout'), 0);" +
+    "document.addEventListener('DOMContentLoaded', () => order.push('DOMContentLoaded:' + document.readyState));" +
+    "window.addEventListener('load', () => order.push('load:' + document.readyState));" +
+    "<\/script><p>no subresources</p>";
+  frame.onload = t.step_func(() => {
+    frame.contentWindow.order.push("container load");
+    t.step_timeout(t.step_func_done(() => {
+      assert_array_equals(frame.contentWindow.order,
+        ["DOMContentLoaded:interactive", "load:complete", "container load", "timeout"]);
+    }), 100);
+  });
+  t.add_cleanup(() => frame.remove());
+  document.body.append(frame);
+}, "DOMContentLoaded, load and the container's load come before a timer the parse queued");
+
+async_test(t => {
+  const frame = document.createElement("iframe");
+  // An image still loading delays the load event: the load is not in the
+  // parse's task, and the timer queued while parsing runs first.
+  frame.srcdoc = "<script>" +
+    "window.order = [];" +
+    "setTimeout(() => order.push('timeout'), 0);" +
+    "document.addEventListener('DOMContentLoaded', () => order.push('DOMContentLoaded'));" +
+    "window.addEventListener('load', () => order.push('load'));" +
+    "<\/script><img src='/images/green.png?pipe=trickle(d0.3)'>";
+  frame.onload = t.step_func_done(() => {
+    assert_array_equals(frame.contentWindow.order, ["DOMContentLoaded", "timeout", "load"]);
+  });
+  t.add_cleanup(() => frame.remove());
+  document.body.append(frame);
+}, "a delayed load waits, and a timer the parse queued runs before it");
+</script>

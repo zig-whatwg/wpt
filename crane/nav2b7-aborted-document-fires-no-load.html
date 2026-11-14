@@ -18,10 +18,13 @@
 //    parse and before the load task.
 // 2. A navigation while an image delays the load event (a-user-click.html,
 //    location-assign-user-click.html: Firefox and Safari pass).
-// 3. The parse of a fully received body ends in the task that ran its scripts:
-//    an unhandledrejection queued by an inline script follows "interactive"
-//    (promise-rejection-event-during-parse.html: Firefox passes; Chrome's
-//    separate end-of-body task puts it first).
+// 3. The parse of a fully received body ends in the task that ran its scripts,
+//    and since lane nav2 batch 12 that task completes the load too (the user's
+//    rulings of 2026-11-12 and 2026-11-14, option b): an unhandledrejection
+//    queued by an inline script comes after "interactive" and "complete" -
+//    Safari 27.2's order (promise-rejection-event-during-parse.html: Firefox
+//    passes with its posted load; Chrome's separate end-of-body task puts the
+//    event first). Before batch 12 this case asserted Firefox's order.
 window.events = [];
 const injector = "/html/browsers/browsing-the-web/navigating-across-documents/replace-before-load/resources/";
 
@@ -75,7 +78,7 @@ promise_test(async t => {
     document.addEventListener("readystatechange", () => order.push("readystatechange:" + document.readyState));
     addEventListener("unhandledrejection", e => { e.preventDefault(); order.push("unhandledrejection"); });
     Promise.reject(new Error("intentional"));
-    addEventListener("load", () => parent.postMessage(order, "*"));
+    addEventListener("load", () => setTimeout(() => parent.postMessage(order, "*"), 100));
   `;
   const frame = document.createElement("iframe");
   const got = new Promise(resolve => addEventListener("message", e => { if (e.source === frame.contentWindow) resolve(e.data); }));
@@ -83,6 +86,6 @@ promise_test(async t => {
   document.body.append(frame);
   const order = await got;
   frame.remove();
-  assert_array_equals(order, ["readystatechange:interactive", "unhandledrejection", "readystatechange:complete"]);
-}, "an unhandledrejection queued while a fetched document is parsed follows its readiness 'interactive'");
+  assert_array_equals(order, ["readystatechange:interactive", "readystatechange:complete", "unhandledrejection"]);
+}, "an unhandledrejection queued while a fetched document is parsed follows its readiness 'interactive' and 'complete'");
 </script>
