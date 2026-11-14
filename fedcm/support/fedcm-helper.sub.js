@@ -2,6 +2,9 @@ export const manifest_origin = "https://{{host}}:{{ports[https][0]}}";
 export const alt_manifest_origin = 'https://{{hosts[alt][]}}:{{ports[https][0]}}';
 export const same_site_manifest_origin = 'https://{{hosts[][www1]}}:{{ports[https][0]}}';
 export const default_manifest_path = '/fedcm/support/manifest.py';
+// The Email Verification Protocol identifies an issuer by a bare host name, so
+// its origin carries no port. The PAC file routes it to the test server.
+export const evt_issuer_origin = 'https://{{host}}';
 
 export function open_and_wait_for_popup(origin, path) {
   return new Promise(resolve => {
@@ -246,7 +249,43 @@ export async function fedcm_settles_without_dialog(t, cred_promise) {
   if (result instanceof IdentityCredential) {
     return result;
   }
+  // Cancel the unexpected dialog so that the pending request does not block
+  // later requests.
+  try {
+    await window.test_driver.cancel_fedcm_dialog();
+    // The WebDriver reply and the FedCM Mojo reply travel on separate IPC
+    // channels, so the cancel can resolve before the renderer has settled
+    // `cred_promise`. Wait for it too, otherwise the request is still pending
+    // when the next subtest starts. Its rejection is discarded so that the
+    // message below is what the test reports.
+    await cred_promise.catch(() => {});
+  } catch (ex) {
+    // Failure is not critical.
+  }
   throw "expected request to finish, got dialog: " + result;
+}
+
+// Waits for `cred_promise`, from a request that is expected to be auto
+// re-authenticated, to settle. This fails if the request shows a dialog other
+// than the auto re-authentication notice, e.g. an account chooser, instead of
+// waiting for an account to be selected.
+export async function fedcm_expect_auto_reauthn(t, cred_promise) {
+  let dialog_promise = fedcm_get_dialog_type_promise(t);
+  let result = await Promise.race([cred_promise, dialog_promise]);
+  // Intentionally pass through any exceptions.
+  if (result instanceof IdentityCredential || result == 'AutoReauthn') {
+    return cred_promise;
+  }
+  // Cancel the unexpected dialog so that the pending request does not block
+  // later requests.
+  try {
+    await window.test_driver.cancel_fedcm_dialog();
+    // See the comment in fedcm_settles_without_dialog().
+    await cred_promise.catch(() => {});
+  } catch (ex) {
+    // Failure is not critical.
+  }
+  throw 'expected auto re-authentication, got dialog: ' + result;
 }
 
 export async function fedcm_expect_dialog(cred_promise, other_promise) {
@@ -377,10 +416,10 @@ export function set_well_known_format(format_type) {
 }
 
 // Sets up the IdP session state and cookies for EVT / EVP delegation.
-export async function setup_evt_endpoints(origin = manifest_origin) {
+export async function setup_evt_endpoints(origin = evt_issuer_origin) {
   await mark_signed_in(origin);
   await set_fedcm_cookie(origin);
-  await set_well_known_format('direct');
+  await set_well_known_format('delegation');
   try {
     await fetch('/fedcm/support/delegation-issuance.py?clear_error=1');
   } catch (e) {

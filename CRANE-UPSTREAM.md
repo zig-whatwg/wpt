@@ -8,8 +8,26 @@ WPT runner reads it for the wptreport's `run_info.revision`).
 
 | | Upstream commit | Date |
 |-|-----------------|------|
-| Current base | `afe89a5df4dcc7c6bcb317b07d6eee31a383c466` | 2026-09-30 (wpt.fyi's aligned Chrome/Firefox/Safari runs) |
-| Previous base | `fae291ef55a6871a9f7836e30eff5f4271ba3954` | 2025-12-23 (the flattened snapshot, dcf9091f5) |
+| Current base | `2358bd48357992d5f3f9d6aaa2040aa018aaa093` | 2026-11-12 23:58 UTC (wpt.fyi's aligned Chrome/Firefox/Safari runs of 2026-11-13) |
+| Previous base | `afe89a5df4dcc7c6bcb317b07d6eee31a383c466` | 2026-09-30 (wpt.fyi's aligned Chrome/Firefox/Safari runs) |
+| Older base | `fae291ef55a6871a9f7836e30eff5f4271ba3954` | 2025-12-23 (the flattened snapshot, dcf9091f5) |
+
+### The current base (sync of 2026-11-14)
+
+- Rule: the revision of wpt.fyi's newest ALIGNED stable runs of Chrome, Firefox
+  and Safari (not upstream master's tip), so that golden-rule-2 evidence on
+  wpt.fyi was produced by exactly the files in this tree.
+- The runs (wpt.fyi run ids): Chrome 157.0.8103.78, linux 22.04 (4786307730243584);
+  Firefox 160.0, linux 22.04 (4877168468033536); Safari 27.2 (22625.2.8.11.9),
+  mac 27.2 (6479119966273536).
+- Upstream commits taken: 1,856 (afe89a5df4..2358bd4835, GitHub compare).
+- Crane's upstream fixes it includes: wpt#65066 (65989351d1,
+  `permissions/worker.https.html`). Not included, waiting for the next sync:
+  wpt#65105 (4624890b99, the dynamic-import microtasks specifier, merged
+  2026-11-13 10:17 UTC, after this revision).
+- The WebCrypto helper cherry-pick of upstream wpt#63475 (2026-10-20) resolved to
+  upstream's own copy: the merged tree differs from upstream's only in the
+  files listed below.
 
 ## What Crane adds on top of upstream
 
@@ -38,7 +56,7 @@ Then, in a clone of this fork with upstream fetched (a shallow fetch down to the
 previous base is enough: `git fetch --shallow-since=<previous base date> upstream master`):
 
 ```bash
-PREV=afe89a5df4dcc7c6bcb317b07d6eee31a383c466   # "Current base" above
+PREV=2358bd48357992d5f3f9d6aaa2040aa018aaa093   # "Current base" above
 NEW=<new upstream SHA>
 git merge-tree --write-tree --merge-base=$PREV main $NEW   # prints the merged tree, then any conflicts
 git read-tree -u --reset <tree>                             # resolve conflicts by hand, then git add

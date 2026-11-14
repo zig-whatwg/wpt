@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<title>CSS Gap Decorations: rule-visibility-items between uses whole-row occupancy in grid lanes</title>
+<title>CSS Gap Decorations: between row rules stop at the shorter lane's last item in grid lanes</title>
 <link rel="author" title="Javier Contreras" href="mailto:javiercon@microsoft.com">
 <link rel="help" href="https://drafts.csswg.org/css-gaps-1/#visibility">
 <link rel="help" href="https://drafts.csswg.org/css-grid-3/#grid-lanes-model">
@@ -9,12 +9,11 @@
   .lanes {
     display: grid-lanes;
     grid-template-rows: repeat(3, 60px);
-    grid-lanes-direction: row;
     gap: 20px;
     width: max-content;
     background: #cdd5e0;
     row-rule: 4px solid blue;
-    row-rule-break: none;
+    row-rule-break: intersection;
     row-rule-visibility-items: between;
   }
   .lanes > div {
@@ -23,7 +22,7 @@
     background: #5b8def;
   }
   .track-one { grid-row: 1; }
-  .track-two { grid-row: 2; }
+  .lanes > .track-two { grid-row: 2; width: 70px; }
 </style>
 <div class="lanes">
   <div class="track-one"></div>

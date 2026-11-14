@@ -5,7 +5,7 @@ import traceback
 from http.client import HTTPConnection
 
 from abc import ABCMeta, abstractmethod
-from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Mapping, Optional, \
+from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Literal, Mapping, Optional, \
     Tuple, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
@@ -464,6 +464,19 @@ class BidiBluetoothProtocolPart(ProtocolPart):
         pass
 
     @abstractmethod
+    async def simulate_gatt_mtu_change(self,
+                               context: str,
+                               address: str,
+                               mtu: int) -> None:
+        """
+        Simulates an ATT MTU exchange with a simulated bluetooth peripheral.
+        :param context: Browsing context to set the simulated peripheral to.
+        :param address: The address of the simulated bluetooth peripheral.
+        :param mtu: The new ATT MTU in octets.
+        """
+        pass
+
+    @abstractmethod
     async def simulate_service(self,
                                context: str,
                                address: str,
@@ -656,14 +669,38 @@ class BidiEmulationProtocolPart(ProtocolPart):
         pass
 
     @abstractmethod
+    async def set_media_features_override(self,
+            features: Optional[Mapping[str, Any]],
+            contexts: List[str]) -> None:
+        pass
+
+    @abstractmethod
     async def set_screen_orientation_override(self,
             screen_orientation: Optional[Mapping[str, Any]],
             contexts: List[str]) -> None:
         pass
 
     @abstractmethod
+    async def set_scrollbar_type_override(self,
+            scrollbar_type: Optional[Literal["classic", "overlay"]],
+            contexts: List[str]) -> None:
+        pass
+
+    @abstractmethod
+    async def set_text_layout_mode_override(self,
+            text_layout_mode: Optional[Literal["mobile"]],
+            contexts: List[str]) -> None:
+        pass
+
+    @abstractmethod
     async def set_touch_override(self,
             max_touch_points: Optional[int],
+            contexts: List[str]) -> None:
+        pass
+
+    @abstractmethod
+    async def set_viewport_meta_override(self,
+            viewport_meta: Optional[Literal[True]],
             contexts: List[str]) -> None:
         pass
 
