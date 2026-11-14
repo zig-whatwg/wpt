@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a FinalizationRegistry callback does not run for a platform object script can still reach, and runs for one nothing reaches</title>
+<link rel=help href="https://tc39.es/ecma262/#sec-liveness">
+<link rel=help href="https://tc39.es/ecma262/#sec-weakref-execution">
+<link rel=help href="https://webidl.spec.whatwg.org/#SameObject">
+<link rel=help href="https://webidl.spec.whatwg.org/#idl-objects">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=host class="a b" data-k=v style="color: red"><span></span></div>
+<script>
+"use strict";
+// ECMA-262 9.9.2 (Liveness): an object is live while a possible future
+// execution can observe its identity, and 9.9.3 (Execution) lets an
+// implementation clear a FinalizationRegistry's cell - and enqueue its
+// cleanup - only for an object that is not live. Web IDL gives a platform
+// object ONE identity: a [SameObject] attribute "must return the same object
+// every time", and an attribute that returns an object the platform holds
+// (a signal's controller, a sheet's rules) answers that object again. So a
+// platform object script can reach again - through an owner that is in the
+// document, on the Window, or held by script - is live, and its registry
+// callback must not run while its owner is there, whether script still holds
+// the wrapper it registered or not.
+//
+// Lane wrap1 batch 2 (every non-node platform object's wrapper on
+// v8::Object::Wrap): the node half of this is
+// wr11-finalization-registry-live-node.html. A non-node wrapper is held by
+// the wrapper cache weakly, and kept by an edge from its owner's wrapper or
+// by a keep (pending activity); the batches after this one move that
+// lifetime onto the wrapper's anchor, and a wrapper V8 may then drop in a
+// young-generation collection must still never be one script can reach
+// again. V8 15.7 treats a FinalizationRegistry target weakly in such a
+// collection unless started with --no-handle-weak-ref-weakly-in-minor-gc
+// (Crane is: src/runtime/engines/v8/snapshot_loader.zig RUNTIME_V8_FLAGS).
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+// Young-generation collections: V8 runs them as its young generation fills,
+// and no API asks for one, so fill it several times over with garbage.
+function scavenge() {
+  let sink = 0;
+  for (let round = 0; round < 64; round++) {
+    const junk = [];
+    for (let i = 0; i < 4096; i++) junk.push({ i, s: "x" + (i & 7) });
+    sink += junk.length;
+  }
+  return sink;
+}
+
+const finalized = [];
+const registry = new FinalizationRegistry(held => finalized.push(held));
+// Registered and let go at once: no script reference to the wrapper
+// survives the call. Nothing else is done to it (no expando, no WeakMap
+// key, no WeakRef) - registering is its only use.
+function register(name, get) {
+  (function () { registry.register(get(), name); })();
+}
+
+// What script holds: the owners, and two objects themselves.
+const owners = {
+  url: new URL("https://wrap1.test/?a=1"),
+  controller: new AbortController(),
+  xhr: new XMLHttpRequest(),
+  channel: new MessageChannel(),
+  response: new Response("x"),
+  sheet: new CSSStyleSheet(),
+};
+owners.sheet.replaceSync("a { color: red }");
+const held = { event: new Event("held"), url: new URL("https://wrap1.test/held") };
+
+// name -> the object, reached the way script reaches it again later.
+const reachable = {
+  // The owner is an element in the document; script holds nothing.
+  "host.classList": () => document.getElementById("host").classList,
+  "host.dataset": () => document.getElementById("host").dataset,
+  "host.style": () => document.getElementById("host").style,
+  "host.attributes": () => document.getElementById("host").attributes,
+  "host.children": () => document.getElementById("host").children,
+  "host.childNodes": () => document.getElementById("host").childNodes,
+  // The owner is the document or the Window.
+  "document.implementation": () => document.implementation,
+  "document.styleSheets": () => document.styleSheets,
+  "window.navigator": () => window.navigator,
+  "window.location": () => window.location,
+  "window.history": () => window.history,
+  "window.performance": () => window.performance,
+  "window.customElements": () => window.customElements,
+  // The owner is an object script holds.
+  "url.searchParams": () => owners.url.searchParams,
+  "controller.signal": () => owners.controller.signal,
+  "xhr.upload": () => owners.xhr.upload,
+  "channel.port1": () => owners.channel.port1,
+  "response.headers": () => owners.response.headers,
+  "sheet.cssRules": () => owners.sheet.cssRules,
+  "sheet.cssRules[0]": () => owners.sheet.cssRules[0],
+  "sheet.cssRules[0].style": () => owners.sheet.cssRules[0].style,
+  // Script holds the object itself.
+  "a held Event": () => held.event,
+  "a held URL": () => held.url,
+};
+const live = Object.keys(reachable);
+function finalizedLive() {
+  return finalized.filter(name => live.includes(name));
+}
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  for (const name of live) register(name, reachable[name]);
+  // Nothing reaches these once registered.
+  register("a dropped Event", () => new Event("dropped"));
+  register("a dropped URL", () => new URL("https://wrap1.test/dropped"));
+  register("a dropped URL's searchParams", () => new URL("https://wrap1.test/dropped?b=2").searchParams);
+  register("a dropped Headers", () => new Headers({ a: "b" }));
+
+  // Young-generation collections only, over several tasks.
+  for (let round = 0; round < 12; round++) {
+    scavenge();
+    await nextTask(t);
+  }
+  assert_array_equals(finalizedLive(), [], "no callback for a reachable platform object after young-generation collections");
+
+  // Full collections, and young ones again.
+  for (let round = 0; round < 3; round++) {
+    await TestUtils.gc();
+    scavenge();
+    for (let i = 0; i < 3; i++) await nextTask(t);
+  }
+  assert_array_equals(finalizedLive(), [], "no callback for a reachable platform object after full collections");
+  // The collections ran: what nothing reached was finalized.
+  for (const name of ["a dropped Event", "a dropped URL", "a dropped URL's searchParams", "a dropped Headers"])
+    assert_true(finalized.includes(name), name + "'s callback ran");
+
+  // Each is still what its owner answers, and still works.
+  assert_equals(document.getElementById("host").classList.length, 2, "host.classList");
+  assert_equals(document.getElementById("host").dataset.k, "v", "host.dataset");
+  assert_equals(owners.url.searchParams.get("a"), "1", "url.searchParams");
+  assert_false(owners.controller.signal.aborted, "controller.signal");
+  assert_equals(owners.sheet.cssRules[0].style.color, "red", "sheet.cssRules[0].style");
+  assert_equals(held.event.type, "held", "the held Event");
+}, "a FinalizationRegistry callback runs for a platform object nothing reaches and never for one script can reach again");
+
+promise_test(async t => {
+  // An owner script lets go takes what only it reached with it: both become
+  // unreachable, and their callbacks run.
+  (function () {
+    const url = new URL("https://wrap1.test/?c=3");
+    registry.register(url, "a URL let go later");
+    registry.register(url.searchParams, "its searchParams");
+    owners.later = url;
+  })();
+  for (let round = 0; round < 3; round++) {
+    await TestUtils.gc();
+    scavenge();
+    for (let i = 0; i < 3; i++) await nextTask(t);
+  }
+  assert_false(finalized.includes("a URL let go later"), "no callback for the URL while script holds it");
+  assert_false(finalized.includes("its searchParams"), "no callback for its searchParams while script holds the URL");
+  assert_equals(owners.later.searchParams.get("c"), "3", "the URL's searchParams still answer");
+
+  delete owners.later;
+  for (let round = 0; round < 20 && !(finalized.includes("a URL let go later") && finalized.includes("its searchParams")); round++) {
+    await TestUtils.gc();
+    scavenge();
+    for (let i = 0; i < 3; i++) await nextTask(t);
+  }
+  assert_true(finalized.includes("a URL let go later"), "the URL's callback ran once nothing reached it");
+  assert_true(finalized.includes("its searchParams"), "and its searchParams' callback ran");
+  assert_array_equals(finalizedLive(), [], "and still none for a reachable platform object");
+}, "a platform object reached only through an owner is finalized once script lets the owner go, not before");
+</script>

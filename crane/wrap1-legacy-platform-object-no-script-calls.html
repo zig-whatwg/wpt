@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a legacy platform object's internal methods call nothing of the page's - not Reflect, not Object.prototype</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#es-legacy-platform-objects">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-getownproperty">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-set">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-defineownproperty">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-delete">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-preventextensions">
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-ownpropertykeys">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=host data-k=v title=t><p id=first></p><p name=second></p></div>
+<form id=form><input name=q><input id=r></form>
+<select id=select><option id=o1></option><option name=o2></option></select>
+<iframe id=frame srcdoc="<div id=host data-k=v title=t><p id=first></p><p name=second></p></div>"></iframe>
+<script>
+// (Sloppy code on purpose: a refused [[Set]] or [[Delete]] answers false here instead of throwing.)
+// Web IDL 3.9 defines a legacy platform object's [[GetOwnProperty]], [[Set]],
+// [[DefineOwnProperty]], [[Delete]], [[PreventExtensions]] and
+// [[OwnPropertyKeys]] over the object's supported property indices and
+// names and its own properties. None of those algorithms reads a property
+// of the realm's global object or of %Object.prototype%, so nothing a page
+// puts there is called by `"x" in collection`, `delete collection.x`,
+// Object.keys(collection) or Object.getOwnPropertyDescriptor(collection, 0),
+// and none of their answers changes.
+//
+// Lane wrap1 batch 2, finding 3: Crane's legacy platform objects with named
+// properties are behind a Proxy (for [[OwnPropertyKeys]]'s order) whose
+// traps called the page's `Reflect` - looked up on the global at each call -
+// and whose handler inherited from %Object.prototype%, so a page's
+// Object.prototype.get was every such object's [[Get]] trap; and the
+// property descriptors the binding answers V8 with were ordinary objects
+// filled by [[Set]]. (A page that deleted Reflect aborted the engine:
+// tests/v8/wrap1_legacy_proxy_traps_test.zig holds that half.)
+
+// The intrinsics the questions use, taken before anything is replaced.
+const saved = {
+  ownKeys: Reflect.ownKeys, getOwnPropertyDescriptor: Object.getOwnPropertyDescriptor, keys: Object.keys,
+  defineProperty: Object.defineProperty, getPrototypeOf: Object.getPrototypeOf, create: Object.create,
+  isExtensible: Object.isExtensible, preventExtensions: Object.preventExtensions,
+  hasOwn: Object.prototype.hasOwnProperty, String,
+};
+// A descriptor with no prototype: what a page must pass once it has put
+// accessors on Object.prototype (ToPropertyDescriptor reads inherited fields).
+function descriptor(fields) {
+  const d = saved.create(null);
+  for (const k of saved.ownKeys(fields)) d[k] = fields[k];
+  return d;
+}
+function attempt(f) {
+  try { return saved.String(f()); } catch (e) { return "threw " + (e && e.name); }
+}
+function describe(o, key) {
+  const d = saved.getOwnPropertyDescriptor(o, key);
+  if (d === undefined) return "none";
+  // Own fields only: Object.prototype may carry accessors of these names in a test below.
+  const field = k => saved.hasOwn.call(d, k) && d[k];
+  return (saved.hasOwn.call(d, "value") ? "value:" + typeof d.value : "accessor") +
+    (field("writable") ? " w" : "") + (field("enumerable") ? " e" : "") + (field("configurable") ? " c" : "");
+}
+// One object's answers to every internal method, as one string.
+function ask(o, name) {
+  const a = [];
+  a.push("length: " + attempt(() => o.length));
+  a.push("[0]: " + attempt(() => typeof o[0]));
+  a.push("[name]: " + attempt(() => typeof o[name]));
+  a.push("has 0: " + attempt(() => 0 in o));
+  a.push("has 9: " + attempt(() => 9 in o));
+  a.push("has name: " + attempt(() => name in o));
+  a.push("has nope: " + attempt(() => "nope" in o));
+  a.push("keys: " + attempt(() => saved.keys(o).join()));
+  a.push("ownKeys: " + attempt(() => saved.ownKeys(o).join()));
+  a.push("descriptor 0: " + attempt(() => describe(o, "0")));
+  a.push("descriptor name: " + attempt(() => describe(o, name)));
+  a.push("descriptor nope: " + attempt(() => describe(o, "nope")));
+  a.push("hasOwn 0: " + attempt(() => saved.hasOwn.call(o, "0")));
+  a.push("define expando: " + attempt(() => (saved.defineProperty(o, "wrap1Defined", descriptor({ value: 7, configurable: true, enumerable: true, writable: true })), o.wrap1Defined)));
+  a.push("define over name: " + attempt(() => saved.defineProperty(o, name, descriptor({ value: 1, configurable: true })) === o));
+  a.push("set expando: " + attempt(() => (o.wrap1Expando = 5, o.wrap1Expando)));
+  a.push("ownKeys with both: " + attempt(() => saved.ownKeys(o).join()));
+  a.push("delete expando: " + attempt(() => delete o.wrap1Expando));
+  a.push("delete defined: " + attempt(() => delete o.wrap1Defined));
+  a.push("delete 0: " + attempt(() => delete o[0]));
+  a.push("delete 9: " + attempt(() => delete o[9]));
+  const heir = saved.create(o);
+  a.push("set through an heir: " + attempt(() => (heir.wrap1Fresh = 1, saved.hasOwn.call(heir, "wrap1Fresh") + " " + ("wrap1Fresh" in o))));
+  a.push("prototype: " + attempt(() => saved.getPrototypeOf(saved.getPrototypeOf(heir)) === saved.getPrototypeOf(o)));
+  a.push("extensible: " + attempt(() => saved.isExtensible(o)));
+  a.push("preventExtensions: " + attempt(() => saved.preventExtensions(o) === o));
+  a.push("still extensible: " + attempt(() => saved.isExtensible(o)));
+  return a.join(" | ");
+}
+
+// The objects, each on a fresh clone of its element for every asking, so that no asking sees what an earlier
+// one left (an attribute a DOMStringMap's named setter made, an own property of a [SameObject] collection).
+const fresh = (doc, id) => doc.getElementById(id).cloneNode(true);
+const objects = {
+  "HTMLCollection (element.children)": () => [fresh(document, "host").children, "first"],
+  "NamedNodeMap (element.attributes)": () => [fresh(document, "host").attributes, "data-k"],
+  "HTMLFormControlsCollection (form.elements)": () => [fresh(document, "form").elements, "q"],
+  "HTMLOptionsCollection (select.options)": () => [fresh(document, "select").options, "o1"],
+  "an iframe's HTMLCollection": () => [fresh(frames[0].document, "host").children, "first"],
+  "an iframe's NamedNodeMap": () => [fresh(frames[0].document, "host").attributes, "data-k"],
+  // No Proxy in Crane, the same algorithms: their descriptors come from the same code.
+  "NodeList (querySelectorAll)": () => [fresh(document, "host").querySelectorAll("p"), "nope2"],
+  "DOMTokenList (classList)": () => { const e = fresh(document, "host"); e.className = "a b"; return [e.classList, "nope2"]; },
+  "DOMStringMap (dataset)": () => [fresh(document, "host").dataset, "k"],
+  "an iframe's DOMStringMap": () => [fresh(frames[0].document, "host").dataset, "k"],
+};
+function answers() {
+  const result = {};
+  for (const label of saved.keys(objects)) {
+    const made = objects[label]();
+    result[label] = ask(made[0], made[1]);
+  }
+  return result;
+}
+
+// Run `tamper(calls)`, ask, and undo it; return the answers and what the
+// page's replacements were called with.
+function tampered(tamper) {
+  const calls = [];
+  const undo = tamper(calls);
+  try { return [answers(), calls]; } finally { undo(); }
+}
+function replaceReflect(realm) {
+  return calls => {
+    const R = realm.Reflect, originals = {};
+    for (const name of saved.ownKeys(R)) {
+      if (typeof R[name] !== "function") continue;
+      originals[name] = R[name];
+      R[name] = function () { calls.push("Reflect." + name); return originals[name].apply(this, arguments); };
+    }
+    return () => { for (const name of saved.ownKeys(originals)) R[name] = originals[name]; };
+  };
+}
+function throwingReflect(realm) {
+  return calls => {
+    const R = realm.Reflect, originals = {};
+    for (const name of saved.ownKeys(R)) {
+      if (typeof R[name] !== "function") continue;
+      originals[name] = R[name];
+      R[name] = function () { calls.push("Reflect." + name); throw new realm.Error("the page's Reflect." + name); };
+    }
+    return () => { for (const name of saved.ownKeys(originals)) R[name] = originals[name]; };
+  };
+}
+function polluteObjectPrototype(realm, names, value) {
+  return calls => {
+    const proto = realm.Object.prototype;
+    for (const name of names) {
+      saved.defineProperty(proto, name, value !== undefined
+        ? descriptor({ value: function () { calls.push("Object.prototype." + name + "()"); return "hijacked"; }, configurable: true, writable: true })
+        : descriptor({
+          get() { calls.push("get Object.prototype." + name); return undefined; },
+          set(v) { calls.push("set Object.prototype." + name); },
+          configurable: true,
+        }));
+    }
+    return () => { for (const name of names) delete proto[name]; };
+  };
+}
+
+let before;
+promise_test(async t => {
+  await new Promise(resolve => {
+    const frame = document.getElementById("frame");
+    if (frame.contentDocument && frame.contentDocument.getElementById("host")) resolve(); else frame.onload = resolve;
+  });
+  before = answers();
+  // The answers are WebIDL's.
+  const c = fresh(document, "host").children;
+  assert_array_equals(saved.ownKeys(c), ["0", "1", "first", "second"], "[[OwnPropertyKeys]]: indices, then names");
+  assert_equals(describe(c, "0"), "value:object e c", "[[GetOwnProperty]] of a supported index");
+  assert_equals(describe(c, "first"), "value:object c", "[[GetOwnProperty]] of a supported name ([LegacyUnenumerableNamedProperties])");
+  assert_false(Reflect.preventExtensions(c), "[[PreventExtensions]] returns false");
+  assert_throws_js(TypeError, () => Object.preventExtensions(c), "Object.preventExtensions throws");
+  assert_true(Object.isExtensible(c), "and the collection stays extensible");
+  assert_false(Reflect.deleteProperty(c, "0"), "[[Delete]] of a supported index");
+  assert_true(Reflect.deleteProperty(c, "9"), "[[Delete]] of an unsupported index");
+  assert_false(Reflect.defineProperty(c, "0", { value: 1 }), "[[DefineOwnProperty]] of an index with no indexed setter");
+  for (const label of saved.keys(before)) assert_false(/threw (?!TypeError)/.test(before[label]), label + ": " + before[label]);
+}, "the internal methods' answers with nothing replaced");
+
+const cases = {
+  "Reflect's functions replaced": () => replaceReflect(self),
+  "Reflect's functions replaced by throwing ones": () => throwingReflect(self),
+  "the iframe's Reflect's functions replaced": () => replaceReflect(frames[0]),
+  "the iframe's Reflect's functions replaced by throwing ones": () => throwingReflect(frames[0]),
+  "Object.prototype.get, .set and .has are functions": () => polluteObjectPrototype(self, ["get", "set", "has", "deleteProperty", "ownKeys", "getOwnPropertyDescriptor", "defineProperty"], "function"),
+  "the iframe's Object.prototype.get is a function": () => polluteObjectPrototype(frames[0], ["get", "set", "has", "ownKeys", "getOwnPropertyDescriptor"], "function"),
+  "accessors named like descriptor fields on Object.prototype": () => polluteObjectPrototype(self, ["get", "set", "value", "writable", "enumerable", "configurable"]),
+  "accessors named like descriptor fields on the iframe's Object.prototype": () => polluteObjectPrototype(frames[0], ["get", "set", "value", "writable", "enumerable", "configurable"]),
+};
+for (const [name, tamper] of Object.entries(cases)) {
+  promise_test(async t => {
+    assert_true(before !== undefined, "the first test ran");
+    const [after, calls] = tampered(tamper());
+    assert_array_equals(calls, [], "nothing of the page's is called");
+    for (const label of saved.keys(before)) assert_equals(after[label], before[label], label);
+  }, name + ": no call into script, and the same answers");
+}
+</script>
