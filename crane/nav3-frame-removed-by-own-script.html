@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A frame whose own parse-time script removes its container has no content window after its commit</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "destroy a child navigable" step 3 sets the container's content
+// navigable to null, and its "content window" is then null - in Blink,
+// Frame::Detach ends in DisconnectOwnerElement, which clears the owner's
+// content frame. Here the frame's own inline script removes its container
+// while the frame's document is still being parsed; once the navigation's
+// commit has ended, the frame must still be gone. (Lane nav3: Crane's commit
+// marked the destroyed navigable ready again after the parse.)
+window.nav3Log = [];
+
+function frameMarkup(label) {
+  return "<script>const p = parent; p.nav3Log.push('" + label + "'); frameElement.remove(); " +
+    "p.nav3Log.push('" + label + "-removed:' + (p.nav3Frame.contentWindow === null));<\/script><p>after</p>";
+}
+
+async function settle(t) {
+  for (let i = 0; i < 3; i++) await new Promise(resolve => t.step_timeout(resolve, 0));
+}
+
+promise_test(async t => {
+  nav3Log.length = 0;
+  const frame = document.createElement("iframe");
+  window.nav3Frame = frame;
+  frame.srcdoc = frameMarkup("srcdoc");
+  document.body.append(frame);
+  await t.step_wait(() => nav3Log.length === 2, "the frame's script ran", 5000, 10);
+  await settle(t);
+  assert_array_equals(nav3Log, ["srcdoc", "srcdoc-removed:true"]);
+  assert_equals(frame.contentWindow, null, "the frame is gone");
+  assert_equals(frame.contentDocument, null, "and so is its document");
+}, "a srcdoc frame removed by its own parse-time script");
+
+promise_test(async t => {
+  nav3Log.length = 0;
+  const frame = document.createElement("iframe");
+  window.nav3Frame = frame;
+  const url = URL.createObjectURL(new Blob([frameMarkup("blob")], { type: "text/html" }));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  frame.src = url;
+  document.body.append(frame);
+  await t.step_wait(() => nav3Log.length === 2, "the frame's script ran", 5000, 10);
+  await settle(t);
+  assert_array_equals(nav3Log, ["blob", "blob-removed:true"]);
+  assert_equals(frame.contentWindow, null, "the frame is gone");
+  assert_equals(frame.contentDocument, null, "and so is its document");
+}, "a fetched (blob: URL) frame removed by its own parse-time script");
+</script>
