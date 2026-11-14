@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'nonce-q1b4'">
+<title>A parsed SVG style element updates its style block once, when its children are parsed</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/styling.html#StyleElement">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// "Update a style block" runs when the element is popped off the stack of
+// open elements of the parser - once, with its whole text - not at its
+// insertion with no text and again as its text arrives.
+const loaded = new Promise(resolve => window.addEventListener("load", resolve));
+let allowedLoads = 0;
+let blockedErrors = 0;
+const blockedReports = [];
+document.addEventListener("securitypolicyviolation", e => {
+  if (e.target && e.target.id === "blocked") blockedReports.push(e.sample);
+});
+// load and error do not bubble: heard in the capture phase at the document.
+document.addEventListener("load", e => { if (e.target.id === "allowed") allowedLoads++; }, true);
+document.addEventListener("error", e => { if (e.target.id === "blocked") blockedErrors++; }, true);
+</script>
+<svg width="10" height="10">
+  <style id="allowed" nonce="q1b4">#ra { fill: rgb(0, 128, 0) }</style>
+  <rect id="ra"/>
+  <style id="blocked">#rb { fill: rgb(0, 128, 0) }</style>
+  <rect id="rb"/>
+</svg>
+<script>
+const sheetDuringParse = document.getElementById("allowed").sheet;
+
+promise_test(async () => {
+  await loaded;
+  const allowed = document.getElementById("allowed");
+  assert_equals(allowedLoads, 1, "one load event");
+  assert_equals(getComputedStyle(document.getElementById("ra")).fill, "rgb(0, 128, 0)");
+  assert_not_equals(sheetDuringParse, null);
+  assert_equals(allowed.sheet, sheetDuringParse, "one sheet object across the parse");
+}, "A parsed SVG style element makes one sheet and fires one load event");
+
+promise_test(async () => {
+  await loaded;
+  // Violation events are queued; give them a task.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const blocked = document.getElementById("blocked");
+  assert_equals(blocked.sheet, null, "blocked by style-src");
+  assert_equals(blockedErrors, 1, "one error event");
+  assert_equals(blockedReports.length, 1, "one violation report, not one more for its empty text");
+  assert_equals(getComputedStyle(document.getElementById("rb")).fill, "rgb(0, 0, 0)");
+}, "A parsed SVG style element that CSP blocks is checked once, with its whole text");
+</script>

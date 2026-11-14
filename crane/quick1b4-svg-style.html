@@ -1,0 +1,144 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG style elements and presentation attributes in the cascade</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/styling.html#StyleElement">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block">
+<link rel="help" href="https://svgwg.org/svg2-draft/styling.html#PresentationAttributes">
+<link rel="help" href="https://drafts.csswg.org/css-cascade-5/#preshint">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+const SVG = "http://www.w3.org/2000/svg";
+
+function svgWith(t, children) {
+  const svg = document.createElementNS(SVG, "svg");
+  for (const child of children) svg.appendChild(child);
+  document.body.appendChild(svg);
+  t.add_cleanup(() => svg.remove());
+  return svg;
+}
+
+function el(name, attributes = {}, text) {
+  const e = document.createElementNS(SVG, name);
+  for (const [k, v] of Object.entries(attributes)) e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+test(t => {
+  const style = el("style", {}, "#a { fill: rgb(0, 128, 0) }");
+  const rect = el("rect", { id: "a" });
+  svgWith(t, [style, rect]);
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 128, 0)");
+}, "An SVG style element's rule applies");
+
+test(t => {
+  const style = el("style", {}, "#b { stroke-width: 3px }");
+  svgWith(t, [style]);
+  const sheet = style.sheet;
+  assert_true(sheet instanceof CSSStyleSheet, "sheet");
+  assert_equals(sheet.ownerNode, style);
+  assert_equals(sheet.cssRules[0].selectorText, "#b");
+  assert_true([...document.styleSheets].includes(sheet), "in document.styleSheets");
+}, "An SVG style element's sheet is in document.styleSheets, its owner the element");
+
+test(t => {
+  const style = el("style", {}, "#c { fill: rgb(0, 0, 255) }");
+  const rect = el("rect", { id: "c" });
+  const svg = svgWith(t, [style, rect]);
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 255)");
+  style.remove();
+  assert_equals(style.sheet, null, "a disconnected style element has no sheet");
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 0)");
+  svg.insertBefore(style, rect);
+  assert_not_equals(style.sheet, null);
+  style.textContent = "#c { fill: rgb(255, 0, 0) }";
+  assert_equals(getComputedStyle(rect).fill, "rgb(255, 0, 0)", "a children change updates the block");
+}, "Update a style block runs on connection, disconnection and a children change");
+
+test(t => {
+  const style = el("style", { type: "text/plain" }, "#d { fill: rgb(0, 128, 0) }");
+  const rect = el("rect", { id: "d" });
+  svgWith(t, [style, rect]);
+  assert_equals(style.sheet, null);
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 0)");
+  assert_equals(style.type, "text/plain");
+}, "A type other than text/css makes no sheet");
+
+test(t => {
+  const style = el("style", { media: "print", title: "x" }, "#e { fill: rgb(0, 128, 0) }");
+  const rect = el("rect", { id: "e" });
+  svgWith(t, [style, rect]);
+  assert_equals(style.media, "print");
+  assert_equals(style.title, "x");
+  assert_equals(style.sheet.media.mediaText, "print");
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 0)", "print media does not apply");
+  style.disabled = false;
+  assert_false(style.disabled);
+  style.setAttribute("media", "all");
+  style.disabled = true;
+  assert_true(style.disabled);
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 0)", "a disabled sheet does not apply");
+  style.disabled = false;
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 128, 0)");
+}, "media, title and disabled reflect, and media and disabled apply to the sheet");
+
+test(t => {
+  const rect = el("rect", { fill: "rgb(0, 0, 255)", "stroke-width": "4" });
+  svgWith(t, [rect]);
+  const cs = getComputedStyle(rect);
+  assert_equals(cs.fill, "rgb(0, 0, 255)");
+  assert_equals(cs.strokeWidth, "4px");
+  rect.setAttribute("fill", "rgb(0, 128, 0)");
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 128, 0)", "a changed attribute changes the hint");
+  rect.removeAttribute("fill");
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 0)", "a removed attribute removes the hint");
+}, "A presentation attribute sets its property");
+
+test(t => {
+  const style = document.createElement("style");
+  style.textContent = "#f { fill: rgb(255, 0, 0) }";
+  document.head.appendChild(style);
+  t.add_cleanup(() => style.remove());
+  const rect = el("rect", { id: "f", fill: "rgb(0, 0, 255)" });
+  svgWith(t, [rect]);
+  assert_equals(getComputedStyle(rect).fill, "rgb(255, 0, 0)");
+}, "An author rule, even of low specificity, wins over a presentation attribute");
+
+test(t => {
+  const style = document.createElement("style");
+  style.textContent = "rect { fill: rgb(255, 0, 0) }";
+  document.head.appendChild(style);
+  t.add_cleanup(() => style.remove());
+  const rect = el("rect", { fill: "rgb(0, 0, 255)" });
+  svgWith(t, [rect]);
+  assert_equals(getComputedStyle(rect).fill, "rgb(255, 0, 0)");
+}, "A type-selector author rule wins over a presentation attribute");
+
+test(t => {
+  const inner = el("svg", { overflow: "scroll" });
+  svgWith(t, [inner]);
+  assert_equals(getComputedStyle(inner).overflow, "scroll");
+}, "A presentation attribute wins over the user agent sheet (svg:not(:root) { overflow: hidden })");
+
+async_test(t => {
+  const svg = svgWith(t, []);
+  let loads = 0;
+  svg.innerHTML = '<style id="i">#ri { fill: rgb(0, 128, 0) }</style><rect id="ri"/>';
+  const style = svg.querySelector("#i");
+  style.addEventListener("load", () => loads++);
+  assert_equals(getComputedStyle(svg.querySelector("#ri")).fill, "rgb(0, 128, 0)");
+  t.step_timeout(() => {
+    assert_equals(loads, 1, "one load event");
+    t.done();
+  }, 100);
+}, "An SVG style element the fragment parser makes (innerHTML) updates once, as it is inserted with its text");
+
+test(t => {
+  const rect = el("rect", { fill: "not a color" });
+  svgWith(t, [rect]);
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 0)");
+}, "An invalid presentation attribute value sets nothing");
+</script>
+</body>

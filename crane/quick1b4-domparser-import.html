@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A document no browsing context can show fetches no @import and no stylesheet link</title>
+<!-- Chrome 157, Firefox 159 and Safari 27 (lane quick1 b4's probe, 2026-11-14) send no request for a
+     <style>@import or a <link rel=stylesheet> in a DOMParser document or a createHTMLDocument document;
+     the live document's own @import is the control. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/utils.js"></script>
+<body>
+<script>
+const base = "/common/security-features/subresource/stylesheet.py?type=stylesheet-only&id=";
+
+async function requested(id) {
+  // The server stashed the request's headers if it saw one; report-headers takes them.
+  await new Promise(resolve => step_timeout(resolve, 800));
+  // With nothing stashed the server writes no body (or fails the response).
+  try {
+    const response = await fetch(base + id + "&report-headers");
+    if (!response.ok) return false;
+    return (await response.text()).length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+promise_test(async () => {
+  const id = token();
+  const style = document.createElement("style");
+  style.textContent = "@import url('" + base + id + "');";
+  document.head.appendChild(style);
+  assert_true(await requested(id), "the live document fetches its @import");
+}, "control: a style element in the live document fetches its @import");
+
+promise_test(async () => {
+  const imp = token(), link = token();
+  new DOMParser().parseFromString(
+      "<!doctype html><style>@import url('" + base + imp + "');</style><link rel=stylesheet href='" + base + link + "'>",
+      "text/html");
+  assert_false(await requested(imp), "@import");
+  assert_false(await requested(link), "link");
+}, "a DOMParser document fetches no @import and no stylesheet link");
+
+promise_test(async () => {
+  const imp = token(), link = token();
+  const doc = document.implementation.createHTMLDocument("t");
+  doc.head.innerHTML = "<style>@import url('" + base + imp + "');</style><link rel=stylesheet href='" + base + link + "'>";
+  assert_false(await requested(imp), "@import");
+  assert_false(await requested(link), "link");
+}, "a createHTMLDocument document fetches no @import and no stylesheet link");
+</script>
+</body>
