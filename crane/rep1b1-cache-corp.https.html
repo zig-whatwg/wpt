@@ -1,0 +1,140 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name="timeout" content="long">
+<title>Cache match()/matchAll() run Fetch's cross-origin resource policy check on an opaque response (Service Workers 5.4.2 step 5.4)</title>
+<link rel=help href="https://w3c.github.io/ServiceWorker/#cache-matchall">
+<link rel=help href="https://fetch.spec.whatwg.org/#cross-origin-resource-policy-check">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script>
+// matchAll() step 5.4: "If response's type is "opaque" and cross-origin
+// resource policy check with promise's relevant settings object's origin,
+// promise's relevant settings object, "", and response's internal response
+// returns blocked, then reject promise with a TypeError". match() and
+// CacheStorage's match() run matchAll()'s steps. The check queues the
+// embedder policy's CORP violation reports ("coep", body type "corp",
+// destination "") to the settings object's global. Chrome passes
+// html/cross-origin-embedder-policy/cache-storage-reporting-document 2/2
+// (wpt.fyi cc74d2669f); Crane resolved every match.
+
+const REMOTE = get_host_info().HTTPS_REMOTE_ORIGIN;
+const BLOCKED = REMOTE + "/images/blue.png?rep1b1-cache-corp";
+const ALLOWED = REMOTE + "/images/blue.png?pipe=header(Cross-Origin-Resource-Policy,cross-origin)";
+const CACHE = "rep1b1-cache-corp";
+const frameUrl = header => "/common/blank.html?pipe=" + header;
+const REQUIRE_CORP = frameUrl("header(Cross-Origin-Embedder-Policy,require-corp)");
+const REPORT_ONLY = frameUrl("header(Cross-Origin-Embedder-Policy-Report-Only,require-corp)");
+const NONE = "/common/blank.html";
+
+promise_setup(async () => {
+  await caches.delete(CACHE);
+  const cache = await caches.open(CACHE);
+  for (const url of [BLOCKED, ALLOWED]) {
+    const request = new Request(url, { mode: "no-cors" });
+    const response = await fetch(request);
+    assert_equals(response.type, "opaque", url);
+    await cache.put(request, response);
+  }
+});
+
+async function frame(t, url) {
+  const iframe = document.createElement("iframe");
+  t.add_cleanup(() => iframe.remove());
+  iframe.src = url;
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  document.body.appendChild(iframe);
+  await loaded;
+  return iframe.contentWindow;
+}
+
+// The next reports the frame's observers see, read in the frame's own realm.
+function nextReports(w) {
+  return new Promise(resolve => {
+    const observer = new w.ReportingObserver(reports => {
+      observer.disconnect();
+      resolve(reports);
+    });
+    observer.observe();
+  });
+}
+
+function checkReport(report, w, url, disposition) {
+  assert_equals(report.type, "coep");
+  assert_equals(report.url, w.location.href);
+  assert_equals(report.body.type, "corp");
+  assert_equals(report.body.blockedURL, url);
+  assert_equals(report.body.destination, "");
+  assert_equals(report.body.disposition, disposition);
+}
+
+promise_test(async t => {
+  const w = await frame(t, REQUIRE_CORP);
+  const reports = nextReports(w);
+  const cache = await w.caches.open(CACHE);
+  await promise_rejects_js(t, w.TypeError, cache.match(new w.Request(BLOCKED, { mode: "no-cors" })));
+  const got = await reports;
+  assert_equals(got.length, 1);
+  checkReport(got[0], w, BLOCKED, "enforce");
+}, "require-corp: match() of an opaque cross-origin response without CORP rejects with a TypeError and an enforce report");
+
+promise_test(async t => {
+  const w = await frame(t, REQUIRE_CORP);
+  const reports = nextReports(w);
+  const cache = await w.caches.open(CACHE);
+  await promise_rejects_js(t, w.TypeError, cache.matchAll());
+  const got = await reports;
+  assert_equals(got.length, 1);
+  checkReport(got[0], w, BLOCKED, "enforce");
+}, "require-corp: matchAll() checks every response and rejects");
+
+promise_test(async t => {
+  const w = await frame(t, REQUIRE_CORP);
+  const reports = nextReports(w);
+  await promise_rejects_js(t, w.TypeError, w.caches.match(BLOCKED, { cacheName: CACHE }));
+  await promise_rejects_js(t, w.TypeError, w.caches.match(BLOCKED));
+  const got = await reports;
+  assert_greater_than_equal(got.length, 1);
+  checkReport(got[0], w, BLOCKED, "enforce");
+}, "require-corp: CacheStorage match() runs the same check");
+
+promise_test(async t => {
+  const w = await frame(t, REQUIRE_CORP);
+  const reports = nextReports(w);
+  const cache = await w.caches.open(CACHE);
+  const response = await cache.match(ALLOWED);
+  assert_true(response instanceof w.Response);
+  assert_equals(response.type, "opaque");
+  // The only report is the blocked match's, made after the allowed one.
+  await promise_rejects_js(t, w.TypeError, cache.match(BLOCKED));
+  const got = await reports;
+  assert_equals(got.length, 1);
+  assert_equals(got[0].body.blockedURL, BLOCKED);
+}, "require-corp: a response with CORP cross-origin is matched, with no report");
+
+promise_test(async t => {
+  const w = await frame(t, REPORT_ONLY);
+  const reports = nextReports(w);
+  const cache = await w.caches.open(CACHE);
+  const response = await cache.match(BLOCKED);
+  assert_true(response instanceof w.Response);
+  assert_equals(response.type, "opaque");
+  const got = await reports;
+  assert_equals(got.length, 1);
+  checkReport(got[0], w, BLOCKED, "reporting");
+}, "report-only require-corp: match() resolves, with a reporting report");
+
+promise_test(async t => {
+  const w = await frame(t, NONE);
+  const cache = await w.caches.open(CACHE);
+  const response = await cache.match(BLOCKED);
+  assert_true(response instanceof w.Response);
+  assert_equals(response.type, "opaque");
+  const all = await cache.matchAll();
+  assert_equals(all.length, 2);
+}, "no embedder policy: match() and matchAll() resolve");
+
+promise_test(async t => {
+  await caches.delete(CACHE);
+}, "cleanup");
+</script>

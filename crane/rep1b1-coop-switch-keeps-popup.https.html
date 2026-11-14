@@ -1,0 +1,85 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>A popup outlives its opener's browsing context group switch</title>
+<!--
+  HTML "obtain a browsing context to use for a navigation response": when the
+  opener P1 navigates to a response whose COOP needs a browsing context group
+  switch, its navigable gets a new browsing context in a new group. The popup
+  P2 that P1 opened is a top-level traversable of its own: it keeps running,
+  and only loses its opener ("opener browsing context" of the old context;
+  the old context is discarded for whoever still holds its WindowProxy, which
+  then reads closed = true). Without the switch nothing of that changes.
+  html/cross-origin-opener-policy/coop-popup-opener-navigates.https.html
+  checks the same in one step; Chrome, Firefox and Safari pass it.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src="/common/dispatcher/dispatcher.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<script src="/common/utils.js"></script>
+<script>
+const executor_path = "/common/dispatcher/executor.html?pipe=";
+const coop_same_origin = "|header(Cross-Origin-Opener-Policy,same-origin)";
+const coop_unsafe_none = "|header(Cross-Origin-Opener-Policy,unsafe-none)";
+const origin = get_host_info().HTTPS_ORIGIN;
+const executor = (uuid, coop) => origin + executor_path + coop + `&uuid=${uuid}`;
+
+// Heartbeats P2 posts on a BroadcastChannel, which needs no network: they
+// show whether P2's script still runs.
+function heartbeats(t, name) {
+  const channel = new BroadcastChannel(name);
+  const beats = [];
+  channel.onmessage = e => beats.push(e.data);
+  t.add_cleanup(() => channel.close());
+  return beats;
+}
+
+const wait = (t, ms) => new Promise(resolve => t.step_timeout(resolve, ms));
+
+async function run(t, next_coop) {
+  const p1 = token(), p1_next = token(), p2 = token(), reply = token();
+  const channel_name = token();
+  window.open(executor(p1, coop_same_origin));
+  t.add_cleanup(() => send(p1_next, "close()"));
+  t.add_cleanup(() => send(p2, "close()"));
+  send(p1, `send('${reply}', 'P1 loaded');`);
+  assert_equals(await receive(reply), "P1 loaded");
+  send(p1, `window.open('${executor(p2, coop_same_origin)}');`);
+  send(p2, `send('${reply}', opener ? 'P2 has an opener' : 'P2 has no opener');`);
+  assert_equals(await receive(reply), "P2 has an opener");
+
+  const beats = heartbeats(t, channel_name);
+  send(p2, `
+    window.old_opener = opener;
+    let n = 0;
+    const channel = new BroadcastChannel('${channel_name}');
+    setInterval(() => channel.postMessage(++n), 100);
+    send('${reply}', 'beating');
+  `);
+  assert_equals(await receive(reply), "beating");
+
+  send(p1, `location.href = '${executor(p1_next, next_coop)}';`);
+  send(p1_next, `send('${reply}', 'P1 navigated');`);
+  assert_equals(await receive(reply), "P1 navigated");
+
+  const before = beats.length;
+  await wait(t, 1000);
+  assert_greater_than(beats.length, before, "P2's timers still run after P1's navigation");
+
+  send(p2, `send('${reply}', JSON.stringify({ opener: opener === null ? 'null' : 'set', old_closed: window.old_opener.closed }));`);
+  return JSON.parse(await receive(reply));
+}
+
+promise_test(async t => {
+  const state = await run(t, coop_unsafe_none);
+  assert_equals(state.opener, "null", "P2 lost its opener");
+  assert_true(state.old_closed, "the WindowProxy P2 held of its opener reads closed");
+}, "a group switch of the opener: the popup keeps running and loses its opener");
+
+promise_test(async t => {
+  const state = await run(t, coop_same_origin);
+  assert_equals(state.opener, "set", "P2 keeps its opener");
+  assert_false(state.old_closed, "the WindowProxy P2 held of its opener is P1's, not closed");
+}, "no group switch: the popup keeps running and keeps its opener");
+</script>
