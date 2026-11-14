@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>A popup outlives the closing of the popup that opened it</title>
+<!--
+  Lane rep1 batch 2. Popup P1 opens popup P2; P1 is closed ("close a
+  top-level traversable", then "destroy a top-level traversable"). P2 is a
+  top-level traversable of the user agent: it keeps running, and its opener
+  is gone - window.opener answers null.
+  Not in WPT. Probed (tmp/probes/rep1-popup-owner, 2026-11-14): Chrome 157
+  and Firefox 159 keep P2 running (20 and 12 heartbeats in 1.2 s after the
+  close) with opener null. Safari 27 blocked the probe's script-opened popup
+  in a background tab; WebKit's LocalFrame detach clears every opened
+  frame's opener (Frame::detachFromAllOpenedFrames) and touches nothing else
+  of them.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/dispatcher/dispatcher.js></script>
+<script src=/common/get-host-info.sub.js></script>
+<script src=/common/utils.js></script>
+<script>
+const executor = uuid => get_host_info().HTTPS_ORIGIN + '/common/dispatcher/executor.html?uuid=' + uuid;
+const wait = (t, ms) => new Promise(resolve => t.step_timeout(resolve, ms));
+
+promise_test(async t => {
+  const p1_token = token(), p2_token = token(), reply = token();
+  const p1 = window.open(executor(p1_token));
+  t.add_cleanup(() => send(p2_token, 'close()'));
+  send(p1_token, `window.p2 = window.open('${executor(p2_token)}'); send('${reply}', 'opened');`);
+  assert_equals(await receive(reply), 'opened');
+  send(p2_token, `send('${reply}', opener ? 'opener set' : 'opener null');`);
+  assert_equals(await receive(reply), 'opener set', 'P2 starts with P1 as its opener');
+
+  const name = token();
+  const channel = new BroadcastChannel(name);
+  t.add_cleanup(() => channel.close());
+  const beats = [];
+  channel.onmessage = e => beats.push(e.data);
+  send(p2_token, `let n = 0; const c = new BroadcastChannel('${name}'); setInterval(() => c.postMessage(++n), 100); send('${reply}', 'beating');`);
+  assert_equals(await receive(reply), 'beating');
+
+  p1.close();
+  await wait(t, 300);
+  assert_true(p1.closed, 'P1 is closed');
+  const before = beats.length;
+  await wait(t, 600);
+  assert_greater_than(beats.length, before, "P2's timers still run after P1 closed");
+  send(p2_token, `send('${reply}', opener === null ? 'opener null' : 'opener set');`);
+  assert_equals(await receive(reply), 'opener null', "P2's opener is gone");
+}, 'a popup keeps running, with no opener, after the popup that opened it is closed');
+
+promise_test(async t => {
+  // The whole chain goes: an iframe opens P1, P1 opens P2, P1 closes, then
+  // the iframe is removed - every window between P2 and this page is gone,
+  // and P2 still runs.
+  const frame_token = token(), p1_token = token(), p2_token = token(), reply = token();
+  const frame = document.createElement('iframe');
+  frame.src = executor(frame_token);
+  document.body.append(frame);
+  t.add_cleanup(() => send(p2_token, 'close()'));
+  send(frame_token, `send('${reply}', 'frame loaded');`);
+  assert_equals(await receive(reply), 'frame loaded');
+  send(frame_token, `window.p1 = window.open('${executor(p1_token)}');`);
+  send(p1_token, `window.p2 = window.open('${executor(p2_token)}'); send('${reply}', 'opened');`);
+  assert_equals(await receive(reply), 'opened');
+  send(p2_token, `send('${reply}', 'P2 loaded');`);
+  assert_equals(await receive(reply), 'P2 loaded');
+
+  const name = token();
+  const channel = new BroadcastChannel(name);
+  t.add_cleanup(() => channel.close());
+  const beats = [];
+  channel.onmessage = e => beats.push(e.data);
+  send(p2_token, `let n = 0; const c = new BroadcastChannel('${name}'); setInterval(() => c.postMessage(++n), 100); send('${reply}', 'beating');`);
+  assert_equals(await receive(reply), 'beating');
+
+  send(frame_token, `p1.close(); send('${reply}', 'closed P1');`);
+  assert_equals(await receive(reply), 'closed P1');
+  frame.remove();
+  const before = beats.length;
+  await wait(t, 600);
+  assert_greater_than(beats.length, before, "P2's timers still run after P1 closed and its opener frame was removed");
+  send(p2_token, `send('${reply}', opener === null ? 'opener null' : 'opener set');`);
+  assert_equals(await receive(reply), 'opener null', "P2's opener is gone");
+}, 'a popup keeps running, with no opener, after the popup that opened it closed and that popup\'s opener frame was removed');
+</script>

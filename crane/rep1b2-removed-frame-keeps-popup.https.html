@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>A popup outlives the removal of the iframe that opened it</title>
+<!--
+  HTML "destroy a child navigable" (steps 1-10) destroys the frame's documents
+  and nested histories; it touches no auxiliary browsing context. A popup is a
+  top-level traversable of the user agent: it keeps running, answers, and can
+  close itself after the frame that opened it is gone.
+  html/cross-origin-opener-policy/iframe-popup-*.https.html (resources/
+  iframe-test.js) removes the frame in its first cleanup and asks the popup to
+  answer and close in its second; Chrome, Firefox and Safari pass every
+  variant.
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/dispatcher/dispatcher.js></script>
+<script src=/common/get-host-info.sub.js></script>
+<script src=/common/utils.js></script>
+<body>
+<script>
+const executor = (origin, uuid) => origin + '/common/dispatcher/executor.html?uuid=' + uuid;
+const wait = (t, ms) => new Promise(resolve => t.step_timeout(resolve, ms));
+
+async function run(t, frame_origin, nested) {
+  const frame_token = token(), popup_token = token(), reply = token();
+  const frame = document.createElement('iframe');
+  frame.src = executor(frame_origin, frame_token);
+  document.body.append(frame);
+  send(frame_token, `send('${reply}', 'frame loaded');`);
+  assert_equals(await receive(reply), 'frame loaded');
+  let opener_token = frame_token;
+  if (nested) {
+    // A frame inside the frame opens the popup: removing the outer frame
+    // destroys both navigables.
+    opener_token = token();
+    send(frame_token, `
+      const inner = document.createElement('iframe');
+      inner.src = '${executor(get_host_info().HTTPS_ORIGIN, opener_token)}';
+      document.body.append(inner);`);
+    send(opener_token, `send('${reply}', 'inner loaded');`);
+    assert_equals(await receive(reply), 'inner loaded');
+  }
+  send(opener_token, `window.popup = window.open('${executor(get_host_info().HTTPS_ORIGIN, popup_token)}', '${popup_token}');`);
+  send(popup_token, `send('${reply}', 'popup loaded');`);
+  assert_equals(await receive(reply), 'popup loaded');
+
+  // Heartbeats on a BroadcastChannel, which needs no network: whether the
+  // popup's script still runs.
+  const name = token();
+  const channel = new BroadcastChannel(name);
+  t.add_cleanup(() => channel.close());
+  const beats = [];
+  channel.onmessage = e => beats.push(e.data);
+  send(popup_token, `let n = 0; const c = new BroadcastChannel('${name}'); setInterval(() => c.postMessage(++n), 100); send('${reply}', 'beating');`);
+  assert_equals(await receive(reply), 'beating');
+
+  frame.remove();
+  const before = beats.length;
+  await wait(t, 600);
+  assert_greater_than(beats.length, before, "the popup's timers still run after the frame's removal");
+
+  // iframe-test.js's cleanup: the popup answers, then closes itself.
+  const close_token = token();
+  send(popup_token, `await send('${close_token}', 'closed'); close();`);
+  assert_equals(await receive(close_token), 'closed');
+}
+
+promise_test(t => run(t, get_host_info().HTTPS_ORIGIN, false),
+             'a popup a same-origin frame opened keeps running and answers after the frame is removed');
+promise_test(t => run(t, get_host_info().HTTPS_REMOTE_ORIGIN, false),
+             'a popup a cross-origin frame opened keeps running and answers after the frame is removed');
+promise_test(t => run(t, get_host_info().HTTPS_ORIGIN, true),
+             'a popup a nested frame opened keeps running after its outer frame is removed');
+</script>
+</body>
