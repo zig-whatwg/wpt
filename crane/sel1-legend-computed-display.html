@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A legend's computed display is blockified, as Chrome and Safari compute it</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/rendering.html#the-fieldset-and-legend-elements">
+<link rel="help" href="https://drafts.csswg.org/css-transitions-2/#defining-before-change-style-the-starting-style-rule">
+<!--
+  HTML 15.3.13 says a rendered legend's display "is expected to behave as if its computed value was blockified. This
+  does not change the computed value." Blink (StyleAdjuster: "according to the spec, this shouldn't affect computed
+  style (like we do here)") and WebKit (Style::Adjuster::adjust) blockify the computed display of EVERY legend element,
+  in a fieldset or not, except display: contents (and none, which blockifies to itself). Gecko follows HTML
+  (html/rendering/.../legend-display.html: Chrome 28/80, Firefox 80/80, Safari 28/80 at wpt.fyi 2358bd4835). Crane
+  follows the majority (AGENTS.md golden rule 2), the two engines that blockify; so does
+  css/css-transitions/starting-style-adjustment.html, which all three pass.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<fieldset><legend id="rendered">rendered</legend></fieldset>
+<legend id="loose">loose</legend>
+<span id="span">span</span>
+<script>
+const cases = [
+  ['inline', 'block'],
+  ['inline-block', 'block'],
+  ['inline-flex', 'flex'],
+  ['inline-grid', 'grid'],
+  ['inline-table', 'table'],
+  ['block', 'block'],
+  ['flex', 'flex'],
+  ['list-item', 'list-item'],
+  ['contents', 'contents'],
+  ['none', 'none'],
+];
+for (const id of ['rendered', 'loose']) {
+  for (const [specified, computed] of cases) {
+    test(t => {
+      const legend = document.getElementById(id);
+      t.add_cleanup(() => { legend.style.removeProperty('display'); });
+      legend.style.display = specified;
+      assert_equals(getComputedStyle(legend).display, computed);
+    }, `${id} legend: display: ${specified} computes to ${computed}`);
+  }
+}
+
+test(t => {
+  t.add_cleanup(() => { span.style.removeProperty('display'); });
+  span.style.display = 'inline';
+  assert_equals(getComputedStyle(span).display, 'inline');
+}, 'a span is not blockified');
+
+promise_test(async t => {
+  const style = document.createElement('style');
+  style.textContent = `
+    legend.adjust { transition: display 1s step-end allow-discrete; }
+    @starting-style { legend.adjust { display: inline; } }`;
+  document.head.append(style);
+  const legend = document.body.appendChild(document.createElement('legend'));
+  legend.className = 'adjust';
+  t.add_cleanup(() => { legend.remove(); style.remove(); });
+  getComputedStyle(legend).display;
+  await new Promise(requestAnimationFrame);
+  assert_equals(legend.getAnimations().length, 0, 'the starting style blockifies to block: no display transition');
+}, 'a legend\'s @starting-style display is blockified too');
+</script>
