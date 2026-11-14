@@ -5,6 +5,14 @@
 <script src="/resources/testharnessreport.js"></script>
 <body>
 <script>
+// An ancestor's window.stop() ends a descendant frame's navigation in flight, and the descendant abort tasks it
+// queues must not reach a document the descendant gets afterwards.
+//
+// Chrome 157 and Firefox 159 cancel the child's queued srcdoc navigation (no load, the child stays on its
+// initial about:blank) whether stop() runs in the same task or a later one, and for a src navigation whose
+// fetch is in flight too (Blink FrameLoader::StopAllLoaders recurses into each local child frame); Safari 27
+// lets a navigation started in the same task survive and cancels it from a later task. Lane nav2's three-browser
+// probe, 2026-11-14. The first version of this test (lane dw) asserted Safari's same-task behaviour.
 promise_test(async t => {
   const outer = document.createElement("iframe");
   t.add_cleanup(() => outer.remove());
@@ -12,16 +20,24 @@ promise_test(async t => {
   outer.src = "/common/blank.html";
   document.body.appendChild(outer);
   await loaded;
+  outer.onload = null;
   const child = outer.contentDocument.createElement("iframe");
   outer.contentDocument.body.appendChild(child);
-  const replacement = new Promise((resolve, reject) => {
+  const texts = [];
+  child.onload = () => texts.push(child.contentDocument.body.textContent);
+  child.srcdoc = "<!doctype html><p>replacement</p>";
+  outer.contentWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  const second = new Promise((resolve, reject) => {
     child.onload = () => {
       child.onload = null;
+      texts.push(child.contentDocument.body.textContent);
       child.contentWindow.fetch("/common/blank.html").then(resolve, reject);
     };
   });
-  child.srcdoc = "<!doctype html><p>replacement</p>";
-  outer.contentWindow.stop();
-  assert_equals((await replacement).status, 200);
-}, "a descendant navigation queued before stop preserves its replacement document's fetch");
+  child.srcdoc = "<!doctype html><p>second</p>";
+  assert_equals((await second).status, 200, "a fetch in the later document succeeds");
+  assert_array_equals(texts, ["second"], "the navigation queued before stop() never loaded");
+  assert_equals(child.contentWindow.location.href, "about:srcdoc");
+}, "an ancestor's stop() cancels a queued descendant navigation and spares the document the descendant gets later");
 </script>
