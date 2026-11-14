@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: content codings undone by Fetch (lane quick1 b3)</title>
+<!--
+  Fetch undoes a response's content codings itself, through one table that is also its
+  Accept-Encoding (src/fetch/content_coding). Cases beside fetch/content-encoding/ and
+  resource-timing/: what is advertised, x-gzip, a coding it does not know (the body passes
+  through, as Chromium's GetContentEncodingTypes does), a body that stops early (not an
+  error in Chromium or Firefox: their filters ignore the upstream's end), and the body
+  info's encoded size against its decoded one.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+const gz = '/fetch/content-encoding/gzip/resources/foo.text.gz';
+const zst = '/fetch/content-encoding/zstd/resources/foo.text.zst';
+
+function entryFor(url) {
+  return new Promise(resolve => {
+    const look = list => {
+      for (const entry of list.getEntries()) {
+        if (entry.name.endsWith(url)) { observer.disconnect(); resolve(entry); return; }
+      }
+    };
+    const observer = new PerformanceObserver(look);
+    observer.observe({ type: 'resource', buffered: true });
+  });
+}
+
+promise_test(async () => {
+  const response = await fetch('/xhr/resources/inspect-headers.py?filter_name=accept-encoding');
+  assert_equals(await response.text(), 'Accept-Encoding: gzip, deflate, br, zstd\n');
+}, 'a secure request accepts every coding the table decodes');
+
+promise_test(async () => {
+  const response = await fetch('/xhr/resources/inspect-headers.py?filter_name=accept-encoding', { headers: { Range: 'bytes=0-' } });
+  assert_equals(await response.text(), 'Accept-Encoding: identity\n');
+}, 'a Range request accepts identity alone');
+
+promise_test(async () => {
+  const url = gz + '?pipe=header(Content-Encoding,x-gzip)&q=x-gzip';
+  const timing = entryFor(url);
+  const body = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  assert_equals(body.length, 10500);
+  assert_equals((await timing).contentEncoding, 'x-gzip');
+}, 'x-gzip is gzip, and reported as x-gzip');
+
+promise_test(async () => {
+  // gzip's bytes, sent as "Content-Encoding: unrecognizedname": they arrive as sent.
+  const response = await fetch('/resource-timing/resources/compressed-js.py?content_encoding=unrecognizedname');
+  assert_equals(response.status, 200);
+  const body = new Uint8Array(await response.arrayBuffer());
+  assert_array_equals(Array.from(body.slice(0, 2)), [0x1f, 0x8b]);
+}, 'a coding the user agent does not know passes the whole body through');
+
+promise_test(async () => {
+  // dummy.js as it is, its codings "gzip, deflate,Apple": one unknown, so none is undone.
+  const response = await fetch('/resource-timing/resources/content-encoding-headers.py?content_encoding=gzip,%20deflate,Apple');
+  assert_equals(response.status, 200);
+  assert_equals((await response.arrayBuffer()).byteLength, 53);
+}, 'an unknown coding among known ones passes the body through too');
+
+promise_test(async () => {
+  const url = zst + '?q=sizes';
+  const timing = entryFor(url);
+  const body = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  assert_equals(body.length, 10500);
+  const entry = await timing;
+  assert_equals(entry.contentEncoding, 'zstd');
+  assert_equals(entry.decodedBodySize, 10500);
+  assert_less_than(entry.encodedBodySize, 100);
+  assert_greater_than(entry.encodedBodySize, 0);
+}, 'a zstd body decodes, its encoded size below its decoded size');
+
+promise_test(async () => {
+  // The first 40 of foo.text.gz's 57 bytes: its stream stops before the end.
+  const response = await fetch(gz + '?pipe=slice(0,40)');
+  const text = await response.text();
+  // foo.text is "foo" 3,500 times: what decoded is a prefix of it.
+  assert_greater_than(text.length, 0);
+  assert_less_than(text.length, 10500);
+  assert_true('foo'.repeat(3500).startsWith(text), 'a prefix of the text');
+}, 'a gzip body that stops early is the body decoded so far, not an error');
+</script>
