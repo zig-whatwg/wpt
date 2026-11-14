@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>window.stop() stops the loads and navigations of the document's descendant frames</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#stop-loading">
+<!--
+  Crane test (lane nav2 batch 11). HTML "stop loading" aborts the document
+  and its descendants, and sets only the stopped navigable's own ongoing
+  navigation to null. The browsers stop every descendant frame as they stop
+  the document, children first: Blink LocalDOMWindow::stop ->
+  FrameLoader::StopAllLoaders, which recurses into each local child frame
+  (the child's navigation cancelled - InformAboutCanceledNavigation,
+  CancelClientNavigation, DocumentLoader::StopLoading - and its parse ended
+  by Document::CancelParsing: readiness "complete", the load event marked
+  completed, so none fires); WebKit LocalDOMWindow::stop ->
+  FrameLoader::stopForUserCancel -> stopAllLoaders, which recurses into each
+  local child frame and stops its provisional and current document loaders.
+  So a descendant still loading a subresource fires no load event, its
+  container fires none either, and a descendant's navigation in flight never
+  commits - as window.stop() already does for the stopped document itself
+  (Document's lifecycleStopLoad, lane nav2 batch 10).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function frameWith(srcdoc) {
+  const frame = document.createElement("iframe");
+  frame.srcdoc = srcdoc;
+  document.body.append(frame);
+  return frame;
+}
+
+function waitFor(t, cond) {
+  return new Promise(resolve => {
+    const check = () => cond() ? resolve() : t.step_timeout(check, 10);
+    check();
+  });
+}
+
+promise_test(async t => {
+  // The outer frame holds an inner one whose image is still loading.
+  const outer = frameWith("<iframe srcdoc=\"<img src='/images/green.png?pipe=trickle(d3)'>\"></iframe>");
+  t.add_cleanup(() => outer.remove());
+  await waitFor(t, () => outer.contentWindow.frames.length === 1 &&
+                         outer.contentWindow.frames[0].document.readyState === "interactive");
+  const outerWindow = outer.contentWindow;
+  const innerWindow = outerWindow.frames[0];
+  const innerContainer = outerWindow.document.querySelector("iframe");
+  const fired = [];
+  innerWindow.addEventListener("load", () => fired.push("inner window load"));
+  innerContainer.addEventListener("load", () => fired.push("inner container load"));
+  outerWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 500));
+  assert_array_equals(fired, [], "a stopped descendant fires no load event, nor does its container");
+  assert_equals(innerWindow.document.readyState, "complete", "its load ended");
+}, "window.stop() ends a descendant's load without a load event");
+
+promise_test(async t => {
+  const outer = frameWith("<iframe></iframe>");
+  t.add_cleanup(() => outer.remove());
+  await new Promise(resolve => outer.onload = resolve);
+  const outerWindow = outer.contentWindow;
+  const innerContainer = outerWindow.document.querySelector("iframe");
+  const innerBefore = outerWindow.frames[0];
+  // A navigation of the inner frame whose response takes a second.
+  innerContainer.src = "/common/slow.py?delay=1000";
+  outerWindow.stop();
+  await new Promise(resolve => t.step_timeout(resolve, 2000));
+  assert_equals(outerWindow.frames[0], innerBefore, "the inner frame's navigation never committed");
+  assert_equals(innerBefore.location.href, "about:blank", "it still shows its first document");
+}, "window.stop() cancels a descendant's navigation in flight");
+</script>
