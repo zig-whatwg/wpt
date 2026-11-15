@@ -23,16 +23,26 @@
 // callback must not run while its owner is there, whether script still holds
 // the wrapper it registered or not.
 //
-// Lane wrap1 batch 2 (every non-node platform object's wrapper on
-// v8::Object::Wrap): the node half of this is
-// wr11-finalization-registry-live-node.html. A non-node wrapper is held by
-// the wrapper cache weakly, and kept by an edge from its owner's wrapper or
-// by a keep (pending activity); the batches after this one move that
-// lifetime onto the wrapper's anchor, and a wrapper V8 may then drop in a
-// young-generation collection must still never be one script can reach
-// again. V8 15.7 treats a FinalizationRegistry target weakly in such a
-// collection unless started with --no-handle-weak-ref-weakly-in-minor-gc
-// (Crane is: src/runtime/engines/v8/snapshot_loader.zig RUNTIME_V8_FLAGS).
+// Lane wrap1 batches 2 and 3 (every non-node platform object's wrapper on
+// v8::Object::Wrap, held by its realm's wrapper cache through a traced
+// reference its anchor keeps): the node half of this is
+// wr11-finalization-registry-live-node.html. A non-node wrapper is kept by
+// an edge from its owner's wrapper or by a keep (pending activity), and a
+// wrapper V8 may drop in a young-generation collection must never be one
+// script can reach again. V8 15.7 treats a FinalizationRegistry target
+// weakly in such a collection unless started with
+// --no-handle-weak-ref-weakly-in-minor-gc (Crane is:
+// src/runtime/engines/v8/snapshot_loader.zig RUNTIME_V8_FLAGS).
+//
+// Since batch 3 WHEN a dead wrapper goes depends on its shape, which script
+// can see only here: V8 drops in a young-generation collection only a
+// wrapper script never changed, so a wrapper with an expando, one that has a
+// traced child (a URL whose searchParams was read) and a legacy platform
+// object behind its proxy (a NamedNodeMap, an HTMLCollection) wait for a
+// full collection - V8's rule for a droppable reference and Blink's
+// behaviour. Each of the three is here twice: reachable (its callback must
+// never run) and unreachable (its callback runs once full collections have
+// run).
 
 function nextTask(t) {
   return new Promise(resolve => t.step_timeout(resolve, 0));
@@ -69,6 +79,14 @@ const owners = {
 };
 owners.sheet.replaceSync("a { color: red }");
 const held = { event: new Event("held"), url: new URL("https://wrap1.test/held") };
+// The three shapes that wait for a full collection, held by script.
+held.changed = new Event("changed");
+held.changed.mine = 1;                                    // an expando
+held.parent = new URL("https://wrap1.test/parent?p=1");
+void held.parent.searchParams;                            // a traced child
+held.div = document.createElement("div");
+held.div.setAttribute("data-k", "v");
+held.div.appendChild(document.createElement("i"));
 
 // name -> the object, reached the way script reaches it again later.
 const reachable = {
@@ -99,6 +117,11 @@ const reachable = {
   // Script holds the object itself.
   "a held Event": () => held.event,
   "a held URL": () => held.url,
+  // The shapes that wait for a full collection (see the top), reachable.
+  "a held Event with an expando": () => held.changed,
+  "a held URL whose searchParams was read": () => held.parent,
+  "a held div's attributes": () => held.div.attributes,
+  "a held div's children": () => held.div.children,
 };
 const live = Object.keys(reachable);
 function finalizedLive() {
@@ -113,6 +136,11 @@ promise_test(async t => {
   register("a dropped URL", () => new URL("https://wrap1.test/dropped"));
   register("a dropped URL's searchParams", () => new URL("https://wrap1.test/dropped?b=2").searchParams);
   register("a dropped Headers", () => new Headers({ a: "b" }));
+  // The shapes that wait for a full collection, unreachable.
+  register("a dropped Event with an expando", () => { const e = new Event("dropped"); e.mine = 1; return e; });
+  register("a dropped URL whose searchParams was read", () => { const u = new URL("https://wrap1.test/dropped?c=3"); void u.searchParams; return u; });
+  register("a dropped div's attributes", () => { const d = document.createElement("div"); d.setAttribute("data-k", "v"); return d.attributes; });
+  register("a dropped div's children", () => { const d = document.createElement("div"); d.appendChild(document.createElement("i")); return d.children; });
 
   // Young-generation collections only, over several tasks.
   for (let round = 0; round < 12; round++) {
@@ -129,7 +157,9 @@ promise_test(async t => {
   }
   assert_array_equals(finalizedLive(), [], "no callback for a reachable platform object after full collections");
   // The collections ran: what nothing reached was finalized.
-  for (const name of ["a dropped Event", "a dropped URL", "a dropped URL's searchParams", "a dropped Headers"])
+  for (const name of ["a dropped Event", "a dropped URL", "a dropped URL's searchParams", "a dropped Headers",
+                      "a dropped Event with an expando", "a dropped URL whose searchParams was read",
+                      "a dropped div's attributes", "a dropped div's children"])
     assert_true(finalized.includes(name), name + "'s callback ran");
 
   // Each is still what its owner answers, and still works.
@@ -139,6 +169,10 @@ promise_test(async t => {
   assert_false(owners.controller.signal.aborted, "controller.signal");
   assert_equals(owners.sheet.cssRules[0].style.color, "red", "sheet.cssRules[0].style");
   assert_equals(held.event.type, "held", "the held Event");
+  assert_equals(held.changed.mine, 1, "the held Event's expando");
+  assert_equals(held.parent.searchParams.get("p"), "1", "the held URL's searchParams");
+  assert_equals(held.div.attributes["data-k"].value, "v", "the held div's attributes");
+  assert_equals(held.div.children.length, 1, "the held div's children");
 }, "a FinalizationRegistry callback runs for a platform object nothing reaches and never for one script can reach again");
 
 promise_test(async t => {

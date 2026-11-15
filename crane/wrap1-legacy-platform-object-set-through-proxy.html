@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: [[Set]] on a legacy platform object is OrdinarySetWithOwnDescriptor - a Proxy on its prototype chain gets its own [[Set]], and an own property keeps its attributes</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#legacy-platform-object-set">
+<link rel=help href="https://tc39.es/ecma262/#sec-ordinarysetwithowndescriptor">
+<link rel=help href="https://tc39.es/ecma262/#sec-proxy-object-internal-methods-and-internal-slots-set-p-v-receiver">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div id=host><p id=first></p><p name=second></p></div>
+<script>
+"use strict";
+// Web IDL 3.9.2, a legacy platform object's [[Set]](P, V, Receiver), step 3:
+// "Perform ? OrdinarySetWithOwnDescriptor(O, P, V, Receiver, ownDesc)".
+// ECMA-262 10.1.9.2, with no ownDesc: "Let parent be ? O.[[GetPrototypeOf]]().
+// If parent is not null, return ? parent.[[Set]](P, V, Receiver)" - the
+// PARENT's internal method. For an ordinary parent that cannot be told from a
+// walk of the chain; for a Proxy a page put on the chain (here: made the
+// object's own prototype with Object.setPrototypeOf) it is the Proxy's `set`
+// trap, once, and none of its other traps.
+//
+// Lane wrap1 batch 3: Crane's legacy platform objects with named properties
+// are behind a Proxy of the binding's own, whose set trap walked the chain
+// itself and so called a page Proxy's getOwnPropertyDescriptor and
+// getPrototypeOf traps instead. In a browser these objects are no Proxy and
+// the engine's ordinary [[Set]] makes the spec's call.
+
+function withProxyOnChain(subject, body) {
+  const log = [];
+  // The Proxy becomes the subject's own prototype; its target inherits from
+  // the interface prototype object, so the interface's members still resolve.
+  const interfacePrototype = Object.getPrototypeOf(subject);
+  const backing = Object.create(interfacePrototype);
+  Object.defineProperty(backing, "viaSetter", { set(v) { log.push("setter " + v + (this === subject ? " on the subject" : " elsewhere")); }, configurable: true });
+  Object.defineProperty(backing, "frozen", { value: 1, writable: false, configurable: true });
+  const name = k => typeof k === "symbol" ? "a symbol" : k;
+  const onChain = new Proxy(backing, {
+    set(t, k, v, r) { log.push("set " + name(k) + (r === subject ? " for the subject" : " for another receiver")); return Reflect.set(t, k, v, r); },
+    getOwnPropertyDescriptor(t, k) { log.push("getOwnPropertyDescriptor " + name(k)); return Reflect.getOwnPropertyDescriptor(t, k); },
+    getPrototypeOf(t) { log.push("getPrototypeOf"); return Reflect.getPrototypeOf(t); },
+    defineProperty(t, k, d) { log.push("defineProperty " + name(k)); return Reflect.defineProperty(t, k, d); },
+    has(t, k) { log.push("has " + name(k)); return Reflect.has(t, k); },
+  });
+  Object.setPrototypeOf(subject, onChain);
+  try {
+    body(log, backing);
+  } finally {
+    Object.setPrototypeOf(subject, interfacePrototype);
+  }
+}
+
+const subjects = {
+  "HTMLCollection": () => document.getElementById("host").children,
+  "NamedNodeMap": () => document.getElementById("host").attributes,
+};
+
+for (const [interfaceName, make] of Object.entries(subjects)) {
+  test(() => {
+    const subject = make();
+    withProxyOnChain(subject, (log, backing) => {
+      subject.fresh = 5;
+      assert_array_equals(log, ["set fresh for the subject"], "the Proxy's set trap, once");
+      assert_true(Object.hasOwn(subject, "fresh"), "the value became the subject's own property");
+      assert_equals(subject.fresh, 5);
+      assert_false(Object.hasOwn(backing, "fresh"), "nothing was made on the Proxy's target");
+      delete subject.fresh;
+    });
+  }, interfaceName + ": assigning a new name reaches a Proxy on the prototype chain through its set trap, once");
+
+  test(() => {
+    const subject = make();
+    withProxyOnChain(subject, log => {
+      subject.viaSetter = 7;
+      assert_array_equals(log, ["set viaSetter for the subject", "setter 7 on the subject"]);
+    });
+  }, interfaceName + ": a setter behind the Proxy runs with the object as its receiver");
+
+  test(() => {
+    const subject = make();
+    withProxyOnChain(subject, log => {
+      assert_throws_js(TypeError, () => { subject.frozen = 2; }, "strict code");
+      assert_array_equals(log, ["set frozen for the subject"]);
+      assert_false(Object.hasOwn(subject, "frozen"));
+    });
+  }, interfaceName + ": a read-only property behind the Proxy refuses the assignment");
+
+  test(() => {
+    const subject = make();
+    const heir = Object.create(subject);
+    withProxyOnChain(subject, log => {
+      heir.inherited = 9;
+      assert_array_equals(log, ["set inherited for another receiver"]);
+      assert_true(Object.hasOwn(heir, "inherited"), "the heir's own property");
+      assert_false(Object.hasOwn(subject, "inherited"), "not the subject's");
+    });
+  }, interfaceName + ": an assignment through an heir reaches the Proxy the same way, with the heir as Receiver");
+
+  test(() => {
+    const subject = make();
+    const mark = Symbol("mark");
+    withProxyOnChain(subject, log => {
+      subject[mark] = 1;
+      assert_array_equals(log, ["set a symbol for the subject"]);
+      assert_equals(subject[mark], 1);
+      delete subject[mark];
+    });
+  }, interfaceName + ": a symbol-keyed assignment goes the same way");
+
+  test(() => {
+    const subject = make();
+    Object.defineProperty(subject, "hidden", { value: 1, writable: true, enumerable: false, configurable: true });
+    subject.hidden = 2;
+    const d = Object.getOwnPropertyDescriptor(subject, "hidden");
+    assert_equals(d.value, 2);
+    assert_true(d.writable, "still writable");
+    assert_false(d.enumerable, "still not enumerable");
+    assert_true(d.configurable, "still configurable");
+    delete subject.hidden;
+  }, interfaceName + ": assigning over a writable own property changes its value and no other attribute");
+
+  test(() => {
+    const subject = make();
+    Object.defineProperty(subject, "fixed", { value: 1, writable: false, enumerable: true, configurable: true });
+    assert_throws_js(TypeError, () => { subject.fixed = 2; });
+    assert_equals(subject.fixed, 1);
+    assert_false(Object.getOwnPropertyDescriptor(subject, "fixed").writable);
+    delete subject.fixed;
+  }, interfaceName + ": assigning over a read-only own property throws in strict code and changes nothing");
+
+  test(() => {
+    const subject = make();
+    let seen;
+    Object.defineProperty(subject, "own", { set(v) { seen = [v, this === subject]; }, configurable: true });
+    subject.own = 3;
+    assert_array_equals(seen, [3, true], "the own setter ran with the object as its receiver");
+    Object.defineProperty(subject, "getterOnly", { get() { return 1; }, configurable: true });
+    assert_throws_js(TypeError, () => { subject.getterOnly = 2; });
+    delete subject.own;
+    delete subject.getterOnly;
+  }, interfaceName + ": an own accessor's setter runs, and one with no setter refuses");
+
+  // The rest of a Proxy's [[Set]] (ECMA-262 10.5.9), reached the same way.
+  function through(subject, backing, handler, body) {
+    const interfacePrototype = Object.getPrototypeOf(subject);
+    Object.setPrototypeOf(backing, interfacePrototype);
+    Object.setPrototypeOf(subject, new Proxy(backing, handler));
+    try {
+      body();
+    } finally {
+      Object.setPrototypeOf(subject, interfacePrototype);
+    }
+  }
+
+  test(() => {
+    const subject = make();
+    const log = [];
+    let seen;
+    const backing = {};
+    Object.defineProperty(backing, "viaSetter", { set(v) { seen = [v, this === subject]; }, configurable: true });
+    through(subject, backing, {
+      getOwnPropertyDescriptor(t, k) { log.push("getOwnPropertyDescriptor"); return Reflect.getOwnPropertyDescriptor(t, k); },
+      getPrototypeOf(t) { log.push("getPrototypeOf"); return Reflect.getPrototypeOf(t); },
+    }, () => {
+      subject.viaSetter = 4;
+      subject.plain = 6;
+      assert_array_equals(seen, [4, true], "the target's setter ran with the object as its receiver");
+      assert_true(Object.hasOwn(subject, "plain"), "a new name became the object's own property");
+      assert_array_equals(log, [], "none of the handler's other traps was called");
+      delete subject.plain;
+    });
+  }, interfaceName + ": a Proxy with no set trap hands the assignment to its target (step 6)");
+
+  test(() => {
+    const subject = make();
+    through(subject, {}, { set() { return false; } }, () => {
+      assert_throws_js(TypeError, () => { subject.refused = 1; }, "strict code");
+      assert_false(Object.hasOwn(subject, "refused"));
+      assert_false(Reflect.set(subject, "refused", 1), "Reflect.set answers the trap's false");
+    });
+    through(subject, {}, { set() { return 1; } }, () => {
+      subject.swallowed = 1;
+      assert_false(Object.hasOwn(subject, "swallowed"), "a true with nothing done makes nothing");
+    });
+  }, interfaceName + ": the trap's answer is the assignment's answer (steps 7, 8 and 11)");
+
+  test(() => {
+    const subject = make();
+    through(subject, {}, { set: 1 }, () => {
+      assert_throws_js(TypeError, () => { subject.x = 1; });
+    });
+    const revocable = Proxy.revocable({}, {});
+    const interfacePrototype = Object.getPrototypeOf(subject);
+    Object.setPrototypeOf(subject, revocable.proxy);
+    revocable.revoke();
+    try {
+      assert_throws_js(TypeError, () => { subject.x = 1; });
+    } finally {
+      Object.setPrototypeOf(subject, interfacePrototype);
+    }
+  }, interfaceName + ": a set that is not callable, and a revoked Proxy, throw (steps 1 and 5)");
+
+  test(() => {
+    const subject = make();
+    const backing = {};
+    Object.defineProperty(backing, "locked", { value: 1, writable: false, configurable: false });
+    Object.defineProperty(backing, "getterOnly", { get() { return 1; }, configurable: false });
+    through(subject, backing, { set() { return true; } }, () => {
+      assert_throws_js(TypeError, () => { subject.locked = 2; }, "another value over a locked one");
+      subject.locked = 1;
+      assert_throws_js(TypeError, () => { subject.getterOnly = 2; }, "a locked accessor with no setter");
+    });
+  }, interfaceName + ": a true the Proxy's target contradicts throws (step 10)");
+
+  test(() => {
+    const subject = make();
+    const receivers = [];
+    through(subject, {}, { set(t, k, v, r) { receivers.push(r); return Reflect.set(t, k, v, r); } }, () => {
+      assert_false(Reflect.set(subject, "viaPrimitive", 1, 5));
+      assert_array_equals(receivers, [5], "the trap saw the Receiver as it was given");
+    });
+  }, interfaceName + ": a Receiver that is no Object reaches the Proxy's set trap as it is");
+}
+</script>
