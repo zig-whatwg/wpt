@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A dedicated worker is fetched and started after its constructor returns</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane lane rep2. HTML "run a worker" runs in parallel with the Worker
+// constructor: the constructor returns, then the script is fetched. What this
+// pins:
+// - a blob: URL's blob URL entry is captured when the constructor parses the
+//   URL (URL parser: "set url's blob URL entry"), so revoking the URL right
+//   after `new Worker()` does not stop the worker (Blink resolves the blob URL
+//   in DedicatedWorker::Start, WebKit keeps it with URLKeepingBlobAlive);
+// - nothing waits for the script: the page runs its tasks while it loads (WebKit's
+//   Worker::create starts WorkerScriptLoader::loadAsynchronously and returns);
+// - a script that cannot be fetched fires `error` at the Worker from a task
+//   ("run a worker" onComplete step 1: "queue a global task on the DOM
+//   manipulation task source ... to fire an event named error"): never inside
+//   the constructor, once, as a plain Event, and the worker never runs.
+function messageFrom(worker) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = () => reject(new Error("error event"));
+  });
+}
+
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(['postMessage("classic ran")'], {type: "text/javascript"}));
+  const worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  t.add_cleanup(() => worker.terminate());
+  assert_equals(await messageFrom(worker), "classic ran");
+}, "A classic worker runs from a blob URL revoked right after its constructor");
+
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(['postMessage("module ran")'], {type: "text/javascript"}));
+  const worker = new Worker(url, {type: "module"});
+  URL.revokeObjectURL(url);
+  t.add_cleanup(() => worker.terminate());
+  assert_equals(await messageFrom(worker), "module ran");
+}, "A module worker runs from a blob URL revoked right after its constructor");
+
+promise_test(async t => {
+  const url = URL.createObjectURL(new Blob(['postMessage("ran")']));
+  URL.revokeObjectURL(url);
+  const worker = new Worker(url);
+  t.add_cleanup(() => worker.terminate());
+  const events = [];
+  // Listeners added after the constructor returns hear what the fetch's
+  // failure fires.
+  worker.addEventListener("error", e => events.push(e.constructor.name + ":" + e.cancelable));
+  worker.addEventListener("message", () => events.push("message"));
+  assert_array_equals(events, [], "nothing fired inside the constructor");
+  await new Promise(resolve => t.step_timeout(resolve, 300));
+  assert_array_equals(events, ["Event:false"], "one plain error event");
+}, "A blob URL revoked before the constructor fails the fetch: error is fired at the worker from a task, once");
+
+promise_test(async t => {
+  const worker = new Worker("/workers/support/this-script-does-not-exist.js");
+  t.add_cleanup(() => worker.terminate());
+  let fired = 0;
+  worker.onerror = e => {
+    fired++;
+    assert_equals(e.constructor, Event, "a plain Event");
+  };
+  assert_equals(fired, 0, "nothing fired inside the constructor");
+  await new Promise(resolve => {
+    worker.addEventListener("error", () => t.step_timeout(resolve, 100));
+  });
+  assert_equals(fired, 1, "error fired once");
+}, "A script that fails to load (404) fires error at the worker from a task, once");
+
+promise_test(async t => {
+  // The script arrives 2 s after it is asked for (wptserve's trickle pipe).
+  const t0 = performance.now();
+  const worker = new Worker("/html/cross-origin-embedder-policy/resources/universal-worker.js?pipe=trickle(d2)");
+  const constructed = performance.now() - t0;
+  t.add_cleanup(() => worker.terminate());
+  let timerRan = false;
+  t.step_timeout(() => { timerRan = true; }, 0);
+  worker.postMessage("postMessage('ran')");
+  assert_equals(await messageFrom(worker), "ran");
+  assert_true(timerRan, "a page task ran while the script loaded");
+  assert_less_than(constructed, 1000, "the constructor did not wait for the script");
+}, "The Worker constructor returns before its script arrives, and the page runs tasks meanwhile");
+</script>

@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="img-src 'none'; report-to none">
+<title>A ReportingObserver's reports are the Reporting spec's dictionaries</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane lane rep2 (the user's ruling of 2026-11-14): Report and ReportBody are
+// dictionaries (w3c/reporting#284; WebKit 326027@main), so a report and its
+// body are plain objects - Object.prototype, the dictionary's members in
+// lexicographical order, no toJSON - that structured-clone and post. A
+// csp-violation body has every CSPViolationReportBody member CSP §5.5 step
+// 5.1 initializes, null ones too. No Report or body interface object exists.
+const cspBodyKeys = ["blockedURL", "columnNumber", "disposition", "documentURL",
+  "effectiveDirective", "lineNumber", "originalPolicy", "referrer", "sample",
+  "sourceFile", "statusCode"];
+
+function checkReport(report, what) {
+  assert_equals(Object.getPrototypeOf(report), Object.prototype, `${what}: report prototype`);
+  assert_array_equals(Object.keys(report), ["body", "type", "url"], `${what}: report keys`);
+  assert_false("toJSON" in report, `${what}: report toJSON`);
+  assert_equals(report.type, "csp-violation", `${what}: type`);
+  assert_equals(report.url, location.href, `${what}: url`);
+  assert_equals(Object.getPrototypeOf(report.body), Object.prototype, `${what}: body prototype`);
+  assert_array_equals(Object.keys(report.body), cspBodyKeys, `${what}: body keys`);
+  assert_false("toJSON" in report.body, `${what}: body toJSON`);
+  assert_equals(report.body.effectiveDirective, "img-src", `${what}: effectiveDirective`);
+  assert_equals(report.body.disposition, "enforce", `${what}: disposition`);
+}
+
+function violate() {
+  const img = document.createElement("img");
+  img.src = "/images/green.png#blocked-" + Math.random();
+  document.body.appendChild(img);
+}
+
+test(() => {
+  for (const name of ["Report", "ReportBody", "CSPViolationReportBody",
+                      "CORPViolationReportBody", "COEPInheritenceViolationReportBody"]) {
+    assert_false(name in self, name);
+  }
+}, "No Report or report body interface object");
+
+promise_test(async t => {
+  const reports = await new Promise(resolve => {
+    const observer = new ReportingObserver(resolve, {types: ["csp-violation"]});
+    observer.observe();
+    t.add_cleanup(() => observer.disconnect());
+    violate();
+  });
+  assert_equals(reports.length, 1);
+  checkReport(reports[0], "callback");
+  checkReport(structuredClone(reports[0]), "structured clone");
+  const parsed = JSON.parse(JSON.stringify(reports[0]));
+  assert_equals(parsed.body.effectiveDirective, "img-src", "JSON");
+}, "The callback's report is a plain Report dictionary with a CSPViolationReportBody body");
+
+promise_test(async t => {
+  // A violation's report reaches the global's report buffer, then an
+  // observer that asks for buffered reports takes it at once: observe()
+  // queues the buffered reports synchronously in all three engines (Blink
+  // ReportingContext::RegisterObserver, WebKit ReportingScope::
+  // appendQueuedReportsForRelevantType, Gecko nsIGlobalObject::
+  // RegisterReportingObserver), before any notification task runs.
+  await new Promise(resolve => {
+    const observer = new ReportingObserver(() => { observer.disconnect(); resolve(); }, {types: ["csp-violation"]});
+    observer.observe();
+    violate();
+  });
+  const observer = new ReportingObserver(() => {}, {types: ["csp-violation"], buffered: true});
+  observer.observe();
+  t.add_cleanup(() => observer.disconnect());
+  const records = observer.takeRecords();
+  assert_greater_than_equal(records.length, 1, "buffered reports");
+  records.forEach((record, i) => checkReport(record, `takeRecords[${i}]`));
+  // A worker echoes them back: postMessage structured-clones plain objects.
+  const worker = new Worker(URL.createObjectURL(new Blob(
+    ["onmessage = e => postMessage(e.data);"], {type: "text/javascript"})));
+  t.add_cleanup(() => worker.terminate());
+  const echoed = await new Promise(resolve => {
+    worker.onmessage = e => resolve(e.data);
+    worker.postMessage(records);
+  });
+  assert_equals(echoed.length, records.length, "echoed reports");
+  echoed.forEach((record, i) => checkReport(record, `posted to a worker and back [${i}]`));
+}, "takeRecords gives plain Report dictionaries, which post to a worker");
+</script>

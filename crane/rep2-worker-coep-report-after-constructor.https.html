@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A worker's COEP inheritance report reaches an observer registered right after new Worker()</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane lane rep2. HTML "run a worker" fetches the script in parallel, and its
+// completion checks the embedder policy and queues the "worker initialization"
+// violation on the owner's settings, so a ReportingObserver the owner registers
+// right after `new Worker()` sees the report
+// (html/cross-origin-embedder-policy/reporting-to-frame-owner.https.html and
+// reporting-to-worker-owner.https.html do exactly this). This page is served
+// with Cross-Origin-Embedder-Policy-Report-Only: require-corp; the worker's
+// script has no embedder policy, so it runs and its report says "reporting".
+promise_test(async t => {
+  const worker_url = "/html/cross-origin-embedder-policy/resources/universal-worker.js?pipe=";
+  const worker = new Worker(worker_url);
+  t.add_cleanup(() => worker.terminate());
+  const ran = new Promise((resolve, reject) => {
+    worker.onmessage = () => resolve();
+    worker.onerror = () => reject(new Error("the report-only policy blocked the worker"));
+  });
+  worker.postMessage("postMessage('ran')");
+  const reports = new Promise(resolve => {
+    const observer = new ReportingObserver(reports => {
+      observer.disconnect();
+      resolve(reports);
+    });
+    observer.observe();
+  });
+  await ran;
+  const [report] = await reports;
+  assert_equals(report.type, "coep");
+  assert_equals(report.url, location.href);
+  assert_equals(report.body.type, "worker initialization");
+  assert_equals(report.body.blockedURL, new URL(worker_url, location.href).href);
+  assert_equals(report.body.disposition, "reporting");
+}, "The worker initialization report of a report-only owner reaches an observer registered after new Worker()");
+</script>
