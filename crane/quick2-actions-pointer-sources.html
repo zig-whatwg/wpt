@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: WebDriver pointer input sources - parameters, origin, pen and touch</title>
+<!-- Lane quick2: the WPT runner's test_driver as a WebDriver remote end
+     (Perform Actions, WebDriver 15.5). A pointer source with no parameters is
+     a mouse; a pointerMove with no origin moves relative to the viewport; pen
+     and touch sources are pointers of their own, each with its own
+     pointerId; an unknown pointerType, and a source that changes its
+     pointerType, are invalid arguments. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<div id=target>target</div>
+<script>
+promise_test(async () => {
+  const seen = [];
+  target.addEventListener('pointerdown', e => seen.push(e.pointerType), {once: true});
+  await test_driver.action_sequence([{type: 'pointer', id: 'plain', actions: [
+    {type: 'pointerMove', x: 0, y: 0, origin: target}, {type: 'pointerDown', button: 0}, {type: 'pointerUp', button: 0}]}]);
+  assert_array_equals(seen, ['mouse']);
+}, 'A pointer source with no parameters is a mouse');
+
+promise_test(async () => {
+  await test_driver.action_sequence([{type: 'pointer', id: 'no-origin', actions: [{type: 'pointerMove', x: 0, y: 0}]}]);
+}, 'A pointerMove with no origin is relative to the viewport');
+
+promise_test(async () => {
+  const seen = [];
+  const record = e => seen.push(e.type + ':' + e.pointerType + ':' + e.isPrimary);
+  target.addEventListener('pointerdown', record);
+  target.addEventListener('touchstart', e => seen.push('touchstart:' + e.changedTouches.length));
+  await new test_driver.Actions()
+    .addPointer('pen1', 'pen')
+    .pointerMove(0, 0, {origin: target, sourceName: 'pen1'})
+    .pointerDown({sourceName: 'pen1'})
+    .pointerUp({sourceName: 'pen1'})
+    .addPointer('finger1', 'touch')
+    .pointerMove(0, 0, {origin: target, sourceName: 'finger1'})
+    .pointerDown({sourceName: 'finger1'})
+    .pointerUp({sourceName: 'finger1'})
+    .send();
+  target.removeEventListener('pointerdown', record);
+  assert_array_equals(seen, ['pointerdown:pen:true', 'pointerdown:touch:true', 'touchstart:1']);
+}, 'Pen and touch sources fire their own pointerType');
+
+promise_test(async () => {
+  const ids = [];
+  const record = e => ids.push(e.pointerId);
+  target.addEventListener('pointerdown', record);
+  await new test_driver.Actions()
+    .addPointer('fingerA', 'touch')
+    .addPointer('fingerB', 'touch')
+    .pointerMove(0, 0, {origin: target, sourceName: 'fingerA'})
+    .pointerMove(0, 0, {origin: target, sourceName: 'fingerB'})
+    .pointerDown({sourceName: 'fingerA'})
+    .pointerDown({sourceName: 'fingerB'})
+    .pointerUp({sourceName: 'fingerA'})
+    .pointerUp({sourceName: 'fingerB'})
+    .send();
+  target.removeEventListener('pointerdown', record);
+  assert_equals(ids.length, 2);
+  assert_not_equals(ids[0], ids[1], 'each touch source has its own pointerId');
+  assert_true(ids[0] >= 2 && ids[1] >= 2, 'pointerIds 0 and 1 are the mouse\'s');
+}, 'Two touch sources have their own pointerIds');
+
+promise_test(async () => {
+  let error = null;
+  try {
+    await test_driver.action_sequence([{type: 'pointer', id: 'bad', parameters: {pointerType: 'stylus'}, actions: [{type: 'pause'}]}]);
+  } catch (e) { error = String(e); }
+  assert_true(error !== null && error.includes('invalid argument'), String(error));
+}, 'An unknown pointerType is an invalid argument');
+
+promise_test(async () => {
+  await test_driver.action_sequence([{type: 'pointer', id: 'switch', parameters: {pointerType: 'touch'}, actions: [{type: 'pause'}]}]);
+  let error = null;
+  try {
+    await test_driver.action_sequence([{type: 'pointer', id: 'switch', parameters: {pointerType: 'pen'}, actions: [{type: 'pause'}]}]);
+  } catch (e) { error = String(e); }
+  assert_true(error !== null && error.includes('invalid argument'), String(error));
+}, 'A source keeps its pointerType');
+</script>
