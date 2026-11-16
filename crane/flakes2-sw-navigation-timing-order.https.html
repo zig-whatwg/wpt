@@ -17,6 +17,22 @@
   (Firefox 159 fails the upstream file that way), or before the activation
   ended (Safari 27.2) - and that is what this file checks, deterministically.
   Lane flakes2, 2026-11-02.
+
+  workerStart against the time origin is the same case (lane flk1,
+  2026-11-15). This file used to assert workerStart > 0 for the first
+  navigation, and failed 4-5 runs of 10 on every runner: workerStart is HTTP
+  fetch step 3.3's time, taken microseconds after the navigation started
+  (the document's time origin, which is on the same coarse grid), and
+  Resource Timing's "convert fetch timestamp" returns their difference - 0
+  whenever both fall in one 125 us tick. Measured over 310 navigations it
+  was 0 or 0.125 ms and nothing else. A browser's worker start is an
+  inter-process hop away from its navigation start, so the upstream files
+  can ask for "> 0"; the specs do not promise it. So the first navigation
+  asserts the order (0 <= workerStart <= fetchStart, and before the
+  activation's end), and a third navigation makes the gap certain instead
+  of likely: it reaches the worker's scope through a redirect the server
+  holds for a second, so its workerStart - the FINAL service worker start
+  time, taken after the redirect - is a second past the time origin.
 -->
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
@@ -36,7 +52,10 @@ promise_test(async (t) => {
   const origin = w.performance.timeOrigin;
   const workerStart = entry.workerStart + origin;
   const fetchStart = entry.fetchStart + origin;
-  assert_greater_than(entry.workerStart, 0, 'a controlled navigation has a workerStart');
+  // Not "> 0": equal to the time origin whenever both fall in one coarse
+  // tick (above). The redirected navigation below asserts a workerStart.
+  assert_greater_than_equal(entry.workerStart, 0, 'workerStart is not before the time origin');
+  assert_less_than_equal(workerStart, fetchStart, 'workerStart is not after fetchStart');
   // Marked before the 100 ms activation wait: strictly before its end.
   assert_less_than(workerStart, w.activateWorkerEnd, 'workerStart is marked before the activation ends');
   assert_greater_than_equal(fetchStart, w.activateWorkerEnd, 'fetchStart is marked once the worker is activated');
@@ -59,4 +78,28 @@ promise_test(async (t) => {
     frame.remove();
   }
 }, 'navigations to an active worker');
+
+promise_test(async (t) => {
+  const scope = 'resources/flakes2-sw-navigation-timing-order/redirected/';
+  const registration = await service_worker_unregister_and_register(t, worker_url, scope);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+  // Outside the scope, so the network answers it - one second later - with
+  // a same-origin redirect into the scope, which the worker answers.
+  const target = new URL(scope + 'page', location).href;
+  const frame = await with_iframe('/common/slow-redirect.py?delay=1&location=' + encodeURIComponent(target));
+  t.add_cleanup(() => frame.remove());
+  const w = frame.contentWindow;
+  assert_equals(w.location.href, target, 'the navigation was redirected into the scope');
+  assert_greater_than(w.handleFetchEvent, 0, 'the worker answered it');
+  const entry = w.performance.getEntriesByType('navigation')[0];
+  assert_equals(entry.redirectCount, 1, 'one same-origin redirect');
+  // The final service worker start time: after the redirect, so at least
+  // the server's second past the time origin (HTTP fetch step 3.3 runs
+  // again for the redirected request).
+  assert_greater_than(entry.workerStart, 0, 'a controlled navigation has a workerStart');
+  assert_greater_than_equal(entry.workerStart, entry.redirectEnd, 'workerStart is not before the redirect ended');
+  assert_greater_than_equal(entry.redirectEnd, 900, 'the redirect took the server\'s second');
+  assert_less_than_equal(entry.workerStart, entry.fetchStart, 'workerStart is not after fetchStart');
+}, 'a navigation redirected into the scope: workerStart is the final service worker start time');
 </script>

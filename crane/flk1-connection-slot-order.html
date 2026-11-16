@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A request waiting for one of its host's six connections is not passed by the requests started after it</title>
+<link rel="help" href="https://fetch.spec.whatwg.org/#concept-connection-obtain">
+<!--
+  Every browser opens at most six HTTP/1.1 connections to a host and queues
+  the requests beyond that; a connection that becomes free goes to the oldest
+  queued request (Chromium: TransportClientSocketPool::ReleaseSocket ->
+  OnAvailableSocketSlot -> ProcessPendingRequest; Gecko: nsHttpConnectionMgr's
+  pending queue, in arrival order within a priority). A page that keeps six
+  requests going - each one's end starting the next, as
+  /common/dispatcher/dispatcher.js's limiter(6) over its poll loop does - must
+  not keep a seventh request waiting for as long as it keeps that up.
+
+  Crane gave a freed connection to whichever request asked next: the script
+  that a response runs starts the next request before the queue is looked at,
+  so the six chains passed the six connections among themselves and the
+  seventh request started only when they ended - all 60 chained requests
+  first. Under a loaded server that is how
+  html/cross-origin-embedder-policy/credentialless/fetch.https.window.js
+  timed out: its two popups' requests waited behind the opener's pollers.
+
+  The assertions are about order, not time: how many of the chained requests
+  had finished when the waiting one did. In order, the waiter takes the first
+  connection that is freed, so about one generation of six finishes before it;
+  18 leaves two more generations for a slow answer. Lane flk1, 2026-11-15.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Each answer takes 50 ms (the server waits before it sends).
+const slow = (label) => `/common/blank.html?pipe=trickle(d0.05)&flk1=${label}-${Math.random()}`;
+const chained = 60;
+
+// Six chains of requests, one after the other in each: six in flight until
+// `chained` have been made. `state.finished` counts the ones that ended.
+function startChains(label, state) {
+  const chain = async () => {
+    while (state.started < chained) {
+      state.started++;
+      const response = await fetch(slow(`${label}-${state.started}`));
+      await response.text();
+      state.finished++;
+    }
+  };
+  const chains = [];
+  for (let i = 0; i < 6; i++) chains.push(chain());
+  return Promise.all(chains);
+}
+
+promise_test(async () => {
+  const state = { started: 0, finished: 0 };
+  const chains = startChains('fetch', state);
+  assert_equals(state.started, 6, 'six requests are in flight');
+  // The seventh request to the host: it waits for a connection.
+  const response = await fetch(slow('fetch-waiter'));
+  await response.text();
+  const finished_first = state.finished;
+  await chains;
+  assert_equals(state.finished, chained, 'every chained request ended');
+  assert_less_than(finished_first, 18, 'chained requests that ended before the waiting request did');
+}, 'a fetch that waits for a connection starts before the fetches started after it');
+
+promise_test(async () => {
+  const state = { started: 0, finished: 0 };
+  const chains = startChains('frame', state);
+  assert_equals(state.started, 6, 'six requests are in flight');
+  // The seventh request is a navigation: a frame's document.
+  const frame = document.createElement('iframe');
+  const loaded = new Promise((resolve) => { frame.onload = resolve; });
+  frame.src = slow('frame-waiter');
+  document.body.appendChild(frame);
+  await loaded;
+  const finished_first = state.finished;
+  frame.remove();
+  await chains;
+  assert_equals(state.finished, chained, 'every chained request ended');
+  assert_less_than(finished_first, 18, 'chained requests that ended before the frame loaded');
+}, 'a frame whose navigation waits for a connection loads before the fetches started after it');
+</script>
