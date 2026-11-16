@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node's event listener list in its rare block - dispatch while the block moves, every node type, collection</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke">
+<link rel=help href="https://dom.spec.whatwg.org/#add-an-event-listener">
+<link rel=help href="https://dom.spec.whatwg.org/#remove-an-event-listener">
+<link rel=help href="https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-attributes">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane nm3 (node memory batch 3). A node keeps no event listener word of its
+// own any more: the list's address is a field of the node's sparse rare
+// block, made with the node's first listener. That block MOVES when a field
+// is added to it (the first read of classList, style, dataset, attributes,
+// children, childNodes or part each adds one), and the list's own block
+// moves when it grows. A listener is script, so both can move under the
+// dispatch that is calling it. DOM "inner invoke" walks a clone of the list
+// taken before the first callback: what a callback adds is not called by
+// this dispatch, what it removes before its turn is not called at all.
+// A read through a block that moved shows as poison or a crash in the
+// bug-finding run; a list or a callback not freed shows as a leak there.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+// Every script-reachable rare field of an element: its block grows from one
+// slot to fifteen and moves at each power of two.
+function grow(el) {
+  el.classList.add("a");
+  el.style.color = "red";
+  el.dataset.x = "1";
+  void el.attributes; void el.children; void el.childNodes; void el.part;
+  el.setAttribute("nonce", "n");
+}
+
+test(() => {
+  const el = document.body.appendChild(document.createElement("div"));
+  const log = [];
+  const late = () => log.push("late");
+  el.addEventListener("ping", () => {
+    log.push(1);
+    grow(el);
+    el.addEventListener("ping", late);
+    for (let i = 0; i < 6; i++) el.addEventListener("other" + i, () => {});
+  });
+  el.addEventListener("ping", () => log.push(2), { once: true });
+  el.onclick = () => log.push("handler");
+  el.addEventListener("ping", () => log.push(3));
+  el.dispatchEvent(new Event("ping"));
+  assert_array_equals(log, [1, 2, 3], "the clone taken before the first callback");
+  log.length = 0;
+  el.dispatchEvent(new Event("ping"));
+  assert_array_equals(log, [1, 3, "late"], "once is gone; `late`, added under the first dispatch, runs (added again: the same listener)");
+  log.length = 0;
+  el.click();
+  assert_array_equals(log, ["handler"], "the event handler kept its listener");
+  assert_equals(el.className, "a");
+  assert_equals(el.style.color, "red");
+  assert_equals(el.dataset.x, "1");
+  el.remove();
+}, "listeners run in order while the node's rare block and its list grow under the dispatch");
+
+test(() => {
+  const el = document.body.appendChild(document.createElement("p"));
+  const log = [];
+  const second = () => log.push(2);
+  const controller = new AbortController();
+  el.addEventListener("ping", () => {
+    log.push(1);
+    grow(el);
+    el.removeEventListener("ping", second);
+    controller.abort();
+  });
+  el.addEventListener("ping", second);
+  el.addEventListener("ping", () => log.push(3), { signal: controller.signal });
+  el.addEventListener("ping", () => log.push(4), true);
+  el.dispatchEvent(new Event("ping"));
+  assert_array_equals(log, [4, 1], "at the target the capturing listener runs first; 2 and 3 left before their turn");
+  log.length = 0;
+  el.dispatchEvent(new Event("ping"));
+  assert_array_equals(log, [4, 1]);
+  el.remove();
+}, "a listener removed or aborted by an earlier callback is not called, whatever moved meanwhile");
+
+test(() => {
+  const host = document.body.appendChild(document.createElement("section"));
+  const text = host.appendChild(document.createTextNode("t"));
+  const comment = host.appendChild(document.createComment("c"));
+  const fragment = document.createDocumentFragment();
+  const attr = document.createAttribute("data-n");
+  const doctype = document.implementation.createDocumentType("html", "", "");
+  const pi = new DOMParser().parseFromString("<r/>", "text/xml").createProcessingInstruction("x", "y");
+  const shadow = host.attachShadow({ mode: "open" });
+  const inner = shadow.appendChild(document.createElement("span"));
+  const log = [];
+  const nodes = { text, comment, fragment, attr, doctype, pi, shadow, inner, host };
+  for (const [name, node] of Object.entries(nodes)) {
+    assert_true(node instanceof EventTarget, name + " is an EventTarget");
+    node.addEventListener("ping", e => log.push(name + "@" + e.eventPhase));
+  }
+  // EventTarget's operations take a node as their receiver by brand.
+  EventTarget.prototype.addEventListener.call(text, "ping", () => log.push("text again"));
+  assert_throws_js(TypeError, () => EventTarget.prototype.addEventListener.call({}, "ping", () => {}));
+  text.dispatchEvent(new Event("ping", { bubbles: true }));
+  assert_array_equals(log, ["text@2", "text again", "host@3"]);
+  log.length = 0;
+  inner.dispatchEvent(new Event("ping", { bubbles: true, composed: true }));
+  assert_array_equals(log, ["inner@2", "shadow@3", "host@2"]);
+  log.length = 0;
+  for (const node of [comment, fragment, attr, doctype, pi]) node.dispatchEvent(new Event("ping"));
+  assert_array_equals(log, ["comment@2", "fragment@2", "attr@2", "doctype@2", "pi@2"]);
+  // The data of a Text is untouched by the list beside it.
+  assert_equals(text.data, "t");
+  // An argument typed EventTarget takes a node.
+  assert_equals(new MouseEvent("over", { relatedTarget: text }).relatedTarget, text);
+  host.remove();
+}, "every node type is an EventTarget with a listener list of its own");
+
+test(() => {
+  const plain = new EventTarget();
+  let calls = 0;
+  plain.addEventListener("ping", () => calls++);
+  plain.dispatchEvent(new Event("ping"));
+  assert_equals(calls, 1);
+  const xhr = new XMLHttpRequest();
+  const handler = () => {};
+  xhr.onload = handler;
+  assert_equals(xhr.onload, handler);
+  const signal = AbortSignal.abort();
+  signal.addEventListener("abort", () => calls++);
+  assert_equals(calls, 1, "an aborted signal fires nothing new");
+  window.addEventListener("nm3-ping", () => calls++, { once: true });
+  window.dispatchEvent(new Event("nm3-ping"));
+  window.dispatchEvent(new Event("nm3-ping"));
+  assert_equals(calls, 2);
+}, "a target that is no node keeps its listeners as before");
+
+test(() => {
+  const div = document.body.appendChild(document.createElement("div"));
+  div.innerHTML = '<button onclick="window.nm3Clicked = (window.nm3Clicked || 0) + 1">b</button>';
+  const button = div.firstChild;
+  const before = [];
+  button.addEventListener("click", () => before.push("first"));
+  // The content attribute's handler is compiled on first use, in place.
+  button.click();
+  assert_equals(window.nm3Clicked, 1);
+  assert_equals(typeof button.onclick, "function");
+  grow(button);
+  button.setAttribute("onclick", "window.nm3Clicked += 10");
+  button.click();
+  assert_equals(window.nm3Clicked, 11, "the handler set again keeps its listener");
+  button.onclick = null;
+  button.click();
+  assert_equals(window.nm3Clicked, 11);
+  assert_array_equals(before, ["first", "first", "first"]);
+  div.remove();
+}, "an event handler content attribute's raw handler lives in the same list");
+
+promise_test(async t => {
+  let fired = 0;
+  // Trees dropped with listeners on every node.
+  for (let n = 0; n < 30; n++) {
+    const root = document.createElement("div");
+    let at = root;
+    for (let d = 0; d < 6; d++) {
+      at = at.appendChild(document.createElement("span"));
+      at.addEventListener("click", () => fired++);
+      at.addEventListener("my-own-event", function named() {}, { capture: true });
+      at.onkeydown = () => {};
+      if (d % 2) grow(at);
+      at.appendChild(document.createTextNode("t")).addEventListener("x", () => {});
+    }
+  }
+  // A kept node whose listeners must survive every collection.
+  const kept = document.createElement("ul");
+  for (let i = 0; i < 20; i++) kept.appendChild(document.createElement("li")).addEventListener("click", () => fired++);
+  await collect(t);
+  for (const li of kept.children) li.dispatchEvent(new Event("click"));
+  assert_equals(fired, 20, "the kept nodes kept their listeners");
+  grow(kept.firstChild);
+  await collect(t);
+  kept.firstChild.dispatchEvent(new Event("click"));
+  assert_equals(fired, 21);
+}, "collected trees free their listeners; kept nodes keep theirs across collections");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  const doc = frame.contentDocument;
+  const el = doc.body.appendChild(doc.createElement("div"));
+  const log = [];
+  el.addEventListener("ping", () => {
+    log.push(1);
+    // The document of the node being dispatched to goes under the dispatch:
+    // the walk's next read of the node's listener list comes after its
+    // realm ended.
+    frame.remove();
+  });
+  el.addEventListener("ping", () => log.push(2));
+  el.dispatchEvent(new Event("ping"));
+  // What this pins is that the walk ends cleanly. Whether the second
+  // listener still runs is not this test's: Crane does not call it today
+  // (main and this lane alike; reported to the integrator 2026-11-16), and
+  // the test passes either way.
+  assert_equals(log[0], 1);
+  assert_less_than_equal(log.length, 2);
+  await collect(t);
+  el.dispatchEvent(new Event("ping"));
+  el.addEventListener("ping", () => log.push(3));
+  el.removeEventListener("ping", () => {});
+  assert_equals(typeof el.onclick, "object");
+}, "a callback that removes the frame of the node being dispatched to: the walk ends cleanly");
+</script>
+</content>
+</invoke>
