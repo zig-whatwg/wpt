@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node's one rare block (observers, childNodes, element fields) and a leaf's data word, under collection</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-node-childnodes">
+<link rel=help href="https://dom.spec.whatwg.org/#registered-observer-list">
+<link rel=help href="https://dom.spec.whatwg.org/#interface-characterdata">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane nm2 (node memory batch 2). Three things moved inside a node:
+// - a node has ONE rare block: its registered observer list and its
+//   childNodes list are fields of the same sparse block as an element's
+//   classList, style, attributes and shadow root. The block MOVES when a
+//   field is added, so every field read before a grow must read back after;
+// - Node's childNodes list is kept in that block, not in every node's state.
+//   The node's cache of the list is raw (the list keeps the node, never the
+//   reverse): a list collected before its node clears the cache;
+// - a Text / Comment keeps a word of its data where a container keeps its
+//   first child: firstChild / hasChildNodes / childNodes of a leaf must read
+//   as empty whatever its data is, and the data must survive tree walks.
+// A read through a freed block or a data word read as a child pointer shows
+// as poison or a crash in the bug-finding run.
+
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function collect(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    await TestUtils.gc();
+  }
+  await nextTask(t);
+}
+
+test(() => {
+  const div = document.createElement("div");
+  div.append("a", document.createElement("b"), "c");
+  const list = div.childNodes;
+  assert_equals(div.childNodes, list, "[SameObject]");
+  assert_equals(list.length, 3);
+  // Every other rare field of the element, one after another: the block
+  // grows and moves under the childNodes slot.
+  const class_list = div.classList;
+  div.style.color = "red";
+  const attributes = div.attributes;
+  div.setAttribute("title", "t");
+  const attr = div.getAttributeNode("title");
+  const shadow = div.attachShadow({ mode: "open" });
+  const dataset = div.dataset;
+  const children = div.children;
+  const part = div.part;
+  div.nonce = "n";
+  assert_equals(div.childNodes, list, "childNodes after the block grew");
+  assert_equals(div.classList, class_list);
+  assert_equals(div.attributes, attributes);
+  assert_equals(div.getAttributeNode("title"), attr);
+  assert_equals(div.shadowRoot, shadow);
+  assert_equals(div.dataset, dataset);
+  assert_equals(div.children, children);
+  assert_equals(div.part, part);
+  assert_equals(div.style.color, "red");
+  assert_equals(div.nonce, "n");
+  div.append("d");
+  assert_equals(list.length, 4, "the list is live");
+}, "childNodes is the same object while every other rare field of its element is added");
+
+test(() => {
+  for (const node of [document.createTextNode("text"), document.createComment("comment"),
+                      document.createProcessingInstruction("pi", "data"),
+                      new DOMParser().parseFromString("<a><![CDATA[cdata]]></a>", "text/xml").documentElement.firstChild,
+                      document.implementation.createDocumentType("html", "", ""),
+                      document.createDocumentFragment(), document.implementation.createHTMLDocument("")]) {
+    const list = node.childNodes;
+    assert_equals(node.childNodes, list, `[SameObject] on ${node.nodeName}`);
+    // createHTMLDocument makes a doctype and an html element.
+    if (node.nodeType == Node.DOCUMENT_NODE) assert_equals(list.length, 2);
+    else assert_equals(list.length, 0, `${node.nodeName} has no children`);
+  }
+}, "childNodes of every kind of node");
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  // Only the list is kept: it keeps its node.
+  const lists = [];
+  for (let i = 0; i < 50; i++) {
+    const p = document.createElement("p");
+    p.append("x" + i, document.createElement("i"));
+    lists.push(p.childNodes);
+  }
+  await collect(t);
+  for (let i = 0; i < 50; i++) {
+    assert_equals(lists[i].length, 2);
+    assert_equals(lists[i][0].data, "x" + i);
+    assert_equals(lists[i][1].parentNode.childNodes, lists[i]);
+  }
+}, "a childNodes list kept alone keeps its node, and is still its node's list after a collection");
+
+promise_test(async t => {
+  // Only the node is kept: its list is collected, and the node's cache of
+  // it lets go. The next read makes a list that works.
+  const nodes = [];
+  for (let i = 0; i < 50; i++) {
+    const p = document.createElement("p");
+    p.append("a", "b", "c");
+    assert_equals(p.childNodes.length, 3);
+    nodes.push(p);
+  }
+  await collect(t);
+  for (const p of nodes) {
+    p.append("d");
+    const list = p.childNodes;
+    assert_equals(list.length, 4);
+    assert_equals(p.childNodes, list);
+    assert_equals(list[3].data, "d");
+  }
+  await collect(t);
+  for (const p of nodes) assert_equals(p.childNodes.length, 4);
+}, "a node kept alone gets a working childNodes list again after its first one was collected");
+
+promise_test(async t => {
+  // A registered observer on a Text and on an element, then more rare
+  // fields on both nodes, then mutations: the records arrive in order.
+  const host = document.body.appendChild(document.createElement("div"));
+  t.add_cleanup(() => host.remove());
+  const text = host.appendChild(document.createTextNode("one"));
+  const records = [];
+  const observer = new MutationObserver(list => records.push(...list));
+  observer.observe(text, { characterData: true, characterDataOldValue: true });
+  observer.observe(host, { childList: true, attributes: true });
+  const second = new MutationObserver(list => records.push(...list));
+  second.observe(text, { characterData: true });
+  // The Text gets a childNodes list (its block grows past the observer
+  // list's slot); the element every field.
+  assert_equals(text.childNodes.length, 0);
+  host.classList.add("k");
+  host.style.color = "blue";
+  assert_equals(host.attributes.length, 2);
+  assert_equals(host.childNodes[0], text);
+  await collect(t);
+  text.data = "two";
+  host.append("tail");
+  host.setAttribute("title", "t");
+  await nextTask(t);
+  const seen = records.map(r => r.type + ":" + (r.attributeName || r.oldValue || r.addedNodes.length));
+  // class and style were delivered before the collection. Then each
+  // observer's own records in order, the first observer first: the data
+  // with its old value, the child and the title; then the second
+  // observer's data record, which asked for no old value.
+  assert_array_equals(seen, ["attributes:class", "attributes:style", "characterData:one", "childList:1", "attributes:title", "characterData:0"]);
+  second.disconnect();
+  observer.disconnect();
+  text.data = "three";
+  await nextTask(t);
+  assert_equals(records.length, 6, "disconnected observers get nothing");
+}, "registered observers on a Text and an element survive the nodes' other rare fields and a collection");
+
+test(() => {
+  // Every storage of a text node's data (in the node's own word, the shared
+  // whitespace, a block), read between tree operations that read every
+  // node's first child.
+  const div = document.createElement("div");
+  const datas = ["", "x", "12345678", "123456789", "\n        ", "\n" + " ".repeat(30),
+                 "a much longer run of text than any word holds", "\u{1F600}", "café au lait"];
+  for (const data of datas) {
+    div.append(document.createTextNode(data), document.createComment(data), document.createElement("span"));
+  }
+  const walk = () => {
+    let count = 0;
+    const walker = document.createTreeWalker(div, NodeFilter.SHOW_ALL);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (node.nodeType != Node.ELEMENT_NODE) {
+        assert_equals(node.firstChild, null);
+        assert_equals(node.lastChild, null);
+        assert_false(node.hasChildNodes());
+        assert_equals(node.childNodes.length, 0);
+        assert_false(node.contains(div));
+      }
+      count++;
+    }
+    return count;
+  };
+  assert_equals(walk(), datas.length * 3);
+  assert_equals(div.querySelectorAll("span").length, datas.length);
+  assert_equals(div.querySelectorAll("span:empty").length, datas.length);
+  assert_equals(div.textContent, datas.join(""));
+  for (let i = 0; i < datas.length; i++) {
+    assert_equals(div.childNodes[i * 3].data, datas[i], "Text " + i);
+    assert_equals(div.childNodes[i * 3 + 1].data, datas[i], "Comment " + i);
+  }
+  // Each text through every size class and back, with the walk between.
+  for (let i = 0; i < datas.length; i++) {
+    const text = div.childNodes[i * 3];
+    text.appendData("0123456789abcdef");
+    assert_equals(text.data, datas[i] + "0123456789abcdef");
+    text.deleteData(0, text.length - 3);
+    assert_equals(text.data, "def");
+    text.data = datas[(i + 1) % datas.length];
+  }
+  assert_equals(walk(), datas.length * 3);
+  for (let i = 0; i < datas.length; i++) assert_equals(div.childNodes[i * 3].data, datas[(i + 1) % datas.length]);
+  // A deep clone, normalize and a split read and write the same words.
+  const clone = div.cloneNode(true);
+  assert_true(clone.isEqualNode(div));
+  for (const span of [...clone.querySelectorAll("span")]) span.remove();
+  for (const node of [...clone.childNodes]) if (node.nodeType == Node.COMMENT_NODE) node.remove();
+  clone.normalize();
+  assert_equals(clone.childNodes.length, 1);
+  assert_equals(clone.firstChild.data, clone.textContent);
+  const tail = clone.firstChild.splitText(3);
+  assert_equals(clone.firstChild.data + tail.data, clone.textContent);
+  assert_equals(tail.firstChild, null);
+  // No node may be put under a leaf.
+  assert_throws_dom("HierarchyRequestError", () => tail.appendChild(document.createElement("b")));
+  assert_throws_dom("HierarchyRequestError", () => div.childNodes[1].appendChild(document.createTextNode("x")));
+  assert_equals(tail.data, clone.textContent.slice(3));
+}, "a leaf node's data, in every storage, beside walks that read every node's first child");
+
+promise_test(async t => {
+  // Text nodes churned with collections: created, linked, split, joined and
+  // dropped, their data read back each round.
+  const host = document.createElement("div");
+  for (let round = 0; round < 20; round++) {
+    for (let i = 0; i < 200; i++) host.append(i % 3 ? "t" + i : "\n    ", document.createElement("em"));
+    if (round % 4 == 0) await collect(t);
+    let text = "";
+    for (const node of host.childNodes) if (node.nodeType == Node.TEXT_NODE) text += node.data;
+    assert_equals(text, host.textContent);
+    host.normalize();
+    assert_equals(host.textContent, text);
+    host.replaceChildren();
+  }
+  assert_equals(host.firstChild, null);
+}, "text nodes created, read and dropped across collections");
+</script>
