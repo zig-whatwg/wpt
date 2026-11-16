@@ -53,6 +53,8 @@ promise_test(async () => {
     .then(() => observed.push("crypto"));
   queueMicrotask(() => observed.push("microtask"));
   await result;
-  assert_array_equals(observed, ["microtask", "crypto"]);
-}, "Native key generation settles after the caller's microtask checkpoint");
+  // Chrome 157 and Safari 27 generate a non-RSA key inside the call (Firefox 159 from a task):
+  // crane/wc1-subtle-settles-in-the-call.https.html has every row and its evidence.
+  assert_array_equals(observed, ["crypto", "microtask"]);
+}, "Native key generation of a non-RSA key settles in the call, ahead of the caller's microtask");
 </script>

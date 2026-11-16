@@ -1,0 +1,158 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name=timeout content=long>
+<title>SubtleCrypto: which methods settle their promise in the call, and which from a task</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebCrypto says every SubtleCrypto method returns its promise, works "in
+// parallel" and settles the promise from a task on the crypto task source.
+// The browsers do otherwise, and pages - and WPT's
+// WebCryptoAPI/derive_bits_keys/derive_key_and_encrypt.https.any.js - see it:
+// that file defines its tests from importKey()'s reaction, called from a
+// microtask of the last parser-inserted script, and it has them all only if
+// importKey has settled before the load event's 0 ms timer.
+//
+// Probed 2026-11-15 (Chrome 157, Firefox 159, Safari 27) and read in
+// components/webcrypto/webcrypto_impl.cc (Chromium), WebCore/crypto/SubtleCrypto.cpp
+// (WebKit) and dom/crypto/WebCryptoTask.cpp (Gecko). "In the call" means the
+// promise is already settled when the method returns:
+//
+//                                    Chrome       Firefox           Safari
+//   importKey                        in the call  in the call for   in the call
+//                                                 secret keys, else
+//                                                 later
+//   exportKey                        in the call  later             in the call
+//   generateKey, not RSA             in the call  later             in the call
+//   generateKey, RSA                 later        later             later
+//   wrapKey / unwrapKey, AES-KW      in the call  later             in the call
+//   wrapKey / unwrapKey, others      in the call  later             later
+//   digest, encrypt, decrypt, sign,  in the call  later             later
+//   verify, deriveBits, deriveKey    (PBKDF2: later)
+//
+// Golden rule 2: each row below expects what two of the three do.
+const subtle = crypto.subtle;
+const bytes = (n) => new Uint8Array(n);
+function hex(text) {
+  const out = new Uint8Array(text.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(text.substr(i * 2, 2), 16);
+  return out;
+}
+// The P-256 pair of derive_key_and_encrypt.js.
+const p256_pkcs8 = hex("308187020100301306072a8648ce3d020106082a8648ce3d030107046d306b0201010420fe77a808a7109ba5ceb93ebebad2c84a714d864ad29b62d6537e1969035c0079a144034200042684c752eef1c927a80c74e8b02ce459f848b5977f37fd878b36dae632be9a6cadd56126e404a4f75c535e5769d95b49fb1106f784f3d231b776d1f4d57927ce");
+const p256_raw = hex("042684c752eef1c927a80c74e8b02ce459f848b5977f37fd878b36dae632be9a6cadd56126e404a4f75c535e5769d95b49fb1106f784f3d231b776d1f4d57927ce");
+const ECDH = { name: "ECDH", namedCurve: "P-256" };
+const RSA = { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" };
+
+// Whether `make()`'s promise was settled when make() returned: its reaction,
+// registered first, then runs ahead of a microtask queued after it.
+function settles(make) {
+  return new Promise((resolve) => {
+    const order = [];
+    let outcome;
+    const promise = make();
+    promise.then(() => { outcome = "fulfilled"; order.push("promise"); }, (e) => { outcome = e.name; order.push("promise"); });
+    Promise.resolve().then(() => order.push("microtask"));
+    const done = () => resolve({ when: order[0] === "promise" ? "in the call" : "later", outcome });
+    promise.then(done, done);
+  });
+}
+
+// The shape of derive_key_and_encrypt.https.any.js: a parser-inserted
+// script's microtask imports keys; their reaction has run when load fires.
+const load_test = async_test("importKey called from a microtask of a parser-inserted script has settled before the load event");
+let imported_before_load = false;
+Promise.resolve().then(() => {
+  Promise.all([
+    subtle.importKey("pkcs8", p256_pkcs8, ECDH, true, ["deriveKey", "deriveBits"]),
+    subtle.importKey("raw", p256_raw, ECDH, true, []),
+  ]).then(() => { imported_before_load = true; });
+});
+addEventListener("load", load_test.step_func_done(() => {
+  assert_true(imported_before_load, "the keys' reaction ran before load");
+}));
+
+const k = {};
+promise_test(async () => {
+  k.aes = await subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt", "wrapKey", "unwrapKey"]);
+  k.aes_fixed = await subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+  k.kw = await subtle.generateKey({ name: "AES-KW", length: 256 }, true, ["wrapKey", "unwrapKey"]);
+  k.hmac = await subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, true, ["sign", "verify"]);
+  k.ecdh = await subtle.generateKey(ECDH, true, ["deriveBits", "deriveKey"]);
+  k.ecdsa = await subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  k.hkdf = await subtle.importKey("raw", bytes(32), "HKDF", false, ["deriveBits", "deriveKey"]);
+  k.pbkdf2 = await subtle.importKey("raw", bytes(32), "PBKDF2", false, ["deriveBits", "deriveKey"]);
+  k.spki = await subtle.exportKey("spki", k.ecdh.publicKey);
+  k.jwk_ec = await subtle.exportKey("jwk", k.ecdh.publicKey);
+  k.jwk_aes = await subtle.exportKey("jwk", k.aes);
+  k.iv = bytes(12);
+  k.gcm = { name: "AES-GCM", iv: k.iv };
+  k.ciphertext = await subtle.encrypt(k.gcm, k.aes, bytes(16));
+  k.mac = await subtle.sign("HMAC", k.hmac, bytes(16));
+  k.signature = await subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k.ecdsa.privateKey, bytes(16));
+  k.kw_wrapped = await subtle.wrapKey("raw", k.aes, k.kw, "AES-KW");
+  k.gcm_wrapped = await subtle.wrapKey("raw", k.aes, k.aes, k.gcm);
+}, "setup: the keys and data the rows use");
+
+function row(name, expected_when, expected_outcome, make) {
+  promise_test(async () => {
+    const got = await settles(make);
+    assert_equals(got.outcome, expected_outcome, "how the promise settled");
+    assert_equals(got.when, expected_when, "when the promise settled");
+  }, name + ": " + expected_when);
+}
+
+// importKey: in the call (Chrome, Safari; Firefox for secret keys).
+row("importKey raw AES-GCM", "in the call", "fulfilled", () => subtle.importKey("raw", bytes(32), "AES-GCM", true, ["encrypt"]));
+row("importKey raw HMAC", "in the call", "fulfilled", () => subtle.importKey("raw", bytes(32), { name: "HMAC", hash: "SHA-256" }, true, ["sign"]));
+row("importKey raw HKDF", "in the call", "fulfilled", () => subtle.importKey("raw", bytes(32), "HKDF", false, ["deriveBits"]));
+row("importKey jwk AES-GCM", "in the call", "fulfilled", () => subtle.importKey("jwk", k.jwk_aes, "AES-GCM", true, ["encrypt"]));
+row("importKey raw ECDH", "in the call", "fulfilled", () => subtle.importKey("raw", p256_raw, ECDH, true, []));
+row("importKey spki ECDH", "in the call", "fulfilled", () => subtle.importKey("spki", k.spki, ECDH, true, []));
+row("importKey pkcs8 ECDH", "in the call", "fulfilled", () => subtle.importKey("pkcs8", p256_pkcs8, ECDH, true, ["deriveBits"]));
+row("importKey jwk ECDH", "in the call", "fulfilled", () => subtle.importKey("jwk", k.jwk_ec, ECDH, true, []));
+row("importKey raw Ed25519", "in the call", "fulfilled", () => subtle.importKey("raw", hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"), "Ed25519", true, ["verify"]));
+row("importKey of bad spki bytes", "in the call", "DataError", () => subtle.importKey("spki", bytes(5), ECDH, true, []));
+row("importKey of a secret key with no usable usage", "in the call", "SyntaxError", () => subtle.importKey("raw", bytes(32), "AES-GCM", true, ["sign"]));
+
+// exportKey: in the call (Chrome, Safari).
+row("exportKey raw AES-GCM", "in the call", "fulfilled", () => subtle.exportKey("raw", k.aes));
+row("exportKey jwk AES-GCM", "in the call", "fulfilled", () => subtle.exportKey("jwk", k.aes));
+row("exportKey spki ECDH", "in the call", "fulfilled", () => subtle.exportKey("spki", k.ecdh.publicKey));
+row("exportKey pkcs8 ECDH", "in the call", "fulfilled", () => subtle.exportKey("pkcs8", k.ecdh.privateKey));
+row("exportKey jwk ECDH", "in the call", "fulfilled", () => subtle.exportKey("jwk", k.ecdh.privateKey));
+row("exportKey of a key that is not extractable", "in the call", "InvalidAccessError", () => subtle.exportKey("raw", k.aes_fixed));
+
+// generateKey: in the call unless RSA (Chrome, Safari); RSA later (all three).
+row("generateKey AES-GCM", "in the call", "fulfilled", () => subtle.generateKey({ name: "AES-GCM", length: 128 }, true, ["encrypt"]));
+row("generateKey HMAC", "in the call", "fulfilled", () => subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, true, ["sign"]));
+row("generateKey ECDH", "in the call", "fulfilled", () => subtle.generateKey(ECDH, true, ["deriveBits"]));
+row("generateKey ECDSA", "in the call", "fulfilled", () => subtle.generateKey({ name: "ECDSA", namedCurve: "P-384" }, true, ["sign"]));
+row("generateKey Ed25519", "in the call", "fulfilled", () => subtle.generateKey("Ed25519", true, ["sign"]));
+row("generateKey X25519", "in the call", "fulfilled", () => subtle.generateKey("X25519", true, ["deriveBits"]));
+row("generateKey of a secret key with no usage", "in the call", "SyntaxError", () => subtle.generateKey({ name: "AES-GCM", length: 128 }, true, []));
+row("generateKey RSA-OAEP", "later", "fulfilled", () => subtle.generateKey(RSA, true, ["encrypt", "decrypt"]));
+
+// wrapKey / unwrapKey: in the call with AES-KW (Chrome, Safari), later with
+// an algorithm that wraps by encrypting (Firefox, Safari).
+row("wrapKey with AES-KW", "in the call", "fulfilled", () => subtle.wrapKey("raw", k.aes, k.kw, "AES-KW"));
+row("unwrapKey with AES-KW", "in the call", "fulfilled", () => subtle.unwrapKey("raw", k.kw_wrapped, k.kw, "AES-KW", "AES-GCM", true, ["encrypt"]));
+row("wrapKey with AES-GCM", "later", "fulfilled", () => subtle.wrapKey("raw", k.aes, k.aes, k.gcm));
+row("unwrapKey with AES-GCM", "later", "fulfilled", () => subtle.unwrapKey("raw", k.gcm_wrapped, k.aes, k.gcm, "AES-GCM", true, ["encrypt"]));
+
+// The rest: from a task (Firefox, Safari).
+row("digest", "later", "fulfilled", () => subtle.digest("SHA-256", bytes(1)));
+row("encrypt AES-GCM", "later", "fulfilled", () => subtle.encrypt(k.gcm, k.aes, bytes(16)));
+row("decrypt AES-GCM", "later", "fulfilled", () => subtle.decrypt(k.gcm, k.aes, k.ciphertext));
+row("decrypt AES-GCM of bytes that do not authenticate", "later", "OperationError", () => subtle.decrypt(k.gcm, k.aes, bytes(32)));
+row("sign HMAC", "later", "fulfilled", () => subtle.sign("HMAC", k.hmac, bytes(16)));
+row("verify HMAC", "later", "fulfilled", () => subtle.verify("HMAC", k.hmac, k.mac, bytes(16)));
+row("sign ECDSA", "later", "fulfilled", () => subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k.ecdsa.privateKey, bytes(16)));
+row("verify ECDSA", "later", "fulfilled", () => subtle.verify({ name: "ECDSA", hash: "SHA-256" }, k.ecdsa.publicKey, k.signature, bytes(16)));
+row("deriveBits ECDH", "later", "fulfilled", () => subtle.deriveBits({ name: "ECDH", public: k.ecdh.publicKey }, k.ecdh.privateKey, 256));
+row("deriveBits HKDF", "later", "fulfilled", () => subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: bytes(8), info: bytes(8) }, k.hkdf, 256));
+row("deriveBits PBKDF2", "later", "fulfilled", () => subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: bytes(8), iterations: 1000 }, k.pbkdf2, 256));
+row("deriveKey ECDH", "later", "fulfilled", () => subtle.deriveKey({ name: "ECDH", public: k.ecdh.publicKey }, k.ecdh.privateKey, { name: "AES-GCM", length: 256 }, true, ["encrypt"]));
+row("deriveKey HKDF", "later", "fulfilled", () => subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: bytes(8), info: bytes(8) }, k.hkdf, { name: "AES-GCM", length: 256 }, true, ["encrypt"]));
+</script>
