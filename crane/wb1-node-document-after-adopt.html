@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a node's document after adopt - every node of the tree, its shadow trees, and each attribute node script made</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-adopt">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-node-document">
+<link rel=help href="https://dom.spec.whatwg.org/#dom-document-adoptnode">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane wb1 (the WithBase retirement, node memory plan v2 X3). A node names
+// its document in one word, which holds the Document or nothing; "adopt"
+// (DOM 4.2.5) had a second branch for nodes no platform object owned, with
+// their own attribute list, and the word had a third form for them. Both are
+// gone. These hold what script sees of the one path that is left: step 3.1
+// sets the node document of each shadow-including inclusive descendant, and
+// "if inclusiveDescendant is an element, then set the node document of each
+// attribute in inclusiveDescendant's attribute list to document".
+
+function expectDocument(nodes, doc, why) {
+  for (const node of nodes) assert_equals(node.ownerDocument, doc, why + ": " + node.nodeName);
+}
+
+test(() => {
+  const other = document.implementation.createHTMLDocument("other");
+  const div = document.createElement("div");
+  div.setAttribute("id", "a");
+  div.setAttribute("title", "t");
+  const id = div.getAttributeNode("id");
+  const span = div.appendChild(document.createElement("span"));
+  span.setAttribute("class", "c");
+  const cls = span.getAttributeNode("class");
+  const text = span.appendChild(document.createTextNode("x"));
+  const comment = div.appendChild(document.createComment("c"));
+  const all = [div, span, text, comment, id, cls];
+  expectDocument(all, document, "before");
+
+  assert_equals(other.adoptNode(div), div);
+  expectDocument(all, other, "after adoptNode");
+  // An attribute node made only now is made in the element's document.
+  assert_equals(div.getAttributeNode("title").ownerDocument, other, "an attribute node made after the adoption");
+  assert_equals(div.parentNode, null);
+
+  // "insert" adopts into the parent's document (DOM 4.2.3 step 7.1).
+  document.body.appendChild(div);
+  expectDocument(all.concat(div.getAttributeNode("title")), document, "after insertion back");
+  div.remove();
+}, "adopt sets the document of every descendant and of every attribute node script made");
+
+test(() => {
+  const other = document.implementation.createHTMLDocument("other");
+  const host = document.createElement("section");
+  const shadow = host.attachShadow({ mode: "closed" });
+  const inner = shadow.appendChild(document.createElement("b"));
+  inner.setAttribute("lang", "en");
+  const lang = inner.getAttributeNode("lang");
+  const innerText = inner.appendChild(document.createTextNode("in shadow"));
+  const slotted = host.appendChild(document.createElement("i"));
+  const all = [host, shadow, inner, innerText, lang, slotted];
+  expectDocument(all, document, "before");
+  other.adoptNode(host);
+  expectDocument(all, other, "after adoptNode");
+  document.adoptNode(host);
+  expectDocument(all, document, "after adopting back");
+}, "adopt reaches a closed shadow tree and its attribute nodes");
+
+test(() => {
+  const other = document.implementation.createHTMLDocument("other");
+  const attr = document.createAttribute("data-x");
+  assert_equals(attr.ownerDocument, document);
+  assert_equals(attr.ownerElement, null);
+  other.adoptNode(attr);
+  assert_equals(attr.ownerDocument, other, "a detached attribute node is adopted alone");
+  const el = document.createElement("p");
+  el.setAttributeNode(attr);
+  assert_equals(attr.ownerElement, el);
+  assert_equals(attr.ownerDocument, document, "setAttributeNode adopts the attribute into the element's document");
+}, "an attribute node with no element is adopted, and follows the element it is set on");
+
+test(() => {
+  assert_equals(document.ownerDocument, null, "a document names no document");
+  const other = document.implementation.createHTMLDocument("other");
+  assert_equals(other.ownerDocument, null);
+  const fragment = other.createDocumentFragment();
+  const child = fragment.appendChild(other.createElement("u"));
+  expectDocument([fragment, child, other.documentElement, other.body], other, "made by the other document");
+  const copy = document.importNode(child, true);
+  assert_equals(copy.ownerDocument, document, "importNode's copy is this document's");
+  assert_equals(child.ownerDocument, other, "and the original stays");
+  const clone = child.cloneNode(true);
+  assert_equals(clone.ownerDocument, other, "cloneNode's copy is its node's document's");
+  // Appending a fragment moves its children, each adopted.
+  document.body.appendChild(fragment);
+  assert_equals(child.ownerDocument, document);
+  assert_equals(fragment.ownerDocument, other, "the emptied fragment keeps its document");
+  child.remove();
+}, "a node names the document that made it until it is adopted; a document names none");
+
+test(() => {
+  const div = document.createElement("div");
+  div.setAttribute("id", "same");
+  const id = div.getAttributeNode("id");
+  assert_equals(document.adoptNode(div), div);
+  expectDocument([div, id], document, "adopted into its own document");
+}, "adopting into the node's own document changes nothing");
+</script>
