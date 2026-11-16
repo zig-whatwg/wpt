@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A child navigable's load event fires while its parent's parser waits for a parser-blocking script</title>
+<!--
+  The parser stops at a parser-blocking script's end tag and spins the event
+  loop until the script is ready (HTML, "An end tag whose tag name is
+  script"), so the tasks of an iframe inserted before it run meanwhile: its
+  document loads and its load event fires on the iframe element, whose
+  handler runs in this document before the script does.
+
+  Chrome 157, Firefox 159 and Safari 27 all do this (lane flk2's probe,
+  2026-11-16: a page of this shape whose blocking script the server delays by
+  2 s runs the iframe's onload 16 to 33 ms after the script before it, and the
+  delayed script 2 s later; a delay of 25 ms is enough in Chrome, 50 ms in
+  Firefox and Safari).
+
+  No clock decides the order here: the server holds the blocking script until
+  the iframe's load handler releases it (resources/flk2-gated-script.py). An
+  engine that kept the child's load back until the parser moved on would
+  never release it, and the script would arrive saying so.
+
+  html/webappapis/dynamic-markup-insertion/html-unsafe-methods/
+  Document-parseHTMLUnsafe-url*.html put an iframe whose onload calls
+  window.resolveLoadPromise() BEFORE the script that defines it, and so pass
+  only while that script wins a race against the iframe's load - which the
+  browsers' speculative fetch of the script makes them win, and which the
+  files they were adapted from (domparsing/DOMParser-parseFromString-url*.html)
+  do not run: there the script comes first. Filed upstream as
+  https://github.com/web-platform-tests/wpt/issues/65281 (2026-11-16).
+-->
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script src=/common/utils.js></script>
+<script>
+window.order = [];
+const gate = "resources/flk2-gated-script.py?key=" + token();
+window.childLoaded = () => {
+  order.push("iframe load: typeof definedByTheBlockingScript = " + typeof window.gatedScript);
+  fetch(gate + "&action=release");
+};
+// Written, so that the gate's key is this load's own; the parser reaches
+// both once this script has ended, the iframe first, as markup of the page.
+document.write('<iframe src="/common/blank.html" onload="childLoaded()"></iframe>' +
+               '<script src="' + gate + '"><\/script>');
+</script>
+<script>
+order.push("the script after the blocking one: gatedScript = " + window.gatedScript);
+test(() => {
+  assert_array_equals(order, [
+    "iframe load: typeof definedByTheBlockingScript = undefined",
+    "the script after the blocking one: gatedScript = released",
+  ]);
+}, "an iframe's load event fires, and its onload runs, while the parser waits for the parser-blocking script after it");
+</script>
