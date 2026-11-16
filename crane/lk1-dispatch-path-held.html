@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an event's path is walked to its end whatever a listener frees - removed and dropped nodes, a removed frame, collections and new nodes under the dispatch</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke">
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#queue-a-details-toggle-event-task">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane lk1. DOM "dispatch" builds the event's path before the first listener
+// runs and walks all of it, whatever the listeners do to the tree. The
+// engine's walk keeps the path's objects by address, so they must stay alive
+// - and stay THEMSELVES - until the walk ends. Browsers hold a reference on
+// every item of the path for the dispatch (WebKit's EventContext: RefPtr
+// m_node and m_currentTarget; Blink's NodeEventContext and
+// WindowEventContext: Member node_ and window_; Gecko's
+// EventTargetChainItem: nsCOMPtr mTarget). Crane's path holds a counted
+// reference on every node (dom.event_dispatch DispatchPath.hold), and
+// nothing is freed while a DOM algorithm is on the stack.
+//
+// Each test's listener takes the path out of the document, drops every
+// script reference to it, collects, and makes thousands of objects of the
+// same kinds, each with listeners of the dispatched type. If the walk came
+// back to a freed node - reissued at once to one of the new ones in a
+// production build - one of those listeners would run ("NEWCOMER"), or the
+// bug-finding run would report the read.
+
+const kept = [];
+function collectNow() {
+  TestUtils.gc();
+  TestUtils.gc();
+}
+function churn(log) {
+  for (const name of ["section", "article", "details", "summary", "p", "span", "div", "html", "body", "iframe"]) {
+    for (let i = 0; i < 300; i++) {
+      const n = document.createElement(name);
+      for (const type of ["ping", "toggle"]) {
+        n.addEventListener(type, () => log.push("NEWCOMER"));
+        n.addEventListener(type, () => log.push("NEWCOMER"), true);
+      }
+      kept.push(n);
+    }
+  }
+  for (let i = 0; i < 300; i++) {
+    const target = new EventTarget();
+    for (const type of ["ping", "toggle"]) target.addEventListener(type, () => log.push("NEWCOMER"));
+    kept.push(target);
+  }
+}
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function settle(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    collectNow();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  const log = [];
+  const holder = document.body.appendChild(document.createElement("div"));
+  holder.innerHTML = '<section><article><p><span id="t1"></span></p></article></section>';
+  (() => {
+    for (const name of ["p", "article", "section"]) {
+      const n = holder.querySelector(name);
+      n.addEventListener("ping", function () { log.push("c:" + this.localName + ":" + this.isConnected); }, true);
+      n.addEventListener("ping", function () { log.push(this.localName + ":" + this.isConnected); collectNow(); });
+    }
+    const target = document.getElementById("t1");
+    target.addEventListener("ping", function () {
+      log.push("t1");
+      holder.querySelector("section").remove();
+      collectNow();
+      churn(log);
+      collectNow();
+    });
+    target.addEventListener("ping", function () { log.push("t2:" + this.id); });
+    target.dispatchEvent(new Event("ping", { bubbles: true }));
+  })();
+  assert_array_equals(log, ["c:section:true", "c:article:true", "c:p:true", "t1", "t2:t1", "p:false", "article:false", "section:false"]);
+  await settle(t);
+  assert_false(log.includes("NEWCOMER"), "no listener of a node made under the dispatch ran");
+  holder.remove();
+}, "a script dispatch walks its whole path after the target's listener removed it, collected and made nodes");
+
+for (const connected of [true, false]) {
+  promise_test(async t => {
+    const log = [];
+    (() => {
+      const holder = document.createElement("div");
+      holder.innerHTML = '<section><article><details id="d"><summary>s</summary>x</details></article></section>';
+      const section = holder.firstChild;
+      section.addEventListener("toggle", function () {
+        log.push("c:" + this.localName);
+        this.remove();
+        collectNow();
+        churn(log);
+        collectNow();
+      }, true);
+      section.firstChild.addEventListener("toggle", function () {
+        log.push("c:" + this.localName + ":" + (this.parentNode !== null));
+        collectNow();
+        churn(log);
+        collectNow();
+      }, true);
+      const d = section.firstChild.firstChild;
+      d.addEventListener("toggle", function (event) { log.push("t:" + this.localName + ":" + (event.target === this)); collectNow(); });
+      d.addEventListener("toggle", function () { log.push("t2:" + this.localName); });
+      if (connected) document.body.appendChild(holder);
+      // The toggle event is fired from a queued element task: no script
+      // frame holds a node of its path when the dispatch begins.
+      d.open = true;
+    })();
+    collectNow();
+    assert_array_equals(log, [], "the toggle event is fired from a task");
+    await settle(t);
+    assert_array_equals(log, ["c:section", "c:article:true", "t:details:true", "t2:details"]);
+    await settle(t);
+    assert_false(log.includes("NEWCOMER"), "no listener of a node made under the dispatch ran");
+  }, "a native dispatch walks its whole path after an ancestor's listener removed the path's tree" + (connected ? " from the document" : " (a tree no document holds)"));
+}
+
+promise_test(async t => {
+  const log = [];
+  (() => {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+    doc.body.innerHTML = '<section><p><span id="t"></span></p></section>';
+    const target = doc.getElementById("t");
+    win.addEventListener("ping", () => log.push("c:window"), true);
+    win.addEventListener("ping", () => log.push("window"));
+    doc.addEventListener("ping", () => log.push("document"));
+    doc.querySelector("section").addEventListener("ping", () => log.push("section"));
+    doc.querySelector("p").addEventListener("ping", () => log.push("p"));
+    target.addEventListener("ping", () => {
+      log.push("t1");
+      frame.remove();
+      collectNow();
+      churn(log);
+      collectNow();
+    });
+    target.addEventListener("ping", () => log.push("t2"));
+    target.dispatchEvent(new Event("ping", { bubbles: true }));
+  })();
+  // DOM "inner invoke" steps 2.6-2.8: once the frame is gone its Window's
+  // document is not fully active, and no further listener is called. The
+  // walk still visits every item, the frame's Window last.
+  assert_array_equals(log, ["c:window", "t1"]);
+  await settle(t);
+  assert_false(log.includes("NEWCOMER"), "no listener of an object made under the dispatch ran");
+}, "a script dispatch in a frame its listener removes ends cleanly, the frame's Window last on its path");
+
+promise_test(async t => {
+  const log = [];
+  (() => {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    const doc = frame.contentDocument;
+    doc.body.innerHTML = '<section><details id="d"><summary>s</summary>x</details></section>';
+    frame.contentWindow.addEventListener("toggle", () => log.push("c:window"), true);
+    doc.addEventListener("toggle", () => {
+      log.push("c:document");
+      document.querySelector("iframe").remove();
+      collectNow();
+      churn(log);
+      collectNow();
+    }, true);
+    doc.querySelector("section").addEventListener("toggle", () => log.push("c:section"), true);
+    doc.getElementById("d").addEventListener("toggle", () => log.push("t"));
+    doc.getElementById("d").open = true;
+  })();
+  collectNow();
+  assert_array_equals(log, [], "the toggle event is fired from a task");
+  await settle(t);
+  assert_array_equals(log, ["c:window", "c:document"]);
+  await settle(t);
+  assert_false(log.includes("NEWCOMER"), "no listener of an object made under the dispatch ran");
+}, "a native dispatch in a frame its first listener removes ends cleanly with no script holding the path");
+
+// ---------------------------------------------------------------------------
+// A microtask between two listeners of a native dispatch. When the user agent
+// fires the event, the script stack is empty each time a listener returns, so
+// a microtask checkpoint runs there (HTML "clean up after running script"):
+// script with no frame holding any node of the path, and the walk still to
+// come back to the rest of it. Crane performs the checkpoint inside the
+// listener's callback invocation, where its teardown queue frees nothing; and
+// if it did free there, the path's counted references keep the path's nodes.
+// With BOTH removed in a scratch build, the "rest of its path" test below
+// fails: the walk calls two NEWCOMER listeners (lane lk1, 2026-11-16).
+// ---------------------------------------------------------------------------
+
+function inMicrotask(log, steps) {
+  Promise.resolve().then(() => {
+    log.push("micro");
+    steps();
+    collectNow();
+    // One more binding's return after the collections.
+    void document.title;
+    churn(log);
+    collectNow();
+    void document.title;
+  });
+}
+
+for (const connected of [true, false]) {
+  promise_test(async t => {
+    const log = [];
+    (() => {
+      const holder = document.createElement("div");
+      holder.id = "micro-holder";
+      holder.innerHTML = '<section id="micro-section"><article><details><summary>s</summary>x</details></article></section>';
+      const section = holder.firstChild;
+      section.addEventListener("toggle", function (event) {
+        log.push("c:" + this.localName);
+        // Script keeps the event, and nothing else of the dispatch.
+        globalThis.lastEvent = event;
+        // In the microtask nothing of the path is on any stack. Its tree
+        // leaves its parent there, and the target leaves the tree: the task
+        // that fires the event holds the target, which kept the target's
+        // whole tree - now only the path keeps the ancestors the walk still
+        // has to visit. Script keeps no node of either.
+        let root = this;
+        inMicrotask(log, () => {
+          root.firstChild.firstChild.remove();
+          root.remove();
+          root = null;
+        });
+      }, true);
+      section.firstChild.addEventListener("toggle", function () { log.push("c:" + this.localName + ":" + this.parentNode.localName + ":" + this.childNodes.length); }, true);
+      const d = section.firstChild.firstChild;
+      d.addEventListener("toggle", function (event) { log.push("t:" + this.localName + ":" + (event.target === this) + ":" + event.type + ":" + (this.parentNode === null)); });
+      if (connected) document.body.appendChild(holder);
+      else section.remove();
+      d.open = true;
+    })();
+    collectNow();
+    assert_array_equals(log, [], "the toggle event is fired from a task");
+    await settle(t);
+    assert_array_equals(log, ["c:section", "micro", "c:article:section:0", "t:details:true:toggle:true"]);
+    await settle(t);
+    assert_false(log.includes("NEWCOMER"), "no listener of a node made under the dispatch ran");
+    if (connected) document.getElementById("micro-holder").remove();
+  }, "a native dispatch walks its whole path after a microtask between two listeners took the path apart, collected and freed" + (connected ? " (a tree of the document)" : " (a tree no document holds)"));
+}
+
+// The sharpest form: the listener that queues the microtask is the body's,
+// which stays in the document, and the microtask takes the REST of the path
+// out from under the walk - a tree with no wrapper, no script reference and
+// no task's hold (the target is taken out of it): nothing but the path keeps
+// it.
+promise_test(async t => {
+  const log = [];
+  (() => {
+    const holder = document.createElement("div");
+    holder.innerHTML = '<section><article><details><summary>s</summary>x</details></article></section>';
+    const section = holder.firstChild;
+    section.addEventListener("toggle", function () { log.push("c:" + this.localName + ":" + (this.parentNode === null)); }, true);
+    section.firstChild.addEventListener("toggle", function () { log.push("c:" + this.localName + ":" + this.parentNode.localName + ":" + this.childNodes.length); }, true);
+    const d = section.firstChild.firstChild;
+    d.addEventListener("toggle", function (event) { log.push("t:" + this.localName + ":" + (event.target === this) + ":" + event.type + ":" + (this.parentNode === null)); });
+    document.body.appendChild(section);
+    d.open = true;
+  })();
+  document.body.addEventListener("toggle", function first(event) {
+    log.push("c:body");
+    globalThis.lastEvent = event;
+    document.body.removeEventListener("toggle", first, true);
+    inMicrotask(log, () => {
+      const section = document.body.lastChild;
+      section.firstChild.firstChild.remove();
+      section.remove();
+    });
+  }, true);
+  collectNow();
+  assert_array_equals(log, [], "the toggle event is fired from a task");
+  await settle(t);
+  assert_array_equals(log, ["c:body", "micro", "c:section:true", "c:article:section:0", "t:details:true:toggle:true"]);
+  await settle(t);
+  assert_false(log.includes("NEWCOMER"), "no listener of a node made under the dispatch ran");
+}, "a native dispatch walks the rest of its path after a microtask of an ancestor's listener took that rest out of the document, collected and made nodes");
+
+for (const connected of [true, false]) {
+  promise_test(async t => {
+    const log = [];
+    (() => {
+      const frame = document.body.appendChild(document.createElement("iframe"));
+      frame.id = "micro-frame";
+      const doc = frame.contentDocument;
+      const holder = doc.createElement("div");
+      holder.innerHTML = '<section><article><details><summary>s</summary>x</details></article></section>';
+      const section = holder.firstChild;
+      // Functions of this (the parent's) realm on the frame's nodes: the
+      // first queues a microtask that destroys the frame's navigable, keeps
+      // nothing of the frame and collects.
+      const first = connected ? frame.contentWindow : section;
+      first.addEventListener("toggle", () => {
+        log.push("c:first");
+        inMicrotask(log, () => document.getElementById("micro-frame").remove());
+      }, true);
+      section.firstChild.addEventListener("toggle", () => log.push("c:article"), true);
+      section.firstChild.firstChild.addEventListener("toggle", () => log.push("t"));
+      if (connected) doc.body.appendChild(holder);
+      else section.remove();
+      section.firstChild.firstChild.open = true;
+    })();
+    collectNow();
+    assert_array_equals(log, [], "the toggle event is fired from a task");
+    await settle(t);
+    // After the microtask the frame's Window's document is not fully
+    // active: DOM "inner invoke" steps 2.6-2.8 call no further listener.
+    assert_array_equals(log, ["c:first", "micro"]);
+    await settle(t);
+    assert_false(log.includes("NEWCOMER"), "no listener of an object made under the dispatch ran");
+  }, "a native dispatch in a frame ends cleanly after a microtask between two listeners removed the frame and collected" + (connected ? " (the path in the frame's document)" : " (a tree of the frame's realm no document holds)"));
+}
+</script>

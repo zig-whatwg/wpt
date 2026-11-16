@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: an element's token lists (classList, part, relList) are ended by their wrappers - dropped, kept, and first read after their frame was removed</title>
+<link rel=help href="https://dom.spec.whatwg.org/#dom-element-classlist">
+<link rel=help href="https://dom.spec.whatwg.org/#interface-domtokenlist">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane lk1. A DOMTokenList an element makes for script is owned by its
+// wrapper: the generated [SameObject] getter traces it from its element
+// (dom.same_object_cache -> engine.traceChild), and the wrapper's collection,
+// or the realm's end, frees it with the attribute name it copied. A list
+// nothing ended is reported as a leak by the bug-finding run and by
+// `leaks --atExit` (0 leaks on main's production runner, 2026-11-16). The
+// last two tests read the list for the first time after the element's frame
+// was removed: its realm is detached then, not ended, so the list still gets
+// its wrapper there - and works, as it does in every browser.
+const N = 500;
+
+test(() => {
+  for (let i = 0; i < N; i++) {
+    const el = document.createElement("div");
+    el.classList.add("a", "b");
+    el.part.add("p");
+    if (i % 2) { document.body.appendChild(el); el.remove(); }
+  }
+}, "control: classList and part of elements script drops");
+
+test(() => {
+  const keep = [];
+  for (let i = 0; i < N; i++) {
+    const el = document.body.appendChild(document.createElement("a"));
+    el.classList.add("a");
+    el.relList.add("noopener");
+    keep.push(el);
+  }
+  assert_equals(keep[N - 1].className, "a");
+}, "control: classList and relList of elements that stay in the document");
+
+promise_test(async () => {
+  const iframe = document.body.appendChild(document.createElement("iframe"));
+  const doc = iframe.contentDocument;
+  const els = [];
+  for (let i = 0; i < N; i++) els.push(doc.body.appendChild(doc.createElement("div")));
+  const early = doc.createElement("div");
+  const early_list = early.classList;
+  iframe.remove();
+  await new Promise(r => step_timeout(r, 0));
+  // The first read of each element's classList, after its frame is gone.
+  let lists = 0;
+  for (const el of els) {
+    const list = el.classList;
+    if (list instanceof DOMTokenList || (list && typeof list.add === "function")) lists++;
+  }
+  assert_equals(lists, N, "every element answers a token list");
+  assert_equals(els[0].classList, els[0].classList, "the same object");
+  els[0].classList.add("x");
+  assert_equals(els[0].className, "x");
+  early_list.add("y");
+  assert_equals(early.className, "y");
+}, "the first classList read of an element whose frame was removed");
+
+promise_test(async () => {
+  const iframe = document.body.appendChild(document.createElement("iframe"));
+  const doc = iframe.contentDocument;
+  const els = [];
+  for (let i = 0; i < N; i++) els.push(doc.createElement("span"));
+  iframe.remove();
+  await new Promise(r => step_timeout(r, 0));
+  let lists = 0;
+  for (const el of els) {
+    const list = el.classList;
+    if (list && typeof list.add === "function") lists++;
+  }
+  assert_equals(lists, N, "every detached element answers a token list");
+}, "the first classList read of a never-inserted element whose frame was removed");
+</script>
