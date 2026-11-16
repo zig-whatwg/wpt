@@ -1,6 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Stopping a document aborts requests in descendant documents</title>
+<!-- A cancelled fetch rejects with a TypeError in Chrome 157, Firefox 159 and Safari 27.0 (lane nav4's three-browser probe, 2026-11-14): never an AbortError. -->
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <body>
@@ -17,7 +18,7 @@ promise_test(async t => {
   const grandchild = child.contentDocument.body.appendChild(child.contentDocument.createElement("iframe"));
   const fetches = [child, grandchild].map(frame => frame.contentWindow.fetch("/common/slow.py?delay=1500").then(
     () => assert_unreached("descendant fetch should abort"),
-    error => assert_equals(error.name, "AbortError")));
+    error => assert_equals(error.name, "TypeError")));
   const xhrs = [child, grandchild].map(frame => {
     const xhr = new frame.contentWindow.XMLHttpRequest();
     xhr.open("GET", new URL("/common/slow.py?delay=1500", location.href).href);

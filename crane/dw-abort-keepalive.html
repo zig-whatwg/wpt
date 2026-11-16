@@ -1,6 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Explicit window.stop aborts a keepalive fetch</title>
+<!-- A cancelled fetch rejects with a TypeError in Chrome 157, Firefox 159 and Safari 27.0 (lane nav4's three-browser probe, 2026-11-14): never an AbortError. -->
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <body>
@@ -15,8 +16,8 @@ promise_test(async t => {
   const result = frame.contentWindow.fetch("/common/slow.py?delay=700", {keepalive: true}).then(
     () => assert_unreached("explicit stop should abort the fetch"),
     error => {
-      assert_equals(error.name, "AbortError");
-      assert_equals(error.constructor, frame.contentWindow.DOMException);
+      assert_equals(error.name, "TypeError");
+      assert_equals(error.constructor, frame.contentWindow.TypeError);
     });
   frame.contentWindow.stop();
   await result;

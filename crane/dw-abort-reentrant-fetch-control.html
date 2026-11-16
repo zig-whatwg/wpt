@@ -1,6 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>A fetch started by an XHR abort listener survives the current stop</title>
+<!-- A cancelled fetch rejects with a TypeError in Chrome 157, Firefox 159 and Safari 27.0 (lane nav4's three-browser probe, 2026-11-14): never an AbortError. -->
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <body>
@@ -15,7 +16,7 @@ promise_test(async t => {
   frame.onload = null;
   const oldFetch = frame.contentWindow.fetch("/common/slow.py?delay=1500").then(
     () => assert_unreached("old fetch should abort"),
-    error => assert_equals(error.name, "AbortError"));
+    error => assert_equals(error.name, "TypeError"));
   const xhr = new frame.contentWindow.XMLHttpRequest();
   xhr.open("GET", "/common/slow.py?delay=1500");
   const replacement = new Promise((resolve, reject) => {
