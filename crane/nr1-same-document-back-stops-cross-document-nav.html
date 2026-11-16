@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A same-document history.back() stops a cross-document navigation started before it, however fast its response is</title>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<!--
+  Crane, lane nr1. HTML "apply the history step" step 8.4 sets a changing
+  navigable's ongoing navigation to "traversal". It runs on the session
+  history traversal queue, which is a parallel queue: it does not wait for the
+  navigable's event loop. The task that "attempt to populate the history
+  entry's document" queues for the navigation's response then finds that the
+  ongoing navigation is no longer its own, and the navigation ends.
+
+  The upstream file
+  html/browsers/browsing-the-web/overlapping-navigations-and-traversals/cross-document-nav-same-document-traversal.html
+  checks this only when the response is slower than the traversal. Each case
+  here makes the response win the race in wall-clock time: script holds the
+  event loop after back() until the response has arrived, or the navigation
+  needs no network at all.
+
+  Chrome 157 and Safari 27.2 pass every case (this file, run in each browser
+  on 2026-11-16). Firefox 160 fails every case - the navigation commits - and
+  fails the upstream file too (wpt.fyi fa649586f3: Chrome 1/1, Firefox 0/1,
+  Safari 1/1).
+
+  Not here: a javascript: URL navigation followed by back(). The browsers
+  split three ways on it (the same run: Chrome runs the script and replaces
+  the document, Firefox runs it and keeps the document, Safari never runs it).
+-->
+
+<body>
+<script type="module">
+import { createIframe, delay } from "/html/browsers/browsing-the-web/overlapping-navigations-and-traversals/resources/helpers.mjs";
+
+// Hold the event loop: nothing of this page's agent runs meanwhile, and the
+// navigation's response arrives.
+function spin(ms) {
+  const end = performance.now() + ms;
+  while (performance.now() < end) {}
+}
+
+async function setUp(t) {
+  const iframe = await createIframe(t);
+  iframe.contentWindow.location.hash = "#1";
+  await delay(t, 0);
+  iframe.contentWindow.location.hash = "#2";
+  await delay(t, 0);
+  return iframe;
+}
+
+// The traversal ends on `hash`, and the navigation that back() stopped never
+// commits: not before the traversal, and not after it.
+async function assertTraversalWon(t, iframe, hash) {
+  await t.step_wait(() => iframe.contentWindow.location.hash === hash && iframe.contentWindow.location.search === "",
+                    "the traversal reaches " + hash);
+  await delay(t, 300);
+  assert_equals(iframe.contentWindow.location.search, "", "the navigation never commits (search)");
+  assert_equals(iframe.contentWindow.location.hash, hash, "the navigation never commits (hash)");
+}
+
+promise_test(async t => {
+  const iframe = await setUp(t);
+
+  iframe.contentWindow.location.search = "?1";
+  iframe.onload = t.unreached_func("load event fired");
+  iframe.contentWindow.history.back();
+  spin(300);
+
+  await assertTraversalWon(t, iframe, "#1");
+}, "back() right after the navigation; the response arrives before the next task");
+
+promise_test(async t => {
+  const iframe = await setUp(t);
+  await delay(t, 100);
+
+  iframe.contentWindow.location.search = "?1";
+  iframe.onload = t.unreached_func("load event fired");
+  iframe.contentWindow.history.back();
+  spin(300);
+
+  await assertTraversalWon(t, iframe, "#1");
+}, "the same, with nothing else pending on the traversal queue");
+
+promise_test(async t => {
+  const iframe = await setUp(t);
+  await delay(t, 100);
+
+  // Two synchronous navigations: their "finalize a same-document navigation"
+  // steps are on the traversal queue ahead of back()'s.
+  iframe.contentWindow.location.hash = "#3";
+  iframe.contentWindow.location.hash = "#4";
+  iframe.contentWindow.location.search = "?1";
+  iframe.onload = t.unreached_func("load event fired");
+  iframe.contentWindow.history.back();
+  spin(300);
+
+  await assertTraversalWon(t, iframe, "#3");
+}, "back() queued behind two synchronous navigations' finalize steps");
+
+promise_test(async t => {
+  const iframe = await setUp(t);
+  await delay(t, 100);
+
+  // A blob: URL needs no network: its response is there at once.
+  const url = URL.createObjectURL(new Blob(["<!DOCTYPE html><body>blob</body>"], { type: "text/html" }));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  iframe.contentWindow.location.href = url;
+  iframe.onload = t.unreached_func("load event fired");
+  iframe.contentWindow.history.back();
+
+  await t.step_wait(() => iframe.contentWindow.location.hash === "#1" && iframe.contentWindow.location.protocol !== "blob:",
+                    "the traversal reaches #1");
+  await delay(t, 300);
+  assert_not_equals(iframe.contentWindow.location.protocol, "blob:", "the navigation never commits");
+  assert_equals(iframe.contentWindow.location.hash, "#1", "the navigation never commits (hash)");
+}, "a navigation that needs no network (a blob: URL)");
+</script>
