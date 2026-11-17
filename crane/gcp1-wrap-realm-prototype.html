@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A platform object made with no NewTarget gets its realm's interface prototype object</title>
+<link rel="help" href="https://webidl.spec.whatwg.org/#internally-create-a-new-object-implementing-the-interface">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// WebIDL "internally create a new object implementing the interface", step
+// 2.1: with no NewTarget, the object's [[Prototype]] is "the interface
+// prototype object for interface in realm" - the realm's own object, not a
+// read of the global property that once held the interface object. Making
+// it runs no script. Chrome 157, Firefox 159 and Safari 27 agree on every
+// case below (lane gcp1's probe, 2026-11-17). Each test replaces, hides or
+// guards a different global, so they do not depend on one another.
+
+test(() => {
+  const real = HTMLDivElement.prototype;
+  function Fake() {}
+  Fake.prototype = { fake: true };
+  window.HTMLDivElement = Fake;
+  const el = document.createElement("div");
+  assert_equals(Object.getPrototypeOf(el), real);
+  assert_false(el instanceof Fake);
+}, "createElement after the global was replaced by a data property");
+
+test(() => {
+  const real = HTMLSpanElement.prototype;
+  let gets = 0;
+  Object.defineProperty(window, "HTMLSpanElement", { get() { gets++; return function Fake() {}; }, configurable: true });
+  const el = document.createElement("span");
+  assert_equals(Object.getPrototypeOf(el), real);
+  assert_equals(gets, 0, "the global's getter ran");
+}, "createElement after the global was replaced by an accessor runs no getter");
+
+test(() => {
+  const real = HTMLParagraphElement.prototype;
+  delete window.HTMLParagraphElement;
+  assert_false("HTMLParagraphElement" in window);
+  assert_equals(Object.getPrototypeOf(document.createElement("p")), real);
+}, "createElement after the global was deleted");
+
+test(() => {
+  const real = HTMLUListElement.prototype;
+  let gets = 0;
+  Object.defineProperty(window, "HTMLUListElement", { get() { gets++; throw new Error("the wrap ran the global's getter"); }, configurable: true });
+  const el = document.createElement("ul");
+  assert_equals(Object.getPrototypeOf(el), real);
+  assert_equals(gets, 0);
+}, "createElement under a throwing accessor neither throws nor runs it");
+
+test(() => {
+  const real = HTMLTableElement.prototype;
+  let gets = 0;
+  Object.defineProperty(window, "HTMLTableElement", { get() { gets++; return function Fake() {}; }, configurable: true });
+  const host = document.createElement("section");
+  host.innerHTML = "<table></table>";
+  assert_equals(Object.getPrototypeOf(host.firstChild), real);
+  assert_equals(gets, 0);
+}, "an element the parser made");
+
+test(() => {
+  const real = DOMTokenList.prototype;
+  function Fake() {}
+  Fake.prototype = { fake: true };
+  window.DOMTokenList = Fake;
+  assert_equals(Object.getPrototypeOf(document.createElement("b").classList), real);
+}, "a DOMTokenList");
+
+test(() => {
+  const real = AbortSignal.prototype;
+  let gets = 0;
+  Object.defineProperty(window, "AbortSignal", { get() { gets++; return function Fake() {}; }, configurable: true });
+  assert_equals(Object.getPrototypeOf(new AbortController().signal), real);
+  assert_equals(gets, 0);
+}, "an AbortController's signal");
+
+test(() => {
+  const real = Text.prototype;
+  window.Text = function Fake() {};
+  assert_equals(Object.getPrototypeOf(document.createTextNode("x")), real);
+}, "a Text node");
+
+test(() => {
+  const real = CustomEvent.prototype;
+  window.CustomEvent = function Fake() {};
+  assert_equals(Object.getPrototypeOf(document.createEvent("CustomEvent")), real);
+}, "an event from createEvent");
+
+test(() => {
+  const real = ReadableStreamDefaultReader.prototype;
+  let gets = 0;
+  Object.defineProperty(window, "ReadableStreamDefaultReader", { get() { gets++; return function Fake() {}; }, configurable: true });
+  assert_equals(Object.getPrototypeOf(new ReadableStream().getReader()), real);
+  assert_equals(gets, 0);
+}, "a stream's reader");
+
+function frame() {
+  return new Promise(resolve => {
+    const f = document.createElement("iframe");
+    f.srcdoc = "<!doctype html><body>";
+    f.onload = () => resolve(f.contentWindow);
+    document.body.appendChild(f);
+  });
+}
+
+promise_test(async () => {
+  const w = await frame();
+  const real = w.HTMLDivElement.prototype;
+  w.HTMLDivElement = function Fake() {};
+  const el = w.document.createElement("div");
+  assert_equals(Object.getPrototypeOf(el), real);
+  assert_not_equals(Object.getPrototypeOf(el), HTMLDivElement.prototype, "not this realm's");
+}, "an element of a frame's document gets the frame realm's prototype");
+
+promise_test(async () => {
+  // Nothing reads HTMLMeterElement in the frame before its first element is
+  // made, and the global is replaced first: the prototype the element gets
+  // must still be the whole interface prototype object.
+  const w = await frame();
+  w.HTMLMeterElement = 1;
+  const el = w.document.createElement("meter");
+  const proto = Object.getPrototypeOf(el);
+  assert_equals(Object.prototype.toString.call(el), "[object HTMLMeterElement]");
+  assert_equals(proto.constructor.name, "HTMLMeterElement");
+  assert_false(Object.getOwnPropertyDescriptor(proto.constructor, "prototype").writable, "read-only prototype property");
+  assert_equals(Object.getPrototypeOf(proto), w.HTMLElement.prototype);
+  assert_equals(Object.getPrototypeOf(w.document.createElement("meter")), proto);
+}, "a frame realm's element of an interface its script never read");
+</script>
