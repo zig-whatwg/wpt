@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a TouchEvent's touch targets stay alive, and stay themselves, during its dispatch and between its dispatches</title>
+<link rel=help href="https://dom.spec.whatwg.org/#concept-event-dispatch">
+<link rel=help href="https://dom.spec.whatwg.org/#event-touch-target-list">
+<link rel=help href="https://w3c.github.io/touch-events/#dom-touch-target">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+// Lane ev2. DOM "dispatch" retargets the event's touch target list against
+// every item it appends to the path, "invoke" sets the event's list to the
+// item's before its listeners run, and dispatch leaves the event the last
+// item's list unless clearTargets is true. A touch whose target is in a
+// shadow tree the path does not enter is retargeted to the shadow HOST - a
+// node that is on no item of the path, and that the touch itself does not
+// keep once its target has left that shadow tree. Browsers hold these
+// targets (WebKit's EventContext keeps counted TouchLists and its
+// TouchEvent counted Touches; Gecko's chain item an array of counted
+// targets). Crane's path holds a counted reference on every touch target of
+// every item, and the event's list one on every node it names.
+//
+// Each test drops the host, collects, and makes 500 divs with the id
+// NEWCOMER. If a touch target were read after its node was freed - its slot
+// reissued at once to one of the new divs in a production build - the id
+// would read "NEWCOMER", or the bug-finding run would report the read.
+//
+// Every node is found and dropped in a function of its own: a temporary
+// that names a node stays in a register of the frame that made it, and an
+// async function's frame lives across its awaits.
+
+const kept = [];
+function collectNow() {
+  TestUtils.gc();
+  TestUtils.gc();
+}
+function churn() {
+  for (let i = 0; i < 500; i++) {
+    const n = document.createElement("div");
+    n.id = "NEWCOMER";
+    kept.push(n);
+  }
+}
+function read(event) {
+  const target = event.touches[0].target;
+  return target.id + ":" + target.isConnected;
+}
+function nextTask(t) {
+  return new Promise(resolve => t.step_timeout(resolve, 0));
+}
+async function settle(t) {
+  for (let i = 0; i < 3; i++) {
+    await nextTask(t);
+    collectNow();
+  }
+  await nextTask(t);
+}
+
+promise_test(async t => {
+  const log = [];
+  let event = null;
+  (() => {
+    const holder = document.body.appendChild(document.createElement("div"));
+    holder.id = "holder-a";
+    holder.innerHTML = '<p id="x-a"></p><div id="host-a"></div>';
+    const root = document.getElementById("host-a").attachShadow({ mode: "open" });
+    root.innerHTML = '<span id="t-a"></span>';
+    window.touchNodeA = root.firstChild;
+    const x = document.getElementById("x-a");
+    x.addEventListener("ping", e => log.push("x:" + read(e)));
+    const touch = new Touch({ identifier: 1, target: window.touchNodeA });
+    event = new TouchEvent("ping", { touches: [touch], bubbles: true });
+    x.dispatchEvent(event);
+  })();
+  assert_array_equals(log, ["x:host-a:true"], "the first dispatch");
+  // The host is in no shadow tree, so dispatch did not clear the event's
+  // touch target list: it names the host. The touch's own target leaves the
+  // host's shadow tree, the host leaves the document, and script keeps
+  // nothing of it.
+  (() => {
+    document.getElementById("holder-a").appendChild(window.touchNodeA);
+    document.getElementById("host-a").remove();
+  })();
+  collectNow();
+  await settle(t);
+  churn();
+  collectNow();
+  await nextTask(t);
+  // The second dispatch starts from the list the first left.
+  (() => { document.getElementById("x-a").dispatchEvent(event); })();
+  assert_array_equals(log, ["x:host-a:true", "x:host-a:false"], "the second dispatch");
+  (() => { document.getElementById("holder-a").remove(); })();
+}, "a TouchEvent dispatched again names the shadow host its first dispatch left it, after the touch's target left that host's tree and script dropped the host");
+
+promise_test(async t => {
+  const log = [];
+  (() => {
+    // An outer host in the document; in its shadow tree the target and an
+    // inner host; in the inner host's shadow tree the touch's own target.
+    // For the items in the outer shadow tree the touch is retargeted to the
+    // inner host, for the items in the document to the outer host.
+    const outer = document.body.appendChild(document.createElement("div"));
+    outer.id = "outer-b";
+    const outerRoot = outer.attachShadow({ mode: "open" });
+    outerRoot.innerHTML = '<p id="target-b"></p><div id="inner-b"></div>';
+    const innerRoot = outerRoot.getElementById("inner-b").attachShadow({ mode: "open" });
+    innerRoot.innerHTML = '<span id="deep-b"></span>';
+    window.touchNodeB = innerRoot.firstChild;
+  })();
+  const dropInner = () => {
+    document.body.appendChild(window.touchNodeB);
+    document.getElementById("outer-b").shadowRoot.getElementById("inner-b").remove();
+  };
+  const atWindow = function (e) {
+    // The capturing listener at the window runs with the last item's list
+    // - the outer host - as the event's own: from here to the target's
+    // listener only the path names the inner host.
+    log.push("window:" + read(e));
+    dropInner();
+    collectNow();
+    churn();
+    collectNow();
+  };
+  (() => {
+    window.addEventListener("ping", atWindow, true);
+    const target = document.getElementById("outer-b").shadowRoot.getElementById("target-b");
+    target.addEventListener("ping", e => log.push("target:" + read(e)));
+    document.body.addEventListener("ping", e => log.push("body:" + read(e)), { once: true });
+    const touch = new Touch({ identifier: 1, target: window.touchNodeB });
+    target.dispatchEvent(new TouchEvent("ping", { touches: [touch], bubbles: true, composed: true }));
+    window.removeEventListener("ping", atWindow, true);
+  })();
+  assert_array_equals(log, ["window:outer-b:true", "target:inner-b:false", "body:outer-b:true"], "the walk");
+  await settle(t);
+  (() => { document.getElementById("outer-b").remove(); window.touchNodeB.remove(); })();
+}, "a TouchEvent's path names the inner shadow host for its items in the outer shadow tree, after a capturing listener took the touch's target out of the inner tree and dropped the inner host");
+
+promise_test(async t => {
+  const log = [];
+  let event = null;
+  (() => {
+    // A host in a frame's document, and in its shadow tree a span this
+    // document made: the touch, its target and the event are this realm's,
+    // the host is the frame's.
+    const holder = document.body.appendChild(document.createElement("div"));
+    holder.id = "holder-c";
+    holder.innerHTML = '<p id="x-c"></p>';
+    const frame = holder.appendChild(document.createElement("iframe"));
+    frame.id = "frame-c";
+    const fdoc = frame.contentDocument;
+    fdoc.body.innerHTML = '<p id="fx"></p><div id="fhost"></div>';
+    const froot = fdoc.getElementById("fhost").attachShadow({ mode: "open" });
+    window.touchNodeC = document.createElement("span");
+    window.touchNodeC.id = "t-c";
+    froot.appendChild(window.touchNodeC);
+    const fx = fdoc.getElementById("fx");
+    fx.addEventListener("ping", e => log.push("fx:" + read(e)));
+    document.getElementById("x-c").addEventListener("ping", e => log.push("x:" + read(e)));
+    const touch = new Touch({ identifier: 1, target: window.touchNodeC });
+    event = new TouchEvent("ping", { touches: [touch], bubbles: true });
+    fx.dispatchEvent(event);
+  })();
+  // A second dispatch, at this document's node: the event's target is no
+  // longer the frame's, and its list still names the frame's host.
+  (() => { document.getElementById("x-c").dispatchEvent(event); })();
+  assert_array_equals(log, ["fx:fhost:true", "x:fhost:true"], "the first two dispatches");
+  (() => {
+    document.getElementById("holder-c").appendChild(window.touchNodeC);
+    document.getElementById("frame-c").remove();
+  })();
+  collectNow();
+  await settle(t);
+  churn();
+  collectNow();
+  await nextTask(t);
+  // The frame's realm has ended, and its end freed the frame's nodes
+  // whatever held them. The event's list is emptied rather than read: the
+  // touch's target is its own, the span.
+  (() => { document.getElementById("x-c").dispatchEvent(event); })();
+  assert_equals(log.length, 3, "the third dispatch ran the listener");
+  assert_not_equals(log[2], "x:NEWCOMER:false", "the list never names a node made after the host was freed");
+  assert_in_array(log[2], ["x:t-c:true", "x:fhost:false"], "the touch's own target, or the host while it is alive");
+  (() => { document.getElementById("holder-c").remove(); })();
+}, "a TouchEvent dispatched again never names a newcomer after the frame its retargeted shadow host came from was removed and collected");
+</script>
