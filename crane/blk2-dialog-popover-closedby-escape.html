@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: Escape steps of html/semantics/interactive-elements/the-dialog-element/dialog-popover-closedby-simple.html</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#dialog-light-dismiss">
+<!--
+  lane blk2: the upstream file's Escape steps alone, without its clicks. Its clicks land at the centre of
+  getBoundingClientRect(), geometry no renderer answers here, and every upstream subtest fails at its first click
+  before reaching these steps; this file shows the steps that are not geometry pass on their own. The upstream
+  click before each reset is also a user activation, which lets the dialog's and the popover's close watchers
+  form separate groups (HTML "notify the close watcher manager about user activation"); test_driver.bless() gives
+  that activation here without a click on either element.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+
+<div id=unrelated>Unrelated</div>
+<dialog id=dialog_outer>Dialog outer
+  <div id=popover_inner popover>Popover inner</div>
+</dialog>
+<div id=popover_outer popover>Popover outer
+  <dialog id=dialog_inner>Dialog inner</dialog>
+</div>
+
+<script>
+const ESC = '';
+function resetDialogOuterTest(dialog, popover) {
+  popover.hidePopover();
+  dialog.close();
+  dialog.showModal();
+  popover.showPopover();
+  assert_true(dialog.open && popover.matches(':popover-open'), 'setup');
+}
+async function runDialogOuterEscape(t, dialog, popover) {
+  t.add_cleanup(() => {
+    dialog.removeAttribute('closedby');
+    popover.hidePopover();
+    dialog.close();
+  });
+  await test_driver.bless('user activation, as the upstream click gives');
+  resetDialogOuterTest(dialog, popover);
+  await test_driver.send_keys(document.documentElement, ESC);
+  assert_false(popover.matches(':popover-open'), 'popover should close after first ESC');
+  assert_true(dialog.open, 'dialog should stay open for first ESC');
+  await test_driver.send_keys(document.documentElement, ESC);
+  assert_equals(dialog.open, dialog.closedBy === 'none', 'dialog should close on second ESC, if closedby is not none');
+}
+for (const closedby of ['any', 'closerequest', 'none']) {
+  promise_test(async (t) => {
+    dialog_outer.setAttribute('closedby', closedby);
+    await runDialogOuterEscape(t, dialog_outer, popover_inner);
+  }, `Dialog closedby=${closedby} parent, popover child: Escape`);
+}
+
+function resetPopoverOuterTest(dialog, popover) {
+  dialog.close();
+  popover.hidePopover();
+  popover.showPopover();
+  dialog.showModal();
+  assert_true(dialog.open && popover.matches(':popover-open'), 'setup');
+}
+async function runPopoverOuterEscape(t, dialog, popover) {
+  t.add_cleanup(() => {
+    dialog.removeAttribute('closedby');
+    dialog.close();
+    popover.hidePopover();
+  });
+  await test_driver.bless('user activation, as the upstream click gives');
+  resetPopoverOuterTest(dialog, popover);
+  await test_driver.send_keys(document.documentElement, ESC);
+  assert_equals(dialog.open, dialog.closedBy === 'none', 'dialog should close after first ESC, if closedby!=none');
+  assert_true(popover.matches(':popover-open'), 'popover should stay open for first ESC');
+  await test_driver.send_keys(document.documentElement, ESC);
+  assert_equals(popover.matches(':popover-open'), dialog.closedBy === 'none',
+    'popover should close on second ESC, unless inner dialog prevents with closedby==none');
+}
+for (const closedby of ['any', 'closerequest', 'none']) {
+  promise_test(async (t) => {
+    dialog_inner.setAttribute('closedby', closedby);
+    await runPopoverOuterEscape(t, dialog_inner, popover_outer);
+  }, `Popover parent, dialog closedby=${closedby} child: Escape`);
+}
+</script>
