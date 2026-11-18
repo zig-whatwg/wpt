@@ -174,13 +174,23 @@ promise_test(async t => {
   churn();
   collectNow();
   await nextTask(t);
-  // The frame's realm has ended, and its end freed the frame's nodes
-  // whatever held them. The event's list is emptied rather than read: the
-  // touch's target is its own, the span.
+  // The frame is gone and its realm with it. The event's list still names
+  // the host and keeps it, and with it the host's whole tree: the host is
+  // still in the frame's Document, so connected. The three browsers agree
+  // (lane rc7b's probe, 2026-11-17: Chrome 157, Firefox 159, Safari 27 -
+  // TouchEvent is not exposed on desktop, so a script reference, a
+  // StaticRange and a Range held the host): a shadow host of a removed
+  // iframe's document, read after the removal and a collection, is
+  // connected, its parent the frame's body, its document's defaultView null.
   (() => { document.getElementById("x-c").dispatchEvent(event); })();
   assert_equals(log.length, 3, "the third dispatch ran the listener");
   assert_not_equals(log[2], "x:NEWCOMER:false", "the list never names a node made after the host was freed");
-  assert_in_array(log[2], ["x:t-c:true", "x:fhost:false"], "the touch's own target, or the host while it is alive");
+  assert_equals(log[2], "x:fhost:true", "the host, alive in its whole tree");
+  (() => {
+    const host = event.touches[0].target;
+    assert_equals(host.ownerDocument.getElementById("fx").localName, "p", "its tree is whole");
+    assert_equals(host.ownerDocument.defaultView, null, "its document has no window");
+  })();
   (() => { document.getElementById("holder-c").remove(); })();
-}, "a TouchEvent dispatched again never names a newcomer after the frame its retargeted shadow host came from was removed and collected");
+}, "a TouchEvent dispatched again names the shadow host of a removed and collected frame, alive in its whole tree");
 </script>

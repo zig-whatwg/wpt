@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
-<title>Crane: an open modal dialog keeps its saved focus's wrapper</title>
+<title>Crane: a modal dialog's saved focus is a weak link</title>
 <link rel=help href="https://html.spec.whatwg.org/multipage/interactive-elements.html#previously-focused-element">
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
@@ -8,12 +8,22 @@
 <dialog id=d><p>dialog</p></dialog>
 <script>
 "use strict";
-// The wrapper redesign's P6 (tmp/redesign/wrapper-redesign-design.md 4.4
-// "Holders"): a NODE that holds a node for script keeps its wrapper. An open
-// modal dialog keeps its previously focused element - "close the dialog"
-// focuses it again - and Blink's HTMLDialogElement::Trace visits
-// previously_focused_element_ (Chromium 131.0.6778.0). Mirrored with every
-// node edge off, the dialog never wrapped, in tests/html/wr6_node_holder_test.zig.
+// A dialog's previously focused element - the element "close the dialog"
+// focuses again (HTML step 12) - is a WEAK link (lane rc7b, refcount step 7b,
+// 2026-11-17; golden rule 2, the majority of the three engines). The spec
+// says nothing of collection, and the engines differ:
+// - Gecko: dom/html/HTMLDialogElement.h `nsWeakPtr mPreviouslyFocusedElement;`
+// - WebKit: Source/WebCore/html/HTMLDialogElement.h
+//   `WeakPtr<Element, WeakPtrImplWithEventTargetData> m_previouslyFocusedElement;`
+// - Blink traces it (third_party/blink/renderer/core/html/html_dialog_element.cc
+//   HTMLDialogElement::Trace, `visitor->Trace(previously_focused_element_)`;
+//   whether it is a Member or a WeakMember was not read).
+// Gecko and WebKit hold it weakly, so an open modal dialog does not keep a
+// removed saved focus that nothing else holds; until 7b Crane kept it strongly
+// (the wrapper redesign's P6, from Blink), a node of the dialog's own tree
+// that a realm's end by counts could never free. Mirrored natively, the
+// dialog never wrapped, in tests/html/wr6_node_holder_test.zig and
+// tests/html/rc7b_dialog_previous_focus_test.zig.
 
 function nextTask(t) {
   return new Promise(resolve => t.step_timeout(resolve, 0));
@@ -38,11 +48,9 @@ promise_test(async t => {
   t.add_cleanup(() => { if (document.getElementById("d").open) document.getElementById("d").close(); });
   ref.deref().remove();
   await collect(t);
-  const f = ref.deref();
-  assert_not_equals(f, undefined, "the dialog keeps its saved focus");
-  assert_equals(f.wr, "f", "with its expando");
-  assert_false(f.isConnected);
-}, "an open modal dialog keeps its detached saved focus's wrapper");
+  assert_true(document.getElementById("d").open, "the dialog is still open");
+  assert_equals(ref.deref(), undefined, "the open dialog does not keep its saved focus");
+}, "an open modal dialog does not keep a detached saved focus that nothing else holds");
 
 promise_test(async t => {
   const ref = (() => {
