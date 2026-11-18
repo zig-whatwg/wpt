@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>WindowProxy [[Delete]] of an index, and child navigable names on the named properties object</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#windowproxy-delete">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#named-access-on-the-window-object">
+<link rel="help" href="https://webidl.spec.whatwg.org/#named-properties-object">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// Crane lane blk3. Chrome 157, Firefox 160 and Safari 27.2 pass the upstream
+// window-indexed-properties-delete-no-cache.html, length-attribute.window.js,
+// cross-global-npo.html and window-prototype-chain.html this covers.
+function addFrame(t, name) {
+  const iframe = document.createElement("iframe");
+  if (name) iframe.name = name;
+  document.body.append(iframe);
+  t.add_cleanup(() => iframe.remove());
+  return iframe;
+}
+
+test(t => {
+  addFrame(t);
+  assert_equals(window.length, 1);
+  assert_false(delete window[0], "sloppy delete of an existing index");
+  assert_throws_js(TypeError, () => { "use strict"; delete window[0]; }, "strict delete of an existing index");
+  assert_true(delete window[1], "an index past the end");
+  assert_equals(window[0], frames[0], "the child is still there");
+}, "delete window[i] is false (TypeError in strict code) while the i-th child exists");
+
+test(t => {
+  const iframe = addFrame(t, "blk3named");
+  assert_equals(window.blk3named, iframe.contentWindow);
+  assert_equals(Object.getOwnPropertyDescriptor(window, "blk3named"), undefined, "not an own property of the global");
+  assert_false(Object.getOwnPropertyNames(window).includes("blk3named"));
+  const npo = Object.getPrototypeOf(Window.prototype);
+  assert_equals(Object.getOwnPropertyDescriptor(npo, "blk3named").value, iframe.contentWindow, "an own property of the named properties object");
+  iframe.remove();
+  assert_equals(window.blk3named, undefined, "gone with its navigable");
+}, "a child navigable's name is answered by the named properties object only");
+
+test(() => {
+  const npo = Object.getPrototypeOf(Window.prototype);
+  assert_equals(Object.prototype.toString.call(npo), "[object WindowProperties]");
+  assert_equals(Object.getPrototypeOf(npo), EventTarget.prototype, "the named properties object's [[Prototype]]");
+  Object.setPrototypeOf(npo, EventTarget.prototype);
+  assert_throws_js(TypeError, () => Object.setPrototypeOf(npo, {}), "immutable [[Prototype]]");
+}, "the named properties object's [[Prototype]] is EventTarget.prototype, immutable");
+</script>

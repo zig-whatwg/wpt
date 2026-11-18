@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Navigation API process scroll behavior: the beginning of the document, the target element</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#process-scroll-behavior">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/browsing-the-web.html#scroll-to-the-fragment-identifier">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div style="height: 300vh; width: 200vw;"></div>
+<div id="frag"></div>
+<script>
+// Crane lane blk3. Scroll positions here need no layout: the beginning of the
+// document is (0, 0), and scrollTo(0, 500) on a page 300vh tall lands on 500.
+const loaded = new Promise(resolve => window.onload = () => step_timeout(resolve, 0));
+
+promise_test(async t => {
+  await loaded;
+  window.scrollTo(0, 500);
+  assert_equals(window.scrollY, 500);
+  location.hash = "#top";
+  assert_equals(window.scrollY, 0, "#top scrolls to the beginning of the document");
+  assert_equals(document.querySelector(":target"), null);
+}, "a fragment navigation to #top scrolls to the beginning of the document");
+
+promise_test(async t => {
+  await loaded;
+  window.scrollTo(0, 500);
+  navigation.onnavigate = e => e.intercept({ scroll: "after-transition" });
+  t.add_cleanup(() => { navigation.onnavigate = null; });
+  await navigation.navigate(location.href.split("#")[0] + "?blk3").finished;
+  assert_equals(window.scrollY, 0, "no fragment: the beginning of the document");
+}, "after-transition on a push without a fragment scrolls to the beginning of the document");
+
+promise_test(async t => {
+  await loaded;
+  await navigation.navigate("#frag").finished;
+  assert_equals(document.querySelector(":target"), document.getElementById("frag"));
+  window.scrollTo(0, 500);
+  let event;
+  let release;
+  // A handler that has not settled keeps the event "committed" until
+  // scroll() is called (with none, it finishes a microtask after commit).
+  navigation.onnavigate = e => {
+    event = e;
+    e.intercept({ handler: () => new Promise(r => release = r), scroll: "manual" });
+  };
+  t.add_cleanup(() => { navigation.onnavigate = null; });
+  const result = navigation.navigate("#blk3-nothing-has-this-id");
+  await result.committed;
+  assert_equals(document.querySelector(":target"), document.getElementById("frag"), "before scroll()");
+  event.scroll();
+  assert_equals(document.querySelector(":target"), null, "scroll() clears the target element");
+  assert_equals(window.scrollY, 0, "and scrolls to the beginning of the document");
+  release();
+  await result.finished;
+}, "scroll() with a fragment that indicates nothing clears :target and scrolls to the beginning");
+
+promise_test(async t => {
+  await loaded;
+  history.scrollRestoration = "auto";
+  window.scrollTo(0, 300);
+  location.hash = "#blk3-restore-a";
+  window.scrollTo(0, 50);
+  const popped = new Promise(resolve => window.addEventListener("popstate", resolve, { once: true }));
+  history.back();
+  await popped;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(window.scrollY, 300, "the entry left at 300 is shown at 300 again");
+}, "a same-document traversal restores the scroll position the entry was left with");
+
+promise_test(async t => {
+  await loaded;
+  window.scrollTo(0, 300);
+  location.hash = "#blk3-restore-b";
+  history.scrollRestoration = "manual";
+  t.add_cleanup(() => { history.scrollRestoration = "auto"; });
+  window.scrollTo(0, 50);
+  location.hash = "#blk3-restore-c";
+  window.scrollTo(0, 70);
+  const popped = new Promise(resolve => window.addEventListener("popstate", resolve, { once: true }));
+  history.back();
+  await popped;
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  assert_equals(window.scrollY, 70, "scroll restoration mode manual: nothing restored");
+}, "a same-document traversal to a manual-mode entry leaves the scroll position alone");
+
+promise_test(async t => {
+  await loaded;
+  window.scrollTo(0, 100);
+  navigation.onnavigate = e => e.intercept({ scroll: "after-transition" });
+  t.add_cleanup(() => { navigation.onnavigate = null; });
+  await navigation.navigate("?blk3-traverse").finished;
+  assert_equals(window.scrollY, 0, "a push without a fragment scrolls to the beginning");
+  await navigation.back().finished;
+  assert_equals(window.scrollY, 100, "the traverse restores the position saved before the push");
+}, "after-transition on an intercepted traverse restores the scroll position data");
+</script>

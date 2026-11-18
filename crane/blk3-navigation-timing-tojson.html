@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>PerformanceNavigationTiming toJSON() and confidence</title>
+<link rel="help" href="https://w3c.github.io/navigation-timing/#dom-performancenavigationtiming-tojson">
+<link rel="help" href="https://w3c.github.io/navigation-timing/#dom-performancenavigationtiming-confidence">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Crane lane blk3: navigation-timing/nested-unload-timing.html and the
+// not-restored-reasons RemoteContext tests serialize the navigation entry with
+// toJSON(), which Crane left NotImplemented ("This feature is not yet
+// implemented"). Chrome 157 passes every assertion here.
+const loaded = new Promise(resolve => window.addEventListener("load", resolve));
+
+promise_test(async () => {
+  await loaded;
+  const entry = performance.getEntriesByType("navigation")[0];
+  const json = entry.toJSON();
+  assert_equals(typeof json, "object");
+  // [Default] toJSON: PerformanceEntry's, PerformanceResourceTiming's and
+  // PerformanceNavigationTiming's attributes, each with its getter's value.
+  for (const key of ["name", "entryType", "startTime", "duration", "initiatorType",
+                     "nextHopProtocol", "fetchStart", "responseEnd", "transferSize",
+                     "unloadEventStart", "unloadEventEnd", "domInteractive",
+                     "domContentLoadedEventStart", "domContentLoadedEventEnd",
+                     "domComplete", "loadEventStart", "loadEventEnd", "type",
+                     "redirectCount", "criticalCHRestart", "notRestoredReasons",
+                     "confidence", "activationStart"]) {
+    assert_own_property(json, key);
+  }
+  assert_equals(json.entryType, "navigation");
+  assert_equals(json.name, entry.name);
+  assert_equals(json.type, entry.type);
+  assert_equals(json.domInteractive, entry.domInteractive);
+  assert_equals(json.domContentLoadedEventStart, entry.domContentLoadedEventStart);
+  assert_equals(json.redirectCount, entry.redirectCount);
+  assert_equals(json.notRestoredReasons, null);
+  assert_equals(json.confidence, entry.confidence, "the confidence object itself");
+}, "toJSON() of the navigation entry has every attribute");
+
+promise_test(async () => {
+  await loaded;
+  const entry = performance.getEntriesByType("navigation")[0];
+  const parsed = JSON.parse(JSON.stringify(entry));
+  assert_equals(parsed.entryType, "navigation");
+  assert_equals(typeof parsed.confidence, "object");
+  assert_equals(typeof parsed.confidence.randomizedTriggerRate, "number");
+  assert_in_array(parsed.confidence.value, ["high", "low"]);
+}, "JSON.stringify() of the navigation entry serializes confidence through its toJSON()");
+
+promise_test(async () => {
+  await loaded;
+  const entry = performance.getEntriesByType("navigation")[0];
+  const confidence = entry.confidence;
+  assert_true(confidence instanceof PerformanceTimingConfidence);
+  assert_equals(entry.confidence, confidence, "set once, the same object every read");
+  const rate = confidence.randomizedTriggerRate;
+  assert_true(rate >= 0 && rate < 1, "randomizedTriggerRate in [0, 1)");
+  assert_in_array(confidence.value, ["high", "low"]);
+  assert_equals(confidence.value, confidence.value, "the value does not change");
+  const json = confidence.toJSON();
+  assert_equals(json.randomizedTriggerRate, rate);
+  assert_equals(json.value, confidence.value);
+  assert_array_equals(Object.keys(json), ["randomizedTriggerRate", "value"]);
+}, "confidence after DOM interactive: randomizedTriggerRate, value and toJSON()");
+</script>
