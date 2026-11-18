@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Crane: a streamed duplicate body start tag's attributes pass the parser sanitizer configuration</title>
+<link rel="help" href="https://html.spec.whatwg.org/#parsing-main-inbody" />
+<link rel="help" href="https://html.spec.whatwg.org/#html-streaming-methods" />
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+  // HTML "in body", a start tag whose tag name is "body": for each attribute
+  // on the token, 1. continue if the parser's parser sanitizer configuration
+  // does not allow it on the body element, 2. add it if the body element does
+  // not have it. A streaming parser has no sanitizing pass after the parse,
+  // so this step is all that keeps an event handler attribute off the live
+  // <body>.
+  async function frameDocument(t) {
+    const iframe = document.createElement("iframe");
+    iframe.srcdoc = "<!doctype html><html><body></body></html>";
+    await new Promise((resolve) => {
+      iframe.addEventListener("load", resolve, { once: true });
+      document.body.appendChild(iframe);
+    });
+    t.add_cleanup(() => iframe.remove());
+    return iframe.contentDocument;
+  }
+
+  promise_test(async (t) => {
+    const doc = await frameDocument(t);
+    // As sanitizer-api/sanitizer-duplicate-html-body.html's second case
+    // expects of the safe default configuration: dir is kept, class and
+    // event handlers are not.
+    const writer = doc.documentElement.streamHTML().getWriter();
+    await writer.write('<body><body onclick="window.parent.blk1_clicked = true" dir="rtl" class="c">');
+    await writer.close();
+    assert_equals(doc.body.getAttribute("dir"), "rtl", "an allowed attribute is merged");
+    assert_false(doc.body.hasAttribute("onclick"), "an event handler attribute is not merged");
+    assert_false(doc.body.hasAttribute("class"), "an attribute the safe default does not allow is not merged");
+  }, "streamHTML: a duplicate <body> merges only the attributes the safe default configuration allows");
+
+  promise_test(async (t) => {
+    const doc = await frameDocument(t);
+    const writer = doc.documentElement.streamHTML({ sanitizer: { attributes: ["class"] } }).getWriter();
+    await writer.write('<body><body class="allowed" title="forbidden">');
+    await writer.close();
+    assert_equals(doc.body.getAttribute("class"), "allowed");
+    assert_false(doc.body.hasAttribute("title"), "an attribute the configuration does not list is not merged");
+  }, "streamHTML: a duplicate <body> merges only the attributes its configuration allows");
+
+  promise_test(async (t) => {
+    const doc = await frameDocument(t);
+    const writer = doc.documentElement.streamHTMLUnsafe().getWriter();
+    await writer.write('<body><body onclick="void 0" title="kept">');
+    await writer.close();
+    assert_true(doc.body.hasAttribute("onclick"), "no sanitizer: every attribute is merged");
+    assert_equals(doc.body.getAttribute("title"), "kept");
+  }, "streamHTMLUnsafe: a duplicate <body> merges every attribute");
+</script>
+</body>

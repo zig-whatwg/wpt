@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Crane: a streamed script outlives its stream's parser and Document</title>
+<link rel="help" href="https://html.spec.whatwg.org/#stream-html" />
+<link rel="help" href="https://html.spec.whatwg.org/#abort-a-fragment-parser" />
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+  // A streamed parser-blocking script's parser document is the stream's own
+  // Document. When the stream is aborted, or let go, before the script's
+  // fetch completes, its parser and that Document go first; the script
+  // finishing its fetch afterwards must neither run nor touch them (Crane:
+  // the streaming parser resets its scripts' parser document before its
+  // Document goes - run under the bug-finding runner and leaks).
+  function settle(ms) {
+    return new Promise((resolve) => step_timeout(resolve, ms));
+  }
+
+  promise_test(async (t) => {
+    window.events = [];
+    t.add_cleanup(() => { delete window.events; });
+    const element = document.createElement("div");
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    let writer = element.streamHTMLUnsafe({ runScripts: true }).getWriter();
+    await writer.write(
+      "<script src='/domparsing/resources/slow.sub.js?pipe=trickle(d0.5)&outlives=abort'><" + "/script>" +
+      "<p id=after>after</p>"
+    );
+    const script = element.querySelector("script");
+    assert_not_equals(script, null);
+    assert_equals(element.querySelector("#after"), null, "the parser waits on the pending script");
+    await writer.abort();
+    writer = null;
+    await garbageCollect();
+    await settle(900);
+    await garbageCollect();
+    assert_array_equals(window.events, [], "an aborted stream's pending script never runs");
+    assert_equals(element.querySelector("#after"), null, "nothing parses after the abort");
+    // The script element is still usable.
+    assert_true(script.isConnected);
+    script.remove();
+  }, "a pending parsing-blocking script outlives its aborted stream");
+
+  promise_test(async (t) => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    (function () {
+      const writer = element.streamHTMLUnsafe({ runScripts: true }).getWriter();
+      writer.write("<script defer src='data:text/javascript,window.blk1_defer_ran = true'><" + "/script>");
+    })();
+    // The stream is never closed and nothing references it any more.
+    await garbageCollect();
+    await settle(300);
+    await garbageCollect();
+    assert_equals(window.blk1_defer_ran, undefined, "a deferred script of a stream never closed never runs");
+    assert_equals(element.querySelectorAll("script").length, 1);
+  }, "a deferred script outlives its unreferenced, unclosed stream");
+</script>
+</body>

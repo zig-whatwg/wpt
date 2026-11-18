@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Crane: a streamed script's intended document decides where it runs</title>
+<link rel="help" href="https://html.spec.whatwg.org/#prepare-the-script-element" />
+<link rel="help" href="https://html.spec.whatwg.org/#html-streaming-methods" />
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+  // HTML "prepare the script element" steps 4-5 and 19: a script the
+  // streaming parser inserts has the stream's private Document as its parser
+  // document and the live document as its intended document (runScripts:
+  // "initialize an HTML fragment parser" step 9's script target document),
+  // so it runs in the live document. A parser-inserted script moved to
+  // another document before its end tag is prepared there and does not run:
+  // its intended document is not its preparation-time document.
+  promise_test(async (t) => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    window.blk1_ran_in = null;
+    const writer = element.streamHTMLUnsafe({ runScripts: true }).getWriter();
+    await writer.write("<script>window.blk1_ran_in = document.title;</" + "script>");
+    assert_equals(window.blk1_ran_in, document.title, "the script ran, in the live document");
+    await writer.close();
+  }, "a streamed script runs in the live document (its intended document)");
+
+  promise_test(async (t) => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    t.add_cleanup(() => element.remove());
+    window.blk1_moved_ran = false;
+    const writer = element.streamHTMLUnsafe({ runScripts: true }).getWriter();
+    await writer.write("<script>window.blk1_moved_ran = true;");
+    const script = element.querySelector("script");
+    assert_not_equals(script, null, "the script element is inserted at its start tag");
+    const other = document.implementation.createHTMLDocument("other");
+    other.body.append(script);
+    await writer.write("</" + "script>");
+    await writer.close();
+    assert_false(window.blk1_moved_ran, "a script moved to another document before its end tag does not run");
+    assert_equals(script.ownerDocument, other);
+  }, "a streamed script moved to another document before its end tag does not run");
+</script>
+</body>
