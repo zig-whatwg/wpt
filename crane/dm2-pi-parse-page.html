@@ -11,9 +11,16 @@ const source = '<?task a="one" b="two" c="three"?>'.repeat(5000);
 const started = performance.now();
 container.innerHTML = source;
 const elapsed = performance.now() - started;
+// The measured time is the subtest's message, never part of its name: a
+// subtest's name is the same in every run, which wpt_runner --verify holds a
+// file to (lane bugs1).
+const name = 'Parse 5000 PIs without attribute access';
+add_result_callback(t => {
+  if (t.name === name) t.message = (t.message ? t.message + '; ' : '') + elapsed.toFixed(3) + ' ms';
+});
 test(() => {
   assert_equals(container.childNodes.length, 5000);
   assert_equals(container.firstChild.nodeType, Node.PROCESSING_INSTRUCTION_NODE);
   assert_equals(container.lastChild.data, 'a="one" b="two" c="three"');
-}, 'Parse 5000 PIs without attribute access: ' + elapsed.toFixed(3) + ' ms');
+}, name);
 </script>

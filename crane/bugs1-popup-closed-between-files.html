@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>No window an earlier file opened is still open (lane bugs1; the second of a pair)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The second of a pair: run in one runner process right after
+// crane/bugs1-popup-left-open.html, whose popup broadcasts "still open" every
+// 20 ms for as long as it lives. The runner closes every window an earlier file
+// left open before the next file starts, as wptrunner's close_old_windows does,
+// so nothing is heard here.
+async_test(t => {
+  const channel = new BroadcastChannel("bugs1-popup-left-open");
+  t.add_cleanup(() => channel.close());
+  channel.onmessage = t.unreached_func("a popup an earlier file left open is still running");
+  t.step_timeout(() => t.done(), 500);
+}, "No popup an earlier file left open is still running");
+</script>

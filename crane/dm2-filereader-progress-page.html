@@ -28,11 +28,18 @@ reader.addEventListener('loadend', () => {
     return;
   }
   const elapsed = performance.now() - started;
+  // The measured time is the subtest's message, never part of its name: a
+  // subtest's name is the same in every run, which wpt_runner --verify holds
+  // a file to (lane bugs1).
+  const name = 'FileReader 10000 reads';
+  add_result_callback(t => {
+    if (t.name === name) t.message = (t.message ? t.message + '; ' : '') + elapsed.toFixed(3) + ' ms';
+  });
   test(() => {
     assert_equals(completed, reads);
     for (const type of Object.keys(counts)) assert_equals(counts[type], reads, type);
     assert_equals(reader.result.byteLength, 64);
-  }, 'FileReader 10000 reads: ' + elapsed.toFixed(3) + ' ms');
+  }, name);
   done();
 });
 reader.readAsArrayBuffer(blob);

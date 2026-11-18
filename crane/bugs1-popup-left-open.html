@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A file that leaves a popup open (lane bugs1; the first of a pair)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// The first of a pair, run in one runner process before
+// crane/bugs1-popup-closed-between-files.html: this file opens a same-origin
+// popup that broadcasts "still open" every 20 ms and leaves it open. wptrunner
+// closes every window but its own before each test (close_old_windows,
+// executorwebdriver.py), so the next file hears nothing. Alone, the second file
+// passes either way.
+async_test(t => {
+  const channel = new BroadcastChannel("bugs1-popup-left-open");
+  t.add_cleanup(() => channel.close());
+  channel.onmessage = t.step_func_done(e => assert_equals(e.data, "still open"));
+  const popup = window.open("resources/bugs1-popup-broadcaster.html", "bugs1-popup-left-open");
+  assert_not_equals(popup, null, "window.open made a popup");
+}, "A popup this file leaves open broadcasts");
+</script>

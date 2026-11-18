@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>bugs1: a popup that says it is still open, every 20 ms</title>
+<script>
+// Opened by crane/bugs1-popup-left-open.html and left open. While it lives it
+// broadcasts on the channel crane/bugs1-popup-closed-between-files.html
+// listens to.
+const channel = new BroadcastChannel("bugs1-popup-left-open");
+setInterval(() => channel.postMessage("still open"), 20);
+</script>
