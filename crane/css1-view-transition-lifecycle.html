@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>View transitions: a same-document transition's lifecycle (lane css1)</title>
+<link rel="help" href="https://drafts.csswg.org/css-view-transitions-1/#api">
+<!--
+  Crane draws nothing: a capture keeps no pixels and measures no boxes, but the
+  phases, the update callback queue, the promises and the dynamic user-agent
+  rules are the spec's. Each expectation here is what Chrome, Firefox and Safari
+  do for these steps (View Transitions 1 §§6.1.1, 6.2, 7.3-7.10).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style>
+#target { view-transition-name: target; mix-blend-mode: multiply; }
+#dup1, #dup2 { view-transition-name: dup; }
+</style>
+<div id="target"></div>
+<script>
+promise_test(async () => {
+  assert_equals(document.activeViewTransition, null, "no transition before");
+  const order = [];
+  const transition = document.startViewTransition(() => {
+    order.push("callback");
+    assert_equals(document.activeViewTransition, transition, "active during the callback");
+  });
+  assert_equals(document.activeViewTransition, transition, "active once started");
+  assert_true(transition.updateCallbackDone instanceof Promise);
+  assert_equals(transition.ready, transition.ready, "one ready promise");
+  transition.updateCallbackDone.then(() => order.push("updateCallbackDone"));
+  transition.ready.then(() => order.push("ready"));
+  await transition.finished;
+  order.push("finished");
+  assert_array_equals(order, ["callback", "updateCallbackDone", "ready", "finished"]);
+  assert_equals(document.activeViewTransition, null, "none after finished");
+  assert_equals(transition.transitionRoot, document.documentElement);
+}, "startViewTransition: callback, updateCallbackDone, ready, finished, in order");
+
+promise_test(async t => {
+  let ran = false;
+  const transition = document.startViewTransition(() => { ran = true; });
+  transition.skipTransition();
+  await promise_rejects_dom(t, "AbortError", transition.ready);
+  await transition.updateCallbackDone;
+  assert_true(ran, "a skipped transition still calls its update callback");
+  await transition.finished;
+  assert_equals(document.activeViewTransition, null);
+}, "skipTransition() before ready rejects ready with AbortError; the callback still runs");
+
+promise_test(async t => {
+  const first = document.startViewTransition();
+  const second = document.startViewTransition();
+  await promise_rejects_dom(t, "AbortError", first.ready);
+  await second.ready;
+  await second.finished;
+}, "a second startViewTransition() skips the first with AbortError");
+
+promise_test(async t => {
+  const transition = document.startViewTransition(() => { throw new Error("boom"); });
+  transition.ready.catch(() => {});
+  await promise_rejects_js(t, Error, transition.updateCallbackDone);
+  await promise_rejects_js(t, Error, transition.finished);
+}, "a throwing update callback rejects updateCallbackDone and finished");
+
+promise_test(async t => {
+  const a = document.createElement("div");
+  const b = document.createElement("div");
+  a.id = "dup1";
+  b.id = "dup2";
+  document.body.append(a, b);
+  t.add_cleanup(() => { a.remove(); b.remove(); });
+  const transition = document.startViewTransition();
+  await promise_rejects_dom(t, "InvalidStateError", transition.ready);
+  await transition.finished;
+}, "duplicate view-transition-names skip the transition with InvalidStateError");
+
+promise_test(async () => {
+  const transition = document.startViewTransition({ update: () => {}, types: ["slide", "fade"] });
+  assert_array_equals([...transition.types], ["slide", "fade"]);
+  assert_equals(transition.types, transition.types, "[SameObject]");
+  await transition.finished;
+}, "startViewTransition({update, types}): the active types");
+
+promise_test(async () => {
+  const transition = document.startViewTransition();
+  await transition.ready;
+  const group = getComputedStyle(document.documentElement, "::view-transition-group(target)");
+  assert_equals(group.mixBlendMode, "multiply", "the group copies the new element's mix-blend-mode");
+  assert_equals(group.position, "absolute");
+  assert_equals(getComputedStyle(document.documentElement, "::view-transition-new(target)").animationName,
+                "-ua-view-transition-fade-in, -ua-mix-blend-mode-plus-lighter");
+  await transition.finished;
+  assert_equals(getComputedStyle(document.documentElement, "::view-transition-group(target)").mixBlendMode, "normal",
+                "the dynamic rules go with the transition");
+}, "the dynamic view transition style sheet styles the pseudo-elements while the transition runs");
+</script>

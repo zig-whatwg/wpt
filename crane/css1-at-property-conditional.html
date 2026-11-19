@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>@property inside a conditional rule registers only while its condition holds (lane css1)</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-properties-values-api-1/#conditional-rules">
+<!--
+  The non-geometry half of css/css-properties-values-api/at-property-media-query.html,
+  whose condition is an iframe's viewport width (a renderer's answer): here the
+  conditions are ones a document without a renderer evaluates, and the change is a
+  CSSOM edit of the condition rather than a resize.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<style id="sheet">
+  @property --initial { syntax: "<length>"; inherits: false; initial-value: 1px; }
+  @property --syntax { syntax: "<length>"; inherits: false; initial-value: 2px; }
+  @property --inherited { syntax: "<number>"; inherits: false; initial-value: 3; }
+  @media (min-width: 100000px) {
+    @property --initial { syntax: "<length>"; inherits: false; initial-value: 4px; }
+    @property --syntax { syntax: "<color>"; inherits: false; initial-value: blue; }
+    @property --inherited { syntax: "<number>"; inherits: true; initial-value: 5; }
+  }
+  #parent { --inherited: 6; }
+  #target { --syntax: red; }
+</style>
+<div id="parent"><div id="target"></div></div>
+<script>
+test(() => {
+  const style = getComputedStyle(target);
+  assert_equals(style.getPropertyValue("--initial"), "1px");
+  assert_equals(style.getPropertyValue("--syntax"), "2px");
+  assert_equals(style.getPropertyValue("--inherited"), "3");
+}, "@property rules in a @media rule that does not match are not registered");
+
+test(() => {
+  const media = [...document.getElementById("sheet").sheet.cssRules].find(r => r instanceof CSSMediaRule);
+  media.media.mediaText = "all";
+  const style = getComputedStyle(target);
+  assert_equals(style.getPropertyValue("--initial"), "4px");
+  assert_equals(style.getPropertyValue("--syntax"), "rgb(255, 0, 0)");
+  assert_equals(style.getPropertyValue("--inherited"), "6");
+  media.media.mediaText = "(min-width: 100000px)";
+  const after = getComputedStyle(target);
+  assert_equals(after.getPropertyValue("--initial"), "1px");
+  assert_equals(after.getPropertyValue("--inherited"), "3");
+}, "a change of the condition re-registers: the matching rule wins, and stops winning");
+</script>
