@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A FileList is serializable: its Files are sub-serialized, in order (File API 5)</title>
+<link rel=help href="https://w3c.github.io/FileAPI/#filelist-section">
+<link rel=help href="https://html.spec.whatwg.org/multipage/structured-data.html#sub-serialization">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// Crane test (lane maj2): FileList's serialization steps append the
+// sub-serialization of each of its Files; the deserialization steps add the
+// sub-deserialization of each to the new list. The upstream battery
+// (html/webappapis/structured-clone/) clones only an empty list.
+function listOf(...files) {
+  const transfer = new DataTransfer();
+  for (const file of files) transfer.items.add(file);
+  return transfer.files;
+}
+
+promise_test(async () => {
+  const list = listOf(new File(['abc'], 'a.txt', {type: 'text/plain', lastModified: 42}),
+                      new File(['de'], 'b.bin', {lastModified: 7}));
+  const copy = structuredClone(list);
+  assert_true(copy instanceof FileList, 'instanceof FileList');
+  assert_not_equals(copy, list);
+  assert_equals(copy.length, 2, 'length');
+  assert_true(copy[0] instanceof File && copy[1] instanceof File, 'its items are Files');
+  assert_not_equals(copy[0], list[0], 'each File is a copy');
+  assert_equals(copy[0].name, 'a.txt');
+  assert_equals(copy[0].type, 'text/plain');
+  assert_equals(copy[0].lastModified, 42);
+  assert_equals(copy[1].name, 'b.bin');
+  assert_equals(copy[1].lastModified, 7);
+  assert_equals(await copy[0].text(), 'abc');
+  assert_equals(await copy[1].text(), 'de');
+  assert_equals(copy.item(2), null, 'no third item');
+}, 'structuredClone of a FileList copies its Files, in order');
+
+test(() => {
+  const file = new File(['x'], 'x.txt');
+  const [list, alone] = structuredClone([listOf(file), file]);
+  assert_equals(list.length, 1);
+  assert_equals(list[0], alone, 'a File the message holds twice is one object');
+}, "a FileList's Files share the message's memory: identity holds across it");
+
+test(() => {
+  const list = listOf(new File(['y'], 'y.txt'));
+  const [first, second] = structuredClone([list, list]);
+  assert_equals(first, second, 'the same FileList twice is one object');
+  assert_equals(first.length, 1);
+}, 'a FileList the message holds twice is one object');
+
+promise_test(async () => {
+  const worker = new Worker(URL.createObjectURL(new Blob([
+    'onmessage = e => postMessage({isList: e.data instanceof FileList, ' +
+    'names: Array.from(e.data, f => f.name), list: e.data});'
+  ], {type: 'text/javascript'})));
+  const reply = new Promise(resolve => worker.onmessage = e => resolve(e.data));
+  worker.postMessage(listOf(new File(['1'], 'one'), new File(['22'], 'two')));
+  const data = await reply;
+  worker.terminate();
+  assert_true(data.isList, 'a FileList in the worker');
+  assert_array_equals(data.names, ['one', 'two'], 'its Files, in order, in the worker');
+  assert_true(data.list instanceof FileList, 'and back');
+  assert_equals(data.list.length, 2);
+  assert_equals(await data.list[1].text(), '22');
+}, 'a FileList posted to a dedicated worker and back');
+</script>
