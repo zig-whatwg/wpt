@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Crane: a script element made in one document runs in its node document's realm</title>
+<link rel="help" href="https://html.spec.whatwg.org/#execute-the-script-element" />
+<link rel="help" href="https://html.spec.whatwg.org/#creating-a-classic-script" />
+<link rel="help" href="https://html.spec.whatwg.org/#fetch-an-inline-module-script-graph" />
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+  // HTML "prepare the script element": the settings object is el's node
+  // document's relevant settings object, so a script element created in this
+  // document and inserted into an iframe's document runs in the iframe's
+  // realm - its global object, its global lexical scope, its onerror
+  // (WebCryptoAPI/algorithm-discards-context.https.window.js relies on it).
+  async function frame(t) {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    t.add_cleanup(() => iframe.remove());
+    return iframe;
+  }
+
+  promise_test(async (t) => {
+    const iframe = await frame(t);
+    window.dom1_global = null;
+    const script = document.createElement("script");
+    script.textContent = "let dom1_lexical = 1; top.dom1_global = self;";
+    iframe.contentDocument.body.appendChild(script);
+    assert_equals(window.dom1_global, iframe.contentWindow, "self is the iframe's Window");
+    assert_equals(typeof dom1_lexical, "undefined", "its let binding is not in this realm");
+    // A second script declaring the same name in a second frame is no redeclaration.
+    const iframe2 = await frame(t);
+    const again = document.createElement("script");
+    again.textContent = "let dom1_lexical = 2; top.dom1_global = self;";
+    iframe2.contentDocument.body.appendChild(again);
+    assert_equals(window.dom1_global, iframe2.contentWindow, "the second runs in the second frame");
+  }, "an inline classic script adopted into an iframe's document runs in the iframe's realm");
+
+  promise_test(async (t) => {
+    const iframe = await frame(t);
+    let reported_here = false;
+    const here = () => { reported_here = true; };
+    window.addEventListener("error", here);
+    t.add_cleanup(() => window.removeEventListener("error", here));
+    let reported_there = null;
+    iframe.contentWindow.onerror = (message) => { reported_there = String(message); return true; };
+    const script = document.createElement("script");
+    script.textContent = "throw new Error('dom1 thrown');";
+    iframe.contentDocument.body.appendChild(script);
+    assert_false(reported_here, "not reported to this Window");
+    assert_not_equals(reported_there, null, "reported to the iframe's Window");
+    assert_true(reported_there.includes("dom1 thrown"));
+  }, "an exception thrown by an adopted classic script is reported to its node document's Window");
+
+  promise_test(async (t) => {
+    const iframe = await frame(t);
+    window.dom1_module_global = null;
+    const ran = new Promise((resolve) => { window.dom1_module_ran = resolve; });
+    const script = document.createElement("script");
+    script.type = "module";
+    script.textContent = "top.dom1_module_global = self; top.dom1_module_ran();";
+    iframe.contentDocument.body.appendChild(script);
+    await ran;
+    assert_equals(window.dom1_module_global, iframe.contentWindow, "the module's self is the iframe's Window");
+  }, "an inline module script adopted into an iframe's document runs in the iframe's realm");
+</script>
+</body>

@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Crane: an intercepted traverse with scroll "after-transition" restores the entry's scroll position</title>
+<link rel="help" href="https://html.spec.whatwg.org/#process-scroll-behavior">
+<link rel="help" href="https://html.spec.whatwg.org/#restore-persisted-state">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div style="height: 1000px; width: 200vw;"></div>
+<div id="frag"></div>
+<div style="height: 1000px; width: 200vw;"></div>
+<div id="other"></div>
+<div style="height: 2000px; width: 200vw;"></div>
+<script>
+// navigation-api/scroll-behavior/after-transition-traverse-no-fragment.html and
+// -to-fragment.html, with the one step no renderer answers yet done by hand: "scroll to
+// the fragment" reads the target's box, so each fragment navigation is followed by the
+// scrollTo a renderer's layout would have made. What is left is the restore the two
+// files test: "process scroll behavior" for a traverse whose navigate event was
+// intercepted with scroll "after-transition" restores the entry's scroll position.
+promise_test(async t => {
+  await new Promise(resolve => window.onload = () => t.step_timeout(resolve, 0));
+  const initial_key = navigation.currentEntry.key;
+  window.scrollTo(0, 500);
+  assert_equals(window.scrollY, 500);
+  await navigation.navigate("#frag").finished;
+  window.scrollTo(0, 1000);  // where a renderer puts #frag
+  navigation.onnavigate = e => e.intercept({ scroll: "after-transition" });
+  t.add_cleanup(() => { navigation.onnavigate = null; });
+  await navigation.traverseTo(initial_key).finished;
+  assert_equals(window.scrollY, 500, "scroll position should be restored");
+}, "after-transition on a traverse to an entry without a fragment restores the scroll position");
+
+promise_test(async t => {
+  await navigation.navigate("#frag").finished;
+  window.scrollTo(0, 1000);  // where a renderer puts #frag
+  const frag_key = navigation.currentEntry.key;
+  window.scrollBy(0, 10);
+  assert_equals(window.scrollY, 1010);
+  await navigation.navigate("#other").finished;
+  window.scrollTo(0, 2000);  // where a renderer puts #other
+  navigation.onnavigate = e => e.intercept({ scroll: "after-transition" });
+  t.add_cleanup(() => { navigation.onnavigate = null; });
+  await navigation.traverseTo(frag_key).finished;
+  assert_equals(window.scrollY, 1010, "scroll position should be restored rather than scrolling to the fragment");
+}, "after-transition on a traverse to an entry with a fragment restores the scroll position");
+</script>
+</body>
