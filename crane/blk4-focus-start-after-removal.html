@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Sequential focus navigation continues from where the focused element was</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/interaction.html#sequential-focus-navigation-starting-point">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<div id="area"></div>
+<script>
+"use strict";
+// Chrome 157 and Firefox 160 pass each of these cases in
+// html/interaction/focus/sequential-focus-navigation-starting-point.tentative.html
+// (wpt.fyi 2358bd4835); Crane's own forms of them, with Tab only.
+const TAB = "";
+
+function setUp(markup) {
+  const area = document.getElementById("area");
+  area.innerHTML = markup;
+  return id => document.getElementById(id);
+}
+
+promise_test(async t => {
+  const $ = setUp('<button id=a>a</button><button id=focus>focus</button><button id=b>b</button>');
+  t.add_cleanup(() => { document.getElementById("area").innerHTML = ""; });
+  $("focus").focus();
+  $("focus").remove();
+  assert_equals(document.activeElement, document.body, "the viewport has the focus");
+  await test_driver.send_keys(document.body, TAB);
+  assert_equals(document.activeElement, $("b"));
+}, "Tab after the focused element is removed goes to the element after it");
+
+promise_test(async t => {
+  const $ = setUp('<button id=a>a</button><div id=parent><span><button id=focus>focus</button></span></div><button id=b>b</button>');
+  t.add_cleanup(() => { document.getElementById("area").innerHTML = ""; });
+  $("focus").focus();
+  $("parent").remove();
+  await test_driver.send_keys(document.body, TAB);
+  assert_equals(document.activeElement, $("b"));
+}, "Tab after an ancestor of the focused element is removed goes to the element after it");
+
+promise_test(async t => {
+  const $ = setUp('<button id=a>a</button><div><div id=empty><button id=focus>focus</button></div></div><button id=b>b</button>');
+  t.add_cleanup(() => { document.getElementById("area").innerHTML = ""; });
+  $("focus").focus();
+  $("focus").remove();
+  await test_driver.send_keys(document.body, TAB);
+  assert_equals(document.activeElement, $("b"), "the first focusable area after the point, in tree order");
+}, "Tab from the point of a removed element that left its parent empty");
+
+promise_test(async t => {
+  const $ = setUp('<button id=a>a</button><button id=prev>prev</button><button id=focus>focus</button><button id=b>b</button>');
+  t.add_cleanup(() => { document.getElementById("area").innerHTML = ""; });
+  $("focus").focus();
+  $("focus").remove();
+  $("prev").remove();
+  await test_driver.send_keys(document.body, TAB);
+  assert_equals(document.activeElement, $("b"));
+}, "The point stays where the focused element was when an element before it is removed too");
+
+promise_test(async t => {
+  const $ = setUp('<button id=a>a</button><button id=focus>focus</button><button id=b>b</button>');
+  t.add_cleanup(() => { document.getElementById("area").innerHTML = ""; });
+  $("focus").focus();
+  $("focus").blur();
+  assert_equals(document.activeElement, document.body);
+  await test_driver.send_keys(document.body, TAB);
+  assert_equals(document.activeElement, $("b"));
+}, "Tab after the focused element is blurred goes to the element after it");
+</script>

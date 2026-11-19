@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Notification constructor: create a notification, the getters, and the error event</title>
+<link rel="help" href="https://notifications.spec.whatwg.org/#create-a-notification">
+<link rel="help" href="https://notifications.spec.whatwg.org/#dom-notification-notification">
+<base href="/crane/blk4-base/">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+"use strict";
+
+test(() => {
+  const before = Date.now();
+  const n = new Notification("Title");
+  const after = Date.now();
+  assert_equals(n.title, "Title");
+  assert_equals(n.dir, "auto");
+  assert_equals(n.lang, "");
+  assert_equals(n.body, "");
+  assert_equals(n.navigate, "");
+  assert_equals(n.tag, "");
+  assert_equals(n.image, "");
+  assert_equals(n.icon, "");
+  assert_equals(n.badge, "");
+  assert_array_equals(n.vibrate, []);
+  assert_greater_than_equal(n.timestamp, before - 1, "timestamp after the call");
+  assert_less_than_equal(n.timestamp, after + 1, "timestamp before the return");
+  assert_false(n.renotify);
+  assert_equals(n.silent, null);
+  assert_false(n.requireInteraction);
+  assert_equals(n.data, null);
+  assert_array_equals(n.actions, []);
+}, "A notification made with no options has the options' defaults");
+
+test(() => {
+  const n = new Notification("T", {
+    dir: "rtl", lang: "fr", body: "Body", tag: "the-tag",
+    renotify: true, silent: false, requireInteraction: true, timestamp: 42,
+  });
+  assert_equals(n.dir, "rtl");
+  assert_equals(n.lang, "fr");
+  assert_equals(n.body, "Body");
+  assert_equals(n.tag, "the-tag");
+  assert_true(n.renotify);
+  assert_false(n.silent);
+  assert_true(n.requireInteraction);
+  assert_equals(n.timestamp, 42);
+}, "The getters return the notification's members from the options");
+
+test(() => {
+  const n = new Notification("T", { icon: "icon.png", image: "../image.png", badge: "http://example.test/b", navigate: "next.html" });
+  const base = new URL("/crane/blk4-base/", location.href);
+  assert_equals(n.icon, new URL("icon.png", base).href);
+  assert_equals(n.image, new URL("../image.png", base).href);
+  assert_equals(n.badge, "http://example.test/b");
+  assert_equals(n.navigate, new URL("next.html", base).href);
+  const bad = new Notification("T", { icon: "http://[" });
+  assert_equals(bad.icon, "", "a URL that fails to parse leaves the URL unset");
+}, "URL members are parsed with the API base URL; failure leaves them unset");
+
+test(() => {
+  const value = { a: 1, list: [1, 2, 3] };
+  const n = new Notification("T", { data: value });
+  assert_not_equals(n.data, value, "data is a copy");
+  assert_equals(n.data.a, 1);
+  assert_array_equals(n.data.list, [1, 2, 3]);
+  assert_equals(n.data, n.data, "[SameObject]");
+}, "data is StructuredSerializeForStorage of the option, deserialized once");
+
+test(() => {
+  const n = new Notification("T", { vibrate: [20000, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] });
+  assert_array_equals(n.vibrate, [10000, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert_true(Object.isFrozen(n.vibrate));
+  assert_equals(n.vibrate, n.vibrate, "[SameObject]");
+  assert_array_equals(new Notification("T", { vibrate: 300 }).vibrate, [300]);
+  assert_true(Object.isFrozen(n.actions));
+  assert_equals(n.actions, n.actions, "[SameObject]");
+}, "vibrate is the validated and normalized pattern, frozen");
+
+test(() => {
+  assert_throws_js(TypeError, () => new Notification("T", { silent: true, vibrate: [100] }));
+  assert_throws_js(TypeError, () => new Notification("T", { renotify: true }));
+  assert_throws_js(TypeError, () => new Notification("T", { actions: [{ action: "a", title: "A" }] }));
+  assert_throws_dom("DataCloneError", () => new Notification("T", { data: () => {} }));
+}, "The constructor's TypeErrors and the data's DataCloneError");
+
+async_test(t => {
+  assert_equals(Notification.permission, "default");
+  const n = new Notification("T");
+  let viaHandler = false;
+  n.onerror = () => { viaHandler = true; };
+  n.addEventListener("error", t.step_func_done(e => {
+    assert_true(e.isTrusted);
+    assert_true(viaHandler, "the onerror handler ran first");
+    assert_equals(e.target, n);
+  }));
+}, "Without the permission granted, the constructor's in-parallel steps fire error");
+</script>
