@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>test_driver.click updates style before the click, as a browser's driver does (lane css2)</title>
+<link rel="help" href="https://w3c.github.io/webdriver/#element-click">
+<link rel="help" href="https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview">
+<!--
+  WebDriver Element Click step 5 scrolls the element into view, which reads its
+  box: browsers update style (and layout) first, so a color change in the click's
+  handler is a style change event from the style that read saw - a transition.
+  The click comes right after the parse here, before any rendering opportunity.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>
+  #target { transition: color steps(1, end) 100s; color: green; }
+</style>
+<div id="target">target</div>
+<script>
+  promise_test(async t => {
+    let result;
+    target.addEventListener("click", () => {
+      target.style.color = "red";
+      target.offsetTop;
+      result = [getComputedStyle(target).color, target.getAnimations().length];
+    }, {once: true});
+    await test_driver.click(target);
+    assert_array_equals(result, ["rgb(0, 128, 0)", 1], "the transition runs from green");
+  }, "a click's style change transitions from the style before the click");
+
+  test(() => {
+    const div = document.createElement("div");
+    div.style.transition = "color steps(1, end) 100s";
+    div.style.color = "green";
+    document.body.append(div);
+    div.scrollIntoView();
+    div.style.color = "red";
+    assert_equals(getComputedStyle(div).color, "rgb(0, 128, 0)");
+    div.remove();
+  }, "scrollIntoView() updates style: a later change transitions");
+</script>
