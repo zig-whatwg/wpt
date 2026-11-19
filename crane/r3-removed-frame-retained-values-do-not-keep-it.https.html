@@ -14,6 +14,10 @@
 // its realm, the realm the global that keeps the object: the frame can never
 // be collected. Kept by an edge from the object's wrapper - as Blink keeps
 // each with a TraceWrapperV8Reference - the frame goes once script drops it.
+//
+// Served over https: CookieChangeEvent is [SecureContext] (Cookie Store
+// API), so a plain-http page - and its about:blank frames, which inherit its
+// secure context - has none to construct.
 
 // Kinds whose value is there as soon as `give` returns.
 const KINDS = {

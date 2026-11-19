@@ -139,6 +139,11 @@ promise_test(async t => {
 promise_test(async t => {
   const log = [];
   let event = null;
+  // The third dispatch's touch target, taken by its listener while the
+  // dispatch runs: a Touch answers its retargeted target only while an
+  // event that lists it is being dispatched, and its own target after.
+  let capture = false;
+  let host = null;
   (() => {
     // A host in a frame's document, and in its shadow tree a span this
     // document made: the touch, its target and the event are this realm's,
@@ -156,7 +161,10 @@ promise_test(async t => {
     froot.appendChild(window.touchNodeC);
     const fx = fdoc.getElementById("fx");
     fx.addEventListener("ping", e => log.push("fx:" + read(e)));
-    document.getElementById("x-c").addEventListener("ping", e => log.push("x:" + read(e)));
+    document.getElementById("x-c").addEventListener("ping", e => {
+      log.push("x:" + read(e));
+      if (capture) host = e.touches[0].target;
+    });
     const touch = new Touch({ identifier: 1, target: window.touchNodeC });
     event = new TouchEvent("ping", { touches: [touch], bubbles: true });
     fx.dispatchEvent(event);
@@ -182,14 +190,19 @@ promise_test(async t => {
   // StaticRange and a Range held the host): a shadow host of a removed
   // iframe's document, read after the removal and a collection, is
   // connected, its parent the frame's body, its document's defaultView null.
-  (() => { document.getElementById("x-c").dispatchEvent(event); })();
+  (() => {
+    capture = true;
+    document.getElementById("x-c").dispatchEvent(event);
+    capture = false;
+  })();
   assert_equals(log.length, 3, "the third dispatch ran the listener");
   assert_not_equals(log[2], "x:NEWCOMER:false", "the list never names a node made after the host was freed");
   assert_equals(log[2], "x:fhost:true", "the host, alive in its whole tree");
   (() => {
-    const host = event.touches[0].target;
+    assert_equals(host.id, "fhost", "the third dispatch's touch target");
     assert_equals(host.ownerDocument.getElementById("fx").localName, "p", "its tree is whole");
     assert_equals(host.ownerDocument.defaultView, null, "its document has no window");
+    host = null;
   })();
   (() => { document.getElementById("holder-c").remove(); })();
 }, "a TouchEvent dispatched again names the shadow host of a removed and collected frame, alive in its whole tree");
