@@ -1,0 +1,184 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>ImageBitmap, createImageBitmap and OffscreenCanvas: bitmap data, its formatting, cloning and transfer</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#imagebitmap">
+<link rel=help href="https://html.spec.whatwg.org/multipage/canvas.html#the-offscreencanvas-interface">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// Crane test (lane maj2). Pixels are read back with getImageData from a
+// canvas the bitmap is drawn on, at whole-pixel positions (no resampling).
+function pixelsOf(source, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(source, 0, 0);
+  return Array.from(ctx.getImageData(0, 0, width, height).data);
+}
+
+function sourceCanvas() {
+  // 2 x 1: opaque red, opaque blue.
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 1;
+  const data = new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 255]), 2, 1);
+  canvas.getContext('2d').putImageData(data, 0, 0);
+  return canvas;
+}
+
+promise_test(async () => {
+  const bitmap = await createImageBitmap(sourceCanvas());
+  assert_true(bitmap instanceof ImageBitmap);
+  assert_equals(bitmap.width, 2);
+  assert_equals(bitmap.height, 1);
+  assert_array_equals(pixelsOf(bitmap, 2, 1), [255, 0, 0, 255, 0, 0, 255, 255]);
+}, 'createImageBitmap(canvas) copies its bitmap, which drawImage paints');
+
+promise_test(async () => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 3;
+  canvas.height = 2;
+  const bitmap = await createImageBitmap(canvas);
+  assert_equals(bitmap.width, 3);
+  assert_equals(bitmap.height, 2);
+  assert_array_equals(pixelsOf(bitmap, 1, 1), [0, 0, 0, 0]);
+}, 'a canvas with no context gives a transparent black bitmap of its size');
+
+promise_test(async () => {
+  const canvas = sourceCanvas();
+  const right = await createImageBitmap(canvas, 1, 0, 1, 1);
+  assert_array_equals(pixelsOf(right, 1, 1), [0, 0, 255, 255], 'sx 1');
+  const flipped = await createImageBitmap(canvas, 1, 0, -2, 1);
+  assert_equals(flipped.width, 2);
+  assert_array_equals(pixelsOf(flipped, 2, 1), [0, 0, 0, 0, 255, 0, 0, 255], 'a negative sw reaches left of sx, transparent past the edge');
+  const resized = await createImageBitmap(canvas, {resizeWidth: 4, resizeQuality: 'pixelated'});
+  assert_equals(resized.width, 4);
+  assert_equals(resized.height, 2, 'the height in proportion');
+  assert_array_equals(pixelsOf(resized, 4, 1), [255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255]);
+}, 'the source rectangle, and resizing in proportion');
+
+promise_test(async () => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 2;
+  canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]), 1, 2), 0, 0);
+  const bitmap = await createImageBitmap(canvas, {imageOrientation: 'flipY'});
+  assert_array_equals(pixelsOf(bitmap, 1, 2), [0, 255, 0, 255, 255, 0, 0, 255]);
+}, 'imageOrientation flipY flips the rows');
+
+promise_test(async t => {
+  const canvas = sourceCanvas();
+  await promise_rejects_js(t, RangeError, createImageBitmap(canvas, 0, 0, 0, 1));
+  await promise_rejects_dom(t, 'InvalidStateError', createImageBitmap(canvas, {resizeWidth: 0}));
+  const empty = document.createElement('canvas');
+  empty.width = 0;
+  await promise_rejects_dom(t, 'InvalidStateError', createImageBitmap(empty));
+  const closed = await createImageBitmap(canvas);
+  closed.close();
+  assert_equals(closed.width, 0, 'a closed bitmap is 0 x 0');
+  assert_equals(closed.height, 0);
+  await promise_rejects_dom(t, 'InvalidStateError', createImageBitmap(closed));
+  assert_throws_dom('InvalidStateError', () => document.createElement('canvas').getContext('2d').drawImage(closed, 0, 0));
+  assert_throws_dom('DataCloneError', () => structuredClone(closed));
+}, 'rejections: sw 0, resizeWidth 0, a zero-sized canvas, a closed bitmap');
+
+promise_test(async () => {
+  const fromData = await createImageBitmap(new ImageData(new Uint8ClampedArray([1, 2, 3, 255]), 1, 1));
+  assert_array_equals(pixelsOf(fromData, 1, 1), [1, 2, 3, 255]);
+  const fromBitmap = await createImageBitmap(fromData);
+  assert_not_equals(fromBitmap, fromData);
+  assert_array_equals(pixelsOf(fromBitmap, 1, 1), [1, 2, 3, 255]);
+}, 'createImageBitmap(ImageData) and createImageBitmap(ImageBitmap)');
+
+promise_test(async () => {
+  const bitmap = await createImageBitmap(sourceCanvas());
+  const copy = structuredClone(bitmap);
+  assert_not_equals(copy, bitmap);
+  assert_equals(copy.width, 2);
+  assert_array_equals(pixelsOf(copy, 2, 1), [255, 0, 0, 255, 0, 0, 255, 255], 'a copy of the bitmap data');
+  assert_equals(bitmap.width, 2, 'cloning leaves the source');
+  const moved = structuredClone(bitmap, {transfer: [bitmap]});
+  assert_equals(moved.width, 2);
+  assert_array_equals(pixelsOf(moved, 2, 1), [255, 0, 0, 255, 0, 0, 255, 255]);
+  assert_equals(bitmap.width, 0, 'a transferred bitmap is detached');
+  assert_throws_dom('DataCloneError', () => structuredClone(bitmap, {transfer: [bitmap]}));
+}, 'an ImageBitmap is serializable and transferable');
+
+test(() => {
+  const canvas = new OffscreenCanvas(3, 2);
+  assert_equals(canvas.width, 3);
+  assert_equals(canvas.height, 2);
+  const ctx = canvas.getContext('2d');
+  assert_true(ctx instanceof OffscreenCanvasRenderingContext2D);
+  assert_equals(canvas.getContext('2d'), ctx, 'the same context again');
+  assert_equals(ctx.canvas, canvas);
+  assert_equals(canvas.getContext('webgl'), null, 'another context type in the 2d mode');
+  assert_equals(ctx.fillStyle, '#000000');
+  ctx.fillStyle = 'red';
+  assert_equals(ctx.fillStyle, '#ff0000');
+  ctx.fillStyle = 'not a color';
+  assert_equals(ctx.fillStyle, '#ff0000', 'an invalid value is ignored');
+  ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)';
+  assert_equals(ctx.strokeStyle, 'rgba(0, 0, 255, 0.5)');
+  ctx.fillRect(0, 0, 2, 1);
+  assert_array_equals(Array.from(ctx.getImageData(0, 0, 3, 1).data), [255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0]);
+  ctx.clearRect(1, 0, 1, 1);
+  assert_array_equals(Array.from(ctx.getImageData(0, 0, 2, 1).data), [255, 0, 0, 255, 0, 0, 0, 0]);
+  canvas.width = 3;
+  assert_equals(ctx.fillStyle, '#000000', 'setting width resets the context');
+  assert_array_equals(Array.from(ctx.getImageData(0, 0, 1, 1).data), [0, 0, 0, 0], 'and clears the bitmap');
+}, 'OffscreenCanvas: dimensions, its 2d context, fillStyle, fillRect, clearRect and resizing');
+
+promise_test(async () => {
+  const canvas = new OffscreenCanvas(1, 1);
+  assert_throws_dom('InvalidStateError', () => canvas.transferToImageBitmap(), 'no context yet');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'lime';
+  ctx.fillRect(0, 0, 1, 1);
+  const bitmap = canvas.transferToImageBitmap();
+  assert_array_equals(pixelsOf(bitmap, 1, 1), [0, 255, 0, 255]);
+  assert_array_equals(Array.from(ctx.getImageData(0, 0, 1, 1).data), [0, 0, 0, 0], 'the canvas bitmap is replaced with a blank one');
+  const fromCanvas = await createImageBitmap(canvas);
+  assert_equals(fromCanvas.width, 1);
+  ctx.fillRect(0, 0, 1, 1);
+  const blob = await canvas.convertToBlob();
+  assert_true(blob instanceof Blob);
+  assert_equals(blob.type, 'image/png');
+}, 'OffscreenCanvas: transferToImageBitmap, createImageBitmap and convertToBlob');
+
+promise_test(async () => {
+  const canvas = new OffscreenCanvas(5, 4);
+  const moved = structuredClone(canvas, {transfer: [canvas]});
+  assert_true(moved instanceof OffscreenCanvas);
+  assert_equals(moved.width, 5);
+  assert_equals(moved.height, 4);
+  assert_throws_dom('InvalidStateError', () => canvas.getContext('2d'), 'the original is detached');
+  assert_throws_dom('DataCloneError', () => structuredClone(canvas, {transfer: [canvas]}), 'and cannot be transferred again');
+  const withContext = new OffscreenCanvas(1, 1);
+  withContext.getContext('2d');
+  assert_throws_dom('InvalidStateError', () => structuredClone(withContext, {transfer: [withContext]}), 'a canvas with a context');
+  assert_throws_dom('DataCloneError', () => structuredClone(new OffscreenCanvas(1, 1)), 'not serializable');
+}, 'an OffscreenCanvas is transferable, not serializable');
+
+promise_test(async () => {
+  const worker = new Worker(URL.createObjectURL(new Blob([`
+    onmessage = e => {
+      const canvas = e.data;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'blue';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const bitmap = canvas.transferToImageBitmap();
+      postMessage({bitmap, width: canvas.width}, [bitmap]);
+    };
+  `], {type: 'text/javascript'})));
+  const reply = new Promise(resolve => worker.onmessage = e => resolve(e.data));
+  const canvas = new OffscreenCanvas(2, 2);
+  worker.postMessage(canvas, [canvas]);
+  const data = await reply;
+  worker.terminate();
+  assert_equals(data.width, 2);
+  assert_true(data.bitmap instanceof ImageBitmap);
+  assert_array_equals(pixelsOf(data.bitmap, 1, 1), [0, 0, 255, 255]);
+}, 'an OffscreenCanvas transferred to a worker draws there, and its ImageBitmap comes back');
+</script>
