@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A transferred stream nothing references is kept by its port while work is pending</title>
+<link rel="help" href="https://streams.spec.whatwg.org/#transferrable-streams">
+<link rel="help" href="https://html.spec.whatwg.org/multipage/web-messaging.html#ports-and-garbage-collection">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+// Lane net2 (Crane): a transferred stream is a cross-realm transform over a
+// hidden MessagePort pair. A started, entangled port is kept while its channel
+// lives (HTML 9.4.6) and keeps the stream it serves; script holding nothing of
+// the received stream but a pending read or write must still see it finish.
+
+promise_test(async () => {
+  let controller;
+  const original = new ReadableStream({ start(c) { controller = c; } });
+  // Nothing but the read's promise reaches the received stream.
+  const read = structuredClone(original, { transfer: [original] }).getReader().read();
+  await garbageCollect();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await garbageCollect();
+  controller.enqueue('late');
+  const { value, done } = await read;
+  assert_false(done, 'the read gets a chunk');
+  assert_equals(value, 'late');
+}, 'a pending read on a transferred ReadableStream nothing else references survives a collection');
+
+promise_test(async () => {
+  const chunks = [];
+  let resolveClosed;
+  const closed = new Promise(resolve => { resolveClosed = resolve; });
+  const original = new WritableStream({
+    write(chunk) { chunks.push(chunk); },
+    close() { resolveClosed(); },
+  });
+  (() => {
+    const writer = structuredClone(original, { transfer: [original] }).getWriter();
+    writer.write('a');
+    writer.write('b');
+    writer.close();
+  })();
+  await garbageCollect();
+  await closed;
+  assert_array_equals(chunks, ['a', 'b']);
+}, 'writes and close queued on a transferred WritableStream nothing references reach the original sink');
+
+promise_test(async () => {
+  const seen = [];
+  const original = new ReadableStream({
+    pull(c) {
+      seen.push('pull');
+      if (seen.length > 3) c.close(); else c.enqueue(seen.length);
+    },
+  }, { highWaterMark: 0 });
+  // The original is dropped too: only its transfer pipe holds it.
+  const received = structuredClone(original, { transfer: [original] });
+  await garbageCollect();
+  const reader = received.getReader();
+  const values = [];
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    values.push(value);
+    await garbageCollect();
+  }
+  assert_array_equals(values, [1, 2, 3]);
+}, 'a transferred ReadableStream whose original only its pipe holds keeps pulling across collections');
+</script>

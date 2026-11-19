@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>rel=preload runs for every value the as attribute reflects</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/links.html#link-type-preload">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Lane net2 (Crane), user ruling 2026-11-18: rel=preload runs for every value
+// `as` accepts, with that value's destination - Firefox's model (it preloads
+// every value its `as` reflects). HTML's "translate a preload destination"
+// returns for 8 of the 14 keywords `as` itself accepts, so a page could set a
+// reflected value and wait forever (fetch/api/request/destination/
+// fetch-destination.https.html: Chrome 30/30, Firefox 29/30, Safari 28/30).
+const values = ['fetch', 'json', 'audio', 'video', 'document', 'worker', 'sharedworker', 'xslt', 'manifest', 'style', 'script'];
+for (const value of values) {
+  promise_test(async t => {
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = value;
+    assert_equals(link.as, value, 'Crane reflects the value');
+    const event = new Promise(resolve => {
+      link.onload = () => resolve('load');
+      link.onerror = () => resolve('error');
+    });
+    link.href = `/common/blank.html?net2-preload-${value}`;
+    document.head.appendChild(link);
+    t.add_cleanup(() => link.remove());
+    assert_equals(await event, 'load');
+  }, `rel=preload as=${value} fetches and fires load`);
+}
+
+promise_test(async t => {
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.as = 'no-such-destination';
+  assert_equals(link.as, '', 'an unknown value reflects as the empty string');
+  let fired = false;
+  link.onload = link.onerror = () => { fired = true; };
+  link.href = '/common/blank.html?net2-preload-unknown';
+  document.head.appendChild(link);
+  t.add_cleanup(() => link.remove());
+  await new Promise(resolve => t.step_timeout(resolve, 200));
+  assert_false(fired, 'a value `as` does not accept is not preloaded');
+}, 'rel=preload with an unknown as value fetches nothing');
+</script>
