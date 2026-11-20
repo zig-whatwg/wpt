@@ -7,8 +7,10 @@
 <div id="root"></div>
 <script>
 // Identical inputs before and after, and the timed work is DOM mutation only,
-// so a runner without slot assignment runs the same page; the measurements
-// are in the result name so the journal keeps them. Each round builds 1,000
+// so a runner without slot assignment runs the same page. The measurements
+// are the timing subtest's message, never its name: a subtest's name is the
+// same in every run, which wpt_runner --verify holds a file to (lane flk2;
+// rc5-collection-timing.html's pattern, lane bugs1). Each round builds 1,000
 // hosts with a named and a default slot from a template, fills them, moves a
 // child between slots by renaming it, removes and re-inserts a slot, and
 // removes the hosts. Each sample runs in a task of its own, so its
@@ -51,9 +53,14 @@ promise_test(async () => {
     mutate(build());
     if (sample > 0) samples.push(Math.round(performance.now() - start));
   }
-  // The measurements, in a subtest of their own that passes wherever the
-  // page runs.
-  test(() => {}, 'Shadow-heavy DOM mutation, 1000 hosts/sample, ms=' + samples.join(','));
+  // The measurements, as the message of a subtest of their own that passes
+  // wherever the page runs.
+  const timing = 'Shadow-heavy DOM mutation, 1000 hosts/sample';
+  const times = 'ms: ' + samples.join(',');
+  add_result_callback(t => {
+    if (t.name === timing) t.message = (t.message ? t.message + '; ' : '') + times;
+  });
+  test(() => {}, timing);
   const hosts = build();
   let assigned = 0;
   for (const host of hosts) {

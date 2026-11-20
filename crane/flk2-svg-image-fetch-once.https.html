@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>SVG image: the attributes set in one task make one fetch, with their final values</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/fetch/metadata/resources/helper.sub.js"></script>
+<body>
+<script>
+'use strict';
+// Lane flk2: an SVG <image> fetches in a microtask queued at the change, as
+// HTML's img "update the image data" does, so the href, crossorigin and
+// insertion of one task make ONE request, with the attributes as they are
+// when the microtask runs (Chrome: Blink ImageLoader::UpdateFromElement
+// queues a microtask unless the image is in its memory cache; Firefox passes
+// fetch/metadata/generated/svg-image.https.sub.html's crossorigin subtests
+// the same way; Safari fetches at once and fails two of the three).
+//
+// record-headers.py keeps the FIRST request's headers for a key, and a
+// second request for the same key fails (wptserve's stash refuses to
+// overwrite: a 500), so a second fetch shows as an error event and the
+// recorded mode is the first fetch's.
+const params = { body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>', mime: 'image/svg+xml' };
+let n = 0;
+function key() { return 'flk2-once-' + Date.now() + '-' + (n++) + '-' + Math.random().toString(16).slice(2); }
+function outcome(image) {
+  return new Promise(resolve => {
+    image.onload = () => resolve('load');
+    image.onerror = () => resolve('error');
+  });
+}
+async function modeOf(k) {
+  // retrieve() throws when nothing was recorded (a 204).
+  const headers = await retrieve(k).catch(() => null);
+  if (!headers) return 'none';
+  return headers['sec-fetch-mode'] ? headers['sec-fetch-mode'].join() : 'no header';
+}
+function parts(t) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+  t.add_cleanup(() => svg.remove());
+  return { svg, image };
+}
+
+for (const value of ['', 'anonymous', 'use-credentials']) {
+  promise_test(async t => {
+    const { svg, image } = parts(t);
+    const k = key();
+    image.setAttribute('href', makeRequestURL(k, [], params));
+    svg.appendChild(image);
+    image.setAttribute('crossorigin', value);
+    document.body.appendChild(svg);
+    assert_equals(await outcome(image), 'load', 'one request, which loads');
+    assert_equals(await modeOf(k), 'cors', 'the request has the final crossorigin');
+  }, `href, then crossorigin="${value}", then insertion, in one task: one cors fetch`);
+}
+
+promise_test(async t => {
+  const { svg, image } = parts(t);
+  const k = key();
+  const url = makeRequestURL(k, [], params);
+  image.setAttribute('href', url);
+  image.setAttribute('href', url);
+  svg.appendChild(image);
+  document.body.appendChild(svg);
+  assert_equals(await outcome(image), 'load', 'one request, which loads');
+  assert_equals(await modeOf(k), 'no-cors');
+}, 'the same href set twice in one task: one fetch');
+
+promise_test(async t => {
+  const { svg, image } = parts(t);
+  const first = key(), last = key();
+  svg.appendChild(image);
+  document.body.appendChild(svg);
+  image.setAttribute('href', makeRequestURL(first, [], params));
+  image.setAttribute('href', makeRequestURL(last, [], params));
+  assert_equals(await outcome(image), 'load');
+  assert_equals(await modeOf(last), 'no-cors', 'the last href is fetched');
+  assert_equals(await modeOf(first), 'none', 'the first href is never requested');
+}, 'two hrefs in one task on a connected image: only the last is fetched');
+
+</script>
