@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An open RTCPeerConnection nothing references is not garbage collected; a closed one is</title>
+<!--
+  WebRTC 1.0, 4.4.1.x "Garbage collection": "An RTCPeerConnection object MUST not be garbage collected as long as
+  any event can cause an event handler to be triggered on the object. When the object's [[IsClosed]] internal slot
+  is true, no such event handler can be triggered and it is therefore safe to garbage collect the object."
+  Blink keeps one alive while it is not closed (RTCPeerConnection::HasPendingActivity). Crane collected an open one
+  as soon as script dropped it, so a page that made one in a frame and dropped it was kept in the back/forward cache
+  or not by the collector's timing (performance-timeline/not-restored-reasons/{same,cross}-origin-bfcache.window.js,
+  lane tmpl1).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<script>
+async function collectAndCount(t, make) {
+  let collected = 0;
+  const registry = new FinalizationRegistry(() => { collected++; });
+  (() => { for (let i = 0; i < 3; i++) registry.register(make(), 'connection ' + i); })();
+  for (let i = 0; i < 6; i++) {
+    await garbageCollect();
+    await new Promise((resolve) => t.step_timeout(resolve, 10));
+  }
+  return collected;
+}
+
+promise_test(async (t) => {
+  assert_equals(await collectAndCount(t, () => new RTCPeerConnection()), 0);
+}, 'an open RTCPeerConnection nothing references is not garbage collected');
+
+promise_test(async (t) => {
+  const collected = await collectAndCount(t, () => {
+    const connection = new RTCPeerConnection();
+    connection.close();
+    return connection;
+  });
+  assert_equals(collected, 3);
+}, 'a closed RTCPeerConnection nothing references is garbage collected');
+</script>
