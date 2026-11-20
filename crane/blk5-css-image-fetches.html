@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: shape-outside images and image-set() candidates are fetched</title>
+<link rel="help" href="https://drafts.csswg.org/css-shapes-1/#shape-outside-property">
+<link rel="help" href="https://drafts.csswg.org/css-images-4/#image-set-notation">
+<!-- service-workers/service-worker/fetch-request-css-images.https.html: Chrome 157, Firefox 160 and
+     Safari 27.2 fetch a shape-outside url() (mode "cors", credentials "same-origin") and the chosen
+     candidate of an image-set() in background-image and shape-outside (wpt.fyi at 2358bd4835: 4/4 each). -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function fetched(t, url) {
+  return new Promise(resolve => {
+    const look = () => performance.getEntriesByType('resource').some(e => e.name === url);
+    if (look()) return resolve(true);
+    const observer = new PerformanceObserver(() => { if (look()) { observer.disconnect(); resolve(true); } });
+    observer.observe({ type: 'resource' });
+    t.step_timeout(() => { observer.disconnect(); resolve(look()); }, 3000);
+  });
+}
+function load(property, value) {
+  const div = document.createElement('div');
+  document.body.appendChild(div);
+  div.style[property] = value;
+  return div;
+}
+const base = new URL('/images/green.png', location.href).href;
+
+promise_test(async t => {
+  const url = base + '?shape=' + Date.now();
+  load('shapeOutside', `url(${url})`);
+  assert_true(await fetched(t, url), 'fetched');
+}, 'a shape-outside url() is fetched');
+
+promise_test(async t => {
+  const url = base + '?bg-set=' + Date.now();
+  const div = load('backgroundImage', `image-set(url(${url}) 1x)`);
+  assert_not_equals(div.style.backgroundImage, '', 'image-set() parses');
+  assert_true(await fetched(t, url), 'fetched');
+}, 'the candidate of a background-image image-set() is fetched');
+
+promise_test(async t => {
+  const url = base + '?shape-set=' + Date.now();
+  load('shapeOutside', `image-set(url(${url}) 1x)`);
+  assert_true(await fetched(t, url), 'fetched');
+}, 'the candidate of a shape-outside image-set() is fetched');
+
+promise_test(async t => {
+  const one = base + '?one=' + Date.now();
+  const two = base + '?two=' + Date.now();
+  load('backgroundImage', `image-set(url(${one}) 1x, url(${two}) 2x)`);
+  assert_true(await fetched(t, one), 'the 1x candidate is fetched');
+  assert_false(await fetched(t, two), 'the 2x candidate is not');
+}, 'only the chosen candidate of an image-set() is fetched (device pixel ratio 1)');
+</script>

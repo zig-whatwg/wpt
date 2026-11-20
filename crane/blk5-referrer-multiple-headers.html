@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: Referrer-Policy "origin" and "origin no-referrer" - the last valid token wins</title>
+<link rel="help" href="https://w3c.github.io/webappsec-referrer-policy/#parse-referrer-policy-from-header">
+<!-- referrer-policy/generic/multiple-headers-one-invalid.html sends these two headers; its image read-back
+     needs a renderer in Crane. Referrer Policy 8.1 takes each comma-separated token in turn and keeps the last
+     valid one ("origin no-referrer" is not a token, so the policy is "origin"): Firefox 160 and Safari 27.2
+     send the origin; Chrome 157 discards the whole header and sends the full URL. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+promise_test(async () => {
+  const response = await fetch('/fetch/api/resources/inspect-headers.py?headers=referer');
+  assert_equals(response.headers.get('x-request-referer'), location.origin + '/');
+}, 'the document policy is "origin", the last valid token');
+</script>

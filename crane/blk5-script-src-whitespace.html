@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: a script whose src is only ASCII whitespace fetches the base URL (the spec)</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element">
+<!-- HTML prepare-the-script-element step 33.3 fires error for the empty string only; any other value is
+     encoding-parsed, and the URL parser strips the whitespace, so "   " is the base URL and is fetched.
+     Firefox 160 does this; WebKit adopted it in wpt d0627f4a50 (2026-10-09; Safari 27.2 stable lags);
+     Chrome 157 fires error. The integrator's ruling 2026-11-20 4:25 PM ET: the spec. -->
+<base href="resources/blk5-script-ran.js">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+function outcome(t, src) {
+  const s = document.createElement('script');
+  s.setAttribute('src', src);
+  return new Promise(resolve => {
+    s.onerror = () => resolve('error');
+    s.onload = () => resolve('load');
+    t.step_timeout(() => resolve('none'), 3000);
+    document.body.append(s);
+  });
+}
+
+for (const [label, src] of [["spaces", "   "], ["tab and line feed", "\t\n"], ["form feed and carriage return", " \f\r "]]) {
+  promise_test(async t => {
+    window.blk5Ran = false;
+    assert_equals(await outcome(t, src), 'load');
+    assert_true(window.blk5Ran, 'the base URL\'s script ran');
+  }, `src of only ASCII whitespace (${label}) fetches the base URL`);
+}
+
+promise_test(async t => {
+  assert_equals(await outcome(t, ''), 'error');
+}, 'an empty src fires error');
+</script>

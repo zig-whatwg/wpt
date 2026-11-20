@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Crane: DOMMatrix(string) and setMatrixValue parse a CSS transform list (Geometry 6.2)</title>
+<link rel="help" href="https://drafts.fxtf.org/geometry/#parse-a-string-into-an-abstract-matrix">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function elements(m) {
+  return [m.m11, m.m12, m.m13, m.m14, m.m21, m.m22, m.m23, m.m24, m.m31, m.m32, m.m33, m.m34, m.m41, m.m42, m.m43, m.m44];
+}
+test(() => {
+  const m = new DOMMatrix('translate(10px, 20px) scale(2)');
+  assert_true(m.is2D);
+  assert_array_equals(elements(m), [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, 10, 20, 0, 1]);
+}, 'a 2D transform list');
+test(() => {
+  const m = new DOMMatrixReadOnly('matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 25, 50, 0, 1)');
+  assert_false(m.is2D);
+  assert_equals(m.e, 25);
+  assert_equals(m.f, 50);
+}, 'matrix3d() is 3D');
+test(() => {
+  assert_true(new DOMMatrix('').isIdentity && new DOMMatrix('').is2D, 'empty');
+  assert_true(new DOMMatrix('none').isIdentity, 'none');
+  assert_equals(new DOMMatrix('translateX(1in)').e, 96, 'absolute units');
+  assert_false(new DOMMatrix('translateZ(0)').is2D, 'a 3D function');
+  assert_false(new DOMMatrix('rotateZ(0deg)').is2D, 'rotateZ is a 3D function');
+}, 'empty, none, absolute units and 3D functions');
+for (const bad of ['translateX(1em)', 'translateX(10%)', 'translate(1vw)', 'translateX(calc(1px + 1em))', 'inherit', 'nonsense(1px)', 'translate(1px,']) {
+  test(() => {
+    assert_throws_dom('SyntaxError', () => new DOMMatrix(bad));
+  }, `${bad} is a SyntaxError`);
+}
+test(() => {
+  const m = new DOMMatrix();
+  assert_equals(m.setMatrixValue('translate(5px, 6px) rotateX(0deg)'), m);
+  assert_equals(m.e, 5);
+  assert_equals(m.f, 6);
+  assert_false(m.is2D);
+  assert_throws_dom('SyntaxError', () => m.setMatrixValue('translateX(1em)'));
+}, 'setMatrixValue');
+</script>

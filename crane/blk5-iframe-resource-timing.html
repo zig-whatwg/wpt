@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Crane: an iframe navigation's resource timing entry (HTML pending resource-timing start time)</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/iframe-embed-object.html#iframe-load-event-steps">
+<!-- HTML: a container-initiated iframe navigation whose response passes the timing allow check is reported
+     with the fetch's timing ("create navigation params by fetching" step 26 clears the pending start time);
+     one that fails it is reported by the iframe load event steps' fallback, from the pending start time to
+     the load event. A download makes no document and no entry in any browser
+     (resource-timing/iframe-with-download.html), and no browser reports an about:srcdoc frame. -->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/get-host-info.sub.js"></script>
+<body>
+<script>
+const { REMOTE_ORIGIN } = get_host_info();
+function frame(t, setup) {
+  const iframe = document.createElement('iframe');
+  setup(iframe);
+  t.add_cleanup(() => iframe.remove());
+  const loaded = new Promise(resolve => iframe.onload = resolve);
+  document.body.appendChild(iframe);
+  return loaded;
+}
+const entriesFor = url => performance.getEntriesByType('resource').filter(e => e.name === url);
+
+promise_test(async t => {
+  const url = new URL('/common/blank.html?blk5-same=' + Date.now(), location.href).href;
+  await frame(t, f => f.src = url);
+  const entries = entriesFor(url);
+  assert_equals(entries.length, 1, 'one entry');
+  assert_equals(entries[0].initiatorType, 'iframe');
+  assert_greater_than(entries[0].requestStart, 0, 'the fetch timing (timing allow passed)');
+  assert_equals(entries[0].responseStatus, 200);
+}, 'a same-origin iframe is reported with its fetch timing');
+
+promise_test(async t => {
+  const url = REMOTE_ORIGIN + '/common/blank.html?blk5-cross=' + Date.now();
+  await frame(t, f => f.src = url);
+  const entries = entriesFor(url);
+  assert_equals(entries.length, 1, 'one entry');
+  assert_equals(entries[0].initiatorType, 'iframe');
+  assert_equals(entries[0].requestStart, 0, 'no fetch timing (timing allow check failed)');
+  assert_equals(entries[0].responseStatus, 0);
+  assert_greater_than(entries[0].responseEnd, entries[0].startTime, 'responseEnd is the load event time');
+}, 'a cross-origin iframe without Timing-Allow-Origin is reported by the load event fallback');
+
+promise_test(async t => {
+  const url = new URL('/resource-timing/resources/download.asis?blk5=' + Date.now(), location.href).href;
+  const iframe = document.createElement('iframe');
+  iframe.src = url;
+  t.add_cleanup(() => iframe.remove());
+  document.body.appendChild(iframe);
+  await new Promise(resolve => t.step_timeout(resolve, 1500));
+  assert_equals(entriesFor(url).length, 0);
+}, 'a download makes no entry');
+
+promise_test(async t => {
+  await frame(t, f => f.srcdoc = '<p>x');
+  assert_equals(performance.getEntriesByType('resource').filter(e => e.name.startsWith('about:')).length, 0);
+}, 'an about:srcdoc frame makes no entry');
+</script>
