@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A stream request body reaches a service worker as it arrives</title>
+<link rel=help href="https://fetch.spec.whatwg.org/#http-fetch">
+<link rel=help href="https://w3c.github.io/ServiceWorker/#handle-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+// HTTP fetch step 3 hands the service worker a clone of the request, whose
+// body - a page's ReadableStream - is teed (step 3.2): the worker's
+// event.request.body gives the chunks as the page enqueues them, and the
+// page's stream is cancelled once the worker cancels its branch and the
+// worker's response cancels the request's own (step 3.5.4).
+const scope = "resources/blk6-sw-request-body-stream-scope/";
+let frame;
+
+promise_test(async t => {
+  const registration = await service_worker_unregister_and_register(t, "resources/blk6-sw-request-body-stream-worker.js", scope);
+  t.add_cleanup(() => registration.unregister());
+  await wait_for_state(t, registration.installing, "activated");
+  frame = await with_iframe(scope + "frame.html");
+}, "setup");
+
+promise_test(async t => {
+  let controller;
+  const stream = new ReadableStream({ start: c => { controller = c; } });
+  controller.enqueue(new TextEncoder().encode("first"));
+  // The stream stays open until the worker has answered.
+  const response = await frame.contentWindow.fetch(scope + "first-chunk", { method: "POST", body: stream, duplex: "half" });
+  assert_equals(await response.text(), "got:first");
+  controller.close();
+}, "the worker reads the first chunk while the page's stream is still open");
+
+promise_test(async t => {
+  let cancelled;
+  const cancel = new Promise(resolve => { cancelled = resolve; });
+  const stream = new ReadableStream({
+    start: c => c.enqueue(new Uint8Array([1, 2, 3])),
+    cancel: reason => cancelled(reason),
+  });
+  const response = await frame.contentWindow.fetch(scope + "cancel", { method: "POST", body: stream, duplex: "half" });
+  assert_equals(await response.text(), "cancelled");
+  // The reason is not checked: the worker's is a value of its own realm, and
+  // the tee's composite reason never reaches the page's thread.
+  await cancel;
+}, "the worker cancelling its body, then answering, cancels the page's stream");
+
+promise_test(async t => {
+  const stream = new ReadableStream({
+    start: c => {
+      c.enqueue(new TextEncoder().encode("a"));
+      t.step_timeout(() => { c.enqueue(new TextEncoder().encode("b")); c.close(); }, 50);
+    },
+  });
+  const response = await frame.contentWindow.fetch(scope + "whole", { method: "POST", body: stream, duplex: "half" });
+  assert_equals(await response.text(), "whole:ab");
+}, "the worker reads the whole body once the page's stream closes");
+</script>

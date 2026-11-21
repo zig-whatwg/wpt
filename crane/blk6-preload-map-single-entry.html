@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<head>
+<meta charset="utf-8">
+<title>A consumed preload, and a style sheet a loading document re-creates, have one Resource Timing entry</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/links.html#consume-a-preloaded-resource">
+<link rel=help href="https://fetch.spec.whatwg.org/#concept-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<!-- HTML's map of preloaded resources: the stylesheet consumes the preload
+     while it is in flight (Fetch step 11) - one fetch, one entry, "blocking"
+     (Chrome's upgrade; Chrome alone ships renderBlockingStatus). -->
+<link rel=preload as=style href="/resource-timing/resources/empty_style.css?blk6-preload-consumed">
+<link rel=stylesheet href="/resource-timing/resources/empty_style.css?blk6-preload-consumed">
+<!-- A preload of the same key after it was consumed: the document's resource. -->
+<link rel=preload as=style href="/resource-timing/resources/empty_style.css?blk6-preload-consumed">
+<link rel=stylesheet href="/resource-timing/resources/empty_style.css?blk6-head-sheet">
+<link rel=preload as=script href="/resource-timing/resources/empty_script.js?blk6-script-preload">
+<script src="/resource-timing/resources/empty_script.js?blk6-script-preload"></script>
+<link rel=preload as=style href="/resource-timing/resources/empty_style.css?blk6-unconsumed-preload">
+</head>
+<body>
+<script>
+// Every link of the head made again: the loading document reuses its sheets
+// and its consumed preloads - no fetch, no entry (all three browsers reuse a
+// loading document's style sheets).
+document.head.innerHTML += "";
+document.head.innerHTML += "";
+
+const entriesFor = key => performance.getEntriesByType("resource").filter(e => e.name.endsWith("?" + key));
+
+promise_test(async () => {
+  await new Promise(resolve => window.addEventListener("load", resolve));
+  const consumed = entriesFor("blk6-preload-consumed");
+  assert_equals(consumed.length, 1, "one entry for a preload a stylesheet consumed");
+  assert_equals(consumed[0].initiatorType, "link");
+  assert_equals(consumed[0].renderBlockingStatus, "blocking", "a render-blocking consumer of a preload in flight");
+  assert_equals(entriesFor("blk6-head-sheet").length, 1, "one entry for a re-created head style sheet");
+  const script = entriesFor("blk6-script-preload");
+  assert_equals(script.length, 1, "one entry for a preload a parser-blocking script consumed");
+  assert_equals(script[0].renderBlockingStatus, "blocking");
+  assert_equals(entriesFor("blk6-unconsumed-preload").length >= 1, true, "an unconsumed preload is fetched");
+}, "preloads consumed once, and a loading document's re-created sheets, report one entry each");
+</script>
+</body>
