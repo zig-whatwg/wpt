@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>execCommand undo puts back the very node a command removed, its wrapper kept meanwhile</title>
+<link rel="help" href="https://w3c.github.io/editing/docs/execCommand/#the-undo-command">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<div contenteditable id="host"></div>
+<script>
+// Crane lane edit3: the undo history holds the nodes its steps name - the
+// paragraph a join removed included - and names them to the collector from
+// the Document (Blink's UndoStep::Trace), so undo re-inserts that node, the
+// same object with its expandos, after every script reference to it went.
+promise_test(async t => {
+  const host = document.getElementById('host');
+  host.innerHTML = '<p>abc</p><p>def</p>';
+  let weak;
+  (() => {
+    const second = host.lastElementChild;
+    second.marker = 'kept';
+    weak = new WeakRef(second);
+    getSelection().collapse(second.firstChild, 0);
+  })();
+  assert_true(document.execCommand('delete'), 'the join ran');
+  assert_equals(host.innerHTML, '<p>abcdef</p>');
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  await new Promise(resolve => t.step_timeout(resolve, 0));
+  TestUtils.gc();
+  assert_not_equals(weak.deref(), undefined, 'the removed paragraph is alive while its undo step is');
+  assert_true(document.execCommand('undo'), 'undo ran');
+  assert_equals(host.innerHTML, '<p>abc</p><p>def</p>');
+  assert_equals(host.lastElementChild, weak.deref(), 'the same node is back');
+  assert_equals(host.lastElementChild.marker, 'kept', 'with its expando');
+  assert_true(document.execCommand('redo'), 'redo ran');
+  assert_equals(host.innerHTML, '<p>abcdef</p>');
+}, 'undo re-inserts the node a command removed, with its wrapper');
+</script>
+</body>
