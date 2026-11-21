@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>SVG &lt;set&gt;: the SMIL timing model, TimeEvents and animVal (lane dnd1)</title>
+<link rel="help" href="https://svgwg.org/specs/animations/#SetElement">
+<link rel="help" href="https://www.w3.org/TR/2001/REC-smil-animation-20010904/#Timing-EvaluationOfBeginEndTimeLists">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<svg id="static" width="1" height="1"></svg>
+<script>
+"use strict";
+const SVG = "http://www.w3.org/2000/svg";
+
+function fragment(markup) {
+  const div = document.createElement("div");
+  div.innerHTML = markup;
+  return div;
+}
+
+function nextEvent(target, type) {
+  return new Promise(resolve => target.addEventListener(type, resolve, { once: true }));
+}
+
+promise_test(async t => {
+  await new Promise(resolve => window.addEventListener("load", resolve, { once: true }));
+}, "setup: the document's load (the timelines begin)");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="href" to="https://example.org/" begin="0s"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const a = div.querySelector("a");
+  const set = div.querySelector("set");
+  assert_equals(a.href.animVal, "about:blank", "not animated while disconnected");
+  const begin = nextEvent(set, "beginEvent");
+  document.body.appendChild(div);
+  const event = await begin;
+  assert_true(event instanceof TimeEvent, "a TimeEvent");
+  assert_false(event.bubbles, "beginEvent does not bubble");
+  assert_false(event.cancelable, "beginEvent is not cancelable");
+  assert_true(event.isTrusted, "trusted");
+  assert_equals(event.view, window, "its view is the Window");
+  assert_equals(event.detail, 0);
+  assert_equals(a.href.animVal, "https://example.org/", "animVal is the set value");
+  assert_equals(a.href.baseVal, "about:blank", "baseVal is not");
+  assert_equals(a.getAttribute("href"), "about:blank", "the attribute is not");
+  assert_equals(set.targetElement, a, "targetElement is the parent");
+  assert_equals(set.getStartTime(), 0, "the interval begins at 0");
+  assert_throws_dom("NotSupportedError", () => set.getSimpleDuration(), "no dur: no simple duration");
+}, "begin=0s inserted after load: beginEvent, and animVal takes the 'to' value");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="href" to="https://example.org/" begin="0s" dur="0.1s"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const a = div.querySelector("a");
+  const set = div.querySelector("set");
+  assert_approx_equals(set.getSimpleDuration(), 0.1, 1e-6, "dur, as a float");
+  const end = nextEvent(set, "endEvent");
+  document.body.appendChild(div);
+  await nextEvent(set, "beginEvent");
+  assert_equals(a.href.animVal, "https://example.org/");
+  await end;
+  assert_equals(a.href.animVal, "about:blank", "fill=remove: the value goes at the end");
+}, "dur ends the interval: endEvent, and fill=remove removes the value");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="href" to="https://example.org/" begin="0s" dur="0.1s" fill="freeze"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const a = div.querySelector("a");
+  const set = div.querySelector("set");
+  document.body.appendChild(div);
+  await nextEvent(set, "endEvent");
+  assert_equals(a.href.animVal, "https://example.org/", "frozen");
+}, "fill=freeze keeps the value after the end");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="href" to="https://example.org/" begin="indefinite"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const a = div.querySelector("a");
+  const set = div.querySelector("set");
+  document.body.appendChild(div);
+  assert_throws_dom("InvalidStateError", () => set.getStartTime(), "no interval yet");
+  const begin = nextEvent(set, "beginEvent");
+  set.beginElement();
+  await begin;
+  assert_equals(a.href.animVal, "https://example.org/");
+  const end = nextEvent(set, "endEvent");
+  set.endElement();
+  await end;
+  assert_equals(a.href.animVal, "about:blank");
+}, "begin=indefinite: beginElement() and endElement()");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="href" to="https://example.org/" begin="0s" onbegin="window.dnd1Began = event.type"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const set = div.querySelector("set");
+  window.dnd1Began = null;
+  document.body.appendChild(div);
+  await nextEvent(set, "beginEvent");
+  assert_equals(window.dnd1Began, "beginEvent", "the onbegin content attribute handles beginEvent");
+  let ended = null;
+  set.onend = e => { ended = e.type; };
+  const end = nextEvent(set, "endEvent");
+  set.endElement();
+  await end;
+  assert_equals(ended, "endEvent", "the onend IDL attribute handles endEvent");
+}, "onbegin and onend are the handlers of beginEvent and endEvent");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set id="first" attributeName="href" to="https://a.example/" begin="0s" dur="0.1s"/><set attributeName="href" to="https://b.example/" begin="first.end"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const a = div.querySelector("a");
+  const second = div.querySelectorAll("set")[1];
+  document.body.appendChild(div);
+  await nextEvent(div.querySelector("#first"), "beginEvent");
+  assert_equals(a.href.animVal, "https://a.example/");
+  await nextEvent(second, "beginEvent");
+  assert_equals(a.href.animVal, "https://b.example/");
+  assert_approx_equals(second.getStartTime(), 0.1, 0.001, "begins at first.end");
+}, "syncbase: begin=\"id.end\"");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="href" to="https://low.example/" begin="0s"/><set attributeName="href" to="https://high.example/" begin="0s"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const a = div.querySelector("a");
+  document.body.appendChild(div);
+  await nextEvent(div.querySelectorAll("set")[1], "beginEvent");
+  assert_equals(a.href.animVal, "https://high.example/", "same begin: the later in tree order wins");
+}, "the animation sandwich: priority by begin, then tree order");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="href" to="https://example.org/" begin="1000s"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const svg = div.querySelector("svg");
+  const set = div.querySelector("set");
+  const a = div.querySelector("a");
+  document.body.appendChild(div);
+  assert_false(svg.animationsPaused());
+  svg.pauseAnimations();
+  assert_true(svg.animationsPaused());
+  const begin = nextEvent(set, "beginEvent");
+  svg.setCurrentTime(1000.5);
+  assert_approx_equals(svg.getCurrentTime(), 1000.5, 0.001, "the paused timeline holds the time seeked to");
+  await begin;
+  assert_equals(a.href.animVal, "https://example.org/");
+  svg.unpauseAnimations();
+  assert_false(svg.animationsPaused());
+}, "pauseAnimations, setCurrentTime and getCurrentTime on the outermost svg element");
+
+promise_test(async t => {
+  const div = fragment(`<svg><a href="about:blank"><set attributeName="ylink:href" to="https://example.org/" begin="0s"/></a></svg>`);
+  t.add_cleanup(() => div.remove());
+  const a = div.querySelector("a");
+  const set = div.querySelector("set");
+  document.body.appendChild(div);
+  await nextEvent(set, "beginEvent");
+  assert_equals(a.href.animVal, "about:blank", "an unbound prefix names no attribute");
+}, "attributeName with an unresolved prefix animates nothing, and the timing still runs");
+
+function wait(t, ms) {
+  return new Promise(resolve => t.step_timeout(resolve, ms));
+}
+
+function frame() {
+  return new Promise(resolve => requestAnimationFrame(resolve));
+}
+
+promise_test(async t => {
+  // Chrome (SVGSVGElement::InsertedInto), Firefox (SVGSVGElement::BindToTree)
+  // and Safari (SVGSVGElement::insertedIntoAncestor) begin an outermost svg
+  // element's timeline when it is inserted into a loaded document, whether
+  // or not it has an animation yet.
+  const svg = document.createElementNS(SVG, "svg");
+  t.add_cleanup(() => svg.remove());
+  document.body.appendChild(svg);
+  await wait(t, 300);
+  await frame();
+  assert_greater_than_equal(svg.getCurrentTime(), 0.25, "the timeline began at the insertion");
+  const a = document.createElementNS(SVG, "a");
+  a.setAttribute("href", "about:blank");
+  const set = document.createElementNS(SVG, "set");
+  set.setAttribute("attributeName", "href");
+  set.setAttribute("to", "https://example.org/");
+  set.setAttribute("begin", "0.2s");
+  a.appendChild(set);
+  const begin = nextEvent(set, "beginEvent");
+  svg.appendChild(a);
+  assert_approx_equals(set.getStartTime(), 0.2, 0.001, "begin is on the svg element's timeline");
+  await begin;
+  assert_equals(a.href.animVal, "https://example.org/", "already active: 0.2s has passed on the timeline");
+}, "an svg element inserted after load begins its timeline at once; an animation added later is on that timeline");
+
+promise_test(async t => {
+  const svg = document.getElementById("static");
+  await wait(t, 200);
+  await frame();
+  assert_greater_than_equal(svg.getCurrentTime(), 0.15, "the timeline began at the load");
+}, "an svg element in the markup begins its timeline at the load, with no animation");
+
+test(() => {
+  assert_throws_js(TypeError, () => new TimeEvent("beginEvent"));
+}, "TimeEvent has no constructor");
+</script>
+</body>

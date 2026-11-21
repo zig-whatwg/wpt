@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>SVG &lt;set&gt; of a CSS property: the override style (lane dnd1)</title>
+<link rel="help" href="https://svgwg.org/specs/animations/#AttributeNameAttribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+"use strict";
+
+function fragment(markup) {
+  const div = document.createElement("div");
+  div.innerHTML = markup;
+  return div;
+}
+
+function nextEvent(target, type) {
+  return new Promise(resolve => target.addEventListener(type, resolve, { once: true }));
+}
+
+promise_test(async t => {
+  await new Promise(resolve => window.addEventListener("load", resolve, { once: true }));
+}, "setup: the document's load (the timelines begin)");
+
+promise_test(async t => {
+  const div = fragment(`<svg><rect fill="blue"><set attributeName="fill" to="red" begin="0s" dur="0.1s"/></rect></svg>`);
+  t.add_cleanup(() => div.remove());
+  const rect = div.querySelector("rect");
+  const set = div.querySelector("set");
+  document.body.appendChild(div);
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 255)", "before the begin");
+  await nextEvent(set, "beginEvent");
+  assert_equals(getComputedStyle(rect).fill, "rgb(255, 0, 0)", "the set value overrides the presentation attribute");
+  assert_equals(rect.getAttribute("fill"), "blue", "the attribute is unchanged");
+  await nextEvent(set, "endEvent");
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 255)", "fill=remove: back to the presentation attribute");
+}, "a <set> of fill: the computed value while active, and after");
+
+promise_test(async t => {
+  const div = fragment(`<svg><rect style="fill: blue"><set attributeName="fill" to="red" begin="0s"/></rect><rect style="fill: blue !important"><set attributeName="fill" to="red" begin="0s"/></rect></svg>`);
+  t.add_cleanup(() => div.remove());
+  const [normal, important] = div.querySelectorAll("rect");
+  const sets = div.querySelectorAll("set");
+  document.body.appendChild(div);
+  await Promise.all([nextEvent(sets[0], "beginEvent"), nextEvent(sets[1], "beginEvent")]);
+  assert_equals(getComputedStyle(normal).fill, "rgb(255, 0, 0)", "over the style attribute's normal declaration");
+  assert_equals(getComputedStyle(important).fill, "rgb(0, 0, 255)", "under its important declaration");
+}, "the override style comes after the style attribute, normal");
+
+promise_test(async t => {
+  const div = fragment(`<svg><rect><set attributeName="visibility" to="hidden" begin="0s" fill="freeze" dur="0.05s"/></rect></svg>`);
+  t.add_cleanup(() => div.remove());
+  const rect = div.querySelector("rect");
+  const set = div.querySelector("set");
+  document.body.appendChild(div);
+  await nextEvent(set, "endEvent");
+  assert_equals(getComputedStyle(rect).visibility, "hidden", "frozen");
+}, "fill=freeze keeps the override style");
+
+promise_test(async t => {
+  const div = fragment(`<svg><rect fill="blue"><set attributeName="fill" to="not-a-color" begin="0s"/></rect></svg>`);
+  t.add_cleanup(() => div.remove());
+  const rect = div.querySelector("rect");
+  document.body.appendChild(div);
+  await nextEvent(div.querySelector("set"), "beginEvent");
+  assert_equals(getComputedStyle(rect).fill, "rgb(0, 0, 255)", "an invalid value sets nothing");
+}, "an invalid 'to' value sets nothing");
+</script>
+</body>

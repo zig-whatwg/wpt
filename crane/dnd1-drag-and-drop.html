@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>HTML drag and drop driven by pointer actions (lane dnd1)</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/dnd.html#drag-and-drop-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-actions.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<style>div, textarea { width: 100px; height: 100px; }</style>
+<body>
+<div id="source" draggable="true">drag me</div>
+<div id="zoneA">A</div>
+<div id="zoneB">B</div>
+<textarea id="field">x</textarea>
+<div id="plain">not draggable</div>
+<script>
+"use strict";
+const source = document.getElementById("source");
+const zoneA = document.getElementById("zoneA");
+const zoneB = document.getElementById("zoneB");
+const field = document.getElementById("field");
+const plain = document.getElementById("plain");
+const dndTypes = ["dragstart", "drag", "dragenter", "dragover", "dragleave", "drop", "dragend"];
+
+function record(t, targets, extra = {}) {
+  const log = [];
+  for (const target of targets) {
+    for (const type of [...dndTypes, "pointercancel", "click", "mouseup"]) {
+      const listener = e => {
+        log.push({ type: e.type, target: e.currentTarget.id, related: e.relatedTarget ? e.relatedTarget.id : null, event: e,
+                   data: e.dataTransfer ? e.dataTransfer.getData("text/plain") : undefined,
+                   types: e.dataTransfer ? [...e.dataTransfer.types] : undefined,
+                   dropEffect: e.dataTransfer ? e.dataTransfer.dropEffect : undefined });
+        if (extra[target.id] && extra[target.id][type]) extra[target.id][type](e);
+      };
+      target.addEventListener(type, listener);
+      t.add_cleanup(() => target.removeEventListener(type, listener));
+    }
+  }
+  return log;
+}
+
+function accept(e) { e.preventDefault(); }
+
+promise_test(async t => {
+  const log = record(t, [source, zoneA], {
+    source: { dragstart: e => { e.dataTransfer.setData("text/plain", "hello"); } },
+    zoneA: { dragenter: accept, dragover: accept, drop: accept },
+  });
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: source })
+    .pointerDown()
+    .pointerMove(10, 0, { origin: source })
+    .pointerMove(0, 0, { origin: zoneA })
+    .pointerUp()
+    .send();
+  const types = log.filter(e => dndTypes.includes(e.type) || e.type === "pointercancel").map(e => `${e.type}@${e.target}`);
+  assert_equals(types[0], "dragstart@source", "dragstart first");
+  assert_equals(types[1], "pointercancel@source", "then the pointer stream is suppressed");
+  assert_true(types.includes("drop@zoneA"), "a drop at the zone that accepted");
+  assert_equals(types[types.length - 1], "dragend@source", "dragend last");
+  assert_false(log.some(e => e.type === "click" || e.type === "mouseup"), "no mouseup or click after a drop");
+  const dragstart = log.find(e => e.type === "dragstart");
+  assert_true(dragstart.event instanceof DragEvent, "a DragEvent");
+  assert_true(dragstart.event.isTrusted && dragstart.event.bubbles && dragstart.event.cancelable && dragstart.event.composed);
+  const over = log.find(e => e.type === "dragover");
+  assert_equals(over.data, "", "protected mode: no data in dragover");
+  assert_array_equals(over.types, ["text/plain"], "but its types");
+  assert_equals(over.dropEffect, "copy", "uninitialized effectAllowed: copy");
+  const drop = log.find(e => e.type === "drop");
+  assert_equals(drop.data, "hello", "read-only mode: the data in drop");
+  const dragend = log.find(e => e.type === "dragend");
+  assert_false(dragend.event.cancelable, "dragend is not cancelable");
+  assert_equals(dragend.dropEffect, "copy", "dragend's dropEffect is the operation");
+  assert_equals(drop.event.dataTransfer.getData("text/plain"), "", "a DataTransfer outlives its event disassociated");
+  assert_not_equals(over.event.dataTransfer, drop.event.dataTransfer, "each event has a DataTransfer of its own");
+}, "a drag from a draggable element to a zone that accepts it: dragstart, drop, dragend");
+
+promise_test(async t => {
+  const log = record(t, [zoneA, zoneB], {
+    zoneA: { dragenter: accept, dragover: accept },
+    zoneB: { dragenter: accept, dragover: accept },
+  });
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: source })
+    .pointerDown()
+    .pointerMove(0, 0, { origin: zoneA })
+    .pointerMove(0, 0, { origin: zoneB })
+    .pointerUp()
+    .send();
+  const enterA = log.find(e => e.type === "dragenter" && e.target === "zoneA");
+  const leaveA = log.find(e => e.type === "dragleave" && e.target === "zoneA");
+  const enterB = log.find(e => e.type === "dragenter" && e.target === "zoneB");
+  assert_equals(enterA.related, null, "the first element entered: no relatedTarget");
+  assert_equals(leaveA.related, "zoneB", "dragleave: the element entered");
+  assert_equals(enterB.related, "zoneA", "dragenter: the element left");
+  assert_true(log.indexOf(enterB) < log.indexOf(leaveA), "dragenter at the new element before dragleave at the old");
+}, "dragenter and dragleave name each other as relatedTarget");
+
+promise_test(async t => {
+  const log = record(t, [source, zoneA]);
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: source })
+    .pointerDown()
+    .pointerMove(0, 0, { origin: zoneA })
+    .pointerUp()
+    .send();
+  assert_false(log.some(e => e.type === "drop"), "no drop where dragover was not canceled");
+  assert_true(log.some(e => e.type === "dragleave" && e.target === "zoneA"), "the failed drag leaves the target");
+  assert_equals(log.find(e => e.type === "dragend").dropEffect, "none", "a failed drag's dropEffect is none");
+}, "a target that does not cancel dragover gets no drop");
+
+promise_test(async t => {
+  const log = record(t, [source], { source: { dragstart: accept } });
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: source })
+    .pointerDown()
+    .pointerMove(10, 10, { origin: source })
+    .pointerUp()
+    .send();
+  assert_array_equals(log.filter(e => dndTypes.includes(e.type)).map(e => e.type), ["dragstart"], "a canceled dragstart: no drag");
+  assert_true(log.some(e => e.type === "click"), "and the press is a click again");
+}, "canceling dragstart stops the drag");
+
+promise_test(async t => {
+  const log = record(t, [source]);
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: source })
+    .pointerDown()
+    .pointerMove(2, 2, { origin: source })
+    .pointerUp()
+    .send();
+  assert_false(log.some(e => e.type === "dragstart"), "under the drag threshold: no drag");
+  assert_true(log.some(e => e.type === "click"), "a click");
+}, "a move under the drag threshold starts no drag");
+
+promise_test(async t => {
+  const log = record(t, [plain]);
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: plain })
+    .pointerDown()
+    .pointerMove(0, 0, { origin: zoneA })
+    .pointerUp()
+    .send();
+  assert_false(log.some(e => e.type === "dragstart"), "nothing draggable under the press");
+}, "a press on an element with no draggable ancestor starts no drag");
+
+promise_test(async t => {
+  field.value = "x";
+  const inputs = [];
+  const listener = e => inputs.push(e.inputType);
+  field.addEventListener("input", listener);
+  t.add_cleanup(() => field.removeEventListener("input", listener));
+  const log = record(t, [source], { source: { dragstart: e => { e.dataTransfer.setData("text/plain", "dropped"); } } });
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: source })
+    .pointerDown()
+    .pointerMove(0, 0, { origin: field })
+    .pointerUp()
+    .send();
+  assert_equals(field.value, "xdropped", "the text goes in at the end of the field");
+  assert_array_equals(inputs, ["insertFromDrop"], "an input of inputType insertFromDrop");
+  assert_equals(log.find(e => e.type === "dragend").dropEffect, "copy");
+}, "a drop on a text control inserts the text/plain data");
+
+promise_test(async t => {
+  const link = document.createElement("a");
+  link.href = "/some/path?q#frag";
+  link.textContent = "link";
+  document.body.appendChild(link);
+  t.add_cleanup(() => link.remove());
+  let uriList = null;
+  let effect = null;
+  const drop = e => { e.preventDefault(); uriList = e.dataTransfer.getData("text/uri-list"); };
+  const enter = e => { effect = e.dataTransfer.dropEffect; accept(e); };
+  zoneA.addEventListener("dragover", accept);
+  zoneA.addEventListener("dragenter", enter);
+  zoneA.addEventListener("drop", drop);
+  t.add_cleanup(() => {
+    zoneA.removeEventListener("dragover", accept);
+    zoneA.removeEventListener("dragenter", enter);
+    zoneA.removeEventListener("drop", drop);
+  });
+  await new test_driver.Actions()
+    .pointerMove(0, 0, { origin: link })
+    .pointerDown()
+    .pointerMove(0, 0, { origin: zoneA })
+    .pointerUp()
+    .send();
+  assert_equals(uriList, new URL("/some/path?q#frag", location.href).href, "a link drag carries its URL");
+  assert_equals(effect, "link", "a link drag with effectAllowed uninitialized: link");
+}, "dragging a link: text/uri-list, and the link drop effect");
+</script>
+</body>
