@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<head>
+<meta charset="utf-8">
+<title>What the speculative HTML parser fetched while a script blocked the parser, each element takes over: one fetch, one Resource Timing entry</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/parsing.html#speculative-html-parsing">
+<link rel=help href="https://fetch.spec.whatwg.org/#concept-fetch">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<!-- Parser-blocking: while it loads, the speculative parser reads on and
+     fetches what the markup after it declares (HTML 13.2.8). -->
+<script src="/common/slow.py?delay=600&pscan1-blocker"></script>
+<link rel=stylesheet href="/resource-timing/resources/empty_style.css?pscan1-sheet">
+<link rel=preload as=style href="/resource-timing/resources/empty_style.css?pscan1-preload">
+<style>@import url(/resource-timing/resources/empty_style.css?pscan1-import);</style>
+<script src="/resource-timing/resources/empty_script.js?pscan1-script"></script>
+<script type=module src="/resource-timing/resources/empty_script.js?pscan1-module"></script>
+</head>
+<body>
+<img id=img src="/images/green.png?pscan1-img">
+<picture><source srcset="/images/green.png?pscan1-picture"><img id=pictured></picture>
+<video poster="/images/green.png?pscan1-poster"></video>
+<link rel=stylesheet href="/resource-timing/resources/empty_style.css?pscan1-preload">
+<script>
+const entriesFor = key => performance.getEntriesByType("resource").filter(e => e.name.endsWith("?" + key));
+
+promise_test(async () => {
+  await new Promise(resolve => window.addEventListener("load", resolve));
+  const expected = {
+    "pscan1-sheet": "link", "pscan1-preload": "link", "pscan1-import": "css", "pscan1-script": "script",
+    "pscan1-module": "script", "pscan1-img": "img", "pscan1-picture": "img", "pscan1-poster": "video",
+  };
+  for (const [key, initiator] of Object.entries(expected)) {
+    const entries = entriesFor(key);
+    assert_equals(entries.length, 1, `one Resource Timing entry for ${key}`);
+    assert_equals(entries[0].initiatorType, initiator, `the element's initiator type for ${key}`);
+  }
+  assert_true(document.getElementById("img").complete, "the img has its image");
+  assert_true(document.getElementById("pictured").currentSrc.endsWith("?pscan1-picture"), "the picture's img selected its source");
+}, "speculatively fetched resources are taken over by their elements, each with one entry");
+</script>
+</body>
