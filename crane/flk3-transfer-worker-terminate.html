@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="timeout" content="long">
+<title>Terminating a worker that holds a transferred stream errors nothing in the window (repeated)</title>
+<!--
+  Lane flk3 (2026-11-21): streams/transferable/worker.html 'terminating a
+  worker should not error the stream' failed once under load ("promise_test:
+  Unhandled rejection with value: object TypeError": controller.enqueue threw,
+  so the original stream had been canceled). Its scenario, repeated: the
+  window's stream goes to an echo worker and comes back, chunks are in transit
+  when the worker is terminated, and the window keeps enqueueing. Per Streams
+  8.2 and HTML's worker termination, the worker runs nothing once it is
+  terminated: no cancel or error reaches the window, so the original stays
+  readable (enqueue never throws), no read of the returned stream rejects, and
+  no read made after the termination resolves.
+  Chrome, Firefox and Safari pass the upstream subtest.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/streams/resources/test-utils.js"></script>
+<script>
+'use strict';
+
+const ROUNDS = 20;
+
+async function round(n) {
+  const w = new Worker('/streams/transferable/resources/echo-worker.js');
+  let controller;
+  const orig = new ReadableStream({ start(c) { controller = c; } });
+  const targetStream = await new Promise((resolve, reject) => {
+    w.onmessage = evt => resolve(evt.data);
+    w.onerror = () => reject(new Error(`round ${n}: error in worker`));
+    w.postMessage(orig, [orig]);
+  });
+  const reader = targetStream.getReader();
+  const problems = [];
+  const reads = [];
+  const enqueue = i => {
+    try {
+      controller.enqueue(i);
+    } catch (e) {
+      problems.push(`round ${n}: enqueue(${i}) threw ${e && e.name}: ${e && e.message}`);
+    }
+  };
+  for (let i = 0; i < 50; ++i) {
+    await delay(0);
+    enqueue(i);
+    reads.push(reader.read().then(
+      () => {},
+      e => problems.push(`round ${n}: read ${i} rejected with ${e && e.name}: ${e && e.message}`)));
+  }
+  w.terminate();
+  for (let i = 50; i < 60; ++i) {
+    enqueue(i);
+    reads.push(reader.read().then(
+      ({done}) => problems.push(`round ${n}: read ${i} resolved (done ${done}) after the worker was terminated`),
+      e => problems.push(`round ${n}: read ${i} rejected with ${e && e.name}: ${e && e.message}`)));
+    await delay(0);
+  }
+  await flushAsyncEvents();
+  return problems;
+}
+
+promise_test(async () => {
+  const problems = [];
+  for (let n = 0; n < ROUNDS; ++n) problems.push(...await round(n));
+  assert_array_equals(problems, [], 'no enqueue threw and no read rejected or ended');
+}, `terminating a worker errors no transferred stream, ${ROUNDS} rounds`);
+</script>
