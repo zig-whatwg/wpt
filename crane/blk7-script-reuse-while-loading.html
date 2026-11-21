@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<head>
+<meta charset="utf-8">
+<title>A loading document reuses a script it fetched for a later script of the same URL; a no-store one is fetched again</title>
+<link rel=help href="https://fetch.spec.whatwg.org/#concept-fetch">
+<link rel=help href="https://html.spec.whatwg.org/multipage/scripting.html#fetch-a-classic-script">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<!-- No spec has this; Chrome (resource_fetcher.cc
+     DetermineRevalidationPolicyInternal: a non-raw resource of the document's
+     cached_resources_map_ is used while the document has not loaded, or while
+     it is still loading) and Safari (CachedResourceLoader's memory cache)
+     reuse a loading document's script, and report one Resource Timing entry;
+     Firefox's release fetches it again (its SharedScriptCache serves a
+     document only on Nightly). Golden rule 2: two of three. -->
+<script src="/resource-timing/resources/empty_script.js?blk7-parser-twice"></script>
+<script src="/resource-timing/resources/empty_script.js?blk7-parser-twice"></script>
+<!-- Cache-Control: no-store - Chrome reloads it (HasCacheControlNoStoreHeader). -->
+<script src="/resource-timing/resources/empty_script.js?blk7-no-store&pipe=header(Cache-Control,no-store)"></script>
+<script src="/resource-timing/resources/empty_script.js?blk7-no-store&pipe=header(Cache-Control,no-store)"></script>
+<!-- An HTTP error is a failed load (Chrome's ResourceError::HttpError, Firefox's
+     release refetches every script): each script element fetches it. -->
+<script src="/resource-timing/resources/empty_script.js?blk7-not-found&pipe=status(404)"></script>
+<script src="/resource-timing/resources/empty_script.js?blk7-not-found&pipe=status(404)"></script>
+</head>
+<body>
+<script>
+// Two script-inserted scripts of one URL while the document loads: the
+// second joins the first's fetch, still under way.
+const inserted = [];
+for (let i = 0; i < 2; i++) {
+  const script = document.createElement("script");
+  script.src = "/resource-timing/resources/empty_script.js?blk7-inserted-twice";
+  inserted.push(new Promise((resolve, reject) => {
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("script " + i + " failed"));
+  }));
+  document.head.append(script);
+}
+
+const entriesFor = key => performance.getEntriesByType("resource").filter(e => e.name.includes("?" + key));
+
+promise_test(async () => {
+  await new Promise(resolve => window.addEventListener("load", resolve));
+  await Promise.all(inserted);
+  assert_equals(entriesFor("blk7-parser-twice").length, 1, "one entry for two parser-inserted scripts of one URL");
+  assert_equals(entriesFor("blk7-inserted-twice").length, 1, "one entry for two script-inserted scripts of one URL");
+  assert_equals(entriesFor("blk7-no-store").length, 2, "a no-store script is fetched for each script element");
+  assert_equals(entriesFor("blk7-not-found").length, 2, "a 404 script is fetched for each script element");
+}, "a loading document's scripts of one URL are fetched once, unless the response is no-store or an HTTP error");
+</script>
+</body>
