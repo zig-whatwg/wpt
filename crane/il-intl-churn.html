@@ -5,10 +5,13 @@
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <script>
-// Each Intl object's internal slots are freed when the collector takes it
-// (lane intlleak). Making tens of thousands drives collections while a few
-// kept ones are used between them: a kept object must keep its own state, and
-// a dropped one's must never be what a kept one reads.
+// Lifetime stress for V8's Intl over ICU (Crane's own Intl binding, which this
+// file was written for in lane intlleak, was retired for it in lane icu1).
+// Making tens of thousands of Intl objects drives collections, and ICU's
+// objects behind them are freed with them, while a few kept ones are used
+// between: a kept object must keep its own state, and a dropped one's must
+// never be what a kept one reads. Every expected answer is ECMA-402's, as
+// Chrome 157 gives it.
 
 test(() => {
   const kept = {
@@ -34,7 +37,8 @@ test(() => {
       assert_equals(kept.collator.resolvedOptions().sensitivity, 'base', `collator options, round ${i}`);
       assert_equals(kept.nf.format(2), '2.00', `number format, round ${i}`);
       assert_equals(kept.dtf.format(0), day, `date format, round ${i}`);
-      assert_equals(kept.locale.region(), 'US', `locale, round ${i}`);
+      // Intl.Locale's fields are accessors (ECMA-402 14.3).
+      assert_equals(kept.locale.region, 'US', `locale, round ${i}`);
       assert_equals(kept.locale.toString(), 'en-Latn-US', `locale tag, round ${i}`);
       assert_equals(Array.from(kept.seg.segment('x y')).length, 3, `segmenter, round ${i}`);
     }
@@ -42,14 +46,17 @@ test(() => {
 }, 'Kept Intl objects answer as they did while thousands of others are made and dropped');
 
 test(() => {
-  // A method taken off one object and kept, called on that object after it
-  // is the only thing holding it.
+  // A method taken off one object and kept, called after it is the only
+  // thing holding that object. Collator's compare and NumberFormat's format
+  // are getters that return a function BOUND to their object (ECMA-402
+  // 10.3.3, 16.3.3), so it compares and formats as that object does, `this`
+  // or no `this`.
   let compare = new Intl.Collator('en', { sensitivity: 'base' }).compare;
-  let format = (() => { const nf = new Intl.NumberFormat('en'); return n => nf.format(n); })();
+  let format = new Intl.NumberFormat('en').format;
   for (let i = 0; i < 20000; i++) new Intl.Collator('en');
   assert_equals(format(1234), '1,234');
-  // Called on its own, its `this` is no collator: it answers 0, as it does
-  // for any object no Collator made.
-  assert_equals(compare('a', 'b'), 0);
-}, 'A method kept apart from its object still runs');
+  assert_equals(compare('a', 'b'), -1);
+  assert_equals(compare('a', 'A'), 0);
+  assert_equals(compare.call({}, 'b', 'a'), 1);
+}, 'A bound compare or format kept apart from its object still runs, as its object');
 </script>

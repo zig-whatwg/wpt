@@ -6,10 +6,11 @@
 <script src="/resources/testharnessreport.js"></script>
 <script>
 // Each case runs many times: under `leaks --atExit` this page shows whether
-// an Intl call keeps a handle it made or was given (lane intlleak: every
-// operation kept its receiver's index lookups, its arguments and its result).
-// The answers pin what Crane's Intl gives today: its formatting is CLDR data
-// for 30 locales, not ICU's, and its time zone is the host's.
+// an Intl call keeps a handle or an ICU object it made or was given (lane
+// intlleak wrote it for Crane's own Intl binding, which lane icu1 retired for
+// V8's Intl over ICU). Every expected answer is ECMA-402's, as Chrome 157
+// gives it; the date is formatted in the host's time zone, so only its shape
+// is pinned.
 const ROUNDS = 64;
 
 test(() => {
@@ -17,8 +18,9 @@ test(() => {
   for (let i = 0; i < ROUNDS; i++) {
     assert_equals(typeof dtf.format(0), 'string');
     assert_equals(dtf.format(0), dtf.format(new Date(0)));
-    assert_equals(dtf.formatToParts(0).length, 11);
-    assert_equals(dtf.formatToParts(0)[0].type, 'year');
+    // "Dec 31, 1969" (or "Jan 1, 1970" east of UTC): month, literal, day,
+    // literal, year.
+    assert_array_equals(dtf.formatToParts(0).map(p => p.type), ['month', 'literal', 'day', 'literal', 'year']);
     assert_equals(dtf.resolvedOptions().locale, 'en');
     assert_equals(dtf.resolvedOptions().dateStyle, 'medium');
     assert_equals(dtf.resolvedOptions().timeStyle, undefined);
@@ -34,7 +36,8 @@ test(() => {
     assert_array_equals(nf.formatToParts(-1.5).map(p => p.type), ['minusSign', 'integer', 'decimal', 'fraction']);
     assert_equals(usd.resolvedOptions().currency, 'USD');
     assert_equals(usd.resolvedOptions().minimumFractionDigits, 2);
-    assert_equals(nf.resolvedOptions().useGrouping, true);
+    // useGrouping resolves to "auto" (ECMA-402 16.1.1, Intl.NumberFormat v3).
+    assert_equals(nf.resolvedOptions().useGrouping, 'auto');
   }
 }, 'Intl.NumberFormat formats, splits into parts and resolves its options');
 
@@ -46,7 +49,8 @@ test(() => {
     assert_equals(collator.compare('b', 'a'), 1);
     assert_equals(collator.compare('a', 'a'), 0);
     assert_equals(base.compare('a', 'A'), 0);
-    assert_equals(collator.compare('a'), 0, 'one argument');
+    // One argument: y is undefined, compared as the string "undefined".
+    assert_equals(collator.compare('a'), -1, 'one argument');
     assert_equals(base.resolvedOptions().sensitivity, 'base');
     assert_equals(base.resolvedOptions().numeric, true);
     assert_equals(['b', 'a', 'c'].sort((x, y) => collator.compare(x, y)).join(), 'a,b,c');
@@ -61,7 +65,10 @@ test(() => {
     assert_equals(cardinal.select(1), 'one');
     assert_equals(cardinal.select(5), 'other');
     assert_equals(ordinal.resolvedOptions().type, 'ordinal');
-    assert_equals(cardinal.resolvedOptions().pluralCategories.length, 6);
+    // English has two cardinal categories and four ordinal ones, listed in
+    // CLDR's order: zero, one, two, few, many, other (ECMA-402 17.3.4).
+    assert_array_equals(cardinal.resolvedOptions().pluralCategories, ['one', 'other']);
+    assert_array_equals(ordinal.resolvedOptions().pluralCategories, ['one', 'two', 'few', 'other']);
   }
 }, 'Intl.PluralRules selects and resolves its options');
 
@@ -72,7 +79,8 @@ test(() => {
     assert_equals(rtf.format(-1, 'day'), 'yesterday');
     assert_equals(always.format(3, 'weeks'), 'in 3 weeks');
     assert_equals(always.format(-2, 'hour'), '2 hours ago');
-    assert_throws_js(TypeError, () => always.format(1, 'fortnight'));
+    // An unknown unit is a RangeError (ECMA-402 SingularRelativeTimeUnit).
+    assert_throws_js(RangeError, () => always.format(1, 'fortnight'));
     assert_equals(rtf.resolvedOptions().numeric, 'auto');
   }
 }, 'Intl.RelativeTimeFormat formats and resolves its options');
@@ -84,7 +92,8 @@ test(() => {
     assert_equals(lf.format(['a', 'b', 'c']), 'a, b, and c');
     assert_equals(or.format(['a', 'b', 'c']), 'a, b, or c');
     assert_equals(lf.format([]), '');
-    assert_equals(lf.format([1, 2, 3]), '1, 2, and 3');
+    // A list's elements must be strings (StringListFromIterable).
+    assert_throws_js(TypeError, () => lf.format([1, 2, 3]));
     assert_equals(or.resolvedOptions().type, 'disjunction');
   }
 }, 'Intl.ListFormat formats and resolves its options');
@@ -94,8 +103,11 @@ test(() => {
   const none = new Intl.DisplayNames('en', { type: 'region', fallback: 'none' });
   for (let i = 0; i < ROUNDS; i++) {
     assert_equals(region.of('US'), 'United States');
-    assert_equals(region.of('ZZ'), 'ZZ');
-    assert_equals(none.of('ZZ'), undefined);
+    // ZZ is a region code CLDR names ("Unknown Region"), so neither
+    // fallback applies.
+    assert_equals(region.of('ZZ'), 'Unknown Region');
+    assert_equals(none.of('ZZ'), 'Unknown Region');
+    assert_equals(none.of('QO'), 'Outlying Oceania');
     assert_equals(none.resolvedOptions().fallback, 'none');
   }
 }, 'Intl.DisplayNames names codes and resolves its options');
@@ -116,14 +128,16 @@ test(() => {
 test(() => {
   const locale = new Intl.Locale('en-US', { calendar: 'gregory', numeric: true });
   for (let i = 0; i < ROUNDS; i++) {
-    assert_equals(locale.baseName(), 'en-US');
-    assert_equals(locale.language(), 'en');
-    assert_equals(locale.script(), undefined);
-    assert_equals(locale.region(), 'US');
-    assert_equals(locale.calendar(), 'gregory');
-    assert_equals(locale.numeric(), true);
-    assert_equals(locale.maximize().baseName(), 'en-Latn-US');
-    assert_equals(locale.maximize().calendar(), 'gregory');
+    // The fields are accessors (ECMA-402 14.3); the Locale Info API's are
+    // methods.
+    assert_equals(locale.baseName, 'en-US');
+    assert_equals(locale.language, 'en');
+    assert_equals(locale.script, undefined);
+    assert_equals(locale.region, 'US');
+    assert_equals(locale.calendar, 'gregory');
+    assert_equals(locale.numeric, true);
+    assert_equals(locale.maximize().baseName, 'en-Latn-US');
+    assert_equals(locale.maximize().calendar, 'gregory');
     assert_equals(new Intl.Locale('en-Latn-US').minimize().toString(), 'en');
     assert_equals(locale.getWeekInfo().firstDay, 7);
     assert_array_equals(locale.getWeekInfo().weekend, [6, 7]);
@@ -157,11 +171,16 @@ test(() => {
 
 test(() => {
   const collator = new Intl.Collator();
-  assert_false(Object.getOwnPropertyNames(collator).some(name => name.startsWith('__')),
-               'no property of script\'s holds its internal slots');
-  assert_throws_js(TypeError, () => new Intl.NumberFormat().format.call(collator, 1));
-  assert_throws_js(TypeError, () => new Intl.DateTimeFormat().format.call({}, 0));
-  assert_equals(collator.compare.call({}, 'a', 'b'), 0);
+  assert_array_equals(Object.getOwnPropertyNames(collator), [], 'no property of script\'s holds its internal slots');
+  // The format and compare GETTERS check their receiver; the functions they
+  // return are bound, so calling one on another object changes nothing.
+  const formatGetter = Object.getOwnPropertyDescriptor(Intl.NumberFormat.prototype, 'format').get;
+  assert_throws_js(TypeError, () => formatGetter.call(collator));
+  assert_throws_js(TypeError, () => Object.getOwnPropertyDescriptor(Intl.Collator.prototype, 'compare').get.call({}));
+  assert_throws_js(TypeError, () => Intl.DateTimeFormat.prototype.formatToParts.call({}, 0));
+  assert_throws_js(TypeError, () => Intl.Collator.prototype.resolvedOptions.call(new Intl.NumberFormat()));
+  assert_equals(new Intl.NumberFormat('en').format.call(collator, 1), '1');
+  assert_equals(collator.compare.call({}, 'a', 'b'), -1);
   assert_throws_js(TypeError, () => new Intl.Locale());
   assert_throws_js(TypeError, () => new Intl.Locale(1));
 }, 'An Intl method finds its internal slots only on an object its constructor made');
