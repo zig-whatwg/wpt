@@ -10,9 +10,10 @@
 // A frame's Window and Document are instances of the frame realm's Window
 // and Document, and not of the top realm's: instanceof is
 // OrdinaryHasInstance over the prototype chain, and each realm has its own
-// interface objects. Red on the snapshot path while v8_PatchWindowInstanceOf
-// and v8_PatchDocumentInstanceOf answer from type info alone (green on the
-// no-snapshot path, which does not patch).
+// interface objects. It was the red test for v8_PatchWindowInstanceOf and
+// v8_PatchDocumentInstanceOf, Symbol.hasInstance patches that answered from
+// type info alone - wrong across realms on the snapshot path. They were
+// deleted (45fcf6f2b, 2026-09-30); this keeps them from coming back.
 
 test(() => {
   assert_true(window instanceof Window, "window instanceof Window");

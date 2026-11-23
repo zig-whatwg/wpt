@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>The track processing model reads the track URL when its deferred steps run: a src set before then is no abort</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#start-the-track-processing-model">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 4.8.11.11.3: setting a track's mode starts the processing model, which
+// awaits a stable state and only then reads the track URL (steps 5-7). A src
+// set before that is simply what step 7 reads; "abort fetching ... fire error"
+// applies only "while fetching is ongoing". The track CORS tests
+// (media-elements/track/track-element/cors/) set mode and then src in one
+// script: Crane fired error before any request, then fetched.
+//
+// All three browsers run the deferred steps after the current task, not in a
+// microtask: Chrome a zero-delay timer (html_track_element.cc ScheduleLoad,
+// "FIXME: We use a timer to approximate a stable state"), Safari a queued
+// media element task (HTMLTrackElement.cpp scheduleLoad), Firefox
+// nsContentUtils::RunInStableState (after the task). Chrome 157, Firefox 159
+// and Safari 27 all read readyState NONE two microtasks after the mode change
+// and fetch only the URL set then (lane flk4's probe, tmp/probes/flk4-track,
+// 2026-11-23).
+//
+// A src change while the fetch runs (the last subtest; probe scenario D,
+// tmp/probes/flk4-track, 2026-11-23): the three browsers all differ -
+//   Chrome 157:  error (readyState ERROR), then the new URL loads (load, LOADED)
+//   Firefox 159: error twice (LOADING, then ERROR); the new URL is never
+//                requested, so this subtest times out there
+//   Safari 27:   no error; the new URL loads (load, LOADED)
+// so golden rule 2 compares them mechanism by mechanism:
+//   M1 the abort fires error at the track:  Chrome, Firefox  (not Safari)
+//   M2 the new URL is fetched and loads:    Chrome, Safari   (not Firefox)
+// M1 + M2 together are Chrome's shipping behaviour, which is HTML step 10's
+// ("abort fetching ... queue an element task that first changes the text track
+// readiness state to failed to load and then fires an event named error"), then
+// steps 11-13 back to top. Crane does that.
+const base = "/html/semantics/embedded-content/media-elements/track/track-element/resources/";
+const good = base + "captions.vtt";
+
+function trackIn(t) {
+  const video = document.createElement("video");
+  const track = document.createElement("track");
+  video.appendChild(track);
+  document.body.appendChild(video);
+  t.add_cleanup(() => video.remove());
+  const events = [];
+  const loaded = new Promise(resolve => {
+    track.addEventListener("error", () => events.push("error:" + track.readyState));
+    track.addEventListener("load", () => { events.push("load:" + track.readyState); resolve(); });
+  });
+  return { track, events, loaded };
+}
+const microtasks = async () => { await Promise.resolve(); await Promise.resolve(); };
+
+promise_test(async t => {
+  const { track, events, loaded } = trackIn(t);
+  track.track.mode = "showing";
+  track.src = good;
+  assert_equals(track.readyState, HTMLTrackElement.NONE, "readyState right after the script");
+  await loaded;
+  assert_array_equals(events, ["load:" + HTMLTrackElement.LOADED]);
+}, "mode, then src, in one script: the deferred steps read that src - a load event and no error");
+
+promise_test(async t => {
+  const { track, events, loaded } = trackIn(t);
+  track.track.mode = "showing";
+  track.src = base + "flk4-no-such-track.vtt";
+  track.src = good;
+  await loaded;
+  assert_array_equals(events, ["load:" + HTMLTrackElement.LOADED]);
+}, "src set twice before the deferred steps: only the last URL is fetched, a load event and no error");
+
+promise_test(async t => {
+  const { track, events, loaded } = trackIn(t);
+  track.track.mode = "showing";
+  track.src = base + "flk4-no-such-track.vtt";
+  await microtasks();
+  assert_equals(track.readyState, HTMLTrackElement.NONE, "readyState two microtasks after the mode change");
+  track.src = good;
+  await loaded;
+  assert_array_equals(events, ["load:" + HTMLTrackElement.LOADED]);
+}, "the deferred steps run after the task, not in a microtask: a src changed two microtasks later is the one fetched");
+
+promise_test(async t => {
+  const { track, events, loaded } = trackIn(t);
+  track.track.mode = "showing";
+  await microtasks();
+  track.src = good;
+  await loaded;
+  assert_array_equals(events, ["load:" + HTMLTrackElement.LOADED]);
+}, "no src at the mode change and one set two microtasks later: a load event and no error");
+
+promise_test(async t => {
+  const { track, events, loaded } = trackIn(t);
+  track.track.mode = "showing";
+  track.src = good + "?pipe=trickle(d3)";
+  await t.step_wait(() => track.readyState == HTMLTrackElement.LOADING, "the fetch started", 2500, 10);
+  track.src = good;
+  await loaded;
+  assert_array_equals(events, ["error:" + HTMLTrackElement.ERROR, "load:" + HTMLTrackElement.LOADED]);
+}, "a src change while the fetch is ongoing aborts it: error (readyState ERROR), then the new URL loads");
+</script>
