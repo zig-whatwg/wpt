@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>removeChild's NotFoundError says why (lane react1)</title>
+<!--
+WebIDL leaves a DOMException's message to the implementation. For removeChild of a node that is not a
+child: Chrome 157 "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of
+this node.", Firefox 159 "Node.removeChild: The node to be removed is not a child of this node",
+Safari 27 "The object can not be found here." Crane gives Chrome's shape with the text Chrome and
+Firefox share (src/runtime/exception_text.zig). React's own tests read it (ReactDOMRoot "throws if
+unmounting a root that has had its contents removed", ReactDOMFiber "should warn when replacing a
+container which was manually updated outside of React").
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+function thrownBy(f) {
+  try {
+    f();
+  } catch (e) {
+    return e;
+  }
+  assert_unreached('no exception');
+}
+
+test(() => {
+  const parent = document.createElement('div');
+  const e = thrownBy(() => parent.removeChild(document.createElement('span')));
+  assert_true(e instanceof DOMException, 'a DOMException');
+  assert_equals(e.name, 'NotFoundError');
+  assert_equals(e.code, DOMException.NOT_FOUND_ERR);
+  assert_equals(e.message, "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.");
+}, "removeChild of a node that is not a child: the message names the operation and why");
+
+test(() => {
+  const parent = document.createElement('div');
+  thrownBy(() => parent.removeChild(document.createElement('span')));
+  // A later NotFoundError of another operation never carries removeChild's text.
+  const e = thrownBy(() => parent.insertBefore(document.createElement('b'), document.createElement('i')));
+  assert_equals(e.name, 'NotFoundError');
+  assert_false(e.message.includes('to be removed'), e.message);
+}, "the text belongs to the failing call alone");
+</script>

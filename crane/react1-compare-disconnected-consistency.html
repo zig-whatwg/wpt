@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>compareDocumentPosition across trees: always DISCONNECTED, one side, consistent per pair (lane react1)</title>
+<!--
+DOM compareDocumentPosition step 6: when node1 and node2 are not in the same tree, the result is
+DISCONNECTED + IMPLEMENTATION_SPECIFIC + either PRECEDING or FOLLOWING, "with the constraint that
+this is to be consistent, together". Lane react1 saw one run of React's FragmentRefs test where
+Crane answered IMPLEMENTATION_SPECIFIC with no DISCONNECTED (not reproduced since): this test asks
+it of ~1,000 pairs per round over trees of every kind - the document, detached elements,
+DocumentFragments, an iframe's document, shadow trees of a connected and a detached host - with a
+garbage collection between rounds, so freed nodes' memory comes back as new nodes.
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/gc.js"></script>
+<body>
+<script>
+const DISCONNECTED = Node.DOCUMENT_POSITION_DISCONNECTED;
+const PRECEDING = Node.DOCUMENT_POSITION_PRECEDING;
+const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+const IMPLEMENTATION_SPECIFIC = Node.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC;
+
+// A few nodes in one tree, and the tree's root (Node.getRootNode: a shadow tree's root is its shadow root).
+function tree(make) {
+  const nodes = make();
+  return {root: nodes[0].getRootNode(), nodes};
+}
+function elements(doc, parent, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const e = doc.createElement(i % 2 ? 'span' : 'div');
+    parent.appendChild(e);
+    out.push(e);
+  }
+  return out;
+}
+
+promise_test(async t => {
+  const frame = document.createElement('iframe');
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  const frameDoc = frame.contentDocument;
+  frameDoc.body || frameDoc.documentElement.appendChild(frameDoc.createElement('body'));
+  const connected = document.createElement('div');
+  document.body.appendChild(connected);
+  t.add_cleanup(() => connected.remove());
+
+  for (let round = 0; round < 10; round++) {
+    const trees = [
+      tree(() => elements(document, connected, 6)),
+      tree(() => {
+        const d = document.createElement('section');
+        return [d, ...elements(document, d, 5)];
+      }),
+      tree(() => {
+        const f = document.createDocumentFragment();
+        return [f, ...elements(document, f, 5)];
+      }),
+      tree(() => elements(frameDoc, frameDoc.body || frameDoc.documentElement, 6)),
+      tree(() => {
+        const host = document.createElement('div');
+        connected.appendChild(host);
+        const shadow = host.attachShadow({mode: 'open'});
+        return [shadow, ...elements(document, shadow, 5)];
+      }),
+      tree(() => {
+        const host = document.createElement('div');
+        const shadow = host.attachShadow({mode: 'closed'});
+        return [shadow, ...elements(document, shadow, 5)];
+      }),
+      tree(() => [document.createElement('p')]),
+      tree(() => [document.createTextNode('t'), ...[]]),
+    ];
+    // Every pair: DISCONNECTED + IMPLEMENTATION_SPECIFIC + exactly one side; the reverse pair the
+    // other side; the same pair asked again the same answer. (Whether every pair of two trees takes
+    // ONE side is not asserted: Chrome orders by node, and the spec's "consistent, together" leaves
+    // that open.)
+    let pairs = 0;
+    for (let i = 0; i < trees.length; i++) {
+      for (let j = 0; j < trees.length; j++) {
+        if (i === j || trees[i].root === trees[j].root) continue;
+        for (const a of trees[i].nodes) {
+          for (const b of trees[j].nodes) {
+            const r = a.compareDocumentPosition(b);
+            pairs++;
+            assert_true((r & DISCONNECTED) !== 0, `round ${round}, trees ${i}/${j}: DISCONNECTED in ${r}`);
+            assert_true((r & IMPLEMENTATION_SPECIFIC) !== 0, `round ${round}, trees ${i}/${j}: IMPLEMENTATION_SPECIFIC in ${r}`);
+            const side = r & (PRECEDING | FOLLOWING);
+            assert_true(side === PRECEDING || side === FOLLOWING, `round ${round}, trees ${i}/${j}: exactly one side in ${r}`);
+            assert_equals(r & ~(PRECEDING | FOLLOWING | DISCONNECTED | IMPLEMENTATION_SPECIFIC), 0, `round ${round}, trees ${i}/${j}: no other bit in ${r}`);
+            const back = b.compareDocumentPosition(a);
+            assert_equals(back & (PRECEDING | FOLLOWING), side === PRECEDING ? FOLLOWING : PRECEDING, `round ${round}, trees ${i}/${j}: the reverse pair takes the other side`);
+            assert_equals(a.compareDocumentPosition(b), r, `round ${round}, trees ${i}/${j}: the same pair, the same answer`);
+          }
+        }
+      }
+    }
+    assert_greater_than(pairs, 900, 'pairs compared this round');
+    for (const tr of trees) for (const n of tr.nodes) if (n.parentNode === connected) n.remove();
+    await garbageCollect();
+  }
+}, 'nodes of different trees: DISCONNECTED and IMPLEMENTATION_SPECIFIC, one side, the reverse pair the other, the same pair the same, round after round');
+</script>
+</body>

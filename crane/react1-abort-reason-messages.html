@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>AbortSignal's default reasons' messages (lane react1)</title>
+<!--
+DOM leaves the message of the default "AbortError" and "TimeoutError" DOMException to the
+implementation. Probed 2026-11-22 (lane react1, tmp/react1/probes/abort-messages.html):
+  abort():    Chrome 157 "signal is aborted without reason", Firefox 159 "The operation was aborted. ",
+              Safari 27 "The operation was aborted."
+  timeout():  Chrome 157 "signal timed out", Firefox 159 and Safari 27 "The operation timed out."
+Golden rule 2, the three differing on abort(): mechanism by mechanism - the wording is Firefox's
+and Safari's, no trailing space Chrome's and Safari's - the majorities together are Safari's string.
+On timeout() Firefox and Safari agree. React's own tests read the abort() text (ReactDOMFizzServerBrowser).
+-->
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  const controller = new AbortController();
+  controller.abort();
+  assert_equals(controller.signal.reason.name, 'AbortError');
+  assert_equals(controller.signal.reason.message, 'The operation was aborted.');
+}, "AbortController.abort() with no reason: the AbortError's message");
+
+test(() => {
+  const reason = AbortSignal.abort().reason;
+  assert_equals(reason.name, 'AbortError');
+  assert_equals(reason.message, 'The operation was aborted.');
+}, "AbortSignal.abort() with no reason: the AbortError's message");
+
+promise_test(async () => {
+  const signal = AbortSignal.timeout(0);
+  await new Promise(resolve => signal.addEventListener('abort', resolve));
+  assert_equals(signal.reason.name, 'TimeoutError');
+  assert_equals(signal.reason.message, 'The operation timed out.');
+}, "AbortSignal.timeout(): the TimeoutError's message");
+</script>
