@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A frame inside a navigated-away document: its Window lives as long as its WindowProxy, whatever the collector does</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document-and-its-descendants">
+<link rel=help href="https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-child-navigable">
+<link rel=help href="https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// html/webappapis/dynamic-markup-insertion/opening-the-input-stream/
+// event-listeners.window.js, "Standard event listeners are to be removed from
+// Window for an active but not fully active document", loads a page with an
+// iframe into a frame, keeps the inner frame's WindowProxy, navigates the
+// outer frame away and then calls childWin.addEventListener. It failed about
+// 1 run in 11 with "TypeError: Illegal invocation" (lane flk4, 2026-11-22):
+// the navigation destroyed the old document's child navigables but left the
+// inner frame's realm with its <iframe> element, so the collector freeing
+// that element - garbage once the old document went - ended the realm and
+// freed its Window while script still held its WindowProxy. Whether it did
+// depended on a collection running before the outer frame's load event.
+//
+// HTML keeps a Window for as long as a WindowProxy for it is held: "destroy a
+// document" nulls the document's browsing context and destroys nothing of
+// the Window. The probe of lane flk4 (tmp/probes/flk4-navwin, 2026-11-22):
+// after the parent document navigated away and four collections, the inner
+// frame's WindowProxy answers in Chrome 157 (forced gc()), Firefox 159 and
+// Safari 27 (allocation churn) - document is the old document, closed is
+// true, addEventListener and dispatchEvent do not throw - and so does a
+// removed iframe's (crane/fl-removed-frame-window-survives-gc.html).
+//
+// And what script lets go must still be collected: the inner frame's realm
+// is not kept once nothing reaches it.
+
+function collect() {
+  if (self.TestUtils && TestUtils.gc) return TestUtils.gc();
+  let junk = [];
+  for (let i = 0; i < 300000; i++) junk.push({ i, s: "x" + i });
+  junk = null;
+  return Promise.resolve();
+}
+async function settle(t) {
+  for (let i = 0; i < 4; i++) {
+    await collect();
+    await new Promise(r => t.step_timeout(r, 20));
+  }
+}
+function load(frame, url) {
+  return new Promise(resolve => {
+    frame.onload = () => { frame.onload = null; resolve(); };
+    frame.src = url;
+  });
+}
+const PAGE_WITH_FRAME = "/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/resources/page-with-frame.html";
+
+// The inner frame's WindowProxy and Document, read in a function of their
+// own: nothing of the test function holds the inner <iframe> element, so the
+// element is garbage once the outer frame navigates away.
+function innerWindowOf(frame) {
+  const w = frame.contentDocument.querySelector("iframe").contentWindow;
+  return { w, d: w.document };
+}
+
+// A WeakRef to the inner frame's Array constructor, which only its realm's
+// native context keeps - made here so that no register of the async test
+// function holds the constructor or the WindowProxy.
+function realmRefOf(frame) {
+  return new WeakRef(frame.contentDocument.querySelector("iframe").contentWindow.Array);
+}
+
+function assertWindowAnswers(w, d, when) {
+  assert_equals(w.document, d, `document ${when}`);
+  assert_true(w.closed, `closed ${when}: its browsing context is gone`);
+  assert_equals(w.self, w, `self ${when}`);
+}
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await load(frame, PAGE_WITH_FRAME);
+  const { w, d } = innerWindowOf(frame);
+  await load(frame, "/common/blank.html");
+  await settle(t);
+  assertWindowAnswers(w, d, "after the parent's navigation and collections");
+}, "a frame of a navigated-away document: its WindowProxy answers after the collector freed the frame's element");
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await load(frame, PAGE_WITH_FRAME);
+  const { w, d } = innerWindowOf(frame);
+  await load(frame, "/common/blank.html");
+  await settle(t);
+  // The WPT subtest's steps, after the collections: document.open's step 10
+  // erases the listeners of the document's relevant global object, the
+  // Window, whose associated Document it is (Chrome and Safari erase them;
+  // Firefox keeps them - the spec and two of three).
+  w.addEventListener("x", t.unreached_func("window event listener not removed"));
+  d.open();
+  w.dispatchEvent(new Event("x"));
+  d.close();
+}, "a frame of a navigated-away document: document.open erases its Window's listeners after collections");
+
+promise_test(async t => {
+  // The outer frame stays on its initial about:blank, an inner iframe is
+  // inserted into it, then the outer frame navigates same-origin: the outer
+  // Window is kept for the next document (HTML "create and initialize a
+  // Document object" step 6), so no realm replacement detaches the inner
+  // frame's realm - its navigable's destruction must.
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const outer = frame.contentWindow;
+  const inner = frame.contentDocument.body.appendChild(frame.contentDocument.createElement("iframe"));
+  const w = inner.contentWindow, d = w.document;
+  await load(frame, "/common/blank.html");
+  assert_equals(frame.contentWindow, outer, "the outer Window was kept for the next document");
+  await settle(t);
+  assertWindowAnswers(w, d, "after the outer navigation and collections");
+}, "a frame of an initial about:blank the navigation kept the Window of: its WindowProxy answers after collections");
+
+// A frame two levels down: the navigation (or the removal) destroys the
+// navigables of the frame's whole subtree, and each one's <iframe> element is
+// garbage with its destroyed document.
+function grandchildWindowOf(frame) {
+  const childDoc = frame.contentDocument.querySelector("iframe").contentDocument;
+  const w = childDoc.body.appendChild(childDoc.createElement("iframe")).contentWindow;
+  return { w, d: w.document };
+}
+
+promise_test(async t => {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await load(frame, PAGE_WITH_FRAME);
+  const { w, d } = grandchildWindowOf(frame);
+  await load(frame, "/common/blank.html");
+  await settle(t);
+  assertWindowAnswers(w, d, "after the grandparent's navigation and collections");
+}, "a frame two levels inside a navigated-away document: its WindowProxy answers after collections");
+
+// The outer frame is removed and dropped, so only the inner frame's
+// WindowProxy is held: the inner <iframe> element is garbage with the removed
+// frame's document.
+async function removedFramesInnerWindow() {
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  await load(frame, "/common/blank.html");
+  const w = frame.contentDocument.body.appendChild(frame.contentDocument.createElement("iframe")).contentWindow;
+  const d = w.document;
+  frame.remove();
+  return { w, d };
+}
+
+promise_test(async t => {
+  const { w, d } = await removedFramesInnerWindow();
+  await settle(t);
+  assertWindowAnswers(w, d, "after its container's frame was removed and collections");
+}, "a frame inside a removed frame: its WindowProxy answers after collections");
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await load(frame, PAGE_WITH_FRAME);
+  const ref = realmRefOf(frame);
+  await load(frame, "/common/blank.html");
+  await settle(t);
+  assert_equals(ref.deref(), undefined, "the inner frame's realm was collected");
+}, "a frame of a navigated-away document: its realm is collected once script holds nothing of it");
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  await load(frame, PAGE_WITH_FRAME);
+  let { w } = innerWindowOf(frame);
+  const ref = new WeakRef(w.Array);
+  await load(frame, "/common/blank.html");
+  await settle(t);
+  assert_not_equals(ref.deref(), undefined, "held: the inner frame's realm is alive");
+  w = null;
+  await settle(t);
+  assert_equals(ref.deref(), undefined, "let go: the inner frame's realm was collected");
+}, "a frame of a navigated-away document: its realm is collected once script lets its WindowProxy go");
+
+promise_test(async t => {
+  assert_true(!!(self.TestUtils && TestUtils.gc), "TestUtils.gc is available");
+  const frame = document.body.appendChild(document.createElement("iframe"));
+  t.add_cleanup(() => frame.remove());
+  const inner = frame.contentDocument.body.appendChild(frame.contentDocument.createElement("iframe"));
+  const ref = new WeakRef(inner.contentWindow.Array);
+  inner.contentWindow.flk4 = 1;
+  await load(frame, "/common/blank.html");
+  await settle(t);
+  assert_equals(ref.deref(), undefined, "the inner frame's realm was collected");
+}, "a frame of an initial about:blank the navigation kept the Window of: its realm is collected once script holds nothing of it");
+</script>
