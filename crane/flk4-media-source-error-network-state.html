@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A failed source's error event: networkState is NETWORK_NO_SOURCE once no source remains</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#concept-media-load-algorithm">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML's resource selection algorithm, children mode: when a <source> fails,
+// step 10 queues a task to fire error at it, step 11 awaits a stable state,
+// and with no source left the search loop reaches step 18 (waiting), which
+// sets networkState to NETWORK_NO_SOURCE - in the stable state, before the
+// queued error task runs. Chrome 157, Firefox 159 and Safari 27 all read 3 in
+// the handler (lane flk4's probe, tmp/probes/flk4-media, 2026-11-23); Crane
+// read 2 (lane react1's probe), its selection resuming in a task queued
+// behind the error task.
+//
+// With another <source> after the failed one, all three read 2 in the first
+// source's handler; Chrome and Safari still report the FAILED source as
+// currentSrc there (the next candidate is taken in a task after the error
+// event - Chromium's load_timer_), while Firefox reports the next one (the
+// spec's microtask order). Crane follows the majority.
+function sourceErrors(t, connected, urls) {
+  const video = document.createElement("video");
+  const sources = urls.map(url => {
+    const source = document.createElement("source");
+    // No type attribute: the candidate is fetched (and fails, 404) whatever
+    // the user agent can decode - a type it knows it cannot render would
+    // fail at step 6, before step 7 sets currentSrc.
+    source.src = url;
+    video.appendChild(source);
+    return source;
+  });
+  if (connected) {
+    document.body.appendChild(video);
+    t.add_cleanup(() => video.remove());
+  }
+  return Promise.all(sources.map(source => new Promise(resolve => {
+    source.addEventListener("error", t.step_func(() => resolve({
+      networkState: video.networkState,
+      currentSrc: video.currentSrc,
+    })));
+  })));
+}
+
+const missing = name => new URL("/flk4-missing-" + name + ".mp4?" + Math.random(), location.href).href;
+
+for (const connected of [false, true]) {
+  const where = connected ? "connected" : "detached";
+
+  promise_test(async t => {
+    const url = missing(where + "-one");
+    const [seen] = await sourceErrors(t, connected, [url]);
+    assert_equals(seen.networkState, HTMLMediaElement.NETWORK_NO_SOURCE, "networkState in the source's error handler");
+    assert_equals(seen.currentSrc, url, "currentSrc: the failed source");
+  }, `a ${where} video's only source fails: its error handler sees NETWORK_NO_SOURCE`);
+
+  promise_test(async t => {
+    const first = missing(where + "-first"), second = missing(where + "-second");
+    const [one, two] = await sourceErrors(t, connected, [first, second]);
+    assert_equals(one.networkState, HTMLMediaElement.NETWORK_LOADING, "networkState in the first source's error handler: another source remains");
+    assert_equals(one.currentSrc, first, "currentSrc in the first source's error handler (Chrome and Safari; Firefox reports the next source)");
+    assert_equals(two.networkState, HTMLMediaElement.NETWORK_NO_SOURCE, "networkState in the last source's error handler");
+    assert_equals(two.currentSrc, second, "currentSrc in the last source's error handler");
+  }, `a ${where} video's two sources fail: the first's error handler sees NETWORK_LOADING, the last's NETWORK_NO_SOURCE`);
+}
+</script>
