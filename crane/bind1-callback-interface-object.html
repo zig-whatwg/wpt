@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>A callback interface value is an Object (WebIDL 3.2.16)</title>
+<link rel=help href="https://webidl.spec.whatwg.org/#js-callback-interface">
+<script src=/resources/testharness.js></script>
+<script src=/resources/testharnessreport.js></script>
+<script>
+// WebIDL 3.2.16 step 1: converting a value that is not an Object to a callback
+// interface type throws a TypeError. A nullable one (EventListener?,
+// NodeFilter?, XPathNSResolver?) takes null and undefined as null (3.2.20).
+// Any object converts: the operation is read when the callback is called.
+// Chrome 157, Firefox 159 and Safari 27 all answer so (lane bind1 probe,
+// 2026-11-23).
+const primitives = { "5": 5, "'listener'": "listener", "true": true, "Symbol()": Symbol("s"), "0n": 0n };
+for (const [label, value] of Object.entries(primitives)) {
+  test(() => {
+    const target = new EventTarget();
+    assert_throws_js(TypeError, () => target.addEventListener("x", value));
+    assert_throws_js(TypeError, () => target.removeEventListener("x", value));
+  }, `EventTarget: ${label} is not an EventListener`);
+  test(() => {
+    assert_throws_js(TypeError, () => document.createNodeIterator(document, NodeFilter.SHOW_ALL, value));
+    assert_throws_js(TypeError, () => document.createTreeWalker(document, NodeFilter.SHOW_ALL, value));
+  }, `Document: ${label} is not a NodeFilter`);
+  test(() => {
+    assert_throws_js(TypeError, () => document.evaluate("1", document, value));
+  }, `Document: ${label} is not an XPathNSResolver`);
+}
+
+test(() => {
+  const target = new EventTarget();
+  target.addEventListener("x", null);
+  target.addEventListener("x", undefined);
+  target.removeEventListener("x", null);
+  target.removeEventListener("x", undefined);
+  document.createNodeIterator(document, NodeFilter.SHOW_ALL, null);
+  document.createTreeWalker(document, NodeFilter.SHOW_ALL, undefined);
+}, "null and undefined are no callback");
+
+test(() => {
+  const target = new EventTarget();
+  let calls = 0;
+  const listener = {};
+  target.addEventListener("x", listener);
+  listener.handleEvent = () => { calls++; };
+  target.dispatchEvent(new Event("x"));
+  assert_equals(calls, 1);
+  target.removeEventListener("x", listener);
+  target.dispatchEvent(new Event("x"));
+  assert_equals(calls, 1);
+}, "an object without handleEvent converts; handleEvent is read when the listener is called");
+</script>
