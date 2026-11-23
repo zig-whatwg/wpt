@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Time marches on: cue enter, exit and cuechange events, activeCues and pause-on-exit on a playing media element</title>
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#time-marches-on">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML 4.8.11.8 "time marches on" fires enter and exit at the cues of the
+// hidden and showing text tracks as the current playback position passes
+// them, and cuechange at each affected track; TextTrack.activeCues lists the
+// cues whose active flag is set; a cue with its pause-on-exit flag pauses the
+// element when normal playback leaves it. The tracks' cues upstream
+// (media-elements/track/track-element/track-cues-*.html) play WebM or MP4,
+// which needs a video decoder; the WAV here is what Crane's platform decodes
+// (/media/speech.wav, 2.98 s), so this exercises the same steps on a real
+// media timeline.
+
+function audioWithTrack(t) {
+  const audio = document.createElement('audio');
+  audio.src = '/media/speech.wav';
+  document.body.appendChild(audio);
+  t.add_cleanup(() => { audio.pause(); audio.remove(); });
+  const track = audio.addTextTrack('metadata');
+  return [audio, track];
+}
+
+promise_test(async t => {
+  const [audio, track] = audioWithTrack(t);
+  const one = new VTTCue(0.1, 0.4, 'one');
+  const two = new VTTCue(0.6, 0.9, 'two');
+  track.addCue(one);
+  track.addCue(two);
+  const seen = [];
+  const changes = [];
+  for (const cue of [one, two]) {
+    cue.onenter = () => seen.push('enter ' + cue.text);
+    cue.onexit = () => seen.push('exit ' + cue.text);
+  }
+  track.oncuechange = (event) => {
+    assert_equals(event.target, track);
+    changes.push(Array.from(track.activeCues, (cue) => cue.text).join(','));
+  };
+  // The cuechange of the run that fired the last exit is queued after it.
+  const done = new Promise((resolve) => track.addEventListener('cuechange', () => {
+    if (seen.includes('exit two')) resolve();
+  }));
+  await audio.play();
+  await done;
+  assert_array_equals(seen, ['enter one', 'exit one', 'enter two', 'exit two']);
+  assert_greater_than_equal(changes.length, 2, 'cuechange fired');
+  assert_equals(changes[changes.length - 1], '', 'no cue is active after the last exit');
+  assert_equals(track.activeCues.length, 0);
+}, 'enter and exit fire in order as playback passes each cue, with cuechange at the track');
+
+promise_test(async t => {
+  const [audio, track] = audioWithTrack(t);
+  const cue = new VTTCue(0.1, 0.3, 'stop');
+  cue.pauseOnExit = true;
+  track.addCue(cue);
+  const exited = new Promise((resolve) => cue.addEventListener('exit', resolve));
+  await audio.play();
+  await exited;
+  assert_true(audio.paused, 'paused on exit');
+  assert_less_than(audio.currentTime, 2, 'paused before the end of the resource');
+}, 'a cue with pauseOnExit pauses the element when normal playback leaves it');
+
+promise_test(async t => {
+  const audio = document.createElement('audio');
+  const track = audio.addTextTrack('metadata');
+  // play() with no source unsets the show poster flag, but readyState stays
+  // HAVE_NOTHING: Chrome and Safari make no cue current then (Blink's
+  // CueTimeline::TimeMarchesOn, WebKit's updateActiveTextTrackCues), and
+  // the active flag is unset whenever readyState is HAVE_NOTHING.
+  audio.play().catch(() => {});
+  const cue = new VTTCue(0, 10, 'never');
+  let entered = false;
+  cue.onenter = () => { entered = true; };
+  track.addCue(cue);
+  await new Promise((resolve) => t.step_timeout(resolve, 100));
+  assert_false(entered, 'no enter event');
+  assert_equals(track.activeCues.length, 0);
+}, 'no cue becomes active while readyState is HAVE_NOTHING');
+
+promise_test(async t => {
+  const [audio, track] = audioWithTrack(t);
+  // Played, then paused: the show poster flag is unset and there is media
+  // data. A cue covering the current playback position, added now, is a
+  // newly introduced cue, and time marches on makes it active.
+  await audio.play();
+  audio.pause();
+  const now = audio.currentTime;
+  const cue = new VTTCue(Math.max(0, now - 0.05), now + 10, 'now');
+  const entered = new Promise((resolve) => cue.addEventListener('enter', resolve));
+  const changed = new Promise((resolve) => track.addEventListener('cuechange', resolve));
+  track.addCue(cue);
+  await entered;
+  await changed;
+  assert_equals(track.activeCues.length, 1);
+  assert_equals(track.activeCues[0], cue);
+  // Disabling the track unsets the active flag; enabling it again is a mode
+  // change, whose pending text track change notification runs time marches on
+  // at once (4.8.11.11.1 step 4): the cue is current, so it enters again.
+  const reentered = new Promise((resolve) => cue.addEventListener('enter', resolve));
+  track.mode = 'disabled';
+  assert_equals(track.activeCues, null);
+  track.mode = 'hidden';
+  assert_equals(track.activeCues.length, 1, 'enabled again: the cue is active again');
+  await reentered;
+}, 'a cue added while the show poster flag is unset and media data is there enters at once');
+</script>
