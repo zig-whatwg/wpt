@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A group keeps its contents out of an ancestor's name from content</title>
+<link rel="help" href="https://w3c.github.io/accname/#comp_name_from_content">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<body>
+<script>
+// AccName 2F takes every descendant's text; no browser does for a group, and
+// golden rule 2 takes the majority per case (lane a11y1; the evidence is at
+// dom/accessibility.zig groupKeepsContents):
+// - an explicit role=group keeps its contents: Chrome 157 (no kGroup gives
+//   contents to an ancestor) and Safari (accessibleNameDerivesFromContent is
+//   false for role group); Firefox only under a treeitem;
+// - any group inside a treeitem keeps them: Chrome and Firefox
+//   (nsTextEquivUtils::ShouldIncludeInSubtreeCalculation); Safari not for an
+//   implicit group;
+// - an implicit group (a fieldset) under another root gives them: Firefox
+//   and Safari; Chrome not.
+function fixture(t, markup) {
+  const root = document.body.appendChild(document.createElement('section'));
+  root.innerHTML = markup;
+  t.add_cleanup(() => root.remove());
+  return root;
+}
+promise_test(async t => {
+  const root = fixture(t, '<ul role="tree"><li role="treeitem">src <ul role="group"><li role="treeitem">a.zig</li></ul></li></ul>');
+  assert_equals(await test_driver.get_computed_label(root.querySelector('[role=treeitem]')), 'src');
+}, 'A treeitem is named without its nested group of treeitems');
+promise_test(async t => {
+  const root = fixture(t, '<button>Save <span role="group">as draft</span></button>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'Save');
+}, 'An explicit group keeps its contents out of a button name');
+promise_test(async t => {
+  const root = fixture(t, '<button>Save <span role="group" aria-label="now">as draft</span></button>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'Save now');
+}, 'An explicit group still gives its own author name');
+promise_test(async t => {
+  const root = fixture(t, '<div role="treeitem">src <fieldset>a.zig</fieldset></div>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'src');
+}, 'An implicit group keeps its contents out of a treeitem name');
+promise_test(async t => {
+  const root = fixture(t, '<div role="link" tabindex="0">Open <fieldset>settings</fieldset></div>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'Open settings');
+}, 'An implicit group gives its contents to another name from content');
+promise_test(async t => {
+  const root = fixture(t, '<button aria-labelledby="a11y1-target"></button><div id="a11y1-target">Save <span role="group">as draft</span></div>');
+  assert_equals(await test_driver.get_computed_label(root.firstChild), 'Save as draft');
+}, 'An aria-labelledby traversal takes a group\'s contents');
+</script>
