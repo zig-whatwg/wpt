@@ -1,37 +1,118 @@
 <!doctype html>
 <meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
-<title>Sanitizer option conversion and configuration surround Trusted Types correctly</title>
+<title>Sanitizer option conversion and configuration surround the Trusted Types parser-options callback correctly</title>
 <script src="/resources/testharness.js"></script>
 <script src="/resources/testharnessreport.js"></script>
 <script>
-let onPolicy = () => {};
-trustedTypes.createPolicy('default', {createHTML(value) {onPolicy(); return value;}});
+// Trusted Types 3.6 "Get Trusted Type compliant parser options" (w3c.github.io/trusted-types, as fetched
+// 2026-11-18: TrustedHTMLParserOptions and the policy's createParserOptions). With Trusted Types required for
+// "script", an author's options that need vetting - a sanitizer that is not an empty SanitizerConfig - go through
+// the default policy's createParserOptions:
+//   step 10: the callback's argument is made BEFORE the callback - "create a parser options callback argument":
+//            runScripts, and "get a sanitizer from dictionary": a NEW Sanitizer configured with the caller's
+//            Sanitizer's configuration, or with the caller's SanitizerConfig (which is where an invalid
+//            configuration throws);
+//   steps 11-12: the callback is invoked with the argument, "TrustedHTMLParserOptions" and the sink; a throw is
+//            rethrown;
+//   step 13: null or undefined is a TypeError when the policy is enforced;
+//   steps 14-15: the sanitizer configuration is got from the callback's RETURN value, after the callback.
+// 3.4 step 2.2: a TrustedHTMLParserOptions result returns the stringified input - createHTML is not called.
+//
+// Every expectation below is what Chrome 157 does, the one browser shipping parser options (probed 2026-11-24;
+// Firefox 159 has Sanitizer and no TrustedHTMLParserOptions, Safari 27 has neither).
+//
+// Until 2026-11-24 this file had three subtests written for the model before parser options, where the default
+// policy's createHTML was the only callback (the caller's Sanitizer read after it, invariants checked after it).
+// Under 3.6 that page - a default policy with no createParserOptions and options that need vetting - throws a
+// TypeError at step 9, in Chrome and in Crane alike, so all three failed.
+let calls = [];
+let onParserOptions = options => options;
+trustedTypes.createPolicy('default', {
+  createHTML(value) { calls.push('createHTML'); return value; },
+  createParserOptions(options, ...rest) { calls.push('createParserOptions'); return onParserOptions(options, rest); },
+});
+function start(callback) {
+  calls = [];
+  onParserOptions = callback || (options => options);
+  return document.createElement('div');
+}
 
 test(() => {
-  const events = [];
-  onPolicy = () => events.push('policy');
-  const element = document.createElement('div');
+  const element = start();
   element.setHTMLUnsafe('<p>text</p>', {
-    sanitizer: {get comments() {events.push('conversion'); return false;}}
+    sanitizer: {get comments() {calls.push('conversion'); return false;}}
   });
-  assert_array_equals(events, ['conversion', 'policy']);
-}, 'Nested config member conversion precedes the Trusted Types policy callback');
+  assert_array_equals(calls, ['conversion', 'createParserOptions']);
+  assert_equals(element.innerHTML, '<p>text</p>');
+}, 'Nested config member conversion precedes the createParserOptions callback, and createHTML is not called');
 
 test(() => {
   const sanitizer = new Sanitizer({});
-  onPolicy = () => sanitizer.removeElement('p');
-  const element = document.createElement('div');
-  element.setHTMLUnsafe('<p>removed</p><div>kept</div>', {sanitizer});
-  assert_equals(element.innerHTML, '<div>kept</div>');
-}, 'The Sanitizer instance configuration is read after the policy callback');
+  let seen;
+  const element = start((options, rest) => {
+    seen = {keys: Object.keys(options), sanitizer: options.sanitizer, runScripts: options.runScripts, rest};
+    return options;
+  });
+  element.setHTMLUnsafe('<p>text</p>', {sanitizer});
+  assert_array_equals(seen.keys, ['runScripts', 'sanitizer']);
+  assert_true(seen.sanitizer instanceof Sanitizer, 'a Sanitizer');
+  assert_not_equals(seen.sanitizer, sanitizer, 'a new Sanitizer, not the caller\'s');
+  assert_equals(seen.runScripts, false);
+  assert_array_equals(seen.rest, ['TrustedHTMLParserOptions', 'Element setHTMLUnsafe']);
+}, 'The callback receives runScripts and a new Sanitizer, then the type name and the sink');
 
 test(() => {
-  const events = [];
-  onPolicy = () => events.push('policy');
-  const element = document.createElement('div');
+  const sanitizer = new Sanitizer({});
+  const element = start(options => { sanitizer.removeElement('p'); return options; });
+  element.setHTMLUnsafe('<p>kept</p><div>kept</div>', {sanitizer});
+  assert_equals(element.innerHTML, '<p>kept</p><div>kept</div>');
+}, 'The argument\'s Sanitizer is configured before the callback: changing the caller\'s Sanitizer inside it comes too late');
+
+test(() => {
+  const element = start(options => { options.sanitizer.removeElement('p'); return options; });
+  element.setHTMLUnsafe('<p>removed</p><div>kept</div>', {sanitizer: new Sanitizer({})});
+  assert_equals(element.innerHTML, '<div>kept</div>');
+}, 'The configuration is read from the returned options after the callback: a change to the argument\'s Sanitizer applies');
+
+test(() => {
+  const sanitizer = new Sanitizer({});
+  const element = start(() => { sanitizer.removeElement('p'); return {sanitizer}; });
+  element.setHTMLUnsafe('<p>removed</p><div>kept</div>', {sanitizer});
+  assert_equals(element.innerHTML, '<div>kept</div>');
+}, 'A Sanitizer instance the callback returns is read after the callback');
+
+test(() => {
+  const element = start();
   assert_throws_js(TypeError, () => element.setHTMLUnsafe('', {
     sanitizer: {elements: [], removeElements: []}
   }));
-  assert_array_equals(events, ['policy']);
-}, 'Configuration invariants are checked after the Trusted Types policy callback');
+  assert_array_equals(calls, []);
+}, 'Configuration invariants of the caller\'s options are checked before the callback');
+
+test(() => {
+  const element = start(() => ({sanitizer: {elements: [], removeElements: []}}));
+  assert_throws_js(TypeError, () => element.setHTMLUnsafe('<p>text</p>', {sanitizer: {comments: false}}));
+  assert_array_equals(calls, ['createParserOptions']);
+}, 'Configuration invariants of the returned options are checked after the callback');
+
+test(() => {
+  const element = start(() => { throw new RangeError('policy'); });
+  assert_throws_js(RangeError, () => element.setHTMLUnsafe('<p>text</p>', {sanitizer: new Sanitizer({})}));
+  assert_array_equals(calls, ['createParserOptions']);
+  assert_equals(element.innerHTML, '');
+}, 'An exception from the callback is rethrown, with the caller\'s Sanitizer in the options');
+
+test(() => {
+  const element = start(() => null);
+  assert_throws_js(TypeError, () => element.setHTMLUnsafe('<p>text</p>', {sanitizer: new Sanitizer({})}));
+  assert_array_equals(calls, ['createParserOptions']);
+  assert_equals(element.innerHTML, '');
+}, 'A null from the callback is a TypeError');
+
+test(() => {
+  const element = start(options => { options.sanitizer.removeElement('p'); return options; });
+  element.setHTMLUnsafe('<p>removed</p><div>kept</div>', {get sanitizer() { return new Sanitizer({}); }});
+  assert_equals(element.innerHTML, '<div>kept</div>');
+  assert_array_equals(calls, ['createParserOptions']);
+}, 'A Sanitizer that only the options\' getter named is still there for the callback\'s argument');
 </script>
