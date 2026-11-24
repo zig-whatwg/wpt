@@ -1,0 +1,131 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Argument conversion that removes the receiver's frame and collects: the operation throws or completes, and the page goes on</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// The binding converts an operation's arguments before its steps, and a
+// dictionary member's getter or a value's toString() is author script: it can
+// remove the receiver's own frame and force a collection. The operation then
+// throws or finishes on the detached document, as it does in the browsers,
+// and the surviving document stays usable.
+//
+// What this does NOT do: make the receiver's realm lose its engine during the
+// call. A live wrapper keeps its creation context, and the receiver is on the
+// stack, so the collection here cannot take the frame's realm (lane bind1
+// batch B, B5, 2026-11-24: run on two bug-finding runners, one with the
+// operations' `engineGone()` guards removed - the six calls did the same on
+// both, and none met a gone realm). The guards stay as a defence; this file
+// pins that the conversion's script may detach the frame mid-call.
+function retire(frame) {
+  frame.remove();
+  for (let i = 0; i < 200; ++i) document.createElement("div");
+  if (typeof TestUtils === "object" && TestUtils && TestUtils.gc) TestUtils.gc();
+}
+
+function withFrame(t) {
+  const frame = document.createElement("iframe");
+  document.body.appendChild(frame);
+  t.add_cleanup(() => frame.remove());
+  return frame;
+}
+
+function stillUsable(t) {
+  const control = document.createElement("div");
+  document.body.appendChild(control);
+  t.add_cleanup(() => control.remove());
+  assert_true(control.isConnected, "the surviving document remains usable");
+}
+
+function throwsOrReturns(call) {
+  try { return { value: call() }; } catch (e) { return { thrown: e }; }
+}
+
+test(t => {
+  const frame = withFrame(t);
+  const doc = frame.contentDocument;
+  let ran = false;
+  const outcome = throwsOrReturns(() => doc.createElement("div", {
+    get is() { ran = true; retire(frame); return undefined; },
+  }));
+  assert_true(ran, "the options getter ran");
+  assert_false(frame.isConnected);
+  if ("value" in outcome) assert_equals(outcome.value.localName, "div");
+  stillUsable(t);
+}, "createElement: an options getter removes the document's frame");
+
+test(t => {
+  const frame = withFrame(t);
+  const doc = frame.contentDocument;
+  let ran = false;
+  const outcome = throwsOrReturns(() => doc.createElementNS("http://www.w3.org/1999/xhtml", "div", {
+    get customElementRegistry() { ran = true; retire(frame); return undefined; },
+  }));
+  assert_true(ran, "the options getter ran");
+  assert_false(frame.isConnected);
+  if ("value" in outcome) assert_equals(outcome.value.localName, "div");
+  stillUsable(t);
+}, "createElementNS: an options getter removes the document's frame");
+
+test(t => {
+  const frame = withFrame(t);
+  const doc = frame.contentDocument;
+  const node = document.createElement("span");
+  let ran = false;
+  const outcome = throwsOrReturns(() => doc.importNode(node, {
+    get selfOnly() { ran = true; retire(frame); return false; },
+  }));
+  assert_true(ran, "the options getter ran");
+  assert_false(frame.isConnected);
+  if ("value" in outcome) assert_equals(outcome.value.localName, "span");
+  stillUsable(t);
+}, "importNode: an options getter removes the document's frame");
+
+test(t => {
+  const frame = withFrame(t);
+  const child = frame.contentWindow;
+  class Control extends child.HTMLElement {
+    static formAssociated = true;
+    constructor() { super(); this.internals = this.attachInternals(); }
+  }
+  child.customElements.define("bind1-retiring-control", Control);
+  const control = new Control();
+  let ran = false;
+  throwsOrReturns(() => control.internals.setFormValue("value", {
+    toString() { ran = true; retire(frame); return "state"; },
+  }));
+  assert_true(ran, "the state's toString ran");
+  assert_false(frame.isConnected);
+  stillUsable(t);
+}, "ElementInternals.setFormValue: the state's toString removes the element's frame");
+
+test(t => {
+  const frame = withFrame(t);
+  const doc = frame.contentDocument;
+  const host = doc.createElement("div");
+  doc.body.appendChild(host);
+  host.popover = "auto";
+  let ran = false;
+  throwsOrReturns(() => host.togglePopover({
+    get force() { ran = true; retire(frame); return true; },
+  }));
+  assert_true(ran, "the options getter ran");
+  assert_false(frame.isConnected);
+  stillUsable(t);
+}, "togglePopover: an options getter removes the element's frame");
+
+test(t => {
+  const frame = withFrame(t);
+  const doc = frame.contentDocument;
+  const select = doc.createElement("select");
+  doc.body.appendChild(select);
+  let ran = false;
+  throwsOrReturns(() => select.add(doc.createElement("option"), {
+    valueOf() { ran = true; retire(frame); return 0; },
+  }));
+  assert_true(ran, "before's valueOf ran");
+  assert_false(frame.isConnected);
+  stillUsable(t);
+}, "select.add: before's valueOf removes the select's frame");
+</script>
