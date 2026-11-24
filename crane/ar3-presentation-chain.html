@@ -7,11 +7,19 @@
 <script src="/resources/testdriver-vendor.js"></script>
 <table role="none"><tbody id="group"><tr id="row"><th id="header">Header</th><td id="cell">Cell</td></tr><tr id="explicit" role="row"><td id="ordinary">Cell</td></tr></tbody></table>
 <script>
+// The explicit role=row keeps its own role, but its td stays generic: a cell
+// needs a table-like table above its row, and this table is presentational
+// (Blink DetermineTableCellRole). Golden rule 2, all three browsers probed
+// over WebDriver on chat.local, 2026-11-24 (lane a11y1, .a11y1/probe-roles.py):
+// Chrome 157.0.8103.78 "generic", Firefox 159.0.1 "generic", Safari 27.2 ""
+// for #ordinary; each gives #explicit "row" and the presentational chain
+// generic, none or "". (This test asserted "cell" for #ordinary until then.)
+const generic = ['none', 'generic', ''];
 promise_test(async () => {
   for (const id of ['group', 'row', 'header', 'cell']) {
-    assert_in_array(await test_driver.get_computed_role(document.getElementById(id)), ['none', 'generic'], id);
+    assert_in_array(await test_driver.get_computed_role(document.getElementById(id)), generic, id);
   }
   assert_equals(await test_driver.get_computed_role(explicit), 'row');
-  assert_equals(await test_driver.get_computed_role(ordinary), 'cell');
+  assert_in_array(await test_driver.get_computed_role(ordinary), generic, 'ordinary');
 }, 'Presentation passes through required native children and stops at explicit roles');
 </script>

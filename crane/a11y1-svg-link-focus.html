@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An SVG link is focusable by href or xlink:href</title>
+<link rel="help" href="https://www.w3.org/TR/SVG2/interact.html#Focus">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="50">
+<a id="xlink" xlink:href="#t"><rect width="10" height="10"></rect></a>
+<a id="href" href="#t"><rect x="20" width="10" height="10"></rect></a>
+<a id="none"><rect x="40" width="10" height="10"></rect></a>
+</svg>
+<a id="html-href" href="#t">h</a> <a id="html-none">n</a> <a id="html-xlink" xlink:href="#t">x</a>
+<p id="t">t</p>
+<script>
+// SVG 2 15.7: "all a elements that are valid links are focusable" - an SVG
+// <a> with href or xlink:href. Chrome 157.0.8103.78, Firefox 159.0.1 and
+// Safari 27.2 (WebDriver probe on chat.local, 2026-11-24, lane a11y1) all
+// focus the xlink:href link and the href link, and neither an SVG <a>
+// without either nor an HTML <a> without href (an HTML element's xlink:href
+// is a plain attribute: no link).
+function focusable(id) {
+  const element = document.getElementById(id);
+  element.focus();
+  const focused = document.activeElement === element;
+  element.blur();
+  return focused;
+}
+test(() => assert_true(focusable('xlink')), 'An SVG a with xlink:href is focusable');
+test(() => assert_true(focusable('href')), 'An SVG a with href is focusable');
+test(() => assert_false(focusable('none')), 'An SVG a with neither is not focusable');
+test(() => assert_true(focusable('html-href')), 'An HTML a with href is focusable');
+test(() => assert_false(focusable('html-none')), 'An HTML a without href is not focusable');
+test(() => assert_false(focusable('html-xlink')), 'An HTML a with an xlink:href attribute is not focusable');
+</script>
