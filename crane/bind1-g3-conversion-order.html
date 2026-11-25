@@ -1,0 +1,90 @@
+<!doctype html>
+<meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'">
+<title>Arguments are converted before a method's first step: EventTarget, SharedWorker, WebSocket</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// WebIDL converts an operation's arguments - every getter of an options dictionary, every ToString - before the
+// operation's own steps run. Crane converted these union-typed arguments by hand, inside the steps, so an early
+// return or an earlier step ran first (lane bind1, batch B5 group 3: the binding converts them now).
+//
+// Each expectation is what Chrome 157, Firefox 159 and Safari 27 all do
+// (tmp/probes/bind1-nullmember/report-g3.txt, 2026-11-24).
+function logging(log, names) {
+  const options = {};
+  for (const name of names) {
+    Object.defineProperty(options, name, { get() { log.push(name); return undefined; } });
+  }
+  return options;
+}
+
+test(() => {
+  const log = [];
+  new EventTarget().removeEventListener('x', () => {}, logging(log, ['capture', 'once', 'passive', 'signal']));
+  assert_array_equals(log, ['capture']);
+}, 'removeEventListener reads options.capture on a target with no listener');
+
+test(() => {
+  const log = [];
+  new EventTarget().removeEventListener('x', null, logging(log, ['capture']));
+  assert_array_equals(log, ['capture']);
+}, 'removeEventListener reads options.capture with a null callback');
+
+test(() => {
+  const log = [];
+  new EventTarget().addEventListener('x', null, logging(log, ['signal', 'passive', 'once', 'capture']));
+  assert_array_equals(log, ['capture', 'once', 'passive', 'signal']);
+}, 'addEventListener reads capture, once, passive, signal - the inherited member first - with a null callback');
+
+test(() => {
+  assert_throws_js(TypeError, () => new EventTarget().addEventListener('x', null, { signal: null }));
+  assert_throws_js(TypeError, () => new EventTarget().addEventListener('x', () => {}, { signal: 5 }));
+  // EventListenerOptions has no signal member: nothing to convert.
+  new EventTarget().removeEventListener('x', () => {}, { signal: 5 });
+}, 'A signal that is no AbortSignal is a TypeError for addEventListener, null callback or not');
+
+test(() => {
+  const target = new EventTarget();
+  let calls = 0;
+  const listener = () => calls++;
+  target.addEventListener('x', listener, 'a string is true');
+  target.removeEventListener('x', listener, true);
+  target.addEventListener('x', listener, null);
+  target.removeEventListener('x', listener, false);
+  target.dispatchEvent(new Event('x'));
+  assert_equals(calls, 0);
+}, 'A string option is ToBoolean (capture); null is the dictionary (no capture)');
+
+test(() => {
+  const log = [];
+  trustedTypes.createPolicy('default', { createScriptURL(url) { log.push('createScriptURL'); return url; } });
+  new SharedWorker('bind1-g3-no-such-worker.js', logging(log, ['type', 'name', 'credentials']));
+  assert_array_equals(log.slice(0, 3), ['credentials', 'name', 'type']);
+  assert_equals(log[log.length - 1], 'createScriptURL');
+}, 'SharedWorker reads its options before the Trusted Types createScriptURL callback');
+
+test(() => {
+  const log = [];
+  const socket = new WebSocket('ws://127.0.0.1:9/');
+  try {
+    assert_throws_dom('InvalidStateError', () => socket.send({ toString() { log.push('toString'); return 'x'; } }));
+    assert_array_equals(log, ['toString']);
+  } finally {
+    socket.close();
+  }
+}, 'WebSocket.send converts its argument before the CONNECTING check');
+
+test(() => {
+  const log = [];
+  const socket = new WebSocket('ws://127.0.0.1:9/');
+  socket.close();
+  socket.send({ toString() { log.push('toString'); return 'x'; } });
+  assert_array_equals(log, ['toString']);
+}, 'WebSocket.send converts its argument after close()');
+
+test(() => {
+  const log = [];
+  assert_throws_dom('SyntaxError', () => new WebSocket('http://[', { toString() { log.push('toString'); return 'p'; } }));
+  assert_array_equals(log, ['toString']);
+}, 'The WebSocket constructor converts protocols before the URL\'s SyntaxError');
+</script>
