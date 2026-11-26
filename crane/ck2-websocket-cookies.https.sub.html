@@ -37,7 +37,9 @@ for (const [name, origin, sameSite] of [
     const cookies = await readCookies(origin);
     assertCookie(cookies, 'samesite-strict', value, sameSite);
     assertCookie(cookies, 'samesite-lax', value, sameSite);
-    assertCookie(cookies, 'samesite-unspecified', value, true);
+    // Cookies without a SameSite attribute default to Lax (Chrome's behaviour;
+    // restored by the 2026-10-20 user ruling and 387ac80b403).
+    assertCookie(cookies, 'samesite-unspecified', value, sameSite);
     assertCookie(cookies, 'samesite-none', value, true);
   }, name + ' WebSocket sends only cookies permitted by its handshake site');
 }
@@ -54,9 +56,9 @@ check('send', async t => {
   const cookies = await readCookies(WSS_CROSS_SITE_ORIGIN);
   assertCookie(cookies, 'ck2_ws_strict', value, false);
   assertCookie(cookies, 'ck2_ws_lax', value, false);
-  assertCookie(cookies, 'ck2_ws_default', value, true);
+  assertCookie(cookies, 'ck2_ws_default', value, false);
   assertCookie(cookies, 'ck2_ws_none', value, true);
-}, 'Cross-site WebSocket excludes pre-existing Strict and Lax cookies');
+}, 'Cross-site WebSocket excludes pre-existing Strict, Lax and default-Lax cookies');
 check('store', async t => {
   const value = String(Math.random());
   t.add_cleanup(() => clearSameSiteCookies(WSS_CROSS_SITE_ORIGIN));
@@ -66,7 +68,7 @@ check('store', async t => {
   const result = await popupMessage(popup, 'ck2-ws-ready');
   assertCookie(result.cookies, 'samesite-strict', value, false);
   assertCookie(result.cookies, 'samesite-lax', value, false);
-  assertCookie(result.cookies, 'samesite-unspecified', value, true);
+  assertCookie(result.cookies, 'samesite-unspecified', value, false);
   assertCookie(result.cookies, 'samesite-none', value, true);
-}, 'Cross-site WebSocket response cannot store Strict and Lax cookies');
+}, 'Cross-site WebSocket response cannot store Strict, Lax and default-Lax cookies');
 </script>

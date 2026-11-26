@@ -89,10 +89,10 @@ promise_test(async t => {
   source.src = '/media/sound_5.oga';
   audio.append(source);
   await new Promise(resolve => source.onerror = resolve);
-  // The source's error task runs before the algorithm resumes at a stable
-  // state and finds no further candidate (children steps 10-22).
-  assert_equals(audio.networkState, audio.NETWORK_LOADING);
-  await new Promise(resolve => step_timeout(resolve, 0));
+  // Resource selection awaits a stable state (microtask) after queueing the
+  // source's error event; with no further <source> candidate, networkState is
+  // already NETWORK_NO_SOURCE when source.onerror runs (Chrome, Firefox and
+  // Safari agree; lanes flk4 / media1).
   assert_equals(audio.networkState, audio.NETWORK_NO_SOURCE);
   assert_equals(audio.error, null);
   assert_equals(audio.readyState, audio.HAVE_NOTHING);

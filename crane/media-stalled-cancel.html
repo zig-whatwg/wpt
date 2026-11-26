@@ -1,7 +1,8 @@
 <!doctype html>
 <meta charset=utf-8>
-<title>Media stalls before data and removal cancels pending work</title>
+<title>Media stalls before data: removal pauses without aborting, load() cancels pending work</title>
 <link rel=help href="https://html.spec.whatwg.org/multipage/media.html#stall-timeout">
+<link rel=help href="https://html.spec.whatwg.org/multipage/media.html#playing-the-media-resource">
 <script src=/resources/testharness.js></script>
 <script src=/resources/testharnessreport.js></script>
 <body>
@@ -9,7 +10,26 @@
 promise_test(async t => {
   const media = document.createElement('video');
   document.body.append(media);
-  t.add_cleanup(() => media.remove());
+  t.add_cleanup(() => { media.removeAttribute('src'); media.load(); media.remove(); });
+  let progresses = 0;
+  media.onprogress = () => ++progresses;
+  const stalled = new Promise(resolve => media.addEventListener('stalled', resolve, {once: true}));
+  media.src = '/media/sound_5.mp3?pipe=trickle(d4)';
+  const event = await stalled;
+  assert_true(event.isTrusted);
+  assert_equals(media.networkState, media.NETWORK_LOADING);
+  assert_equals(progresses, 0, 'no progress without bytes');
+  // HTML 4.8.11.8: removing a media element from a Document pauses playback
+  // (after awaiting a stable state) without cancelling an in-flight load.
+  media.remove();
+  await Promise.resolve();
+  assert_equals(media.networkState, media.NETWORK_LOADING, 'removal does not abort the in-flight load');
+}, 'a fetch stalled before its first byte fires stalled and removal keeps the load alive');
+
+promise_test(async t => {
+  const media = document.createElement('video');
+  document.body.append(media);
+  t.add_cleanup(() => { media.removeAttribute('src'); media.load(); media.remove(); });
   let errors = 0;
   let progresses = 0;
   media.onerror = () => ++errors;
@@ -20,8 +40,10 @@ promise_test(async t => {
   assert_true(event.isTrusted);
   assert_equals(media.networkState, media.NETWORK_LOADING);
   assert_equals(progresses, 0, 'no progress without bytes');
-  media.remove();
+  // HTML 4.8.11.5: media element load algorithm with no src aborts the old fetch silently.
+  media.removeAttribute('src');
+  media.load();
   await new Promise(resolve => t.step_timeout(resolve, 1300));
-  assert_equals(errors, 0, 'removal terminates the old fetch silently');
-}, 'a fetch stalled before its first byte fires stalled and is cancelled on removal');
+  assert_equals(errors, 0, 'load() without src terminates the old fetch silently');
+}, 'a fetch stalled before its first byte is cancelled silently by removeAttribute(src) + load()');
 </script>

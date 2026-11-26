@@ -18,8 +18,12 @@ async_test(t => {
   }
   video.addEventListener("loadstart", t.step_func(event => {
     events.push(event.type);
-    assert_equals(video.error, null);
-    if (++loads === 1) video.load();
+    assert_equals(video.error.code, MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED,
+                  "dedicated media source failure sets error before loadstart (whatwg/html#11155)");
+    if (++loads === 1) {
+      video.load();
+      assert_equals(video.error, null, "load() resets error synchronously");
+    }
   }));
   video.addEventListener("error", t.step_func_done(event => {
     events.push(event.type);

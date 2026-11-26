@@ -29,23 +29,34 @@ async function collectedWithin(t, ref, rounds) {
 }
 
 // An observer observing `targets`, and a WeakRef to it; nothing else refers
-// to it once this returns. `notified` counts its callbacks.
+// to it once this returns. `notified` counts its callbacks and resolves
+// `firstNotification` on the first one without retaining the observer.
 function observerOf(targets, notified) {
-  const observer = new IntersectionObserver(() => { notified.count++; });
+  let resolveFirst;
+  const firstNotification = new Promise(resolve => { resolveFirst = resolve; });
+  const observer = new IntersectionObserver(() => {
+    notified.count++;
+    resolveFirst();
+  });
   for (const target of targets) observer.observe(target);
-  return new WeakRef(observer);
+  return { ref: new WeakRef(observer), firstNotification };
 }
 
 promise_test(async t => {
   const notified = { count: 0 };
-  const ref = observerOf([document.getElementById("target")], notified);
+  const { ref, firstNotification } = observerOf([document.getElementById("target")], notified);
   assert_false(await collectedWithin(t, ref, 4), "an observing observer is not collected");
+  // IntersectionObserver delivers notifications on a rendering opportunity
+  // (60 Hz frame + queued task), so wait for the callback instead of racing
+  // four task-and-GC rounds against the frame tick.
+  await firstNotification;
   assert_greater_than(notified.count, 0, "and it notified");
+  assert_not_equals(ref.deref(), undefined, "still alive after notifying");
   ref.deref().disconnect();
 }, "an observer with no script reference lives while it observes a target");
 
 promise_test(async t => {
-  const ref = observerOf([document.getElementById("target")], { count: 0 });
+  const { ref } = observerOf([document.getElementById("target")], { count: 0 });
   await nextTask(t);
   ref.deref().disconnect();
   assert_true(await collectedWithin(t, ref, 8), "a disconnected observer is collected");
@@ -54,7 +65,7 @@ promise_test(async t => {
 promise_test(async t => {
   const target = document.getElementById("target");
   const second = document.getElementById("second");
-  const ref = observerOf([target, second], { count: 0 });
+  const { ref } = observerOf([target, second], { count: 0 });
   await nextTask(t);
   ref.deref().unobserve(target);
   assert_false(await collectedWithin(t, ref, 4), "still observing one target");
