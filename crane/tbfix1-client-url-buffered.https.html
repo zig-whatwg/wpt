@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Service Worker: Client.url is the Window's creation URL, with the frame's messages buffered from the start (lane tbfix1)</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/service-workers/service-worker/resources/test-helpers.sub.js"></script>
+<body>
+<script>
+// service-workers/service-worker/client-url-creation-url.https.html, with
+// one change: the window's message listener is installed before any frame
+// is made, and each frame's messages are kept until the test asks for the
+// next one. The upstream file adds its listener only after with_iframe()
+// resolves on the frame's load event, but the frame posts its first 'done'
+// from an inline script while it is parsed. wptserve serves the frame with
+// no Content-Length, so its body ends when the connection closes; when the
+// close comes in a later network read than the body's bytes, the message
+// is dispatched before the load and the upstream subtest waits forever -
+// in Chrome, Firefox and Safari alike when the response is split (lane
+// bugs2's probe; upstream web-platform-tests/wpt#65471). This copy checks
+// what the upstream file means to check, Client.url, without that race.
+const RES = '/service-workers/service-worker/resources/';
+const SCOPE = RES + 'client-url-creation-url';
+const IFRAME_URL = SCOPE + '-iframe.html?step=1';
+const EXPECTED_URL_STEP_1 = new URL(RES + 'client-url-creation-url-iframe.html?step=1', location).href;
+const EXPECTED_URL_STEP_2 = new URL(RES + 'client-url-creation-url-iframe.html?step=2', location).href;
+
+// Every message from a frame's window, kept in arrival order per source
+// until a waiter takes it.
+const pending = new Map();
+const waiters = new Map();
+window.addEventListener('message', e => {
+  const source = e.source;
+  const waiting = waiters.get(source);
+  if (waiting && waiting.length) { waiting.shift()(e.data); return; }
+  if (!pending.has(source)) pending.set(source, []);
+  pending.get(source).push(e.data);
+});
+function next_message_from(win) {
+  const queued = pending.get(win);
+  if (queued && queued.length) return Promise.resolve(queued.shift());
+  return new Promise(resolve => {
+    if (!waiters.has(win)) waiters.set(win, []);
+    waiters.get(win).push(resolve);
+  });
+}
+
+function post_message_and_wait_for_response(target, data) {
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = e => resolve(e.data);
+    target.postMessage({message: data, port: channel.port2}, [channel.port2]);
+  });
+}
+
+async function test_client_url_helper(t, navigation_kinds, expected_client_url) {
+  const registration = await service_worker_unregister_and_register(
+      t, RES + 'client-url-creation-url-sw.js', SCOPE);
+  t.add_cleanup(_ => registration.unregister());
+  await wait_for_state(t, registration.installing, 'activated');
+
+  // The frame's window is the message source for every document it shows
+  // (the WindowProxy), so its messages are keyed by it from the start.
+  const frame = document.createElement('iframe');
+  frame.src = IFRAME_URL;
+  document.body.appendChild(frame);
+  t.add_cleanup(_ => frame.remove());
+  const win = frame.contentWindow;
+  assert_equals(await next_message_from(win), 'done', 'iframe loaded successfully');
+
+  for (const navigation_kind of navigation_kinds) {
+    win.postMessage(navigation_kind);
+    assert_equals(await next_message_from(win), 'done', 'iframe navigation successfully completed');
+  }
+
+  const actual_client_url = await post_message_and_wait_for_response(registration.active, 'get_client_url');
+  assert_equals(actual_client_url, expected_client_url, 'Client.url should match');
+}
+
+promise_test(t => test_client_url_helper(t, [], EXPECTED_URL_STEP_1), 'No navigation creation URL is same as window URL');
+promise_test(t => test_client_url_helper(t, ['fragment'], EXPECTED_URL_STEP_1), 'Fragment only navigation doesn\'t change creation URL');
+promise_test(t => test_client_url_helper(t, ['pushstate'], EXPECTED_URL_STEP_1), 'Pushstate doesn\'t change creation URL');
+promise_test(t => test_client_url_helper(t, ['replacestate'], EXPECTED_URL_STEP_1), 'Replacestate doesn\'t change creation URL');
+promise_test(t => test_client_url_helper(t, ['pushstate', 'pushstate', 'back-within-same-document'], EXPECTED_URL_STEP_1), 'Going back over pushstate to other pushstate via back');
+promise_test(t => test_client_url_helper(t, ['query'], EXPECTED_URL_STEP_2), 'Query navigation changes creation URL');
+promise_test(t => test_client_url_helper(t, ['reload'], EXPECTED_URL_STEP_1), 'Reloading doesn\'t change creation URL');
+promise_test(t => test_client_url_helper(t, ['pushstate', 'reload'], EXPECTED_URL_STEP_2), 'Reloading pushstate URL changes creation URL');
+promise_test(t => test_client_url_helper(t, ['query', 'pushstate', 'back-within-same-document'], EXPECTED_URL_STEP_2), 'Going back over pushstate to creation URL');
+promise_test(t => test_client_url_helper(t, ['query', 'query', 'back-cross-document'], EXPECTED_URL_STEP_2), 'Going back to new document changes creation URL');
+</script>
