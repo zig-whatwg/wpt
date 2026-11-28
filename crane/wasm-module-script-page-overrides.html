@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>A page that replaces the globals a wasm module script could read cannot crash the engine</title>
+<link rel="help" href="https://html.spec.whatwg.org/multipage/webappapis.html#creating-a-webassembly-module-script">
+<link rel="help" href="https://webassembly.github.io/esm-integration/js-api/index.html#esm-integration">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+// HTML "create a WebAssembly module script" makes its module record from
+// the response's bytes (WebAssembly ESM integration, "parse a WebAssembly
+// module"): nothing the page put on its global takes part. Crane's net-nav1
+// path (3aa9141a9) instead ran a classic script in the page's realm that
+// called the page's WebAssembly.Module, Uint8Array.fromBase64 and
+// JSON.stringify, and read back the string with unchecked unwraps:
+// JSON.stringify = () => '[]' then a wasm import panicked the production
+// build (lane wasm2). Crane now does what every shipping browser does with an
+// application/wasm module script - a fetch failure (user ruling 2026-11-27,
+// option (b)) - but the cases ask only what holds in any browser, spec or
+// not: tampering changes nothing.
+//
+// Each case tampers with one of those globals - with functions that count
+// their calls - in a frame (or a worker) of its own, imports a wasm module,
+// and requires the outcome a frame that tampered with nothing gets, with
+// none of the page's functions called. The frame posting its outcome is
+// itself the frame running script after the import.
+
+const wasmUrl = n => `${location.origin}/wasm/webapi/esm-integration/resources/exported-names.wasm?wasm2-overrides=${n}`;
+
+const tampers = [
+  "JSON.stringify = () => (calls++, '[]')",
+  "JSON.stringify = () => (calls++, '{}')",
+  "JSON.stringify = () => (calls++, 'null')",
+  "JSON.stringify = () => (calls++, 'not json')",
+  "JSON.stringify = () => (calls++, undefined)",
+  "JSON.stringify = () => (calls++, '{\"i\":{},\"e\":[]}')",
+  "JSON.stringify = () => (calls++, '{\"i\":[1],\"e\":[]}')",
+  "JSON.stringify = () => (calls++, '{\"i\":[[]],\"e\":[]}')",
+  "JSON.stringify = () => (calls++, '{\"i\":[[1,2]],\"e\":[]}')",
+  "JSON.stringify = () => (calls++, '{\"i\":[],\"e\":[1]}')",
+  "JSON.stringify = () => (calls++, '{\"i\":[]}')",
+  "JSON.stringify = () => { calls++; throw new Error('page'); }",
+  "JSON.stringify = () => (calls++, Symbol('page'))",
+  "WebAssembly.Module = function () { calls++; return {}; }",
+  "WebAssembly.Module = undefined",
+  "WebAssembly.Module.imports = () => (calls++, [{ module: 1, name: {} }])",
+  "WebAssembly.Module.exports = () => (calls++, [{ name: [] }])",
+  "WebAssembly.Instance = function () { calls++; return { exports: null }; }",
+  "Uint8Array.fromBase64 = () => (calls++, new Uint8Array(8))",
+  "Uint8Array.fromBase64 = undefined",
+  "Object.create = () => { calls++; throw new Error('page'); }",
+];
+
+// The frame's script posts what its import did: posting is itself the frame
+// running script after the import.
+function frameSource(n, tamper) {
+  return `<script>var calls = 0; ${tamper};
+import(${JSON.stringify(wasmUrl(n))}).then(
+  () => parent.postMessage({ n: ${n}, outcome: "fulfilled", calls }, "*"),
+  e => parent.postMessage({ n: ${n}, outcome: "rejected:" + e.name, calls }, "*"));
+<\/script>`;
+}
+
+function outcomeOf(n) {
+  return new Promise(resolve => {
+    window.addEventListener("message", function listener(e) {
+      if (!e.data || e.data.n !== n) return;
+      window.removeEventListener("message", listener);
+      resolve(e.data);
+    });
+  });
+}
+
+function runFrame(t, n, tamper) {
+  const outcome = outcomeOf(n);
+  const frame = document.createElement("iframe");
+  t.add_cleanup(() => frame.remove());
+  frame.srcdoc = frameSource(n, tamper);
+  document.body.append(frame);
+  return outcome;
+}
+
+// What a frame that tampered with nothing gets, imported from a URL of its own.
+const untouched = new Promise(resolve => {
+  promise_test(async t => {
+    const result = await runFrame(t, -1, "void 0");
+    resolve(result.outcome);
+    assert_equals(result.calls, 0);
+  }, "a frame that tampers with nothing imports a wasm module and the import settles");
+});
+
+tampers.forEach((tamper, n) => {
+  promise_test(async t => {
+    const result = await runFrame(t, n, tamper);
+    assert_equals(result.calls, 0, "the page's replacements are never called");
+    assert_equals(result.outcome, await untouched, "tampering does not change the outcome");
+  }, `a frame that runs ${tamper} and then imports a wasm module gets the untampered outcome`);
+});
+
+function workerOutcome(t, n, tamper) {
+  const source = `var calls = 0; ${tamper};
+import(${JSON.stringify(wasmUrl(n))}).then(
+  () => postMessage({ outcome: "fulfilled", calls }),
+  e => postMessage({ outcome: "rejected:" + e.name, calls }));`;
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  t.add_cleanup(() => URL.revokeObjectURL(url));
+  const worker = new Worker(url);
+  t.add_cleanup(() => worker.terminate());
+  return new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(new Error(`worker error: ${e.message}`));
+  });
+}
+
+promise_test(async t => {
+  const plain = await workerOutcome(t, 1000, "void 0");
+  const tampered = await workerOutcome(t, 1001, "JSON.stringify = () => (calls++, '[]')");
+  assert_equals(tampered.calls, 0, "the worker's JSON.stringify is never called");
+  assert_equals(tampered.outcome, plain.outcome, "tampering does not change the outcome");
+}, "a worker that replaces JSON.stringify and then imports a wasm module gets the untampered outcome");
+</script>
+</body>
